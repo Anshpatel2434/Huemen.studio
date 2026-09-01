@@ -1,0 +1,26 @@
+# Local development infrastructure for Huemen.studio.
+# Postgres is the only hard dependency for local dev (auth/storage/AI have dev adapters).
+# This is for LOCAL DEV ONLY — production DB/storage live in managed accounts (see README).
+services:
+  db:
+    image: postgres:18
+    container_name: huemen_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: huemen
+      POSTGRES_PASSWORD: huemen_dev_pw
+      POSTGRES_DB: huemen
+    # Host port 5544 avoids colliding with a native Postgres on 5432.
+    ports:
+      - "5544:5432"
+    volumes:
+      # Postgres 18 images expect the mount at /var/lib/postgresql (not /data).
+      - huemen_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U huemen -d huemen"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  huemen_pgdata:

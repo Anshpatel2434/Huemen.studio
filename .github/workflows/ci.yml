@@ -1,0 +1,64 @@
+name: CI
+
+# Cross-tenant isolation tests run here and BLOCK MERGE (brief §07, INV-1).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: huemen
+          POSTGRES_PASSWORD: huemen
+          POSTGRES_DB: huemen
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U huemen -d huemen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      APP_URL: http://localhost:3000
+      NODE_ENV: test
+      DATABASE_URL: postgresql://huemen_app:huemen_app@localhost:5432/huemen
+      DATABASE_ADMIN_URL: postgresql://huemen:huemen@localhost:5432/huemen
+      DATABASE_APP_PASSWORD: huemen_app
+      AUTH_SECRET: ci_only_secret_0123456789abcdef
+      AUTH_DRIVER: dev
+      STORAGE_DRIVER: local
+      AI_TEXT_PROVIDER: mock
+      AI_IMAGE_PROVIDER: mock
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Migrations must run clean from an empty database (DoD §11).
+      - name: Migrate
+        run: npm run db:migrate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Includes the cross-tenant isolation suite — a leak fails the build.
+      - name: Test (incl. cross-tenant isolation)
+        run: npm test
+
+      - name: Build
+        run: npm run build

@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/*
+ * Huemen.studio house theme (AGENTS.md §3.5). Monochrome + one vermilion accent,
+ * editorial. All colours are TOKENS so per-tenant white-label branding
+ * (tenants.branding JSON, brief §4.7) can override them at runtime without
+ * touching components. Never hardcode hex in a component.
+ */
+:root {
+  --ink: #000000;
+  --paper: #ffffff;
+  --muted-surface: #f4f4f4;
+  --ink-muted: #33373d;
+  --ink-faint: #69727d;
+  --accent: #ff3429;
+  --hairline: rgba(0, 0, 0, 0.08);
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-muted-surface: var(--muted-surface);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-hairline: var(--hairline);
+
+  --font-sans: var(--font-borna), "Inter", system-ui, sans-serif;
+  --font-serif: var(--font-editorial), Georgia, "Times New Roman", serif;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Signature micro-label: small, uppercase, letter-spaced (AGENTS.md §3.5). */
+.eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+
+.serif-accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
