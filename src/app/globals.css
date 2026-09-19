@@ -1,51 +1,128 @@
 @import "tailwindcss";
 
 /*
- * Huemen.studio house theme (AGENTS.md §3.5). Monochrome + one vermilion accent,
- * editorial. All colours are TOKENS so per-tenant white-label branding
- * (tenants.branding JSON, brief §4.7) can override them at runtime without
- * touching components. Never hardcode hex in a component.
+ * Huemen.studio — "The Atelier". An editorial magazine art direction (AGENTS.md
+ * §3.5), derived from Sahil's own site + editorial studios (basement, boc):
+ * stark paper, hairline ledger grid, oversized display type, black/white + one
+ * hot vermilion, serif-italic flourish, mono labels, a marquee. Not a SaaS
+ * dashboard — a studio. All colours are TOKENS for per-tenant override.
  */
 :root {
-  --ink: #000000;
+  --ink: #0e0e0e;
+  --ink-muted: #5c5c58;
+  --ink-faint: #a4a29c;
   --paper: #ffffff;
-  --muted-surface: #f4f4f4;
-  --ink-muted: #33373d;
-  --ink-faint: #69727d;
-  --accent: #ff3429;
-  --hairline: rgba(0, 0, 0, 0.08);
+  --ground: #f4f2ec;            /* warm paper canvas */
+  --muted-surface: #eceae2;
+  --accent: #ff2d1a;            /* hot editorial red */
+  --accent-ink: #e11500;
+  --accent-soft: #ffe7e3;
+
+  --hairline: rgba(14, 14, 14, 0.13);   /* visible editorial rule */
+  --hairline-strong: rgba(14, 14, 14, 0.9);
+  --line: rgba(14, 14, 14, 0.2);
+
+  --shadow: 0 20px 50px -24px rgba(14, 14, 14, 0.3);
+  --shadow-lg: 0 48px 90px -30px rgba(14, 14, 14, 0.42);
 }
 
 @theme inline {
   --color-ink: var(--ink);
-  --color-paper: var(--paper);
-  --color-muted-surface: var(--muted-surface);
   --color-ink-muted: var(--ink-muted);
   --color-ink-faint: var(--ink-faint);
+  --color-paper: var(--paper);
+  --color-ground: var(--ground);
+  --color-muted-surface: var(--muted-surface);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
   --color-hairline: var(--hairline);
+  --color-line: var(--line);
 
-  --font-sans: var(--font-borna), "Inter", system-ui, sans-serif;
-  --font-serif: var(--font-editorial), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-sans-src), "Inter", system-ui, sans-serif;
+  --font-display: var(--font-display-src), "Space Grotesk", sans-serif;
+  --font-serif: var(--font-serif-src), "Instrument Serif", Georgia, serif;
+  --font-mono: var(--font-mono-src), "IBM Plex Mono", ui-monospace, monospace;
 }
+
+* { border-color: var(--hairline); }
+html { -webkit-text-size-adjust: 100%; }
 
 body {
-  background: var(--paper);
+  background: var(--ground);
   color: var(--ink);
   font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Signature micro-label: small, uppercase, letter-spaced (AGENTS.md §3.5). */
-.eyebrow {
+::selection { background: var(--accent); color: #fff; }
+
+/* Display — oversized, confident. */
+.display, h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.035em;
+  font-weight: 500;
+  line-height: 0.98;
+}
+.headline { font-size: clamp(2.4rem, 6vw, 4.6rem); }
+
+.serif-accent { font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+
+/* Monospace metadata labels — the editorial signal. */
+.eyebrow, .label-mono {
+  font-family: var(--font-mono);
   font-size: 0.6875rem;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-faint);
   font-weight: 500;
 }
-
-.serif-accent {
-  font-family: var(--font-serif);
-  font-style: italic;
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  color: var(--accent-ink);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
 }
+.tnum { font-variant-numeric: tabular-nums; }
+.num-display { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: -0.04em; }
+
+/* Editorial rule with an accent tick. */
+.rule { height: 1px; background: var(--hairline); }
+.rule-accent { position: relative; }
+.rule-accent::before { content: ""; position: absolute; left: 0; top: 0; width: 34px; height: 2px; background: var(--accent); }
+
+/* Marquee — a Sahil signature. */
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.marquee { display: inline-flex; white-space: nowrap; animation: marquee 30s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: rgba(14,14,14,0.16); border-radius: 999px; border: 3.5px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(14,14,14,0.32); background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+:where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { 0% { opacity: 0; transform: translateY(6px) scale(0.985); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes revealClip { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0% 0); } }
+.fade-up { animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.fade-in { animation: fadeIn 0.3s ease both; }
+.pop { animation: pop 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.reveal { animation: revealClip 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.stagger > * { animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger > *:nth-child(4) { animation-delay: 0.18s; }
+.stagger > *:nth-child(5) { animation-delay: 0.24s; }
+
+@media (prefers-reduced-motion: reduce) { *, .marquee { animation: none !important; transition: none !important; } }

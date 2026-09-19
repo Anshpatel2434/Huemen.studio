@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
-import { Inter, Newsreader } from "next/font/google";
+import { Inter, Space_Grotesk, Instrument_Serif, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-// Borna (Sahil's display face) is a commercial licence — see P1-12 font-licence
-// decision. Inter is the free grotesque substitute; Newsreader supplies the
-// serif-italic accent. Swap in the licensed faces once confirmed.
-const borna = Inter({ variable: "--font-borna", subsets: ["latin"] });
-const editorial = Newsreader({
-  variable: "--font-editorial",
-  subsets: ["latin"],
-  style: ["italic", "normal"],
-});
+const inter = Inter({ variable: "--font-sans-src", subsets: ["latin"], display: "swap" });
+const display = Space_Grotesk({ variable: "--font-display-src", subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"] });
+const serif = Instrument_Serif({ variable: "--font-serif-src", subsets: ["latin"], weight: "400", style: ["normal", "italic"], display: "swap" });
+// Monospace — for metadata labels + technical micro-text (editorial signal).
+const mono = IBM_Plex_Mono({ variable: "--font-mono-src", subsets: ["latin"], weight: ["400", "500"], display: "swap" });
 
-// White-label: no Okra Tech Labs marks anywhere client-facing (brief §4.7).
 export const metadata: Metadata = {
   title: "Huemen.studio",
   description: "Your personal brand, generated from one stored context.",
@@ -20,8 +15,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${borna.variable} ${editorial.variable} h-full`}>
-      <body className="min-h-full flex flex-col bg-paper text-ink">{children}</body>
+    <html lang="en" className={`${inter.variable} ${display.variable} ${serif.variable} ${mono.variable} h-full`}>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

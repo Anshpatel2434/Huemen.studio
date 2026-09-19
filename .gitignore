@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Keep the template committed (real .env stays ignored)
 !.env.example
+
+# Internal design reference (not for handover repo)
+Relume_images/
