@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "huemen-local",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "-p", "3120"],
+      "port": 3120
     }
   ]
 }

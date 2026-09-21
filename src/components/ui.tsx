@@ -1,121 +1,101 @@
 "use client";
 
 /**
- * Huemen UI kit — "The Atelier" editorial system (AGENTS.md §3.5). Crisp hairline
- * surfaces, oversized display type, mono labels, one hot vermilion. Includes a
- * working Toast + Modal so every action gives feedback.
+ * Huemen UI kit. Relume-shaped controls (rounded 8px, filled fields, white
+ * panels on warm grey) in the house palette. Colours come from tokens only.
  */
 import Link from "next/link";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useFormStatus } from "react-dom";
 import { Check, X } from "lucide-react";
 
-export function Eyebrow({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <p className={`eyebrow ${className}`}>{children}</p>;
-}
-
-export function PageHeader({
-  kicker, eyebrow, title, accent, sub, action,
-}: { kicker?: string; eyebrow?: string; title: string; accent?: string; sub?: string; action?: ReactNode }) {
+export function LogoMark({ size = 28 }: { size?: number }) {
   return (
-    <div className="mb-10 fade-up">
-      <div className="flex flex-wrap items-end justify-between gap-6">
-        <div className="max-w-3xl">
-          {kicker && <p className="kicker mb-4">{kicker}</p>}
-          {eyebrow && !kicker && <Eyebrow className="mb-4">{eyebrow}</Eyebrow>}
-          <h1 className="headline">{title} {accent && <span className="serif-accent">{accent}</span>}</h1>
-          {sub && <p className="mt-5 text-[1rem] text-ink-muted leading-relaxed max-w-xl">{sub}</p>}
-        </div>
-        {action && <div className="shrink-0 pb-2">{action}</div>}
-      </div>
-      <div className="mt-7 rule rule-accent" />
-    </div>
-  );
-}
-
-export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="flex items-end justify-between mb-4 pb-2 border-b border-hairline">
-      <h2 className="text-[0.95rem] font-semibold tracking-tight">{children}</h2>
-      {action}
-    </div>
-  );
-}
-
-type BtnProps = {
-  children: ReactNode; href?: string;
-  variant?: "primary" | "accent" | "secondary" | "ghost";
-  size?: "sm" | "md"; icon?: ReactNode; onClick?: () => void; type?: "button" | "submit"; className?: string;
-};
-
-export function Button({ children, href, variant = "primary", size = "md", icon, onClick, type = "button", className = "" }: BtnProps) {
-  const sizes = size === "sm" ? "px-3.5 py-2 text-[0.8rem]" : "px-5 py-2.5 text-[0.875rem]";
-  const variants = {
-    primary: "bg-ink text-white hover:bg-accent",
-    accent: "bg-accent text-white hover:brightness-105",
-    secondary: "bg-paper text-ink border border-line hover:border-ink",
-    ghost: "text-ink-muted hover:text-ink",
-  }[variant];
-  const cls = `inline-flex items-center justify-center gap-2 rounded-[7px] font-medium transition-all duration-150 active:scale-[0.985] ${sizes} ${variants} ${className}`;
-  const inner = <>{icon}{children}</>;
-  if (href) return <Link href={href} className={cls}>{inner}</Link>;
-  return <button type={type} onClick={onClick} className={cls}>{inner}</button>;
-}
-
-export function Card({ children, className = "", hover, onClick }: { children?: ReactNode; className?: string; hover?: boolean; onClick?: () => void }) {
-  return (
-    <div onClick={onClick} className={`bg-paper rounded-[4px] border border-hairline ${hover ? "transition-all duration-200 hover:border-ink hover:shadow-[var(--shadow)] cursor-pointer" : ""} ${className}`}>
-      {children}
-    </div>
-  );
-}
-
-export function Pill({ children, color }: { children: ReactNode; color?: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 label-mono px-2 py-0.5 rounded-full" style={{ color: color ?? "var(--ink-muted)", background: color ? `color-mix(in srgb, ${color} 12%, transparent)` : "var(--muted-surface)" }}>
-      {color && <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />}
-      {children}
+    <span
+      className="inline-flex items-center justify-center rounded-[8px] bg-ink text-on-ink shrink-0"
+      style={{ width: size, height: size }}
+      aria-label="Huemen.studio"
+    >
+      <span className="serif-accent leading-none" style={{ fontSize: size * 0.62, marginTop: -size * 0.04 }}>h</span>
     </span>
   );
 }
 
-const STATUS: Record<string, string> = { approved: "#137a43", edited: "#0e0e0e", draft: "#8a8a86", new: "#e11500", converted: "#8a8a86", scheduled: "#0e0e0e" };
-export function StatusBadge({ status }: { status: string }) {
-  return <span className="label-mono" style={{ color: STATUS[status] ?? STATUS.draft }}>{status}</span>;
+import { btnClass, type Variant } from "./btn";
+export { btnClass };
+
+export function Button({
+  children, href, variant = "primary", size = "md", onClick, type = "button", className = "", disabled, title,
+}: {
+  children: ReactNode; href?: string; variant?: Variant; size?: "sm" | "md"; onClick?: () => void;
+  type?: "button" | "submit"; className?: string; disabled?: boolean; title?: string;
+}) {
+  const cls = `${btnClass(variant, size)} ${className}`;
+  if (href) return <Link href={href} className={cls} title={title}>{children}</Link>;
+  return <button type={type} onClick={onClick} className={cls} disabled={disabled} title={title}>{children}</button>;
 }
 
-export function StatTile({ label, value, hint, delta }: { label: string; value: ReactNode; hint?: string; icon?: ReactNode; delta?: string }) {
+/** Submit button that shows a pending state while its form's action runs. */
+export function SubmitButton({
+  children, pendingLabel, variant = "primary", size = "md", className = "", name, value,
+}: { children: ReactNode; pendingLabel?: string; variant?: Variant; size?: "sm" | "md"; className?: string; name?: string; value?: string }) {
+  const { pending } = useFormStatus();
   return (
-    <div className="p-5">
-      <p className="label-mono">{label}</p>
-      <p className="num-display text-[2.4rem] mt-3 leading-none">{value}</p>
-      <div className="flex items-center gap-2 mt-2">
-        {delta && <span className="label-mono text-accent-ink">{delta}</span>}
-        {hint && <span className="label-mono text-ink-faint">{hint}</span>}
-      </div>
+    <button type="submit" name={name} value={value} disabled={pending} className={`${btnClass(variant, size)} ${className}`}>
+      {pending ? <><AgentDots /> {pendingLabel ?? "Working…"}</> : children}
+    </button>
+  );
+}
+
+export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`bg-paper border border-hairline rounded-[12px] ${className}`}>{children}</div>;
+}
+
+export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "accent" | "ok" | "warn" | "dark" }) {
+  const tones = {
+    neutral: "bg-field text-ink-muted",
+    accent: "bg-accent-soft text-accent-ink",
+    ok: "bg-ok-soft text-ok",
+    warn: "bg-warn-soft text-warn",
+    dark: "bg-ink text-on-ink",
+  }[tone];
+  return <span className={`inline-flex items-center gap-1 h-5 px-1.5 rounded-[5px] label-mono !text-[0.625rem] whitespace-nowrap shrink-0 ${tones}`}>{children}</span>;
+}
+
+export function Meter({ value, tone = "ink" }: { value: number; tone?: "ink" | "accent" }) {
+  return (
+    <div className="h-1.5 rounded-full bg-field w-full overflow-hidden">
+      <div
+        className={`h-full rounded-full transition-all duration-700 ${tone === "accent" ? "bg-accent" : "bg-ink"}`}
+        style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+      />
     </div>
   );
 }
 
-export function Meter({ value, max = 100 }: { value: number; max?: number }) {
+/** The Relume-style 3×3 "thinking" dots. */
+export function AgentDots({ className = "" }: { className?: string }) {
   return (
-    <div className="h-1.5 bg-muted-surface w-full overflow-hidden">
-      <div className="h-full bg-accent transition-all duration-700" style={{ width: `${Math.min(100, (value / max) * 100)}%` }} />
-    </div>
+    <span className={`inline-grid grid-cols-3 gap-[2px] ${className}`} aria-hidden>
+      {Array.from({ length: 9 }).map((_, i) => (
+        <span key={i} className="w-[3px] h-[3px] rounded-full bg-current" style={{ animation: `dots 1.1s ${(i % 3) * 0.12 + Math.floor(i / 3) * 0.1}s infinite` }} />
+      ))}
+    </span>
   );
 }
 
 export function EmptyState({ title, sub, action, icon }: { title: string; sub?: string; action?: ReactNode; icon?: ReactNode }) {
   return (
-    <Card className="p-16 text-center">
-      {icon && <div className="mx-auto mb-5 w-12 h-12 border border-hairline flex items-center justify-center text-ink-faint">{icon}</div>}
-      <p className="text-lg font-medium">{title}</p>
-      {sub && <p className="text-sm text-ink-muted mt-2 max-w-sm mx-auto leading-relaxed">{sub}</p>}
-      {action && <div className="mt-6 flex justify-center">{action}</div>}
-    </Card>
+    <div className="text-center py-14 px-6">
+      {icon && <div className="mx-auto mb-4 w-11 h-11 rounded-[10px] bg-field flex items-center justify-center text-ink-muted">{icon}</div>}
+      <p className="text-[0.95rem] font-medium">{title}</p>
+      {sub && <p className="text-[0.85rem] text-ink-muted mt-1.5 max-w-sm mx-auto leading-relaxed">{sub}</p>}
+      {action && <div className="mt-5 flex justify-center">{action}</div>}
+    </div>
   );
 }
 
-export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: string; children: ReactNode }) {
+export function Modal({ open, onClose, title, children, width = 480 }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; width?: number }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     if (open) window.addEventListener("keydown", onKey);
@@ -123,24 +103,25 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 fade-in" style={{ background: "rgba(14,14,14,0.5)", backdropFilter: "blur(6px)" }} onClick={onClose}>
-      <div className="bg-paper border border-hairline rounded-[6px] shadow-[var(--shadow-lg)] w-full max-w-lg pop" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
-          <h3 className="font-semibold">{title}</h3>
-          <button onClick={onClose} className="text-ink-faint hover:text-ink transition-colors"><X size={18} /></button>
-        </div>
-        <div className="p-6">{children}</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 fade-in bg-[var(--scrim)]" onClick={onClose}>
+      <div className="bg-paper rounded-[12px] shadow-[var(--shadow-lg)] w-full pop overflow-hidden" style={{ maxWidth: width }} onClick={(e) => e.stopPropagation()}>
+        {title && (
+          <div className="flex items-center justify-between px-5 h-12 border-b border-hairline">
+            <h3 className="text-[0.9rem] font-medium">{title}</h3>
+            <button onClick={onClose} className="text-ink-faint hover:text-ink" aria-label="Close"><X size={16} /></button>
+          </div>
+        )}
+        <div className="p-5">{children}</div>
       </div>
     </div>
   );
 }
 
-type Toast = { id: number; msg: string };
 const ToastCtx = createContext<(msg: string) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
   const push = useCallback((msg: string) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg }]);
@@ -149,16 +130,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="fixed bottom-6 right-6 z-[60] flex flex-col gap-2 items-end">
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 items-center pointer-events-none">
         {toasts.map((t) => (
-          <div key={t.id} className="flex items-center gap-2.5 bg-ink text-white rounded-[7px] px-4 py-3 shadow-[var(--shadow-lg)] pop text-sm">
-            <span className="w-5 h-5 rounded-full bg-accent flex items-center justify-center shrink-0"><Check size={13} /></span>
-            {t.msg}
+          <div key={t.id} className="pop flex items-center gap-2 bg-menu text-menu-fg text-[0.82rem] pl-3 pr-4 h-9 rounded-[9px] shadow-[var(--shadow)]">
+            <Check size={14} className="text-menu-fg" /> {t.msg}
           </div>
         ))}
       </div>
     </ToastCtx.Provider>
   );
 }
-
-export const inputCls = "w-full bg-paper border border-line rounded-[7px] px-3.5 py-2.5 text-sm placeholder:text-ink-faint focus:outline-none focus:border-ink transition-colors";

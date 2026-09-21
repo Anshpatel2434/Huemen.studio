@@ -1,36 +1,58 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { withTenantSession } from "@/db/session";
 import { devSignIn } from "@/lib/auth";
+import { safeNext, signLink } from "@/lib/auth/tokens";
+import { findAccountByEmail, getAccount, markSignedIn, type AccountRow } from "@/lib/data/auth";
 import { getEnv } from "@/lib/env";
-import type { Role } from "@/lib/auth/types";
+import { sendAuthMail } from "@/lib/mail";
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Start a session for an account that has passed every check. */
+async function startSession(a: AccountRow): Promise<void> {
+  await devSignIn({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
+  await markSignedIn(a.id);
+}
 
 /**
- * DEV-ONLY sign-in. Establishes a session for a seeded user. In production the
- * managed auth provider + email invites replace this entirely (brief §02, §05).
+ * DEV-ONLY one-click sign-in for seeded accounts. The managed auth provider
+ * replaces this entirely (brief §02, §05).
  */
 export async function signInAs(formData: FormData): Promise<void> {
   if (getEnv().AUTH_DRIVER !== "dev") throw new Error("dev sign-in disabled");
-  const userId = String(formData.get("userId"));
+  const a = await getAccount(String(formData.get("userId")));
+  if (!a || a.status !== "active") redirect("/login?e=noinvite");
+  await startSession(a);
+  redirect(safeNext(formData.get("next")));
+}
 
-  const user = await withTenantSession(
-    { tenantId: null, userId: null, isPlatformAdmin: true },
-    async (c) =>
-      (
-        await c.query<{ id: string; tenant_id: string; role: Role; email: string }>(
-          "SELECT id, tenant_id, role, email FROM users WHERE id = $1",
-          [userId],
-        )
-      ).rows[0],
-  );
-  if (!user) throw new Error("user not found");
+/**
+ * Email sign-in, passwordless and invite-only (no public sign-up, brief §02).
+ * The address must belong to an invited, active account; we then email a
+ * one-time link and show "check your email". Unknown, pending and disabled
+ * accounts each get their own page, so nobody is left guessing.
+ */
+export async function signInWithEmail(formData: FormData): Promise<void> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const next = safeNext(formData.get("next"));
+  const q = (extra: Record<string, string>) => new URLSearchParams({ ...extra, ...(next !== "/dashboard" ? { next } : {}) }).toString();
+  if (!EMAIL.test(email)) redirect(`/login?${q({ e: "invalid", email })}`);
 
-  await devSignIn({
-    userId: user.id,
-    tenantId: user.tenant_id,
-    role: user.role,
-    email: user.email,
+  const a = await findAccountByEmail(email);
+  if (!a) redirect(`/login?${q({ e: "noinvite", email })}`);
+  if (a.status === "disabled" || a.tenantStatus !== "active") redirect(`/auth/disabled?${q({ email })}`);
+  if (a.status === "invited") redirect(`/login?${q({ e: "pending", email })}`);
+
+  const token = signLink("signin", a.id, a.lastSeen);
+  const link = `${getEnv().APP_URL}/auth/verify?${new URLSearchParams({ token, ...(next !== "/dashboard" ? { next } : {}) })}`;
+  await sendAuthMail({
+    to: a.email,
+    subject: "Your Huemen.studio sign-in link",
+    link,
+    lines: [`Sign in to ${a.tenantName}.`, "This link works once and expires in 15 minutes."],
   });
-  redirect("/dashboard");
+  // The dev driver has no mailbox, so the page shows the link as a "dev inbox".
+  const dev: Record<string, string> = getEnv().AUTH_DRIVER === "dev" ? { dev: token } : {};
+  redirect(`/login/check-email?${q({ email: a.email, ...dev })}`);
 }

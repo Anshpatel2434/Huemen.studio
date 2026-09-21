@@ -61,15 +61,21 @@ async function main() {
     )
   ).rows[0].id;
 
-  // Full brand foundation for the demo client (scoped session).
+  // Full brand foundation for the demo client, inside its first project.
   await withTenantSession(
     { tenantId: clientTenant, userId: clientUser, isPlatformAdmin: false },
     async (c) => {
+      const projectId = (
+        await c.query<{ id: string }>(
+          "INSERT INTO projects (tenant_id, name, stage, created_by) VALUES ($1, 'Personal brand', 'pillars', $2) RETURNING id",
+          [clientTenant, clientUser],
+        )
+      ).rows[0].id;
       const bp = (
         await c.query<{ id: string }>(
           `INSERT INTO brand_profiles
-             (tenant_id, status, story_arc, positioning_statement, niche, audience, offers_summary, completeness)
-           VALUES ($1,'active',$2,$3,$4,$5,$6,100) RETURNING id`,
+             (tenant_id, project_id, status, story_arc, positioning_statement, niche, audience, offers_summary, completeness)
+           VALUES ($1,$7,'active',$2,$3,$4,$5,$6,100) RETURNING id`,
           [
             clientTenant,
             JSON.stringify([
@@ -81,6 +87,7 @@ async function main() {
             "Personal branding for B2B founders",
             JSON.stringify({ role: "founders", stage: "post-PMF" }),
             "1:1 coaching and cohort workshops.",
+            projectId,
           ],
         )
       ).rows[0].id;
@@ -106,7 +113,7 @@ async function main() {
         [
           clientTenant,
           bp,
-          JSON.stringify(["#000000", "#FF3429", "#F4F4F4"]),
+          JSON.stringify(["#000000", "#FFFFFF", "#F4F4F4"]),
           JSON.stringify(["Borna", "Times"]),
           "Editorial, high-contrast, generous whitespace.",
           JSON.stringify({ linkedin: "1200x1200", instagram: "1080x1350" }),
@@ -115,8 +122,8 @@ async function main() {
 
       for (const [i, name] of ["Authority", "Systems", "Contrarian takes"].entries()) {
         await c.query(
-          `INSERT INTO pillars (tenant_id, brand_profile_id, name, sort_order) VALUES ($1,$2,$3,$4)`,
-          [clientTenant, bp, name, i],
+          `INSERT INTO pillars (tenant_id, project_id, brand_profile_id, name, sort_order) VALUES ($1,$5,$2,$3,$4)`,
+          [clientTenant, bp, name, i, projectId],
         );
       }
     },

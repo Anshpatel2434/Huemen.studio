@@ -45,7 +45,7 @@ function imageProvider(): ImageProvider {
 function textModel(route: "strong" | "cheap"): string {
   const env = getEnv();
   return (
-    (route === "cheap" ? env.AI_TEXT_MODEL_CHEAP : env.AI_TEXT_MODEL_STRONG) ??
+    (route === "cheap" ? env.AI_TEXT_MODEL_CHEAP : env.AI_TEXT_MODEL_STRONG) ||
     `mock-${route}`
   );
 }
@@ -157,7 +157,7 @@ export async function generateImage(
   req: ImageGenRequest & { contentItemId?: string | null },
 ) {
   const provider = imageProvider();
-  const model = getEnv().AI_IMAGE_MODEL ?? "mock-image";
+  const model = getEnv().AI_IMAGE_MODEL || "mock-image";
   const started = Date.now();
   try {
     const result = await withRetry(() => provider.generate(req, model));

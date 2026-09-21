@@ -5,5 +5,5 @@ import { signOut } from "@/lib/auth";
 
 export async function signOutAction(): Promise<void> {
   await signOut();
-  redirect("/login");
+  redirect("/signed-out");
 }

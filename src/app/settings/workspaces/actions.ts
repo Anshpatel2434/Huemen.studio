@@ -14,7 +14,7 @@ export async function createWorkspaceAction(formData: FormData) {
   const session = await requireSession();
   const name = String(formData.get("name") ?? "").trim();
   if (name) await createWorkspace(session, name);
-  revalidatePath("/admin");
+  revalidatePath("/settings/workspaces");
 }
 
 export async function inviteUserAction(formData: FormData) {
@@ -23,7 +23,7 @@ export async function inviteUserAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const role = String(formData.get("role")) as Role;
   if (email) await inviteUser(session, tenantId, email, role);
-  revalidatePath("/admin");
+  revalidatePath("/settings/workspaces");
 }
 
 export async function assignCoachAction(formData: FormData) {
@@ -33,7 +33,7 @@ export async function assignCoachAction(formData: FormData) {
     String(formData.get("tenantId")),
     String(formData.get("coachUserId")),
   );
-  revalidatePath("/admin");
+  revalidatePath("/settings/workspaces");
 }
 
 export async function setStatusAction(formData: FormData) {
@@ -43,5 +43,5 @@ export async function setStatusAction(formData: FormData) {
     String(formData.get("tenantId")),
     String(formData.get("status")) as "active" | "archived",
   );
-  revalidatePath("/admin");
+  revalidatePath("/settings/workspaces");
 }

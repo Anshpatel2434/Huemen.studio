@@ -13,6 +13,7 @@ import { storage, verifySignature, keyBelongsToTenant } from "@/lib/storage";
 
 let ok = false;
 let tenant = "";
+let project = "";
 
 beforeAll(async () => {
   try {
@@ -29,6 +30,11 @@ beforeAll(async () => {
       (c) => c.query<{ id: string }>("INSERT INTO tenants (name) VALUES ('storage-test') RETURNING id"),
     )
   ).rows[0].id;
+  project = (
+    await withTenantSession({ tenantId: tenant, userId: null, isPlatformAdmin: false }, (c) =>
+      c.query<{ id: string }>("INSERT INTO projects (tenant_id, name) VALUES ($1, 'storage-test') RETURNING id", [tenant]),
+    )
+  ).rows[0].id;
 });
 
 afterAll(async () => {
@@ -43,7 +49,7 @@ afterAll(async () => {
 describe("storage round-trip (P0-6/P1-8)", () => {
   it("stores under a tenant-prefixed key and reads back via signed URL", async () => {
     if (!ok) return expect(ok).toBe(false);
-    const scope = { tenantId: tenant, userId: null, isPlatformAdmin: false };
+    const scope = { tenantId: tenant, projectId: project, userId: null, isPlatformAdmin: false };
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG magic
     const file = new File([bytes], "logo.png", { type: "image/png" });
 
@@ -67,7 +73,7 @@ describe("storage round-trip (P0-6/P1-8)", () => {
 
   it("rejects an oversized file", async () => {
     if (!ok) return expect(ok).toBe(false);
-    const scope = { tenantId: tenant, userId: null, isPlatformAdmin: false };
+    const scope = { tenantId: tenant, projectId: project, userId: null, isPlatformAdmin: false };
     const big = new File([new Uint8Array(6 * 1024 * 1024)], "big.png", { type: "image/png" });
     await expect(uploadAsset(scope, big, "logo")).rejects.toThrow(/too large/);
   });

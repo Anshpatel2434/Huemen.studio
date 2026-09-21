@@ -1,22 +1,30 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk, Instrument_Serif, IBM_Plex_Mono } from "next/font/google";
+import { cookies } from "next/headers";
+import { Inter, Instrument_Serif, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { PageTransition } from "@/components/page-transition";
+import { ThemeProvider } from "@/components/theme";
+import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 const inter = Inter({ variable: "--font-sans-src", subsets: ["latin"], display: "swap" });
-const display = Space_Grotesk({ variable: "--font-display-src", subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"] });
 const serif = Instrument_Serif({ variable: "--font-serif-src", subsets: ["latin"], weight: "400", style: ["normal", "italic"], display: "swap" });
-// Monospace — for metadata labels + technical micro-text (editorial signal).
 const mono = IBM_Plex_Mono({ variable: "--font-mono-src", subsets: ["latin"], weight: ["400", "500"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Huemen.studio",
-  description: "Your personal brand, generated from one stored context.",
+  title: { default: "Huemen.studio", template: "%s · Huemen.studio" },
+  description: "Your personal brand, defined once. Everything else is generated from it.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+/** Appearance: dark by default (Figma-style); light or system from Settings. */
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
-    <html lang="en" className={`${inter.variable} ${display.variable} ${serif.variable} ${mono.variable} h-full`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" data-theme={theme} className={`${inter.variable} ${serif.variable} ${mono.variable} h-full`} suppressHydrationWarning>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <ThemeProvider initial={theme}>
+          <PageTransition level="section">{children}</PageTransition>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

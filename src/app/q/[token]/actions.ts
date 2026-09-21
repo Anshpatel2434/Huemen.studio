@@ -26,9 +26,13 @@ export async function submitQuestionnaire(formData: FormData): Promise<void> {
   await withTenantSession(
     { tenantId, userId: null, isPlatformAdmin: false },
     async (c) => {
-      // Upsert a single DRAFT profile per tenant so re-submits update, not pile up.
+      // Answers land in a "Pre-workshop brief" project (created once, reused on re-submit).
+      const projectId =
+        (await c.query("SELECT id FROM projects WHERE name='Pre-workshop brief' AND status='active' ORDER BY created_at LIMIT 1")).rows[0]?.id ??
+        (await c.query("INSERT INTO projects (tenant_id, name) VALUES ($1,'Pre-workshop brief') RETURNING id", [tenantId])).rows[0].id;
+      // Upsert a single DRAFT profile per project so re-submits update, not pile up.
       const existing = (
-        await c.query("SELECT id FROM brand_profiles WHERE status='draft' ORDER BY updated_at DESC LIMIT 1")
+        await c.query("SELECT id FROM brand_profiles WHERE project_id=$1 AND status='draft' ORDER BY updated_at DESC LIMIT 1", [projectId])
       ).rows[0];
       const audience = g("audience") ? { description: g("audience") } : {};
       if (existing) {
@@ -38,13 +42,13 @@ export async function submitQuestionnaire(formData: FormData): Promise<void> {
         );
       } else {
         await c.query(
-          `INSERT INTO brand_profiles (tenant_id, status, niche, positioning_statement, audience, story_arc)
-           VALUES ($1,'draft',$2,$3,$4,$5) RETURNING id`,
-          [tenantId, g("niche"), g("positioning"), JSON.stringify(audience), JSON.stringify(storyArc)],
+          `INSERT INTO brand_profiles (tenant_id, project_id, status, niche, positioning_statement, audience, story_arc)
+           VALUES ($1,$6,'draft',$2,$3,$4,$5) RETURNING id`,
+          [tenantId, g("niche"), g("positioning"), JSON.stringify(audience), JSON.stringify(storyArc), projectId],
         );
       }
       const bp = (
-        await c.query("SELECT id FROM brand_profiles WHERE status='draft' ORDER BY updated_at DESC LIMIT 1")
+        await c.query("SELECT id FROM brand_profiles WHERE project_id=$1 AND status='draft' ORDER BY updated_at DESC LIMIT 1", [projectId])
       ).rows[0];
       if (samplePosts.length) {
         const vg = (await c.query("SELECT id FROM voice_guides WHERE brand_profile_id=$1", [bp.id])).rows[0];

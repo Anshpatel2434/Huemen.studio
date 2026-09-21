@@ -7,17 +7,20 @@
  * Server-only.
  */
 import "server-only";
-import { withTenantSession, type SessionScope } from "@/db/session";
+import { withTenantSession } from "@/db/session";
+import type { ProjectScope } from "@/lib/data/projects";
 import { buildBrandContext, type BrandContext } from "./context-builder";
 
 export async function loadBrandContext(
-  scope: SessionScope,
+  scope: ProjectScope,
   language = "en",
 ): Promise<BrandContext> {
   return withTenantSession(scope, async (c) => {
     const bp = (
       await c.query(
-        `SELECT * FROM brand_profiles ORDER BY status = 'active' DESC, updated_at DESC LIMIT 1`,
+        `SELECT * FROM brand_profiles WHERE project_id = $1
+          ORDER BY status = 'active' DESC, updated_at DESC LIMIT 1`,
+        [scope.projectId],
       )
     ).rows[0];
 

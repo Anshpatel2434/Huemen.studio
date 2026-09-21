@@ -7,24 +7,12 @@
  * Server-only.
  */
 import "server-only";
-import { withTenantSession, type SessionScope } from "@/db/session";
+import { withTenantSession } from "@/db/session";
+import type { ProjectScope } from "./projects";
 import { buildBrandContext } from "@/lib/context/context-builder";
 
-export interface FoundationForm {
-  niche: string;
-  positioning: string;
-  offers: string;
-  audience: string;
-  chapters: { title: string; body: string }[]; // exactly 3
-  tone: string; // comma-separated
-  doWords: string; // comma-separated
-  dontWords: string; // comma-separated
-  readingLevel: string;
-  samplePosts: string; // one per line
-  palette: string; // comma-separated hex
-  fonts: string; // comma-separated
-  imageStyleNotes: string;
-}
+import type { FoundationForm } from "./foundation-types";
+export type { FoundationForm };
 
 const EMPTY: FoundationForm = {
   niche: "",
@@ -51,11 +39,12 @@ const csv = (s: string): string[] =>
 const lines = (s: string): string[] =>
   s.split("\n").map((x) => x.trim()).filter(Boolean);
 
-export async function loadFoundation(scope: SessionScope): Promise<FoundationForm> {
+export async function loadFoundation(scope: ProjectScope): Promise<FoundationForm> {
   return withTenantSession(scope, async (c) => {
     const bp = (
       await c.query(
-        `SELECT * FROM brand_profiles ORDER BY status='active' DESC, updated_at DESC LIMIT 1`,
+        `SELECT * FROM brand_profiles WHERE project_id = $1 ORDER BY status='active' DESC, updated_at DESC LIMIT 1`,
+        [scope.projectId],
       )
     ).rows[0];
     if (!bp) return EMPTY;
@@ -77,7 +66,10 @@ export async function loadFoundation(scope: SessionScope): Promise<FoundationFor
       niche: bp.niche ?? "",
       positioning: bp.positioning_statement ?? "",
       offers: bp.offers_summary ?? "",
-      audience: (bp.audience?.description as string) ?? "",
+      // Editor writes {description}; older/seeded rows may hold structured keys.
+      audience:
+        (bp.audience?.description as string) ??
+        Object.entries(bp.audience ?? {}).map(([k, v]) => `${k}: ${v}`).join("; "),
       chapters,
       tone: (vg?.tone_descriptors ?? []).join(", "),
       doWords: (vg?.do_words ?? []).join(", "),
@@ -92,7 +84,7 @@ export async function loadFoundation(scope: SessionScope): Promise<FoundationFor
 }
 
 export async function saveFoundation(
-  scope: SessionScope,
+  scope: ProjectScope,
   form: FoundationForm,
 ): Promise<number> {
   const storyArc = form.chapters.map((ch, i) => ({
@@ -129,7 +121,8 @@ export async function saveFoundation(
     const tenantId = scope.tenantId!;
     const existing = (
       await c.query(
-        `SELECT id FROM brand_profiles ORDER BY status='active' DESC, updated_at DESC LIMIT 1`,
+        `SELECT id FROM brand_profiles WHERE project_id = $1 ORDER BY status='active' DESC, updated_at DESC LIMIT 1`,
+        [scope.projectId],
       )
     ).rows[0];
 
@@ -146,10 +139,10 @@ export async function saveFoundation(
       profileId = (
         await c.query(
           `INSERT INTO brand_profiles
-             (tenant_id, status, niche, positioning_statement, offers_summary, audience, story_arc, completeness)
-           VALUES ($1,'active',$2,$3,$4,$5,$6,$7) RETURNING id`,
+             (tenant_id, project_id, status, niche, positioning_statement, offers_summary, audience, story_arc, completeness)
+           VALUES ($1,$8,'active',$2,$3,$4,$5,$6,$7) RETURNING id`,
           [tenantId, form.niche, form.positioning, form.offers,
-           JSON.stringify(audience), JSON.stringify(storyArc), ctx.completeness],
+           JSON.stringify(audience), JSON.stringify(storyArc), ctx.completeness, scope.projectId],
         )
       ).rows[0].id;
     }

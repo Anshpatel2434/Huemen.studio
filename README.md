@@ -6,6 +6,8 @@ generated from that stored context. Built for The Brand Professor.
 **Start here:** [`AGENTS.md`](AGENTS.md) (what this is + the two invariants) ·
 [`TASKS.md`](TASKS.md) (the build plan) · [`docs/architecture.md`](docs/architecture.md).
 
+> **UI rebuild:** the Relume/Figma-style interface lives on the `ui` branch. See [docs/ui-branch.md](docs/ui-branch.md) for setup, a tour and rollbacks.
+
 ## Stack
 Next.js 16 (App Router) · TypeScript · Tailwind 4 · Postgres 18 (Row-Level
 Security) · provider-agnostic AI layer · Postgres-backed job queue.
@@ -64,6 +66,28 @@ Prompts are **data, not code** — rows in `prompt_templates`, versioned by `key
 redeploy, and the version used is stamped on each generated item for
 traceability. (Admin UI for this: TASKS P3-10.) To seed/change globals now, edit
 [`src/db/seed.ts`](src/db/seed.ts) or insert rows directly as an admin session.
+
+## App structure (UI)
+Workspace → projects → a Figma-style editor. A **workspace** is a tenant (one
+client, isolated by RLS). It holds many **projects**; each project runs four
+steps that unlock in order and are each generated from the one before:
+
+1. **Brief**: intake (paste notes; labelled lines are parsed), the brief document,
+   then **questions**. Gap questions fill missing brief fields; strategy
+   questions seed the pillars.
+2. **Pillars**: generated from the brief + answers (`pillar_set` template), shown
+   as a map on the canvas; editable.
+3. **Content**: drafted from each pillar (2 variants each, history + steers,
+   don't-word flags).
+4. **Visual**: templated visual sets (post image, quote card, carousel) with real
+   text over brand colours, recorded in `image_assets`.
+
+Routes: `/w/[id]` workspace home (projects grid) · `/w/[id]/usage` ·
+`/w/[id]/p/[pid]/{intake,brief,brief/questions,brief/edit,pillars,content,visual}` ·
+planning pages `ideas`, `calendar`, `offers` · `export` (+ `/export/markdown`).
+Editor chrome: top bar with the step stepper, left panel (Pages + Layers, or the
+Agent), canvas centre, step inspector on the right. Stage gates live in
+`projects.stage` and are enforced server-side (`unlockStage` never skips).
 
 ## Repo map
 ```
