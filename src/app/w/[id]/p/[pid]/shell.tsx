@@ -292,7 +292,7 @@ function AgentPanel({ workspaceId, projectId, degraded, completeness }: { worksp
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3" role="log" aria-live="polite" aria-label="Assistant conversation">
         {msgs.map((m, i) =>
           m.role === "me" ? (
             <div key={i} className="self-end max-w-[90%] bg-field rounded-[10px] px-2.5 py-1.5 text-[0.8rem] fade-up">{m.text}</div>
@@ -316,7 +316,7 @@ function AgentPanel({ workspaceId, projectId, degraded, completeness }: { worksp
             </div>
           ),
         )}
-        {pending && <div className="flex items-center gap-2 bg-accent-soft text-accent-ink rounded-[9px] px-2.5 py-2 text-[0.78rem] font-medium fade-in"><AgentDots /> Working from your brief…</div>}
+        {pending && <div role="status" className="flex items-center gap-2 bg-accent-soft text-accent-ink rounded-[9px] px-2.5 py-2 text-[0.78rem] font-medium fade-in"><AgentDots /> Working from your brief…</div>}
         <div ref={endRef} />
       </div>
       <div className="p-2.5 border-t border-hairline">

@@ -12,7 +12,7 @@ import {
   Plus, FileText, Network, PenLine, Palette, FolderOpen, X, ArrowRight, Copy, ClipboardPaste, Sparkles,
   LayoutGrid, List, ChevronDown, MoreHorizontal, Star, Pencil, Archive, RotateCcw, ExternalLink, Trash2, Lightbulb,
 } from "lucide-react";
-import { Modal, SubmitButton, EmptyState, AgentDots, useToast } from "@/components/ui";
+import { Modal, SubmitButton, EmptyState, AgentDots, useToast, hueFor } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
 import { STAGES, STAGE_LABEL, stageIndex, type Stage } from "@/lib/projects/stages";
@@ -335,7 +335,7 @@ function Thumb({ p }: { p: Project }) {
       <div className="absolute inset-0 flex items-start justify-center gap-2 p-4 pt-5 canvas-dots">
         {[0, 1, 2].map((i) => (
           <div key={i} className="w-[30%] bg-paper rounded-[4px] p-1.5 shadow-[var(--shadow-sm)]" style={{ marginTop: i * 6 }}>
-            <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-field" /><span className="wf-bar h-1 w-8" /></div>
+            <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: hueFor(p.id) }} /><span className="wf-bar h-1 w-8" /></div>
             {i === 0 && p.firstHook ? <p className="text-[0.4rem] font-semibold mt-1 leading-tight line-clamp-3">{p.firstHook}</p> : <span className="wf-bar h-1 w-full mt-1.5 block" />}
             <div className="mt-1 flex flex-col gap-0.5"><span className="wf-bar h-[3px] w-full" /><span className="wf-bar h-[3px] w-4/5" /><span className="wf-bar h-[3px] w-3/5" /></div>
           </div>
@@ -352,7 +352,7 @@ function Thumb({ p }: { p: Project }) {
         <div className="relative flex gap-2 pt-3">
           <span className="absolute top-0 h-px bg-line" style={{ left: "1.25rem", right: "1.25rem" }} />
           {Array.from({ length: n }).map((_, i) => (
-            <span key={i} className="w-10 h-14 rounded-[4px] bg-paper shadow-[var(--shadow-sm)] p-1 flex flex-col gap-1"><span className="h-1 rounded bg-ink/70" /><span className="wf-bar h-1" /><span className="wf-bar h-1" /></span>
+            <span key={i} className="w-10 h-14 rounded-[4px] bg-paper shadow-[var(--shadow-sm)] p-1 flex flex-col gap-1"><span className="h-1 rounded" style={{ background: hueFor(p.id + i) }} /><span className="wf-bar h-1" /><span className="wf-bar h-1" /></span>
           ))}
         </div>
       </div>
