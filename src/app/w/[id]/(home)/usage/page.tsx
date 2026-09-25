@@ -11,6 +11,9 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
   const u = await loadUsage(scope);
   const max = Math.max(1, ...u.daily.map((d) => d.n));
   const capPct = u.caps.textHard ? Math.round((u.textThisMonth / u.caps.textHard) * 100) : null;
+  const reset = new Date();
+  reset.setMonth(reset.getMonth() + 1, 1);
+  const resetLabel = reset.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
 
   const stats: [string, string][] = [
     ["Text generations", String(u.textThisMonth)],
@@ -42,7 +45,7 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
           {u.daily.map((d) => (
             <div key={d.day} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
               <span className="text-[0.65rem] text-ink-faint opacity-0 group-hover:opacity-100 tabular-nums">{d.n}</span>
-              <div className="w-full rounded-t-[4px] bg-ink/85 group-hover:bg-accent transition-colors" style={{ height: `${(d.n / max) * 100}%`, minHeight: d.n ? 3 : 1, opacity: d.n ? 1 : 0.15 }} />
+              <div className="w-full rounded-t-[4px] bg-accent group-hover:brightness-125 transition-all" style={{ height: `${(d.n / max) * 100}%`, minHeight: d.n ? 3 : 1, opacity: d.n ? 1 : 0.2 }} />
             </div>
           ))}
         </div>
@@ -56,10 +59,10 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
             <div className="mt-4">
               <div className="flex justify-between text-[0.8rem] mb-1.5"><span>Text</span><span className="tabular-nums">{u.textThisMonth} / {u.caps.textHard ?? "∞"}</span></div>
               <Meter value={capPct ?? 0} tone={capPct !== null && u.caps.textSoft && u.textThisMonth >= u.caps.textSoft ? "accent" : "ink"} />
-              <p className="text-[0.75rem] text-ink-faint mt-2">Soft warning at {u.caps.textSoft ?? "–"}, hard stop at {u.caps.textHard ?? "–"}.</p>
+              <p className="text-[0.75rem] text-ink-faint mt-2">Soft warning at {u.caps.textSoft ?? "–"}, hard stop at {u.caps.textHard ?? "–"}. Resets {resetLabel}.</p>
             </div>
           ) : (
-            <p className="text-[0.85rem] text-ink-muted mt-2">No caps set for this workspace. Admins set a soft warning and a hard stop per workspace.</p>
+            <p className="text-[0.85rem] text-ink-muted mt-2">No caps set for this workspace. Admins set a soft warning and a hard stop per workspace. Usage resets {resetLabel}.</p>
           )}
         </div>
         <div className="bg-paper border border-hairline rounded-[14px] p-5">

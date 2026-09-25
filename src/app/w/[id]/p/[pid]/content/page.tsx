@@ -7,6 +7,7 @@ import { stageIndex } from "@/lib/projects/stages";
 import { LockedStep } from "@/components/locked-step";
 import { StepPanel, PanelSection } from "@/components/step-panel";
 import { SubmitButton } from "@/components/ui";
+import { BrandCheck } from "@/components/brand-check";
 import { generateVisualsAction } from "../pipeline-actions";
 import { ContentBoard } from "./content-board";
 
@@ -61,6 +62,15 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           </div>
           <p className="text-[0.72rem] text-ink-muted mt-2 leading-relaxed">Double-click any text on the canvas to edit it in place. Drag a post by its label to move it to another pillar. Click a post for variants, steers and approval.</p>
         </PanelSection>
+        {(() => {
+          const checkItem = items.find((i) => i.id === (typeof sp.item === "string" ? sp.item : null)) ?? items[0];
+          return checkItem ? (
+            <PanelSection title="Brand check">
+              <p className="text-[0.72rem] text-ink-muted mb-2.5 leading-relaxed">Score {checkItem.hook ? `“${checkItem.hook.slice(0, 32)}${checkItem.hook.length > 32 ? "…" : ""}”` : "the selected post"} against your voice. Findings cite your own writing, never block publishing.</p>
+              <BrandCheck key={checkItem.id} tenantId={id} projectId={pid} itemId={checkItem.id} />
+            </PanelSection>
+          ) : null;
+        })()}
         <form action={generateVisualsAction} className="flex flex-col gap-3 border-t border-hairline pt-4">
           <input type="hidden" name="tenantId" value={id} />
           <input type="hidden" name="projectId" value={pid} />

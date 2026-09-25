@@ -67,7 +67,7 @@ async function main() {
     async (c) => {
       const projectId = (
         await c.query<{ id: string }>(
-          "INSERT INTO projects (tenant_id, name, stage, created_by) VALUES ($1, 'Personal brand', 'ideate', $2) RETURNING id",
+          "INSERT INTO projects (tenant_id, name, stage, created_by) VALUES ($1, 'Personal brand', 'content', $2) RETURNING id",
           [clientTenant, clientUser],
         )
       ).rows[0].id;
@@ -126,7 +126,49 @@ async function main() {
           [clientTenant, bp, name, i, projectId],
         );
       }
+
+      // Two drafted posts so the Content step + brand check render: one clean,
+      // one deliberately off-brand (superlatives, exclamation, don't-words).
+      const posts: [string, string, string][] = [
+        [
+          "Most founder brands sound the same because they were written by someone describing a founder, not by the founder.",
+          "You do not need a louder voice. You need a truer one — the one that already shows up when you stop performing for the algorithm.",
+          "approved",
+        ],
+        [
+          "We are thrilled to announce a game-changing new offering that will revolutionise how you leverage synergy!",
+          "It is believed by many that this can be optimised. Three superlatives in one sentence is the kind of line the brand check flags against your own writing.",
+          "draft",
+        ],
+      ];
+      for (const [hook, body, status] of posts) {
+        await c.query(
+          `INSERT INTO content_items (tenant_id, project_id, channel, format, hook, body, cta, status, created_by)
+           VALUES ($1,$2,'linkedin','linkedin_post',$3,$4,'',$5,$6)`,
+          [clientTenant, projectId, hook, body, status, clientUser],
+        );
+      }
     },
+  );
+
+  // A measured voice pack so the on-brand check (§15.3/§15.4) has rules to flag
+  // against — otherwise every draft scores 100 with nothing to learn from.
+  await withTenantSession(
+    { tenantId: clientTenant, userId: clientUser, isPlatformAdmin: false },
+    (c) =>
+      c.query(
+        `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, status, voice_index, corpus_stats)
+         VALUES ($1,$2,'default',$3,'active',$4,$5)
+         ON CONFLICT (tenant_id, user_id, slug)
+         DO UPDATE SET voice_index = EXCLUDED.voice_index, corpus_stats = EXCLUDED.corpus_stats, status = 'active'`,
+        [
+          clientTenant,
+          clientUser,
+          "demo@client.test",
+          JSON.stringify({ neverWords: ["synergy", "leverage", "guru", "game-changing", "revolutionise"] }),
+          JSON.stringify({ pieces: 12, words: 3400, channels: ["linkedin"] }),
+        ],
+      ),
   );
 
   // Global prompt templates (tenant_id NULL).
