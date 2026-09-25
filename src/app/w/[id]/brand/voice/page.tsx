@@ -6,6 +6,7 @@ import { corpusLevel, CORPUS_MINIMUM_PIECES, DIAL_LABELS, DIAL_KEYS } from "@/li
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import { DocPage } from "@/components/doc-page";
 import { EmptyState, SubmitButton } from "@/components/ui";
+import { HueStrip } from "@/components/composites";
 import {
   addSamplesAction, deleteSampleAction, excludeSampleAction, rescanAction,
   resolveSignatureAction, saveVoiceAction,
@@ -80,6 +81,7 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
       sub="Measured from your own writing, not guessed from adjectives. Every number here has a count and a quote behind it, and you can change any of it."
     >
       {/* ---- the corpus, because real writing is most of "sounds like me" ---- */}
+      <HueStrip count={8} className="mb-6" />
       <div className="flex flex-col gap-5">
         <Card label="01 · Your writing">
           <div className="flex items-center gap-3 flex-wrap">

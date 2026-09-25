@@ -6,6 +6,7 @@ import { loadBrandContext } from "@/lib/context/context-loader";
 import { listAssets } from "@/lib/data/assets";
 import { listOffers } from "@/lib/data/planning";
 import { Meter } from "@/components/ui";
+import { HueStrip } from "@/components/composites";
 import { btnClass } from "@/components/btn";
 import { BriefToc } from "./toc";
 import type { Stage } from "@/lib/projects/stages";
@@ -76,6 +77,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
         <article className="min-w-0 max-w-[720px]">
           {/* Banner */}
           <div className="relative overflow-hidden bg-paper border border-hairline rounded-[14px] px-6 py-5 flex items-center gap-4">
+            <HueStrip count={8} className="absolute inset-x-0 top-0 !rounded-none" />
             <div className="flex-1 min-w-0">
               <p className="text-[1.05rem] font-medium">Brand brief</p>
               <p className="text-[0.8rem] text-ink-muted mt-0.5">Every draft and visual is generated from this. Keep it current.</p>
@@ -84,7 +86,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
               <div className="flex justify-between text-[0.72rem] text-ink-faint mb-1"><span>Complete</span><span className="tabular-nums">{ctx.completeness}%</span></div>
               <Meter value={ctx.completeness} tone={ctx.degraded ? "accent" : "ink"} />
             </div>
-            <span className="w-11 h-11 rounded-full bg-ink text-on-ink flex items-center justify-center shrink-0"><Sparkles size={17} /></span>
+            <span className="w-11 h-11 rounded-full text-white flex items-center justify-center shrink-0" style={{ background: "var(--hue-violet)" }}><Sparkles size={17} /></span>
           </div>
 
           {saved && (
