@@ -205,6 +205,24 @@
   --color-menu-fg: var(--menu-fg);
   --color-hairline: var(--hairline);
   --color-line: var(--line);
+  /* The eight-hue spectrum (§04) — expressive fills + signal marks, so it can be
+     used as bg-hue-* / text-sig-* etc., not only via inline vars. */
+  --color-hue-coral: var(--hue-coral);
+  --color-hue-orange: var(--hue-orange);
+  --color-hue-yellow: var(--hue-yellow);
+  --color-hue-green: var(--hue-green);
+  --color-hue-teal: var(--hue-teal);
+  --color-hue-blue: var(--hue-blue);
+  --color-hue-violet: var(--hue-violet);
+  --color-hue-magenta: var(--hue-magenta);
+  --color-sig-coral: var(--sig-coral);
+  --color-sig-orange: var(--sig-orange);
+  --color-sig-yellow: var(--sig-yellow);
+  --color-sig-green: var(--sig-green);
+  --color-sig-teal: var(--sig-teal);
+  --color-sig-blue: var(--sig-blue);
+  --color-sig-violet: var(--sig-violet);
+  --color-sig-magenta: var(--sig-magenta);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-fg: var(--danger-fg);

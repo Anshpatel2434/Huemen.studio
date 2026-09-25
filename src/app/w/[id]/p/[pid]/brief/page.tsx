@@ -20,7 +20,7 @@ function StepCard({ base, completeness, degraded, answered, stage }: { base: str
     <div className="bg-paper border border-hairline rounded-[12px] p-4">
       <p className="label-mono text-ink-faint">Onboarding · Brief</p>
       <ul className="mt-3 flex flex-col gap-2 text-[0.8rem]">
-        <li className="flex items-center gap-2">{!degraded ? <CheckCircle2 size={14} className="text-ok" /> : <AlertTriangle size={14} className="text-accent" />} Brief {completeness}% complete</li>
+        <li className="flex items-center gap-2">{!degraded ? <CheckCircle2 size={14} className="text-ok" /> : <AlertTriangle size={14} className="text-warn" />} Brief {completeness}% complete</li>
         <li className="flex items-center gap-2">{answered >= MIN_SEEDS ? <CheckCircle2 size={14} className="text-ok" /> : <AlertTriangle size={14} className="text-ink-faint" />} {answered} strategy answers</li>
         <li className="flex items-center gap-2">{done ? <CheckCircle2 size={14} className="text-ok" /> : <AlertTriangle size={14} className="text-ink-faint" />} Pillars generated</li>
       </ul>
@@ -92,10 +92,10 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
           )}
 
           {ctx.degraded && (
-            <div className="mt-4 bg-accent-soft rounded-[12px] px-4 py-3.5 flex gap-3">
-              <AlertTriangle size={16} className="text-accent-ink shrink-0 mt-0.5" />
+            <div className="mt-4 bg-warn-soft rounded-[12px] px-4 py-3.5 flex gap-3">
+              <AlertTriangle size={16} className="text-warn shrink-0 mt-0.5" />
               <div className="text-[0.85rem]">
-                <p className="font-medium text-accent-ink">This brief is too thin for on-brand output.</p>
+                <p className="font-medium text-warn">This brief is too thin for on-brand output.</p>
                 <p className="text-ink-muted mt-0.5">The studio will still draft, but it will say so. Missing: {ctx.warnings.slice(0, 3).join(" ")}</p>
               </div>
             </div>

@@ -5,7 +5,7 @@ import { withTenantSession } from "@/db/session";
 import { getSession } from "@/lib/auth";
 import { safeNext } from "@/lib/auth/tokens";
 import { getEnv } from "@/lib/env";
-import { SubmitButton } from "@/components/ui";
+import { SubmitButton, Avatar } from "@/components/ui";
 import { AuthFoot, AuthNotice, AuthShell, AuthTitle } from "@/components/auth-shell";
 import { signInAs, signInWithEmail } from "./actions";
 
@@ -76,7 +76,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
                 <input type="hidden" name="userId" value={u.id} />
                 {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
                 <button type="submit" className="group w-full text-left rounded-[9px] border border-hairline hover:border-line bg-paper px-3 py-2 flex items-center gap-2.5 transition-colors">
-                  <span className="w-7 h-7 rounded-full bg-ink text-on-ink flex items-center justify-center text-[0.65rem] font-medium uppercase">{u.email.slice(0, 2)}</span>
+                  <Avatar seed={u.email} label={u.email} size="sm" />
                   <span className="flex-1 min-w-0">
                     <span className="block text-[0.8rem] font-medium truncate">{u.email}</span>
                     <span className="block text-[0.7rem] text-ink-faint truncate">{ROLE_LABEL[u.role] ?? u.role} · {u.tenant}</span>

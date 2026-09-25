@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { withTenantSession } from "@/db/session";
 import { signOutAction } from "@/app/dashboard/actions";
 import { btnClass } from "@/components/btn";
+import { Avatar } from "@/components/ui";
 import { ThemePicker } from "@/components/theme";
 
 export const metadata = { title: "Account" };
@@ -24,7 +25,7 @@ export default async function AccountPage() {
       <section className="mt-8 bg-paper border border-hairline rounded-[14px] p-6">
         <p className="font-medium">Profile</p>
         <div className="mt-5 flex items-center gap-4">
-          <span className="w-16 h-16 rounded-[10px] bg-ink text-on-ink flex items-center justify-center text-[1.4rem] font-medium uppercase">{session.email.slice(0, 2)}</span>
+          <Avatar seed={session.email} label={session.email} size="lg" square className="!w-16 !h-16 !rounded-[10px] text-[1.4rem]" />
           <div>
             <p className="text-[0.95rem] font-medium">{session.email}</p>
             <p className="text-[0.8rem] text-ink-muted">{ROLE[session.role]} · {org}</p>

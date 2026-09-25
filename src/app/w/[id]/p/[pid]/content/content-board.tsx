@@ -6,7 +6,7 @@ import { Plus, X, Flag, Trash2, History, Wand2, PenLine, AlertTriangle, Globe, T
 import { Canvas, Artboard, type Device } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
 import { DraftModal } from "@/components/draft-modal";
-import { AgentDots, Badge, EmptyState, useToast } from "@/components/ui";
+import { AgentDots, Badge, EmptyState, Avatar, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
 import type { ContentItemView } from "@/lib/data/content";
@@ -188,7 +188,7 @@ function PostPreview({ item, brandName, dontWords, onPatch }: { item: ContentIte
   return (
     <div className="p-5">
       <div className="flex items-start gap-2.5">
-        <span className="w-10 h-10 rounded-full bg-field flex items-center justify-center text-[0.8rem] font-medium text-ink-muted shrink-0">{brandName.slice(0, 1)}</span>
+        <Avatar seed={brandName} label={brandName} size="md" className="!w-10 !h-10" />
         <div className="min-w-0 flex-1">
           <p className="text-[0.85rem] font-semibold">{brandName}</p>
           <div className="wf-bar h-2 w-32 mt-1.5" />

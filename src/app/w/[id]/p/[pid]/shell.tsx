@@ -13,7 +13,7 @@ import {
   ChevronDown, FileText, Network, PenLine, Palette, Share2, Download, Lightbulb, CalendarDays,
   Package, ArrowUp, Check, Lock, Copy, ChevronRight, Layers, ArrowLeft, Pencil, Files, Flag, BarChart3, Plus, WandSparkles, X, HelpCircle, Archive, Trash2,
 } from "lucide-react";
-import { LogoMark, Modal, AgentDots, Badge, ToastProvider, useToast } from "@/components/ui";
+import { LogoMark, Modal, AgentDots, Badge, Avatar, ToastProvider, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { PageTransition } from "@/components/page-transition";
 import { ThemeToggle } from "@/components/theme";
@@ -102,7 +102,8 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
         <div className="flex items-center justify-end gap-1.5">
           <div className="hidden lg:flex -space-x-1.5 mr-1">
             {members.slice(0, 3).map((m) => (
-              <span key={m.email} title={m.email} className="w-6 h-6 rounded-full bg-ink text-on-ink text-[0.55rem] uppercase flex items-center justify-center ring-2 ring-paper">{m.email.slice(0, 2)}</span>
+              <Avatar key={m.email} seed={m.email} label={m.email} size="sm" className="!w-6 !h-6 text-[0.55rem] ring-2 ring-paper" />
+
             ))}
           </div>
           <button onClick={() => setShare(true)} className={btnClass("secondary", "sm")}><Share2 size={13} /> Share</button>

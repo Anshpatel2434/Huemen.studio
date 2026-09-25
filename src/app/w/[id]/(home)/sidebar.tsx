@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { Avatar } from "@/components/ui";
 import {
   ChevronDown, Check, Clock, LayoutGrid, BarChart3, Settings, Users, LogOut, Plus, Search, Archive, Star, ChevronRight,
 } from "lucide-react";
@@ -46,7 +47,7 @@ export function HomeSidebar({ workspace, workspaces, user, isAdmin, starred, usa
       {/* Account / workspace switcher */}
       <div className="p-2 relative">
         <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 h-10 px-2 rounded-[8px] hover:bg-field">
-          <span className="w-6 h-6 rounded-full bg-ink text-on-ink text-[0.62rem] font-medium flex items-center justify-center uppercase shrink-0">{user.email.slice(0, 1)}</span>
+          <Avatar seed={user.email} label={user.email} size="sm" className="!w-6 !h-6 text-[0.62rem]" />
           <span className="flex-1 min-w-0 text-left text-[0.82rem] font-medium truncate">{user.email.split("@")[0]}</span>
           <ChevronDown size={13} className="text-ink-faint" />
         </button>
@@ -60,7 +61,7 @@ export function HomeSidebar({ workspace, workspaces, user, isAdmin, starred, usa
               <div className="max-h-64 overflow-y-auto">
                 {workspaces.map((w) => (
                   <Link key={w.id} href={`/w/${w.id}`} onClick={() => setOpen(false)} className="flex items-center gap-2 h-8 px-2 rounded-[7px] hover:bg-field text-[0.8rem]">
-                    <span className="w-5 h-5 rounded-[5px] bg-ink text-on-ink text-[0.58rem] flex items-center justify-center uppercase">{w.name.slice(0, 1)}</span>
+                    <Avatar seed={w.id} label={w.name} size="sm" square className="!w-5 !h-5 text-[0.58rem]" />
                     <span className="flex-1 truncate">{w.name}</span>
                     {w.id === workspace.id && <Check size={13} />}
                   </Link>
@@ -95,7 +96,7 @@ export function HomeSidebar({ workspace, workspaces, user, isAdmin, starred, usa
       {/* Workspace section */}
       <div className="px-2">
         <div className="flex items-center gap-2 h-8 px-2.5">
-          <span className="w-5 h-5 rounded-[5px] bg-ink text-on-ink text-[0.58rem] flex items-center justify-center uppercase">{workspace.name.slice(0, 1)}</span>
+          <Avatar seed={workspace.id} label={workspace.name} size="sm" square className="!w-5 !h-5 text-[0.58rem]" />
           <span className="text-[0.8rem] font-medium truncate flex-1">{workspace.name}</span>
           <span className="h-5 px-1.5 rounded-[5px] bg-accent-soft text-accent-ink text-[0.62rem] font-medium flex items-center">{ROLE[user.role]}</span>
         </div>
