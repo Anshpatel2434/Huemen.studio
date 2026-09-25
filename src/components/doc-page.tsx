@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
+import { BackButton } from "@/components/back-button";
 
 /** Scrollable document layout for non-canvas screens inside a workspace. */
-export function DocPage({ eyebrow, title, accent, sub, action, children, width = 880 }: {
+export function DocPage({ eyebrow, title, accent, sub, action, children, width = 880, back, backLabel }: {
   eyebrow: string; title: string; accent?: string; sub?: string; action?: ReactNode; children: ReactNode; width?: number;
+  back?: string; backLabel?: string;
 }) {
   return (
     <div className="absolute inset-0 overflow-y-auto">
       <div className="mx-auto px-8 py-10" style={{ maxWidth: width }}>
+        {back && <div className="mb-5"><BackButton href={back} label={backLabel ?? "Back"} /></div>}
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
             <p className="label-mono eyebrow">{eyebrow}</p>

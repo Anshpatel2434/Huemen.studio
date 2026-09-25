@@ -5,6 +5,7 @@ import { loadFoundation } from "@/lib/data/foundation";
 import { listAssets } from "@/lib/data/assets";
 import { SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
+import { PersistForm } from "@/components/persist";
 import { saveFoundationAction, uploadAssetAction } from "../actions";
 
 export const metadata = { title: "Edit brief" };
@@ -56,7 +57,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
           </div>
         )}
 
-        <form action={saveFoundationAction} className="mt-6 flex flex-col gap-5">
+        <PersistForm storageKey={`huemen:brief:${pid}`} action={saveFoundationAction} className="mt-6 flex flex-col gap-5">
           <input type="hidden" name="tenantId" value={id} />
             <input type="hidden" name="projectId" value={pid} />
           <Card id="story" title="Story & positioning" sub="What they do, for whom, and the story behind it.">
@@ -92,7 +93,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
             <Link href={`/w/${id}/p/${pid}/brief`} className={btnClass("ghost")}>Cancel</Link>
             <SubmitButton pendingLabel="Saving…">Save brief</SubmitButton>
           </div>
-        </form>
+        </PersistForm>
 
         <section id="assets" className="mt-6 mb-16 bg-paper border border-hairline rounded-[14px] p-6 scroll-mt-6">
           <p className="font-medium">Brand assets</p>

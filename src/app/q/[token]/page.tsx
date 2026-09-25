@@ -3,6 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import { withTenantSession } from "@/db/session";
 import { verifyQuestionnaireToken } from "@/lib/invite/token";
 import { LogoMark, SubmitButton } from "@/components/ui";
+import { PersistForm } from "@/components/persist";
 import { submitQuestionnaire } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +58,7 @@ export default async function QuestionnairePage({
           <p className="text-ink-muted text-[0.875rem] mt-1">Your answers are saved as a draft brief. See you at the workshop.</p>
         </div>
       ) : (
-        <form action={submitQuestionnaire} className="mt-10 w-full max-w-[640px] bg-paper border border-hairline rounded-[14px] p-6 sm:p-8 flex flex-col gap-5 shadow-[var(--shadow-sm)]">
+        <PersistForm storageKey={`huemen:q:${token}`} action={submitQuestionnaire} className="mt-10 w-full max-w-[640px] bg-paper border border-hairline rounded-[14px] p-6 sm:p-8 flex flex-col gap-5 shadow-[var(--shadow-sm)]">
           <input type="hidden" name="token" value={token} />
           {QUESTIONS.map((q, i) => (
             <label key={q.name} className="block">
@@ -75,7 +76,7 @@ export default async function QuestionnairePage({
           <div className="flex justify-end pt-1">
             <SubmitButton pendingLabel="Saving…">Submit answers</SubmitButton>
           </div>
-        </form>
+        </PersistForm>
       )}
     </main>
   );

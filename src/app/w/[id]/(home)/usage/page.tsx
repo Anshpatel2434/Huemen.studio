@@ -21,7 +21,7 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
   ];
 
   return (
-    <DocPage eyebrow="Usage" title="Usage" accent="this month." sub="Every model call is logged before it returns. Provider costs are billed to the account owner, so runaway usage shows up here." width={1000}>
+    <DocPage back={`/w/${id}`} backLabel="Projects" eyebrow="Usage" title="Usage" accent="this month." sub="Every model call is logged before it returns. Provider costs are billed to the account owner, so runaway usage shows up here." width={1000}>
       <div className="bg-paper border border-hairline rounded-[14px] p-5">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {stats.map(([k, v]) => (

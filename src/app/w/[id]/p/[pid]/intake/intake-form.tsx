@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ArrowUp, Briefcase, Mic, Rocket, GraduationCap, Check, CircleDashed } from "lucide-react";
 import { useFormStatus } from "react-dom";
 import { AgentDots } from "@/components/ui";
+import { useDraftPersist, clearDraft } from "@/components/persist";
 import { parseIntake } from "@/lib/intake/parse";
 import { submitIntakeAction } from "../brief/actions";
 
@@ -66,13 +67,15 @@ function Submit({ disabled }: { disabled: boolean }) {
 
 export function IntakeForm({ tenantId, projectId }: { tenantId: string; projectId: string }) {
   const [text, setText] = useState("");
+  const draftKey = `huemen:intake:${projectId}`;
+  useDraftPersist(draftKey, text, setText);
   const parsed = useMemo(() => parseIntake(text), [text]);
   const placed = Object.keys(parsed.fields);
   const unplacedLines = parsed.unplaced ? parsed.unplaced.split("\n").length : 0;
 
   return (
     <div className="w-full max-w-[720px] mt-9 fade-up">
-      <form action={submitIntakeAction} className="bg-paper border border-hairline rounded-[14px] shadow-[var(--shadow)] focus-within:border-line">
+      <form action={submitIntakeAction} onSubmit={() => clearDraft(draftKey)} className="bg-paper border border-hairline rounded-[14px] shadow-[var(--shadow)] focus-within:border-line">
         <input type="hidden" name="tenantId" value={tenantId} />
         <input type="hidden" name="projectId" value={projectId} />
         <textarea
