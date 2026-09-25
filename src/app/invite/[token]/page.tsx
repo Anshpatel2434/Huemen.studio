@@ -83,7 +83,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
 
       <form action={acceptInviteAction} className="mt-6">
         <input type="hidden" name="token" value={decodeURIComponent(token)} />
-        <SubmitButton variant="accent" pendingLabel="Joining…" className="w-full">Accept invite &amp; join</SubmitButton>
+        <SubmitButton variant="primary" pendingLabel="Joining…" className="w-full">Accept invite &amp; join</SubmitButton>
       </form>
       <AuthFoot>
         No password needed: next time, sign in with a one-time link sent to {a.email}.

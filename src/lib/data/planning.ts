@@ -1,12 +1,19 @@
 /**
- * Pillars, idea inbox, calendar and offers (brief §4.2, §4.4, §4.5). Plain
- * tenant-scoped CRUD — every query runs inside withTenantSession (INV-1).
+ * Pillars, idea inbox, calendar and offers (brief §4.2, §4.4, §4.5).
+ *
+ * All of these belong to the WORKSPACE, not to a piece (migration 0007): the
+ * pillars a person writes from, the ideas they collect, what they sell and when
+ * they publish do not change from one post to the next. They are set in
+ * onboarding and every project draws on them, which is why each query filters
+ * `project_id IS NULL` rather than on one project.
+ *
+ * Every query runs inside withTenantSession (INV-1).
  *
  * Server-only.
  */
 import "server-only";
 import { withTenantSession } from "@/db/session";
-import type { ProjectScope } from "./projects";
+import type { WorkspaceScope } from "./projects";
 
 // ---------------------------------------------------------------- pillars ---
 
@@ -20,7 +27,7 @@ export interface PillarView {
   formats: string[];
 }
 
-export async function listPillars(scope: ProjectScope): Promise<PillarView[]> {
+export async function listPillars(scope: WorkspaceScope): Promise<PillarView[]> {
   return withTenantSession(scope, async (c) => {
     const rows = (
       await c.query(
@@ -29,8 +36,8 @@ export async function listPillars(scope: ProjectScope): Promise<PillarView[]> {
                 (SELECT count(*)::int FROM ideas i WHERE i.pillar_id = p.id) AS idea_count,
                 (SELECT count(*)::int FROM calendar_entries e WHERE e.pillar_id = p.id) AS calendar_count,
                 coalesce((SELECT array_agg(DISTINCT ci.format) FROM content_items ci WHERE ci.pillar_id = p.id), '{}') AS formats
-           FROM pillars p WHERE p.project_id = $1 ORDER BY p.sort_order, p.created_at`,
-        [scope.projectId],
+           FROM pillars p WHERE p.project_id IS NULL ORDER BY p.sort_order, p.created_at`,
+        [],
       )
     ).rows;
     return rows.map((r) => ({
@@ -45,38 +52,39 @@ export async function listPillars(scope: ProjectScope): Promise<PillarView[]> {
   });
 }
 
-export async function createPillar(scope: ProjectScope, name: string, description?: string): Promise<string> {
+export async function createPillar(scope: WorkspaceScope, name: string, description?: string): Promise<string> {
   return withTenantSession(scope, async (c) => {
-    const bp = (await c.query("SELECT id FROM brand_profiles WHERE project_id=$1 ORDER BY status='active' DESC, updated_at DESC LIMIT 1", [scope.projectId])).rows[0];
-    const order = (await c.query<{ n: number }>("SELECT count(*)::int AS n FROM pillars WHERE project_id=$1", [scope.projectId])).rows[0].n;
+    const bp = (await c.query("SELECT id FROM brand_profiles WHERE project_id IS NULL ORDER BY status='active' DESC, updated_at DESC LIMIT 1")).rows[0];
+    const order = (await c.query<{ n: number }>("SELECT count(*)::int AS n FROM pillars WHERE project_id IS NULL")).rows[0].n;
     const ins = await c.query<{ id: string }>(
-      `INSERT INTO pillars (tenant_id, project_id, brand_profile_id, name, description, sort_order) VALUES ($1,$6,$2,$3,$4,$5) RETURNING id`,
-      [scope.tenantId, bp?.id ?? null, name, description || null, order, scope.projectId],
+      `INSERT INTO pillars (tenant_id, project_id, brand_profile_id, name, description, sort_order)
+       VALUES ($1,NULL,$2,$3,$4,$5) RETURNING id`,
+      [scope.tenantId, bp?.id ?? null, name, description || null, order],
     );
     return ins.rows[0].id;
   });
 }
 
-export async function updatePillar(scope: ProjectScope, id: string, name: string, description: string): Promise<void> {
+export async function updatePillar(scope: WorkspaceScope, id: string, name: string, description: string): Promise<void> {
   await withTenantSession(scope, (c) =>
-    c.query("UPDATE pillars SET name=$1, description=$2 WHERE id=$3 AND project_id=$4", [name, description || null, id, scope.projectId]),
+    c.query("UPDATE pillars SET name=$1, description=$2 WHERE id=$3 AND project_id IS NULL", [name, description || null, id]),
   );
 }
 
 /** Canvas drag-to-reorder: `ids` is the new left-to-right order. Unknown ids are ignored. */
-export async function reorderPillars(scope: ProjectScope, ids: string[]): Promise<void> {
+export async function reorderPillars(scope: WorkspaceScope, ids: string[]): Promise<void> {
   await withTenantSession(scope, (c) =>
     c.query(
       `UPDATE pillars p SET sort_order = o.pos
          FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id, pos)
-        WHERE p.id = o.id AND p.project_id = $2`,
-      [ids, scope.projectId],
+        WHERE p.id = o.id AND p.project_id IS NULL`,
+      [ids],
     ),
   );
 }
 
-export async function deletePillar(scope: ProjectScope, id: string): Promise<void> {
-  await withTenantSession(scope, (c) => c.query("DELETE FROM pillars WHERE id=$1 AND project_id=$2", [id, scope.projectId]));
+export async function deletePillar(scope: WorkspaceScope, id: string): Promise<void> {
+  await withTenantSession(scope, (c) => c.query("DELETE FROM pillars WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
 // ------------------------------------------------------------------ ideas ---
@@ -104,13 +112,13 @@ export function autoTagPillar(text: string, pillars: { id: string; name: string 
   return best?.id ?? null;
 }
 
-export async function listIdeas(scope: ProjectScope): Promise<IdeaView[]> {
+export async function listIdeas(scope: WorkspaceScope): Promise<IdeaView[]> {
   return withTenantSession(scope, async (c) =>
     (
       await c.query(
         `SELECT i.*, p.name AS pillar_name FROM ideas i LEFT JOIN pillars p ON p.id = i.pillar_id
-          WHERE i.project_id = $1 AND i.status <> 'archived' ORDER BY i.created_at DESC`,
-        [scope.projectId],
+          WHERE i.project_id IS NULL AND i.status <> 'archived' ORDER BY i.created_at DESC`,
+        [],
       )
     ).rows.map((r) => ({
       id: r.id,
@@ -125,33 +133,33 @@ export async function listIdeas(scope: ProjectScope): Promise<IdeaView[]> {
   );
 }
 
-export async function captureIdea(scope: ProjectScope, text: string): Promise<void> {
+export async function captureIdea(scope: WorkspaceScope, text: string): Promise<void> {
   const pillars = await listPillars(scope);
   const pillarId = autoTagPillar(text, pillars);
   await withTenantSession(scope, (c) =>
     c.query(
-      `INSERT INTO ideas (tenant_id, project_id, raw_text, source, pillar_id, created_by) VALUES ($1,$5,$2,'paste',$3,$4)`,
-      [scope.tenantId, text, pillarId, scope.userId, scope.projectId],
+      `INSERT INTO ideas (tenant_id, project_id, raw_text, source, pillar_id, created_by) VALUES ($1,NULL,$2,'paste',$3,$4)`,
+      [scope.tenantId, text, pillarId, scope.userId],
     ),
   );
 }
 
-export async function setIdeaPillar(scope: ProjectScope, id: string, pillarId: string | null): Promise<void> {
-  await withTenantSession(scope, (c) => c.query("UPDATE ideas SET pillar_id=$1 WHERE id=$2 AND project_id=$3", [pillarId, id, scope.projectId]));
+export async function setIdeaPillar(scope: WorkspaceScope, id: string, pillarId: string | null): Promise<void> {
+  await withTenantSession(scope, (c) => c.query("UPDATE ideas SET pillar_id=$1 WHERE id=$2 AND project_id IS NULL", [pillarId, id]));
 }
 
-export async function archiveIdea(scope: ProjectScope, id: string): Promise<void> {
-  await withTenantSession(scope, (c) => c.query("UPDATE ideas SET status='archived' WHERE id=$1 AND project_id=$2", [id, scope.projectId]));
+export async function archiveIdea(scope: WorkspaceScope, id: string): Promise<void> {
+  await withTenantSession(scope, (c) => c.query("UPDATE ideas SET status='archived' WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
-export async function markIdeaConverted(scope: ProjectScope, id: string, contentItemId: string): Promise<void> {
+export async function markIdeaConverted(scope: WorkspaceScope, id: string, contentItemId: string): Promise<void> {
   await withTenantSession(scope, (c) =>
-    c.query("UPDATE ideas SET status='converted', converted_to_content_item_id=$1 WHERE id=$2 AND project_id=$3", [contentItemId, id, scope.projectId]),
+    c.query("UPDATE ideas SET status='converted', converted_to_content_item_id=$1 WHERE id=$2 AND project_id IS NULL", [contentItemId, id]),
   );
 }
 
-export async function getIdea(scope: ProjectScope, id: string) {
-  return (await withTenantSession(scope, (c) => c.query("SELECT * FROM ideas WHERE id=$1 AND project_id=$2", [id, scope.projectId]))).rows[0] as
+export async function getIdea(scope: WorkspaceScope, id: string) {
+  return (await withTenantSession(scope, (c) => c.query("SELECT * FROM ideas WHERE id=$1 AND project_id IS NULL", [id]))).rows[0] as
     | { id: string; raw_text: string; pillar_id: string | null }
     | undefined;
 }
@@ -171,14 +179,14 @@ export interface CalendarEntryView {
   contentItemId: string | null;
 }
 
-export async function listCalendar(scope: ProjectScope, from: string, to: string): Promise<CalendarEntryView[]> {
+export async function listCalendar(scope: WorkspaceScope, from: string, to: string): Promise<CalendarEntryView[]> {
   return withTenantSession(scope, async (c) =>
     (
       await c.query(
         `SELECT e.*, to_char(e.entry_date, 'YYYY-MM-DD') AS d, p.name AS pillar_name
            FROM calendar_entries e LEFT JOIN pillars p ON p.id = e.pillar_id
-          WHERE e.project_id = $3 AND e.entry_date BETWEEN $1 AND $2 ORDER BY e.entry_date`,
-        [from, to, scope.projectId],
+          WHERE e.project_id IS NULL AND e.entry_date BETWEEN $1 AND $2 ORDER BY e.entry_date`,
+        [from, to],
       )
     ).rows.map((r) => ({
       id: r.id,
@@ -196,20 +204,20 @@ export async function listCalendar(scope: ProjectScope, from: string, to: string
 }
 
 export async function addCalendarEntry(
-  scope: ProjectScope,
+  scope: WorkspaceScope,
   e: { date: string; pillarId: string | null; channel: string; topic: string; hookAngle: string; cta: string },
 ): Promise<void> {
   await withTenantSession(scope, (c) =>
     c.query(
       `INSERT INTO calendar_entries (tenant_id, project_id, entry_date, pillar_id, channel, topic, hook_angle, cta)
-       VALUES ($1,$8,$2,$3,$4,$5,$6,$7)`,
-      [scope.tenantId, e.date, e.pillarId, e.channel || null, e.topic || null, e.hookAngle || null, e.cta || null, scope.projectId],
+       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7)`,
+      [scope.tenantId, e.date, e.pillarId, e.channel || null, e.topic || null, e.hookAngle || null, e.cta || null],
     ),
   );
 }
 
-export async function deleteCalendarEntry(scope: ProjectScope, id: string): Promise<void> {
-  await withTenantSession(scope, (c) => c.query("DELETE FROM calendar_entries WHERE id=$1 AND project_id=$2", [id, scope.projectId]));
+export async function deleteCalendarEntry(scope: WorkspaceScope, id: string): Promise<void> {
+  await withTenantSession(scope, (c) => c.query("DELETE FROM calendar_entries WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
 // ----------------------------------------------------------------- offers ---
@@ -223,9 +231,9 @@ export interface OfferView {
   pricingLogic: string | null;
 }
 
-export async function listOffers(scope: ProjectScope): Promise<OfferView[]> {
+export async function listOffers(scope: WorkspaceScope): Promise<OfferView[]> {
   return withTenantSession(scope, async (c) =>
-    (await c.query("SELECT * FROM offers WHERE project_id=$1 ORDER BY created_at DESC", [scope.projectId])).rows.map((r) => ({
+    (await c.query("SELECT * FROM offers WHERE project_id IS NULL ORDER BY created_at DESC")).rows.map((r) => ({
       id: r.id,
       name: r.name,
       format: r.format,
@@ -237,18 +245,18 @@ export async function listOffers(scope: ProjectScope): Promise<OfferView[]> {
 }
 
 export async function createOffer(
-  scope: ProjectScope,
+  scope: WorkspaceScope,
   o: { name: string; format: string; promise: string; deliverables: string[]; pricingLogic: string },
 ): Promise<void> {
   await withTenantSession(scope, (c) =>
     c.query(
       `INSERT INTO offers (tenant_id, project_id, name, format, promise, deliverables, pricing_logic_notes, created_by)
-       VALUES ($1,$8,$2,$3,$4,$5,$6,$7)`,
-      [scope.tenantId, o.name, o.format || null, o.promise || null, JSON.stringify(o.deliverables), o.pricingLogic || null, scope.userId, scope.projectId],
+       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7)`,
+      [scope.tenantId, o.name, o.format || null, o.promise || null, JSON.stringify(o.deliverables), o.pricingLogic || null, scope.userId],
     ),
   );
 }
 
-export async function deleteOffer(scope: ProjectScope, id: string): Promise<void> {
-  await withTenantSession(scope, (c) => c.query("DELETE FROM offers WHERE id=$1 AND project_id=$2", [id, scope.projectId]));
+export async function deleteOffer(scope: WorkspaceScope, id: string): Promise<void> {
+  await withTenantSession(scope, (c) => c.query("DELETE FROM offers WHERE id=$1 AND project_id IS NULL", [id]));
 }

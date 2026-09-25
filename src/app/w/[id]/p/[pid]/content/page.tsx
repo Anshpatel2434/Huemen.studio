@@ -18,7 +18,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
   const { scope, project } = await projectScope(id, pid);
   const base = `/w/${id}/p/${pid}`;
   if (stageIndex(project.stage) < stageIndex("content")) {
-    const pillarsOpen = stageIndex(project.stage) >= stageIndex("pillars");
+    const pillarsOpen = true; // set once in onboarding, always available
     return (
       <LockedStep
         step={3}
@@ -67,7 +67,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           <input type="hidden" name="scheme" value="0" />
           <p className="text-[0.75rem] font-medium">Next: generate visuals</p>
           <label className="flex items-center gap-2 text-[0.75rem]"><input type="checkbox" name="approvedOnly" disabled={approved === 0} defaultChecked={approved > 0} /> Approved pieces only ({approved})</label>
-          <SubmitButton variant="accent" size="sm" pendingLabel="Designing…" className="w-full">{visualDone ? "Regenerate visuals →" : "Generate visuals →"}</SubmitButton>
+          <SubmitButton variant="primary" size="sm" pendingLabel="Designing…" className="w-full">{visualDone ? "Regenerate visuals →" : "Generate visuals →"}</SubmitButton>
           <p className="text-[0.68rem] text-ink-faint">Post image, quote card and carousel for each piece: real text over your brand colours.</p>
         </form>
       </StepPanel>

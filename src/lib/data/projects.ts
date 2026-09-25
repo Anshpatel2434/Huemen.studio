@@ -1,7 +1,14 @@
 /**
- * Projects (migration 0003). A workspace holds many projects; each runs the
- * stepwise pipeline Brief → Pillars → Content → Visual. Every query is inside
- * the tenant's RLS scope (INV-1); project_id groups rows within that tenant.
+ * Projects (migrations 0003, 0007).
+ *
+ * A project is ONE PIECE OF WORK — an Instagram post, a LinkedIn post — and it
+ * runs Ideate → Content → Visual. The brand it is written from (brief, voice,
+ * visual identity, pillars) lives above it at WORKSPACE level, set once in
+ * onboarding, because none of that changes from one piece to the next.
+ *
+ * Every query is inside the tenant's RLS scope (INV-1); project_id groups rows
+ * within that tenant, and a NULL project_id means the row belongs to the
+ * workspace itself rather than to any one piece.
  *
  * Server-only.
  */
@@ -9,11 +16,19 @@ import "server-only";
 import { withTenantSession, type SessionScope } from "@/db/session";
 
 import { STAGES, type Stage } from "@/lib/projects/stages";
+import { formatByKey } from "@/lib/content/formats";
 export { STAGES, type Stage };
 
-/** A tenant scope narrowed to one project. Every project-owned read/write takes this. */
-export interface ProjectScope extends SessionScope {
+/**
+ * A scope on one workspace. Everything the brand owns — brief, pillars, offers,
+ * ideas, calendar, the voice pack — reads and writes with this.
+ */
+export interface WorkspaceScope extends SessionScope {
   tenantId: string;
+}
+
+/** A workspace scope narrowed to one piece. Content and visuals take this. */
+export interface ProjectScope extends WorkspaceScope {
   projectId: string;
 }
 
@@ -31,6 +46,11 @@ export interface ProjectRow {
   status: string;
   starred: boolean;
   briefAnswers: BriefAnswer[];
+  /** What this piece is: the format it is for, and the take it argues. */
+  format: string | null;
+  channel: string | null;
+  angle: string | null;
+  ideaId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +72,10 @@ const toRow = (r: Record<string, unknown>): ProjectRow => ({
   status: r.status as string,
   starred: Boolean(r.starred),
   briefAnswers: (r.brief_answers as BriefAnswer[]) ?? [],
+  format: (r.format as string) ?? null,
+  channel: (r.channel as string) ?? null,
+  angle: (r.angle as string) ?? null,
+  ideaId: (r.idea_id as string) ?? null,
   createdAt: new Date(r.created_at as string).toISOString(),
   updatedAt: new Date(r.updated_at as string).toISOString(),
 });
@@ -192,6 +216,39 @@ export async function unlockStage(scope: ProjectScope, to: Stage): Promise<void>
     if (ti <= ci) return;
     if (ti !== ci + 1) throw new Error(`cannot skip from ${cur} to ${to}`);
     await c.query("UPDATE projects SET stage=$1 WHERE id=$2", [to, scope.projectId]);
+  });
+}
+
+/**
+ * The Ideate step's whole output: what this piece is for, which pillar it sits
+ * under, and the angle it takes. Anything left blank is left as it was, so
+ * saving one field never clears another.
+ */
+export async function setIdeate(
+  scope: ProjectScope,
+  v: { format: string | null; pillarId: string | null; angle: string | null; ideaId: string | null; topic: string },
+): Promise<void> {
+  await withTenantSession(scope, async (c) => {
+    await c.query(
+      `UPDATE projects
+          SET format  = COALESCE($1, format),
+              channel = COALESCE($2, channel),
+              angle   = COALESCE($3, angle),
+              idea_id = COALESCE($4::uuid, idea_id),
+              name    = CASE WHEN $5 <> '' THEN left($5, 120) ELSE name END
+        WHERE id = $6`,
+      [v.format, v.format ? formatByKey(v.format).channel : null, v.angle, v.ideaId, v.topic, scope.projectId],
+    );
+    // The pillar lives on the piece's content once it exists; until then the
+    // idea link carries it.
+    if (v.pillarId) {
+      await c.query(
+        `UPDATE content_items SET pillar_id = $1
+          WHERE project_id = $2
+            AND EXISTS (SELECT 1 FROM pillars WHERE id = $1 AND project_id IS NULL)`,
+        [v.pillarId, scope.projectId],
+      );
+    }
   });
 }
 

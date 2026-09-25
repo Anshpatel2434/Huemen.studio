@@ -18,7 +18,7 @@ async function ctx(fd: FormData) {
 /** Step 2 (again): add pillars with an optional focus, like Relume's "Generate sitemap" panel. */
 export async function regeneratePillarsAction(fd: FormData): Promise<void> {
   const { scope, project, base } = await ctx(fd);
-  if (!project || stageIndex(project.stage) < stageIndex("pillars")) redirect(`${base}/brief/questions`);
+  if (!project) redirect(`${base}/brief/questions`);
   const n = await generatePillars(scope, {
     count: Math.min(5, Math.max(1, Number(fd.get("count") ?? 3))),
     focus: String(fd.get("focus") ?? ""),
@@ -30,7 +30,7 @@ export async function regeneratePillarsAction(fd: FormData): Promise<void> {
 /** Step 2 → 3: draft content from every pillar. */
 export async function generateContentAction(fd: FormData): Promise<void> {
   const { scope, project, base } = await ctx(fd);
-  if (!project || stageIndex(project.stage) < stageIndex("pillars")) redirect(`${base}/brief/questions`);
+  if (!project) redirect(`${base}/brief/questions`);
   const perPillar = Math.min(3, Math.max(1, Number(fd.get("perPillar") ?? 1)));
   const n = await generateContentFromPillars(scope, {
     perPillar,

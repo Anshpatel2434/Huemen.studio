@@ -58,7 +58,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <span className="block text-[0.76rem] text-ink-muted mb-1.5">Email address</span>
           <input name="email" type="email" required autoComplete="email" defaultValue={email} placeholder="Enter your email address…" className="field" autoFocus={!!error} />
         </label>
-        <SubmitButton variant="accent" pendingLabel="Sending your link…" className="w-full">Continue with email</SubmitButton>
+        <SubmitButton variant="primary" pendingLabel="Sending your link…" className="w-full">Continue with email</SubmitButton>
       </form>
 
       <AuthFoot>

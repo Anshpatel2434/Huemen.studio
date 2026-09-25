@@ -51,15 +51,24 @@ export function Panel({ children, className = "" }: { children: ReactNode; class
   return <div className={`bg-paper border border-hairline rounded-[12px] ${className}`}>{children}</div>;
 }
 
-export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "accent" | "ok" | "warn" | "dark" }) {
-  const tones = {
-    neutral: "bg-field text-ink-muted",
-    accent: "bg-accent-soft text-accent-ink",
-    ok: "bg-ok-soft text-ok",
-    warn: "bg-warn-soft text-warn",
-    dark: "bg-ink text-on-ink",
-  }[tone];
-  return <span className={`inline-flex items-center gap-1 h-5 px-1.5 rounded-[5px] label-mono !text-[0.625rem] whitespace-nowrap shrink-0 ${tones}`}>{children}</span>;
+export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "accent" | "ok" | "warn" | "danger" | "dark" }) {
+  // Design system §11: a mono uppercase pill with a status DOT, so the state is
+  // never carried by colour alone.
+  const tones: Record<string, { box: string; dot: string }> = {
+    neutral: { box: "bg-ground text-ink-muted", dot: "bg-ink-faint" },
+    accent: { box: "bg-accent-soft text-accent-ink", dot: "bg-accent" },
+    ok: { box: "bg-ok-soft text-ok", dot: "bg-ok" },
+    warn: { box: "bg-warn-soft text-warn", dot: "bg-warn" },
+    danger: { box: "bg-danger-soft text-danger", dot: "bg-danger" },
+    dark: { box: "bg-ink text-on-ink", dot: "bg-on-ink" },
+  };
+  const t = tones[tone] ?? tones.neutral;
+  return (
+    <span className={`label-mono inline-flex items-center gap-1.5 px-3 h-6 rounded-full ${t.box}`}>
+      <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${t.dot}`} aria-hidden="true" />
+      {children}
+    </span>
+  );
 }
 
 export function Meter({ value, tone = "ink" }: { value: number; tone?: "ink" | "accent" }) {
@@ -104,7 +113,7 @@ export function Modal({ open, onClose, title, children, width = 480 }: { open: b
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 fade-in bg-[var(--scrim)]" onClick={onClose}>
-      <div className="bg-paper rounded-[12px] shadow-[var(--shadow-lg)] w-full pop overflow-hidden" style={{ maxWidth: width }} onClick={(e) => e.stopPropagation()}>
+      <div className="bg-paper rounded-[20px] shadow-[var(--shadow-lg)] w-full pop overflow-hidden" style={{ maxWidth: width }} onClick={(e) => e.stopPropagation()}>
         {title && (
           <div className="flex items-center justify-between px-5 h-12 border-b border-hairline">
             <h3 className="text-[0.9rem] font-medium">{title}</h3>

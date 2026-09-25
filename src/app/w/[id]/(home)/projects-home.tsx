@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
   Plus, FileText, Network, PenLine, Palette, FolderOpen, X, ArrowRight, Copy, ClipboardPaste, Sparkles,
-  LayoutGrid, List, ChevronDown, MoreHorizontal, Star, Pencil, Archive, RotateCcw, ExternalLink, Trash2,
+  LayoutGrid, List, ChevronDown, MoreHorizontal, Star, Pencil, Archive, RotateCcw, ExternalLink, Trash2, Lightbulb,
 } from "lucide-react";
 import { Modal, SubmitButton, EmptyState, AgentDots, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
@@ -29,7 +29,7 @@ type Project = {
 type View = "recents" | "all" | "archived";
 type Sort = "edited" | "name" | "created";
 
-const STAGE_ICON: Record<Stage, typeof FileText> = { brief: FileText, pillars: Network, content: PenLine, visual: Palette };
+const STAGE_ICON: Record<Stage, typeof FileText> = { ideate: Lightbulb, content: PenLine, visual: Palette };
 const EXAMPLES = [
   "Leadership coach for first-time engineering managers. Direct, warm, a bit contrarian.",
   "Founder building a D2C skincare brand in India, in public. Numbers-first, honest.",
@@ -343,7 +343,7 @@ function Thumb({ p }: { p: Project }) {
       </div>
     );
   }
-  if (p.stage === "pillars") {
+  if (p.stage === "ideate") {
     const n = Math.max(2, Math.min(4, p.pillarCount));
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center canvas-dots">

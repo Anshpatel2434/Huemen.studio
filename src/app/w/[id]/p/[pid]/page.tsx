@@ -11,5 +11,5 @@ export default async function ProjectIndex({ params }: PageProps<"/w/[id]/p/[pid
   const ctx = await loadBrandContext(scope);
   const base = `/w/${id}/p/${pid}`;
   if (ctx.completeness === 0) redirect(`${base}/intake`);
-  redirect(project.stage === "brief" ? `${base}/brief` : `${base}/${project.stage}`);
+  redirect(`${base}/${project.stage}`);
 }

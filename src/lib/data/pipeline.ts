@@ -1,8 +1,14 @@
 /**
- * The stepwise pipeline: Brief → Pillars → Content → Visual. Each step is
- * generated FROM the previous one and unlocks the next (projects.stage). All
- * generation goes through the AI facade with the one versioned brand context
- * (INV-2) and is logged; all writes are tenant- and project-scoped (INV-1).
+ * Generation, in two tiers (migration 0007).
+ *
+ * ONBOARDING, once per workspace: pillars, generated from the brief and the
+ * strategy answers. They are the brand's, not any one piece's.
+ *
+ * PER PIECE: content, then visuals. Each unlocks the next step of that project
+ * (projects.stage: ideate → content → visual).
+ *
+ * All generation goes through the AI facade with the one versioned brand
+ * context (INV-2) and is logged; every write is tenant-scoped (INV-1).
  *
  * Server-only.
  */
@@ -14,7 +20,8 @@ import { resolveTemplate } from "@/lib/ai/templates";
 import { formatByKey } from "@/lib/content/formats";
 import { generateContent, listContent } from "./content";
 import { createPillar, listPillars } from "./planning";
-import { getProject, unlockStage, type ProjectScope } from "./projects";
+import { getProject, unlockStage, type ProjectScope, type WorkspaceScope } from "./projects";
+import { loadBriefAnswers } from "./foundation";
 
 /** Parse "Name :: description" lines (the pillar_set template's output shape). */
 export function parsePillarLines(text: string): { name: string; description: string }[] {
@@ -29,13 +36,15 @@ export function parsePillarLines(text: string): { name: string; description: str
     .filter((p) => p.name.length > 1 && p.name.length <= 60);
 }
 
-/** Step 2: pillars generated from the brief + the strategy answers. */
-export async function generatePillars(scope: ProjectScope, opts: { count?: number; focus?: string } = {}): Promise<number> {
-  const project = await getProject(scope, scope.projectId);
-  if (!project) throw new Error("project not found");
+/**
+ * Onboarding: the workspace's pillars, generated from the brief and the
+ * strategy answers. Not tied to a project — every piece written afterwards
+ * draws on them.
+ */
+export async function generatePillars(scope: WorkspaceScope, opts: { count?: number; focus?: string } = {}): Promise<number> {
   const context = await loadBrandContext(scope);
   const template = await resolveTemplate(scope, "pillar_set");
-  const answers = project.briefAnswers.map((a) => `${a.key}: ${a.answer}`).join("\n");
+  const answers = (await loadBriefAnswers(scope)).map((a) => `${a.key}: ${a.answer}`).join("\n");
   const result = await generateText(scope, {
     templateKey: template.key,
     systemTemplate: template.body,
@@ -52,7 +61,6 @@ export async function generatePillars(scope: ProjectScope, opts: { count?: numbe
   const existing = new Set((await listPillars(scope)).map((p) => p.name.toLowerCase()));
   const fresh = parsePillarLines(result.variants[0]).filter((p) => !existing.has(p.name.toLowerCase()));
   for (const p of fresh) await createPillar(scope, p.name, p.description);
-  await unlockStage(scope, "pillars");
   return fresh.length;
 }
 

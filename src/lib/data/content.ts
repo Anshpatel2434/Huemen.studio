@@ -202,7 +202,10 @@ export async function updateContent(
 /**
  * Partial edit from the canvas (inline text, drag to another pillar). Changing
  * the copy marks the piece "edited", so an approved piece needs approving
- * again; moving it between pillars keeps its status. The pillar must belong to
+ * again; moving it between pillars keeps its status. The pillar must be one of
+ * the WORKSPACE's (migration 0007) — RLS already confines that to this tenant,
+ * so a pillar from another workspace cannot be named here. Formerly this had to
+ * belong to
  * the same project.
  */
 export async function patchContent(
@@ -221,7 +224,7 @@ export async function patchContent(
           pillar_id = CASE WHEN $4 THEN $5::uuid ELSE pillar_id END,
           status = CASE WHEN $6 THEN 'edited' ELSE status END
         WHERE id = $7 AND project_id = $8
-          AND ($5::uuid IS NULL OR EXISTS (SELECT 1 FROM pillars WHERE id = $5::uuid AND project_id = $8))`,
+          AND ($5::uuid IS NULL OR EXISTS (SELECT 1 FROM pillars WHERE id = $5::uuid AND project_id IS NULL))`,
       [patch.hook ?? null, patch.body ?? null, patch.cta ?? null, movePillar, patch.pillarId ?? null, copyChanged, itemId, scope.projectId],
     ),
   );

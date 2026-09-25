@@ -140,7 +140,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
               <p className="text-[0.75rem] font-medium">{designed.length ? "Apply scheme & regenerate" : "Generate visuals"}</p>
               <p className="text-[0.7rem] text-ink-muted">{designed.length} designed{undesigned ? ` · ${undesigned} piece${undesigned === 1 ? "" : "s"} not yet` : ""}</p>
               <label className="flex items-center gap-2 text-[0.72rem]"><input type="checkbox" name="approvedOnly" /> Approved pieces only</label>
-              <SubmitButton variant="accent" size="sm" pendingLabel="Designing…" className="w-full">{designed.length ? `Regenerate with ${schemes[scheme]?.name ?? "scheme"}` : "Generate visuals"}</SubmitButton>
+              <SubmitButton variant="primary" size="sm" pendingLabel="Designing…" className="w-full">{designed.length ? `Regenerate with ${schemes[scheme]?.name ?? "scheme"}` : "Generate visuals"}</SubmitButton>
             </form>
             <Section id="type" icon={Type} title="Typography" open={open} setOpen={setOpen}>
               <p className="text-[1.4rem] leading-tight" style={{ fontFamily: display }}>{fonts[0] ?? "Inter (house)"}</p>

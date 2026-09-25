@@ -23,7 +23,7 @@ import { AddPanel } from "./add-panel";
 import { renameProjectAction, duplicateProjectAction, archiveProjectAction, deleteProjectAction } from "../../project-actions";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
 
-const STAGE_ICON: Record<Stage, typeof FileText> = { brief: FileText, pillars: Network, content: PenLine, visual: Palette };
+const STAGE_ICON: Record<Stage, typeof FileText> = { ideate: Lightbulb, content: PenLine, visual: Palette };
 const PLANNING = [
   { seg: "ideas", label: "Ideas", icon: Lightbulb },
   { seg: "calendar", label: "Calendar", icon: CalendarDays },
@@ -81,13 +81,13 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
             const open = i <= unlocked;
             const on = seg === s;
             const done = i < unlocked;
-            const cls = `flex items-center gap-1.5 h-8 pl-1.5 pr-2.5 rounded-[8px] text-[0.8rem] transition-colors ${on ? "bg-ink text-on-ink" : open ? "text-ink hover:bg-field" : "text-ink-faint cursor-not-allowed"}`;
+            const cls = `flex items-center gap-1.5 h-8 px-2.5 rounded-[8px] text-[0.8rem] transition-colors ${on ? "bg-ink text-on-ink" : open ? "text-ink hover:bg-field" : "text-ink-faint cursor-not-allowed"}`;
+            // No step numbers and no padlocks: the step icon carries it, a
+            // finished step gets a tick, and a locked one is simply dimmed.
             const inner = (
               <>
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.65rem] font-medium ${on ? "bg-on-ink/15" : done ? "bg-ok text-on-ink" : open ? "bg-field" : "bg-field"}`}>
-                  {done && !on ? <Check size={11} /> : open ? i + 1 : <Lock size={10} />}
-                </span>
-                <Icon size={13} className="hidden lg:block" /> {STAGE_LABEL[s]}
+                {done && !on ? <Check size={13} className="text-ok" /> : <Icon size={13} />}
+                {STAGE_LABEL[s]}
               </>
             );
             return (
@@ -106,7 +106,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
             ))}
           </div>
           <button onClick={() => setShare(true)} className={btnClass("secondary", "sm")}><Share2 size={13} /> Share</button>
-          <Link href={`${base}/export`} className={btnClass("accent", "sm")}><Download size={13} /> Export</Link>
+          <Link href={`${base}/export`} className={btnClass("primary", "sm")}><Download size={13} /> Export</Link>
         </div>
       </header>
 
@@ -129,7 +129,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
             {leftTab === "layers" ? (
               <LayersPanel base={base} seg={seg} unlocked={unlocked} layers={layers} brief={brief} />
             ) : leftTab === "add" ? (
-              <AddPanel tenantId={workspace.id} projectId={project.id} base={base} canDraft={unlocked >= stageIndex("pillars")} pillars={layers.pillars.map((p) => ({ id: p.id, name: p.name }))} />
+              <AddPanel tenantId={workspace.id} projectId={project.id} base={base} canDraft={layers.pillars.length > 0} pillars={layers.pillars.map((p) => ({ id: p.id, name: p.name }))} />
             ) : (
               <AgentPanel workspaceId={workspace.id} projectId={project.id} degraded={brief.degraded} completeness={brief.completeness} />
             )}
@@ -217,12 +217,12 @@ function LayersPanel({ base, seg, unlocked, layers, brief }: { base: string; seg
         {STAGES.map((s, i) => {
           const Icon = STAGE_ICON[s];
           const open = i <= unlocked;
-          const on = seg === s || (s === "brief" && seg === "brief");
+          const on = seg === s;
           const row = `flex items-center gap-2 h-8 px-2 rounded-[7px] text-[0.8rem] ${on ? "bg-accent-soft text-ink font-medium" : open ? "hover:bg-field" : "text-ink-faint"}`;
           const inner = (
             <>
-              <Icon size={13} /> <span className="flex-1">{i + 1}. {STAGE_LABEL[s]}</span>
-              {!open ? <Lock size={11} /> : i < unlocked ? <Check size={12} className="text-ok" /> : s === "brief" ? <span className="text-[0.68rem] text-ink-faint tabular-nums">{brief.completeness}%</span> : null}
+              <Icon size={13} /> <span className="flex-1">{STAGE_LABEL[s]}</span>
+              {!open ? <Lock size={11} /> : i < unlocked ? <Check size={12} className="text-ok" /> : null}
             </>
           );
           return open ? <Link key={s} href={`${base}/${s}`} className={row}>{inner}</Link> : <div key={s} className={row} title="Locked until the previous step is done">{inner}</div>;

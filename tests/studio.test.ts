@@ -92,25 +92,32 @@ describe("projects", () => {
   it("B cannot resolve A's project, even by id", async () => {
     if (!dbReachable) return;
     expect(await getProject({ tenantId: B.tenantId, userId: null, isPlatformAdmin: false }, A.projectId)).toBeNull();
-    // A B-scope that names A's project id still reads nothing (RLS keys on tenant).
-    expect(await listPillars({ ...B, projectId: A.projectId })).toEqual([]);
+    // A B-scope reads none of A's pillars: RLS keys on tenant, and pillars are
+    // now the WORKSPACE's rather than any one project's.
+    expect(await listPillars(B)).toEqual([]);
   });
 
-  it("projects in the same workspace keep their own pillars and content", async () => {
+  it("pillars are shared across a workspace; content stays with its own piece", async () => {
     if (!dbReachable) return;
-    expect(await listPillars(A2)).toEqual([]);
+    // Migration 0007: one brand per workspace, so both projects see the same
+    // pillars. A piece's content belongs to that piece alone.
+    await createPillar(A, "Shared pillar");
+    expect((await listPillars(A2)).map((p) => p.name)).toContain("Shared pillar");
     expect(await listContent(A2)).toEqual([]);
   });
 
   it("steps unlock in order and never skip", async () => {
     if (!dbReachable) return;
-    await expect(unlockStage(A2, "content")).rejects.toThrow(/skip/);
-    await unlockStage(A2, "pillars");
+    await expect(unlockStage(A2, "visual")).rejects.toThrow(/skip/);
+    await unlockStage(A2, "content");
     await createPillar(A2, "Only pillar");
-    expect(await generateContentFromPillars(A2, { perPillar: 1, format: "linkedin_post", onlyEmpty: true })).toBe(1);
-    expect(await generateVisuals(A2, { scheme: 1, approvedOnly: false })).toBe(1);
+    // Pillars are the workspace's, so a run drafts from every one of them.
+    const pillarCount = (await listPillars(A2)).length;
+    expect(await generateContentFromPillars(A2, { perPillar: 1, format: "linkedin_post", onlyEmpty: true }))
+      .toBe(pillarCount);
+    expect(await generateVisuals(A2, { scheme: 1, approvedOnly: false })).toBe(pillarCount);
     expect((await getProject(A2, A2.projectId))!.stage).toBe("visual");
-    expect((await listVisuals(A2)).length).toBe(3);
+    expect((await listVisuals(A2)).length).toBe(pillarCount * 3);
     expect(await listVisuals(B)).toEqual([]);
   });
 
@@ -118,12 +125,13 @@ describe("projects", () => {
     if (!dbReachable) return;
     const x = await createPillar(A2, "Second");
     const y = await createPillar(A2, "Third");
-    const first = (await listPillars(A2))[0].id;
-    await reorderPillars(A2, [y, first, x]);
-    expect((await listPillars(A2)).map((p) => p.id)).toEqual([y, first, x]);
+    const rest = (await listPillars(A2)).map((p) => p.id).filter((id) => id !== x && id !== y);
+    const order = [y, ...rest, x];
+    await reorderPillars(A2, order);
+    expect((await listPillars(A2)).map((p) => p.id)).toEqual(order);
     // Another tenant naming these ids changes nothing.
-    await reorderPillars({ ...B, projectId: A2.projectId }, [x, y, first]);
-    expect((await listPillars(A2)).map((p) => p.id)).toEqual([y, first, x]);
+    await reorderPillars(B, [x, y, ...rest]);
+    expect((await listPillars(A2)).map((p) => p.id)).toEqual(order);
 
     const item = (await listContent(A2))[0];
     await patchContent(A2, item.id, { hook: "Edited on the canvas" });
@@ -136,22 +144,28 @@ describe("projects", () => {
     now = (await listContent(A2)).find((c) => c.id === item.id)!;
     expect(now.pillarId).toBe(y);
 
-    // A pillar from another project in the same workspace is refused.
-    const foreign = await createPillar(A, "Not this project");
+    // Pillars are the workspace's, so one created from another project in the
+    // same workspace is a legitimate home for this piece (migration 0007).
+    const sibling = await createPillar(A, "Also this workspace");
+    await patchContent(A2, item.id, { pillarId: sibling });
+    expect((await listContent(A2)).find((c) => c.id === item.id)!.pillarId).toBe(sibling);
+
+    // A pillar belonging to another WORKSPACE is still refused.
+    const foreign = await createPillar(B, "Another workspace entirely");
     await patchContent(A2, item.id, { pillarId: foreign });
-    expect((await listContent(A2)).find((c) => c.id === item.id)!.pillarId).toBe(y);
+    expect((await listContent(A2)).find((c) => c.id === item.id)!.pillarId).toBe(sibling);
 
     // B cannot patch A's piece.
     await patchContent(B, item.id, { hook: "pwned" });
     expect((await listContent(A2)).find((c) => c.id === item.id)!.hook).toBe("Edited on the canvas");
   });
 
-  it("deleting a project removes it and its rows; another tenant cannot delete it", async () => {
+  it("deleting a piece takes its content, and leaves the brand alone", async () => {
     if (!dbReachable) return;
     const ws = { tenantId: A.tenantId, userId: null, isPlatformAdmin: false };
     const D: ProjectScope = { ...ws, projectId: await createProject(ws, "To delete") };
-    await createPillar(D, "Doomed pillar");
     await generateContent(D, { format: "linkedin_post", topic: "gone soon" });
+    const pillarsBefore = (await listPillars(ws)).length;
 
     // B naming A's project id deletes nothing.
     expect(await deleteProject({ ...B, projectId: D.projectId })).toBe(false);
@@ -159,12 +173,12 @@ describe("projects", () => {
 
     expect(await deleteProject(D)).toBe(true);
     expect(await getProject(ws, D.projectId)).toBeNull();
-    expect(await listPillars(D)).toEqual([]);
     expect(await listContent(D)).toEqual([]);
+    // The workspace's pillars are the BRAND's, not this piece's: deleting one
+    // post must never take the brand down with it (migration 0007).
+    expect((await listPillars(ws)).length).toBe(pillarsBefore);
     // Usage history is kept for the workspace.
     expect((await loadUsage(A)).textThisMonth).toBeGreaterThan(0);
-    // Other projects in the workspace are untouched.
-    expect((await listPillars(A2)).length).toBeGreaterThan(0);
   });
 
   it("parses pillar lines from the pillar_set template output", () => {

@@ -14,7 +14,7 @@ export default async function VisualPage({ params, searchParams }: PageProps<"/w
   const { scope, project } = await projectScope(id, pid);
   const base = `/w/${id}/p/${pid}`;
   if (stageIndex(project.stage) < stageIndex("content")) {
-    return <LockedStep step={4} title="Visual" needs="Visuals are designed from your drafted content. Generate content from your pillars first." href={stageIndex(project.stage) >= stageIndex("pillars") ? `${base}/pillars` : `${base}/brief/questions`} cta="Go to the current step" />;
+    return <LockedStep step={4} title="Visual" needs="Visuals are designed from your drafted content. Generate content from your pillars first." href={`${base}/content`} cta="Go to the current step" />;
   }
   const [items, f, visuals] = await Promise.all([listContent(scope), loadFoundation(scope), listVisuals(scope)]);
   const schemeOf = new Map(visuals.map((v) => [v.contentItemId, v.scheme]));

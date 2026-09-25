@@ -13,10 +13,12 @@ import { MIN_SEEDS } from "@/lib/brief/questions";
 
 /** Step 1's "what's next" card: brief → questions → generate pillars. */
 function StepCard({ base, completeness, degraded, answered, stage }: { base: string; completeness: number; degraded: boolean; answered: number; stage: Stage }) {
-  const done = stage !== "brief";
+  // Pillars belong to the workspace now, so the only question is whether any
+  // have been generated yet — not which step this one piece is on.
+  const done = stage !== "ideate";
   return (
     <div className="bg-paper border border-hairline rounded-[12px] p-4">
-      <p className="label-mono text-ink-faint">Step 1 of 4 · Brief</p>
+      <p className="label-mono text-ink-faint">Onboarding · Brief</p>
       <ul className="mt-3 flex flex-col gap-2 text-[0.8rem]">
         <li className="flex items-center gap-2">{!degraded ? <CheckCircle2 size={14} className="text-ok" /> : <AlertTriangle size={14} className="text-accent" />} Brief {completeness}% complete</li>
         <li className="flex items-center gap-2">{answered >= MIN_SEEDS ? <CheckCircle2 size={14} className="text-ok" /> : <AlertTriangle size={14} className="text-ink-faint" />} {answered} strategy answers</li>
@@ -25,7 +27,7 @@ function StepCard({ base, completeness, degraded, answered, stage }: { base: str
       {done ? (
         <Link href={`${base}/pillars`} className={`${btnClass("primary", "sm")} w-full mt-4`}>Go to Pillars →</Link>
       ) : (
-        <Link href={`${base}/brief/questions`} className={`${btnClass("accent", "sm")} w-full mt-4`}>Answer questions →</Link>
+        <Link href={`${base}/brief/questions`} className={`${btnClass("primary", "sm")} w-full mt-4`}>Answer questions →</Link>
       )}
       <p className="text-[0.7rem] text-ink-faint mt-2">Pillars are generated from the brief plus your answers.</p>
     </div>
@@ -140,7 +142,14 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
           </section>
 
           <section id="voice" className="scroll-mt-6 mt-10">
-            <h2 className="text-[1.45rem]">Voice</h2>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-[1.45rem] flex-1">Voice</h2>
+              {/* The voice belongs to the person, so it is edited once for the
+                  workspace rather than per piece. */}
+              <Link href={`/w/${id}/brand/voice`} className="label-mono text-accent hover:underline underline-offset-2">
+                Open the voice pack ↗
+              </Link>
+            </div>
             <ul className="mt-3 list-disc pl-5 space-y-2 text-[0.98rem] leading-[1.65] text-ink/90">
               <li><span className="font-medium">Tone:</span> {f.tone || <span className="text-ink-faint">not set</span>}{f.readingLevel && <span className="text-ink-muted"> · reading level {f.readingLevel}</span>}</li>
               <li><span className="font-medium">Use:</span> {csv(f.doWords).length ? csv(f.doWords).join(", ") : <span className="text-ink-faint">no do-words</span>}</li>

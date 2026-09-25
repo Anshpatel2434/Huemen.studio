@@ -1,111 +1,184 @@
 @import "tailwindcss";
 
 /*
- * Huemen.studio — app chrome. Structure follows Relume/Figma (panels, stage
- * tabs, tool rail, canvas). Palette is strictly black / white / neutral grey:
- * no hue accent and no gradients — emphasis comes from fill, weight and
- * contrast. Grotesque sans + serif-italic accent + uppercase mono labels.
- * Every colour is a token, so tenant branding can still override it.
+ * Huemen.studio — app chrome, built on the client's hueman design system
+ * (hueman-design-system v1). Three tiers of colour, and the tier decides what a
+ * value may be used for:
+ *
+ *   hueman spectrum  expressive only — fills, gradients, illustration
+ *   SIGNAL (>=3:1)   borders, dots, icons, chart marks
+ *   INK (>=4.5:1)    the ONLY spectrum values legal for text
+ *
+ * Neutrals carry the interface; the accent is a single punctuation mark, not a
+ * paint bucket. Status is never colour alone — an icon or a label carries it
+ * too, so the UI still reads for anyone who cannot separate the hues.
+ *
+ * This supersedes the strictly-monochrome direction of 2026-09-21: the client's
+ * system has a real accent (blue in light, violet in dark) and a defined
+ * spectrum. Every colour is still a token, so tenant branding can override it.
  */
-/* Light — also forced inside .theme-light (artboards stay light on a dark canvas, as in Figma). */
+
+/* The raw ramp — never used directly in a component, only through the
+   semantic tokens below. */
+:root {
+  --ds-black: #0a0a0a;
+  --ds-white: #ffffff;
+  --ds-grey-100: #f5f5f5;
+  --ds-grey-200: #e8e8e8;
+  --ds-grey-300: #c4c4c4;
+  --ds-grey-400: #8c8c8c;
+  --ds-grey-500: #6b6b6b;
+  --ds-grey-700: #3a3a3a;
+  --ds-grey-800: #262626;
+  --ds-grey-850: #1e1e1e;
+  --ds-grey-900: #151515;
+
+  /* Expressive tier — fills and gradients only, never text. */
+  --hue-coral: #ff5a5f;
+  --hue-orange: #ff8a3d;
+  --hue-yellow: #f2c94c;
+  --hue-green: #27c093;
+  --hue-teal: #17bebb;
+  --hue-blue: #2d6bff;
+  --hue-violet: #858bff;
+  --hue-magenta: #e75ca5;
+
+  /* Signal tier — borders, dots, icons, chart marks. */
+  --sig-coral: #ff5a5f;
+  --sig-orange: #fc6400;
+  --sig-yellow: #b98e0d;
+  --sig-green: #22a780;
+  --sig-teal: #14a5a2;
+  --sig-blue: #2d6bff;
+  --sig-violet: #8289ff;
+  --sig-magenta: #e75ca5;
+}
+
+/* Light — also forced inside .theme-light (artboards stay light on a dark
+   canvas, as in Figma). */
 :root,
 .theme-light {
   color-scheme: light;
-  --ink: #0a0a0a;
-  --ink-muted: #525252;
-  --ink-faint: #8a8a8a;
+  --ink: #0a0a0a;               /* text-primary */
+  --ink-muted: #3a3a3a;         /* text-secondary */
+  --ink-faint: #6b6b6b;         /* text-tertiary */
   --on-ink: #ffffff;            /* text on an --ink fill */
-  --paper: #ffffff;
-  --ground: #f4f4f4;            /* canvas */
-  --panel: #fafafa;
-  --field: #ededed;
-  --muted-surface: #ededed;
-  /* Strictly monochrome: the "accent" is ink. Emphasis comes from weight,
-     fill and contrast, never from hue. */
-  --accent: #0a0a0a;
-  --accent-ink: #0a0a0a;
-  --accent-soft: #ececec;
-  --ok: #0a0a0a;
-  --ok-soft: #efefef;
-  --warn: #525252;
-  --warn-soft: #efefef;
-  --menu: #111111;              /* context menus are dark in both themes */
-  --menu-fg: #ffffff;
-  --wf: #dcdcdc;                /* wireframe placeholder bars */
-  --dot: rgba(0, 0, 0, 0.12);
-  --scrim: rgba(0, 0, 0, 0.4);
+  --paper: #ffffff;             /* bg-surface */
+  --ground: #f5f5f5;            /* bg-sunken — the canvas */
+  --panel: #ffffff;             /* bg-raised */
+  --field: #f5f5f5;
+  --muted-surface: #f5f5f5;
+  /* The accent, used sparingly: primary action, active state, link, focus. */
+  --accent: #060e9f;            /* blue-700, >=4.5:1 on white */
+  --accent-ink: #060e9f;
+  --accent-soft: #f0f0ff;       /* blue-050 */
+  --accent-fg: #ffffff;         /* text ON an accent fill */
+  --focus: #060e9f;
+  --ok: #197e60;                /* ink-green */
+  --ok-soft: #e5f7f2;
+  --ok-line: #22a780;
+  --warn: #8d6c0b;              /* ink-yellow */
+  --warn-soft: #fdf6e2;
+  --warn-line: #b98e0d;
+  --danger: #dc0006;            /* ink-coral */
+  --danger-soft: #ffebec;
+  --danger-line: #ff5a5f;
+  --danger-fg: #ffffff;         /* text ON a danger fill */
+  --menu: #151515;              /* context menus are dark in both themes */
+  --menu-fg: #f5f5f5;
+  --wf: #e8e8e8;                /* wireframe placeholder bars */
+  --dot: rgba(10, 10, 10, 0.12);
+  --scrim: rgba(10, 10, 10, 0.55);  /* backdrop >= 0.5 (design system §13) */
 
-  --hairline: rgba(0, 0, 0, 0.09);
-  --line: rgba(0, 0, 0, 0.16);
+  --hairline: #e8e8e8;          /* border-subtle */
+  --line: #8c8c8c;              /* border-default */
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.22);
-  --shadow-lg: 0 30px 70px -28px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.06);
+  --shadow: 0 6px 20px rgba(10, 10, 10, 0.08);
+  --shadow-lg: 0 20px 48px rgba(10, 10, 10, 0.12);
 }
 
 /* Dark — Figma-like greys. Default theme; "system" follows the OS. */
 :root[data-theme="dark"] {
   color-scheme: dark;
   --ink: #f5f5f5;
-  --ink-muted: #b0b0b0;
-  --ink-faint: #787878;
+  --ink-muted: #c4c4c4;
+  --ink-faint: #9a9a9a;
   --on-ink: #0a0a0a;
-  --paper: #262626;             /* panels, bars, cards */
-  --ground: #181818;            /* canvas */
-  --panel: #202020;
-  --field: #333333;
-  --muted-surface: #333333;
-  --accent: #f5f5f5;
-  --accent-ink: #f5f5f5;
-  --accent-soft: rgba(255, 255, 255, 0.1);
-  --ok: #f5f5f5;
-  --ok-soft: rgba(255, 255, 255, 0.08);
-  --warn: #b0b0b0;
-  --warn-soft: rgba(255, 255, 255, 0.08);
-  --menu: #111111;
-  --menu-fg: #ffffff;
-  --wf: #444444;
-  --dot: rgba(255, 255, 255, 0.08);
+  --paper: #151515;             /* bg-surface — panels, bars, cards */
+  --ground: #0a0a0a;            /* bg-sunken — the canvas */
+  --panel: #1e1e1e;             /* bg-raised */
+  --field: #1e1e1e;
+  --muted-surface: #262626;
+  /* Violet, not blue: blue-700 is unreadable on near-black. */
+  --accent: #858bff;
+  --accent-ink: #858bff;
+  --accent-soft: #1a1b33;
+  --accent-fg: #0a0a0a;         /* violet is light: ink on top, not white */
+  --focus: #858bff;
+  --ok: #27c093;
+  --ok-soft: #10251f;
+  --ok-line: #27c093;
+  --warn: #f2c94c;
+  --warn-soft: #2a2110;
+  --warn-line: #f2c94c;
+  --danger: #ff5a5f;
+  --danger-soft: #2e1416;
+  --danger-line: #ff5a5f;
+  --danger-fg: #0a0a0a;
+  --menu: #1e1e1e;
+  --menu-fg: #f5f5f5;
+  --wf: #3a3a3a;
+  --dot: rgba(245, 245, 245, 0.08);
   --scrim: rgba(0, 0, 0, 0.6);
 
-  --hairline: rgba(255, 255, 255, 0.08);
-  --line: rgba(255, 255, 255, 0.16);
+  --hairline: #262626;          /* border-subtle */
+  --line: #6b6b6b;              /* border-default */
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 30px 70px -24px rgba(0, 0, 0, 0.75);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
 }
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
     color-scheme: dark;
     --ink: #f5f5f5;
-    --ink-muted: #b0b0b0;
-    --ink-faint: #787878;
+    --ink-muted: #c4c4c4;
+    --ink-faint: #9a9a9a;
     --on-ink: #0a0a0a;
-    --paper: #262626;             /* panels, bars, cards */
-    --ground: #181818;            /* canvas */
-    --panel: #202020;
-    --field: #333333;
-    --muted-surface: #333333;
-    --accent: #f5f5f5;
-    --accent-ink: #f5f5f5;
-    --accent-soft: rgba(255, 255, 255, 0.1);
-    --ok: #f5f5f5;
-    --ok-soft: rgba(255, 255, 255, 0.08);
-    --warn: #b0b0b0;
-    --warn-soft: rgba(255, 255, 255, 0.08);
-    --menu: #111111;
-    --menu-fg: #ffffff;
-    --wf: #444444;
-    --dot: rgba(255, 255, 255, 0.08);
+    --paper: #151515;             /* bg-surface — panels, bars, cards */
+    --ground: #0a0a0a;            /* bg-sunken — the canvas */
+    --panel: #1e1e1e;             /* bg-raised */
+    --field: #1e1e1e;
+    --muted-surface: #262626;
+    /* Violet, not blue: blue-700 is unreadable on near-black. */
+    --accent: #858bff;
+    --accent-ink: #858bff;
+    --accent-soft: #1a1b33;
+    --accent-fg: #0a0a0a;         /* violet is light: ink on top, not white */
+    --focus: #858bff;
+    --ok: #27c093;
+    --ok-soft: #10251f;
+    --ok-line: #27c093;
+    --warn: #f2c94c;
+    --warn-soft: #2a2110;
+    --warn-line: #f2c94c;
+    --danger: #ff5a5f;
+    --danger-soft: #2e1416;
+    --danger-line: #ff5a5f;
+    --danger-fg: #0a0a0a;
+    --menu: #1e1e1e;
+    --menu-fg: #f5f5f5;
+    --wf: #3a3a3a;
+    --dot: rgba(245, 245, 245, 0.08);
     --scrim: rgba(0, 0, 0, 0.6);
-  
-    --hairline: rgba(255, 255, 255, 0.08);
-    --line: rgba(255, 255, 255, 0.16);
-  
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.6);
-    --shadow-lg: 0 30px 70px -24px rgba(0, 0, 0, 0.75);
+
+    --hairline: #262626;          /* border-subtle */
+    --line: #6b6b6b;              /* border-default */
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
   }
 }
 /* .theme-light must win over an ancestor's dark tokens. */
@@ -132,6 +205,11 @@
   --color-menu-fg: var(--menu-fg);
   --color-hairline: var(--hairline);
   --color-line: var(--line);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-fg: var(--danger-fg);
+  --color-accent-fg: var(--accent-fg);
+  --color-focus: var(--focus);
 
   --font-sans: var(--font-sans-src), "Inter", system-ui, sans-serif;
   --font-serif: var(--font-serif-src), "Instrument Serif", Georgia, serif;
@@ -154,32 +232,73 @@ body {
 
 ::selection { background: var(--ink); color: var(--on-ink); }
 
-h1, h2, h3 { letter-spacing: -0.025em; font-weight: 500; line-height: 1.1; }
+/* Headings carry the weight in this system — grotesque, bold, tight. */
+h1, h2, h3 { letter-spacing: -0.025em; font-weight: 700; line-height: 1.12; }
+h4 { font-weight: 700; letter-spacing: -0.01em; }
 
 .serif-accent { font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
 
-/* Uppercase mono micro-labels — the brand signature. */
+/* Uppercase mono micro-labels — the brand signature (design system §03). */
 .label-mono {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 500;
 }
 
-/* Form controls — Relume-style filled fields. */
+/* A section eyebrow. Accent-coloured, as in the system's own pages. */
+.eyebrow { color: var(--accent); }
+
+/*
+ * Target expansion (design system §02). A control that has to LOOK smaller than
+ * 44px keeps its visual size and gets a transparent 44px target centred on it.
+ * The pseudo-element is the target; nothing about the control's look changes.
+ */
+.hu-hit { position: relative; }
+.hu-hit::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
+
+/*
+ * Non-negotiable (design system §06): every animation sits behind this, and
+ * nothing in the product may flash more than three times a second.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Form controls — design system §10: a real 1px border, 6px radius, and a
+   hover that firms the border rather than changing the fill. */
 .field {
   width: 100%;
-  background: var(--field);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.875rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9375rem;
+  line-height: 1.4;
   color: var(--ink);
   transition: border-color 0.15s, background 0.15s;
 }
+.field:hover:not(:disabled):not([readonly]) { border-color: var(--ink); }
+.field[aria-invalid="true"] { border-color: var(--danger-line); border-width: 2px; }
+.field:disabled { background: var(--ground); color: var(--ink-faint); cursor: not-allowed; border-color: var(--hairline); }
+.field[readonly] { background: var(--ground); border-color: var(--hairline); }
 .field::placeholder { color: var(--ink-faint); }
-.field:focus { outline: none; background: var(--paper); border-color: var(--ink); }
+.field::placeholder { color: var(--ink-faint); }
+.field:focus { outline: none; background: var(--paper); border-color: var(--accent); }
 textarea.field { resize: vertical; line-height: 1.55; }
 
 /* Dotted canvas ground. */
@@ -197,7 +316,12 @@ textarea.field { resize: vertical; line-height: 1.55; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-:where(button, a, input, textarea, select, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* One focus ring, identical on every component, never removed (design system
+   §08: colour alone is never allowed to carry a state). */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

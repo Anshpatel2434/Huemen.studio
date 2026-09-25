@@ -14,7 +14,7 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/p/[pid]/i
   const { id, pid } = await params;
   const { scope, project } = await projectScope(id, pid);
   const [ideas, pillars] = await Promise.all([listIdeas(scope), listPillars(scope)]);
-  const canDraft = stageIndex(project.stage) >= stageIndex("pillars");
+  const canDraft = pillars.length > 0;
   const open = ideas.filter((i) => i.status === "new");
   const done = ideas.filter((i) => i.status === "converted");
 

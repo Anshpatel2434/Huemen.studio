@@ -31,7 +31,7 @@ export default async function LinkExpiredPage({ searchParams }: PageProps<"/auth
           <span className="block text-[0.76rem] text-ink-muted mb-1.5">Email address</span>
           <input name="email" type="email" required autoComplete="email" defaultValue={email} placeholder="Enter your email address…" className="field" />
         </label>
-        <SubmitButton variant="accent" pendingLabel="Sending…" className="w-full">Send a new link</SubmitButton>
+        <SubmitButton variant="primary" pendingLabel="Sending…" className="w-full">Send a new link</SubmitButton>
       </form>
       <AuthFoot><Link href="/login" className="hover:text-ink">Back to sign in</Link></AuthFoot>
     </AuthShell>

@@ -3,6 +3,7 @@ import { ArrowLeft, AlertTriangle, CheckCircle2, FileText, Network, Info } from 
 import { projectScope } from "@/lib/auth/workspace";
 import { loadFoundation } from "@/lib/data/foundation";
 import { loadBrandContext } from "@/lib/context/context-loader";
+import { listPillars } from "@/lib/data/planning";
 import { buildQuestions, MIN_SEEDS } from "@/lib/brief/questions";
 import { SubmitButton } from "@/components/ui";
 import { answerQuestionsAction } from "../actions";
@@ -19,7 +20,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
   const gaps = questions.filter((q) => q.target !== "seed");
   const strategy = questions.filter((q) => q.target === "seed");
   const base = `/w/${id}/p/${pid}`;
-  const pillarsDone = project.stage !== "brief";
+  const pillarsDone = (await listPillars(scope)).length > 0;
 
   const Q = ({ q, n }: { q: (typeof questions)[number]; n: number }) => (
     <label className="block bg-paper border border-hairline rounded-[12px] p-4">
@@ -71,7 +72,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
 
             <div className="sticky bottom-0 -mx-8 px-8 py-3 mt-2 bg-ground/90 backdrop-blur border-t border-hairline flex items-center justify-end gap-2">
               <button name="intent" value="save" className="h-9 px-4 rounded-[8px] text-[0.85rem] font-medium text-ink-muted hover:bg-field">Save answers</button>
-              <SubmitButton variant="accent" name="intent" value="generate" pendingLabel="Generating pillars…">
+              <SubmitButton variant="primary" name="intent" value="generate" pendingLabel="Generating pillars…">
                 {pillarsDone ? "Add more pillars →" : "Generate pillars →"}
               </SubmitButton>
             </div>

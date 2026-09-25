@@ -41,8 +41,8 @@ export async function askAgent(tenantId: string, projectId: string, message: str
 
   if (/\b(write|draft|generate|create|make)\b/i.test(msg) && FORMAT_WORDS.some(([re]) => re.test(msg))) {
     const pillars = await listPillars(scope);
-    if (!project || stageIndex(project.stage) < stageIndex("pillars") || pillars.length === 0) {
-      return { text: "Content comes after pillars. Finish the brief questions and generate pillars first, then I'll draft from them.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
+    if (!project || pillars.length === 0) {
+      return { text: "There are no pillars yet. They are set up once for the whole workspace, in onboarding — generate them and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
     }
     const format = FORMAT_WORDS.find(([re]) => re.test(msg))![1];
     const label = FORMATS.find((f) => f.key === format)!.label;
@@ -62,8 +62,8 @@ export async function askAgent(tenantId: string, projectId: string, message: str
 
   const pillarMatch = msg.match(/\b(?:add|create|new)\s+(?:a\s+)?pillar\s*(?:called|named|:)?\s*(.+)$/i);
   if (pillarMatch) {
-    if (!project || stageIndex(project.stage) < stageIndex("pillars")) {
-      return { text: "Pillars unlock once the brief questions are answered. Generate them from there and I can add more.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
+    if (!project) {
+      return { text: "Pillars are generated from the brief questions. Answer those and I can add more.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
     }
     const name = pillarMatch[1].replace(/^["“]|["”.]$/g, "").trim();
     await createPillar(scope, name);
@@ -80,7 +80,7 @@ export async function askAgent(tenantId: string, projectId: string, message: str
 
   if (/\b(brief|foundation|missing|complete|ready|next)\b/i.test(msg)) {
     const ctx = await loadBrandContext(scope);
-    const next = project?.stage === "brief" ? "Next: answer the brief questions to generate pillars." : "";
+    const next = project?.stage === "ideate" ? "Next: pick the angle for this piece, then draft it." : "";
     const text = ctx.degraded
       ? `The brief is ${ctx.completeness}% complete, so drafts will read generic. Fix these first: ${ctx.warnings.slice(0, 3).join(" ")} ${next}`
       : `The brief is ${ctx.completeness}% complete.${ctx.warnings.length ? ` Worth tightening: ${ctx.warnings.slice(0, 2).join(" ")}` : ""} ${next}`;

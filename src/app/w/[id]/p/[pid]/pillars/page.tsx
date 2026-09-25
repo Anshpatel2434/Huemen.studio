@@ -18,10 +18,6 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
   const sp = await searchParams;
   const { scope, project } = await projectScope(id, pid);
   const base = `/w/${id}/p/${pid}`;
-  if (stageIndex(project.stage) < stageIndex("pillars")) {
-    return <LockedStep step={2} title="Pillars" needs="Pillars are generated from your brief. Answer the brief questions first and they'll be created for you." href={`${base}/brief/questions`} cta="Answer brief questions" />;
-  }
-
   const [f, ctx, pillars] = await Promise.all([loadFoundation(scope), loadBrandContext(scope), listPillars(scope)]);
   const briefRows = [
     { label: "Story arc", ok: f.chapters.filter((c) => c.body.trim()).length === 3 },
@@ -91,7 +87,7 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
           {contentDone && (
             <label className="flex items-center gap-2 text-[0.75rem]"><input type="checkbox" name="onlyEmpty" defaultChecked /> Only pillars with no content ({empty})</label>
           )}
-          <SubmitButton variant="accent" size="sm" pendingLabel="Drafting from pillars…" className="w-full">{contentDone ? "Generate more content →" : "Generate content →"}</SubmitButton>
+          <SubmitButton variant="primary" size="sm" pendingLabel="Drafting from pillars…" className="w-full">{contentDone ? "Generate more content →" : "Generate content →"}</SubmitButton>
           <p className="text-[0.68rem] text-ink-faint">Two variants per piece, voice and guardrails from the brief. Every call is logged.</p>
         </form>
       </StepPanel>
