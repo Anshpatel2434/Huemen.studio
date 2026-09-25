@@ -8,6 +8,8 @@ generated from that stored context. Built for The Brand Professor.
 
 > **UI rebuild:** the Relume/Figma-style interface lives on the `ui` branch. See [docs/ui-branch.md](docs/ui-branch.md) for setup, a tour and rollbacks.
 
+> **Design system:** the client's own handoff, [docs/hueman-design-system-v1.html](docs/hueman-design-system-v1.html) — open it in a browser. It is normative: anything with a `--token` name or a `.hu-` class is built exactly, and it carries product rules as well as visual ones (44px targets, one primary action per view, what interface copy may and may not say). Our tokens and components follow it; see the decisions log for where and why we deviate.
+
 ## Stack
 Next.js 16 (App Router) · TypeScript · Tailwind 4 · Postgres 18 (Row-Level
 Security) · provider-agnostic AI layer · Postgres-backed job queue.

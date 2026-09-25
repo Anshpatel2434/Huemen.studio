@@ -1,0 +1,2570 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hueman.studio Design System</title>
+<meta name="description" content="Developer handoff. Tokens, components, product patterns and acceptance criteria for hueman.studio v1.0.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=Instrument+Serif:ital@0;1&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+/* ==========================================================================
+   hueman.studio, Design System v1.0
+   TIER 1: PRIMITIVES. Raw values. Never referenced by a component.
+   ========================================================================== */
+:root {
+  /* neutrals */
+  --black:      #0A0A0A;
+  --white:      #FFFFFF;
+  --grey-100:   #F5F5F5;
+  --grey-200:   #E8E8E8;
+  --grey-300:   #C4C4C4;
+  --grey-400:   #8C8C8C;   /* NEW in v1.0, the only grey that clears 3:1 for borders */
+  --grey-500:   #6B6B6B;
+  --grey-700:   #3A3A3A;
+  --grey-800:   #262626;   /* NEW in v1.0, dark-theme hairline */
+  --grey-900:   #151515;   /* NEW in v1.0, dark-theme surface */
+  --grey-850:   #1E1E1E;   /* NEW in v1.0, dark-theme raised surface */
+
+  /* brand blue */
+  --blue-050:   #F0F0FF;   /* was --tag-bg */
+  --blue-600:   #0913C9;
+  --blue-700:   #060E9F;
+
+  /* hueman spectrum: expressive tier, fills and gradients only */
+  --hue-coral:   #FF5A5F;
+  --hue-orange:  #FF8A3D;
+  --hue-yellow:  #F2C94C;
+  --hue-green:   #27C093;
+  --hue-teal:    #17BEBB;
+  --hue-blue:    #2D6BFF;
+  --hue-violet:  #858BFF;
+  --hue-magenta: #E75CA5;
+
+  /* spectrum SIGNAL tier: >= 3:1 on white, for borders, dots, icons, chart marks */
+  --sig-coral:   #FF5A5F;
+  --sig-orange:  #FC6400;
+  --sig-yellow:  #B98E0D;
+  --sig-green:   #22A780;
+  --sig-teal:    #14A5A2;
+  --sig-blue:    #2D6BFF;
+  --sig-violet:  #8289FF;
+  --sig-magenta: #E75CA5;
+
+  /* spectrum INK tier: >= 4.5:1 on white, the only spectrum values legal for text */
+  --ink-coral:   #DC0006;
+  --ink-orange:  #C95000;
+  --ink-yellow:  #8D6C0B;
+  --ink-green:   #197E60;
+  --ink-teal:    #108381;
+  --ink-blue:    #2D6BFF;
+  --ink-violet:  #5A62FF;
+  --ink-magenta: #DE2184;
+
+  /* spectrum INK, dark theme: >= 4.5:1 on #151515 */
+  --ink-coral-d:   #FF5A5F;
+  --ink-orange-d:  #FF8A3D;
+  --ink-yellow-d:  #F2C94C;
+  --ink-green-d:   #27C093;
+  --ink-teal-d:    #17BEBB;
+  --ink-blue-d:    #3C76FF;
+  --ink-violet-d:  #858BFF;
+  --ink-magenta-d: #E75CA5;
+
+  /* type families. GT is licensed and self-hosted; the second name is the
+     documented open fallback so this file renders correctly without it. */
+  --font-sans:  'GT America', 'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-serif: 'GT Super Display', 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --font-mono:  'GT America Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* spacing: 4pt base, the scale from v0 section 12, now emitted as tokens */
+  --space-0: 0;      --space-1: 4px;   --space-2: 8px;   --space-3: 12px;
+  --space-4: 16px;   --space-5: 20px;  --space-6: 28px;  --space-7: 40px;
+  --space-8: 48px;   --space-9: 60px;  --space-10: 80px; --space-11: 120px;
+
+  /* radii */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 12px; --r-lg: 20px; --r-pill: 999px;
+
+  /* motion */
+  --motion-instant: 80ms;
+  --motion-fast:    120ms;
+  --motion-base:    180ms;
+  --motion-slow:    280ms;
+  --ease-standard:  cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter:     cubic-bezier(0, 0, 0, 1);
+  --ease-exit:      cubic-bezier(0.3, 0, 1, 1);
+
+  /* elevation order */
+  --z-base: 0; --z-sticky: 200; --z-dropdown: 300; --z-overlay: 400;
+  --z-modal: 500; --z-popover: 600; --z-toast: 700; --z-tooltip: 800;
+
+  /* control sizing */
+  --control-h-sm: 44px;
+  --control-h-md: 48px;
+  --control-h-lg: 56px;
+  --tap-min:      44px;
+
+  /* layout */
+  --container: 1320px;
+  --measure:   68ch;
+}
+
+/* ==========================================================================
+   TIER 2: SEMANTIC. Components reference ONLY these.
+   ========================================================================== */
+:root {
+  --bg-canvas:        var(--white);
+  --bg-surface:       var(--white);
+  --bg-raised:        var(--white);
+  --bg-sunken:        var(--grey-100);
+  --bg-inverse:       var(--black);
+  --bg-accent-subtle: var(--blue-050);
+  --bg-hover:         var(--grey-100);
+  --bg-active:        var(--grey-200);
+
+  --text-primary:     var(--black);
+  --text-secondary:   var(--grey-700);
+  --text-tertiary:    var(--grey-500);
+  --text-placeholder: var(--grey-500);
+  --text-disabled:    var(--grey-400);
+  --text-inverse:     var(--white);
+  --text-accent:      var(--blue-700);
+  --text-link:        var(--blue-700);
+
+  --border-subtle:  var(--grey-200);
+  --border-default: var(--grey-400);
+  --border-strong:  var(--black);
+  --border-accent:  var(--blue-700);
+
+  --action-primary-bg:       var(--black);
+  --action-primary-bg-hover: #242424;
+  --action-primary-fg:       var(--white);
+  --action-accent-bg:        var(--blue-700);
+  --action-accent-bg-hover:  var(--blue-600);
+  --action-accent-fg:        var(--white);
+
+  --focus-ring:        var(--blue-700);
+  --focus-ring-offset: var(--bg-surface);
+
+  --danger-fg:     var(--ink-coral);
+  --danger-border: var(--sig-coral);
+  --danger-bg:     #FFEBEC;
+  --warning-fg:    var(--ink-yellow);
+  --warning-border:var(--sig-yellow);
+  --warning-bg:    #FDF6E2;
+  --success-fg:    var(--ink-green);
+  --success-border:var(--sig-green);
+  --success-bg:    #E5F7F2;
+  --info-fg:       var(--text-accent);
+  --info-border:   var(--sig-blue);
+  --info-bg:       var(--blue-050);
+
+  --shadow-sm: 0 1px 2px rgba(10,10,10,0.06);
+  --shadow-md: 0 6px 20px rgba(10,10,10,0.08);
+  --shadow-lg: 0 20px 48px rgba(10,10,10,0.12);
+  --shadow-overlay: 0 24px 64px rgba(10,10,10,0.18);
+}
+
+/* dark, for the un-stamped default (system preference) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-canvas:        var(--black);
+    --bg-surface:       var(--grey-900);
+    --bg-raised:        var(--grey-850);
+    --bg-sunken:        var(--black);
+    --bg-inverse:       var(--white);
+    --bg-accent-subtle: #1A1B33;
+    --bg-hover:         var(--grey-850);
+    --bg-active:        var(--grey-800);
+
+    --text-primary:     var(--grey-100);
+    --text-secondary:   var(--grey-300);
+    --text-tertiary:    #9A9A9A;
+    --text-placeholder: #9A9A9A;
+    --text-disabled:    var(--grey-500);
+    --text-inverse:     var(--black);
+    --text-accent:      var(--hue-violet);
+    --text-link:        var(--hue-violet);
+
+    --border-subtle:  var(--grey-800);
+    --border-default: var(--grey-500);
+    --border-strong:  var(--grey-300);
+    --border-accent:  var(--hue-violet);
+
+    --action-primary-bg:       var(--grey-100);
+    --action-primary-bg-hover: var(--white);
+    --action-primary-fg:       var(--black);
+    --action-accent-bg:        var(--hue-violet);
+    --action-accent-bg-hover:  #9BA0FF;
+    --action-accent-fg:        var(--black);
+
+    --focus-ring:        var(--hue-violet);
+    --focus-ring-offset: var(--bg-surface);
+
+    --danger-fg:     var(--ink-coral-d);
+    --danger-border: var(--ink-coral-d);
+    --danger-bg:     #2E1416;
+    --warning-fg:    var(--ink-yellow-d);
+    --warning-border:var(--ink-yellow-d);
+    --warning-bg:    #2A2110;
+    --success-fg:    var(--ink-green-d);
+    --success-border:var(--ink-green-d);
+    --success-bg:    #10251F;
+    --info-fg:       var(--hue-violet);
+    --info-border:   var(--hue-violet);
+    --info-bg:       #1A1B33;
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.5);
+    --shadow-md: 0 6px 20px rgba(0,0,0,0.55);
+    --shadow-lg: 0 20px 48px rgba(0,0,0,0.6);
+    --shadow-overlay: 0 24px 64px rgba(0,0,0,0.7);
+  }
+}
+/* dark, when explicitly chosen */
+:root[data-theme="dark"] {
+  --bg-canvas:        var(--black);
+  --bg-surface:       var(--grey-900);
+  --bg-raised:        var(--grey-850);
+  --bg-sunken:        var(--black);
+  --bg-inverse:       var(--white);
+  --bg-accent-subtle: #1A1B33;
+  --bg-hover:         var(--grey-850);
+  --bg-active:        var(--grey-800);
+
+  --text-primary:     var(--grey-100);
+  --text-secondary:   var(--grey-300);
+  --text-tertiary:    #9A9A9A;
+  --text-placeholder: #9A9A9A;
+  --text-disabled:    var(--grey-500);
+  --text-inverse:     var(--black);
+  --text-accent:      var(--hue-violet);
+  --text-link:        var(--hue-violet);
+
+  --border-subtle:  var(--grey-800);
+  --border-default: var(--grey-500);
+  --border-strong:  var(--grey-300);
+  --border-accent:  var(--hue-violet);
+
+  --action-primary-bg:       var(--grey-100);
+  --action-primary-bg-hover: var(--white);
+  --action-primary-fg:       var(--black);
+  --action-accent-bg:        var(--hue-violet);
+  --action-accent-bg-hover:  #9BA0FF;
+  --action-accent-fg:        var(--black);
+
+  --focus-ring:        var(--hue-violet);
+  --focus-ring-offset: var(--bg-surface);
+
+  --danger-fg:     var(--ink-coral-d);
+  --danger-border: var(--ink-coral-d);
+  --danger-bg:     #2E1416;
+  --warning-fg:    var(--ink-yellow-d);
+  --warning-border:var(--ink-yellow-d);
+  --warning-bg:    #2A2110;
+  --success-fg:    var(--ink-green-d);
+  --success-border:var(--ink-green-d);
+  --success-bg:    #10251F;
+  --info-fg:       var(--hue-violet);
+  --info-border:   var(--hue-violet);
+  --info-bg:       #1A1B33;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.5);
+  --shadow-md: 0 6px 20px rgba(0,0,0,0.55);
+  --shadow-lg: 0 20px 48px rgba(0,0,0,0.6);
+  --shadow-overlay: 0 24px 64px rgba(0,0,0,0.7);
+}
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   TYPE SCALE, v1.0. Fluid where it needs to be, fixed where it doesn't.
+   ========================================================================== */
+.t-h0 { font-size: clamp(40px, 7.5vw, 70px); line-height: 1.06; font-weight: 400; letter-spacing: -0.03em; }
+.t-h1 { font-size: clamp(30px, 4.6vw, 40px); line-height: 1.15; font-weight: 400; letter-spacing: -0.02em; }
+.t-h2 { font-size: clamp(24px, 3.2vw, 30px); line-height: 1.18; font-weight: 400; letter-spacing: -0.015em; }
+.t-h3 { font-size: clamp(20px, 2.2vw, 24px); line-height: 1.22; font-weight: 500; letter-spacing: -0.01em; }
+.t-h4 { font-size: 16px; line-height: 1.4;  font-weight: 700; }
+.t-body-lg { font-size: 20px; line-height: 1.45; font-weight: 500; }
+.t-body    { font-size: 16px; line-height: 1.55; font-weight: 400; }
+.t-body-em { font-size: 16px; line-height: 1.55; font-weight: 500; }
+.t-body-sm { font-size: 14px; line-height: 1.55; font-weight: 400; }
+.t-body-xs { font-size: 12px; line-height: 1.5;  font-weight: 500; }
+.t-tag-1 { font-family: var(--font-mono); font-size: 12px; line-height: 1.3; font-weight: 500; }
+.t-tag-2 { font-family: var(--font-mono); font-size: 14px; line-height: 1.3; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+.t-serif { font-family: var(--font-serif); font-weight: 400; }
+
+/* ==========================================================================
+   DOC CHROME: everything prefixed .d- is this document, not the system
+   ========================================================================== */
+.d-topbar {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.d-topbar-left { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+.d-wordmark { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+.d-wordmark .dot { color: var(--text-accent); }
+.d-ver {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.d-topbar-right { display: flex; align-items: center; gap: var(--space-2); }
+
+.d-shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: var(--space-8); max-width: var(--container); margin: 0 auto; padding: 0 var(--space-5); }
+
+.d-toc { position: sticky; top: 68px; align-self: start; max-height: calc(100vh - 88px); overflow-y: auto; padding: var(--space-7) 0 var(--space-8); }
+.d-toc-h { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-tertiary); margin: 0 0 var(--space-3); }
+.d-toc a {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 6px 10px 6px 8px; margin-left: -8px;
+  color: var(--text-secondary); text-decoration: none;
+  font-size: 13.5px; border-radius: var(--r-xs);
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+.d-toc a:hover { background: var(--bg-hover); color: var(--text-primary); }
+.d-toc a.is-active { color: var(--text-accent); background: var(--bg-accent-subtle); font-weight: 500; }
+.d-toc a .n { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); flex: none; width: 16px; }
+.d-toc a.is-active .n { color: var(--text-accent); }
+.d-toc-group { margin-top: var(--space-4); }
+
+.d-main { padding: var(--space-7) 0 var(--space-11); min-width: 0; }
+
+/* section scaffolding */
+.d-sec { padding-top: var(--space-10); scroll-margin-top: 76px; }
+.d-sec:first-child { padding-top: var(--space-6); }
+.d-sec-head { border-bottom: 2px solid var(--border-strong); padding-bottom: var(--space-4); margin-bottom: var(--space-6); }
+.d-eyebrow { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-accent); display: block; margin-bottom: var(--space-2); }
+.d-sec h2 { margin: 0 0 var(--space-3); font-size: clamp(26px, 3.4vw, 34px); line-height: 1.12; letter-spacing: -0.025em; font-weight: 700; text-wrap: balance; }
+.d-lede { margin: 0; color: var(--text-secondary); max-width: var(--measure); font-size: 17px; line-height: 1.6; }
+.d-sec h3 { margin: var(--space-8) 0 var(--space-3); font-size: 21px; font-weight: 700; letter-spacing: -0.015em; }
+.d-sec h4 { margin: var(--space-6) 0 var(--space-2); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary); }
+.d-sec p { max-width: var(--measure); color: var(--text-secondary); }
+.d-sec p.tight { margin-top: 0; }
+
+/* inline bits */
+code, .tok {
+  font-family: var(--font-mono); font-size: 0.86em;
+  background: var(--bg-accent-subtle); color: var(--text-accent);
+  padding: 1px 5px; border-radius: var(--r-xs); white-space: nowrap;
+}
+.tok.neutral { background: var(--bg-sunken); color: var(--text-secondary); }
+strong { font-weight: 600; color: var(--text-primary); }
+
+/* tables */
+.d-tw { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--r-md); background: var(--bg-surface); }
+table.d-t { border-collapse: collapse; width: 100%; min-width: 540px; }
+table.d-t th {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.13em; text-transform: uppercase; color: var(--text-tertiary);
+  text-align: left; padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle); white-space: nowrap;
+  background: var(--bg-sunken);
+}
+table.d-t td {
+  padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle);
+  vertical-align: top; font-size: 14px; line-height: 1.5; color: var(--text-secondary);
+}
+table.d-t tbody tr:last-child td { border-bottom: none; }
+table.d-t td:first-child { color: var(--text-primary); }
+table.d-t td.num, table.d-t th.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.d-t .mono { font-family: var(--font-mono); font-size: 13px; }
+
+/* status flags */
+.d-flag {
+  display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.09em; text-transform: uppercase; padding: 3px 8px;
+  border-radius: var(--r-xs); white-space: nowrap;
+}
+.d-flag.pass { background: var(--success-bg); color: var(--success-fg); }
+.d-flag.fail { background: var(--danger-bg);  color: var(--danger-fg); }
+.d-flag.warn { background: var(--warning-bg); color: var(--warning-fg); }
+.d-flag.new  { background: var(--info-bg);    color: var(--info-fg); }
+
+/* the live specimen stage */
+.d-stage {
+  border: 1px solid var(--border-subtle); border-radius: var(--r-md);
+  background: var(--bg-surface); margin: var(--space-4) 0;
+  overflow: hidden;
+}
+.d-stage-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: 10px var(--space-4); border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.13em;
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+.d-stage-body { padding: var(--space-6) var(--space-5); display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; }
+.d-stage-body.col { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+.d-stage-body.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); align-items: start; }
+.d-stage-body.tight { padding: var(--space-4); }
+
+/* do / don't */
+.d-dd { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: var(--space-4) 0; }
+.d-dd > div { border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: var(--space-4); background: var(--bg-surface); }
+.d-dd .lbl { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px; display: block; }
+.d-dd .do  .lbl { color: var(--success-fg); }
+.d-dd .no  .lbl { color: var(--danger-fg); }
+.d-dd p { margin: 0; font-size: 14px; color: var(--text-secondary); max-width: none; }
+
+/* callout */
+.d-note {
+  border-left: 3px solid var(--border-accent); background: var(--bg-accent-subtle);
+  padding: var(--space-4) var(--space-5); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  margin: var(--space-5) 0; max-width: var(--measure);
+}
+.d-note p { margin: 0; color: var(--text-secondary); font-size: 15px; }
+.d-note p + p { margin-top: var(--space-2); }
+.d-note .h { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--text-accent); margin-bottom: 6px; }
+.d-note.warn { border-left-color: var(--warning-border); background: var(--warning-bg); }
+.d-note.warn .h { color: var(--warning-fg); }
+
+/* code block */
+pre.d-code {
+  background: var(--bg-inverse); color: var(--grey-100);
+  border-radius: var(--r-md); padding: var(--space-5);
+  overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px;
+  line-height: 1.7; margin: var(--space-4) 0; tab-size: 2;
+}
+pre.d-code .c { color: #8C8C8C; }
+pre.d-code .v { color: var(--hue-violet); }
+pre.d-code .k { color: var(--hue-teal); }
+:root[data-theme="dark"] pre.d-code, :root:not([data-theme="light"]) pre.d-code {
+  border: 1px solid var(--border-subtle);
+}
+
+/* checklist */
+ul.d-check { list-style: none; padding: 0; margin: var(--space-4) 0; display: flex; flex-direction: column; gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: var(--r-md); overflow: hidden; }
+/* block flow, not grid: the marker is positioned, so <b> and the text that
+   follows it stay in one inline run instead of becoming separate grid items */
+ul.d-check li { background: var(--bg-surface); padding: var(--space-3) var(--space-4) var(--space-3) 42px; font-size: 14.5px; line-height: 1.55; color: var(--text-secondary); display: block; position: relative; }
+ul.d-check li::before { content: "\2610"; position: absolute; left: var(--space-4); top: var(--space-3); color: var(--text-tertiary); font-size: 15px; line-height: 1.55; }
+ul.d-check li b { color: var(--text-primary); font-weight: 600; }
+
+/* generic prose list */
+.d-sec ul.d-list { max-width: var(--measure); color: var(--text-secondary); padding-left: 1.1em; }
+.d-sec ul.d-list li { margin-bottom: var(--space-2); }
+
+@media (max-width: 1040px) {
+  .d-shell { grid-template-columns: 1fr; gap: 0; }
+  .d-toc { display: none; }
+}
+@media (max-width: 620px) {
+  .d-shell { padding: 0 var(--space-4); }
+  .d-dd { grid-template-columns: 1fr; }
+  .d-stage-body { padding: var(--space-4); }
+}
+
+/* ==========================================================================
+   TIER 3: COMPONENTS. Everything prefixed .hu- ships to production.
+   ========================================================================== */
+
+/* ---- Hit area expansion ---------------------------------------------
+   Keeps a control visually small while giving it a 44px target. Use on any
+   close, remove or icon-only control that cannot be 44px on screen. -------- */
+.hu-hit { position: relative; }
+.hu-hit::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: var(--tap-min); height: var(--tap-min);
+  transform: translate(-50%, -50%);
+}
+
+/* ---- Button ---------------------------------------------------------- */
+.hu-btn {
+  font-family: var(--font-sans); font-size: 15px; font-weight: 500;
+  line-height: 1; letter-spacing: 0;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-6);
+  border-radius: var(--r-pill); border: 1px solid transparent;
+  cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  position: relative; white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+.hu-btn--primary { background: var(--action-primary-bg); color: var(--action-primary-fg); }
+.hu-btn--primary:hover:not(:disabled) { background: var(--action-primary-bg-hover); }
+.hu-btn--accent  { background: var(--action-accent-bg); color: var(--action-accent-fg); }
+.hu-btn--accent:hover:not(:disabled) { background: var(--action-accent-bg-hover); }
+.hu-btn--outline { background: transparent; color: var(--text-primary); border-color: var(--border-default); }
+.hu-btn--outline:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-hover); }
+.hu-btn--ghost   { background: transparent; color: var(--text-primary); }
+.hu-btn--ghost:hover:not(:disabled) { background: var(--bg-hover); }
+.hu-btn--danger  { background: var(--ink-coral); color: var(--white); }
+.hu-btn--danger:hover:not(:disabled) { background: #B30005; }
+.hu-btn:active:not(:disabled) { transform: translateY(0.5px); }
+.hu-btn--sm { font-size: 14px; padding: 0 var(--space-5); min-height: var(--control-h-sm); }
+.hu-btn--lg { font-size: 17px; padding: 0 var(--space-7); min-height: var(--control-h-lg); }
+.hu-btn--full { width: 100%; }
+.hu-btn:disabled, .hu-btn[aria-disabled="true"] {
+  opacity: 0.45; cursor: not-allowed; pointer-events: none;
+}
+.hu-btn[aria-busy="true"] { pointer-events: none; }
+.hu-btn[aria-busy="true"] .hu-btn__label { visibility: hidden; }
+.hu-btn[aria-busy="true"] .hu-spinner { position: absolute; inset: 0; margin: auto; }
+.hu-btn .arrow { font-family: var(--font-mono); font-size: 0.95em; }
+
+/* ---- Link ------------------------------------------------------------ */
+.hu-link { color: var(--text-link); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.hu-link:hover { text-decoration-thickness: 2px; }
+.hu-link-cta {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-link); text-decoration: none;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: var(--tap-min); padding: 0 2px;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.hu-link-cta:hover { border-bottom-color: currentColor; }
+
+/* ---- Field / Input --------------------------------------------------- */
+.hu-field { display: flex; flex-direction: column; gap: var(--space-2); }
+.hu-label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-secondary);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.hu-label .req { color: var(--danger-fg); }
+.hu-input, .hu-textarea, .hu-select {
+  font-family: var(--font-sans); font-size: 15px; line-height: 1.4;
+  min-height: var(--control-h-md);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default); border-radius: var(--r-sm);
+  background: var(--bg-surface); color: var(--text-primary); width: 100%;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.hu-textarea { min-height: 108px; resize: vertical; }
+.hu-input::placeholder, .hu-textarea::placeholder { color: var(--text-placeholder); }
+.hu-input:hover:not(:disabled), .hu-textarea:hover:not(:disabled), .hu-select:hover:not(:disabled) { border-color: var(--border-strong); }
+.hu-input[aria-invalid="true"], .hu-textarea[aria-invalid="true"] { border-color: var(--danger-border); border-width: 2px; }
+.hu-input:disabled, .hu-textarea:disabled, .hu-select:disabled {
+  background: var(--bg-sunken); color: var(--text-disabled); cursor: not-allowed; border-color: var(--border-subtle);
+}
+.hu-input[readonly] { background: var(--bg-sunken); border-color: var(--border-subtle); }
+.hu-select { appearance: none; padding-right: var(--space-8); background-image: none; }
+.hu-select-wrap { position: relative; display: block; }
+.hu-select-wrap::after {
+  content: ""; position: absolute; right: 18px; top: 50%; width: 8px; height: 8px;
+  border-right: 1.5px solid var(--text-secondary); border-bottom: 1.5px solid var(--text-secondary);
+  transform: translateY(-70%) rotate(45deg); pointer-events: none;
+}
+.hu-hint { font-size: 13px; color: var(--text-tertiary); display: flex; gap: 6px; align-items: flex-start; }
+.hu-hint--error { color: var(--danger-fg); font-weight: 500; }
+.hu-hint__icon { flex: none; line-height: 1.45; }
+.hu-inputgroup { position: relative; display: flex; align-items: center; }
+.hu-inputgroup .hu-affix {
+  position: absolute; left: var(--space-4); font-family: var(--font-mono);
+  font-size: 14px; color: var(--text-tertiary); pointer-events: none;
+}
+.hu-inputgroup .hu-input { padding-left: 40px; }
+
+/* ---- Checkbox / Radio / Switch --------------------------------------- */
+.hu-choice {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  min-height: var(--tap-min); padding: 10px 0; cursor: pointer; max-width: 100%;
+}
+.hu-choice input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--action-accent-bg); cursor: pointer; }
+.hu-choice input:disabled { cursor: not-allowed; }
+.hu-choice__text { font-size: 15px; color: var(--text-primary); line-height: 1.45; }
+.hu-choice__text small { display: block; font-size: 13px; color: var(--text-tertiary); margin-top: 2px; }
+.hu-choice input:disabled + .hu-choice__text { color: var(--text-disabled); }
+
+.hu-switch { display: inline-flex; align-items: center; gap: var(--space-3); min-height: var(--tap-min); cursor: pointer; }
+.hu-switch__track {
+  flex: none; width: 44px; height: 26px; border-radius: var(--r-pill);
+  background: var(--border-default); position: relative;
+  transition: background var(--motion-base) var(--ease-standard);
+}
+.hu-switch__track::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--white); box-shadow: var(--shadow-sm);
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+.hu-switch [role="switch"][aria-checked="true"] + .hu-switch__track,
+.hu-switch input:checked + .hu-switch__track { background: var(--action-accent-bg); }
+.hu-switch input:checked + .hu-switch__track::after { transform: translateX(18px); }
+.hu-switch input { position: absolute; opacity: 0; width: 44px; height: 26px; margin: 0; cursor: pointer; }
+.hu-switch__wrap { position: relative; display: inline-flex; }
+.hu-switch input:focus-visible + .hu-switch__track { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* ---- Tag / Badge / Avatar / Divider ----------------------------------- */
+.hu-tag {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  padding: 5px 10px; border-radius: var(--r-sm);
+  background: var(--bg-accent-subtle); color: var(--text-accent);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.hu-tag--neutral { background: var(--bg-sunken); color: var(--text-secondary); }
+.hu-tag--upper { text-transform: uppercase; letter-spacing: 0.05em; }
+.hu-tag__remove {
+  position: relative;
+  background: none; border: none; cursor: pointer; color: inherit;
+  width: 24px; height: 24px; margin: -6px -6px -6px 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs);
+  font-size: 14px; line-height: 1;
+}
+.hu-tag__remove:hover { background: rgba(128,128,128,0.2); }
+.hu-tag__remove::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: var(--tap-min); height: var(--tap-min); transform: translate(-50%,-50%);
+}
+
+.hu-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 5px 12px; border-radius: var(--r-pill);
+}
+.hu-badge__dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.hu-badge--success { background: var(--success-bg); color: var(--success-fg); }
+.hu-badge--success .hu-badge__dot { background: var(--success-border); }
+.hu-badge--warning { background: var(--warning-bg); color: var(--warning-fg); }
+.hu-badge--warning .hu-badge__dot { background: var(--warning-border); }
+.hu-badge--danger  { background: var(--danger-bg);  color: var(--danger-fg); }
+.hu-badge--danger .hu-badge__dot { background: var(--danger-border); }
+.hu-badge--info    { background: var(--info-bg);    color: var(--info-fg); }
+.hu-badge--info .hu-badge__dot { background: var(--info-border); }
+.hu-badge--neutral { background: var(--bg-sunken); color: var(--text-secondary); }
+.hu-badge--neutral .hu-badge__dot { background: var(--text-tertiary); }
+
+.hu-avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+  background: var(--bg-accent-subtle); color: var(--text-accent);
+  overflow: hidden; object-fit: cover;
+}
+.hu-avatar--sm { width: 28px; height: 28px; font-size: 11px; }
+.hu-avatar--lg { width: 56px; height: 56px; font-size: 18px; }
+.hu-avatar--square { border-radius: var(--r-sm); }
+.hu-avatar-stack { display: flex; }
+.hu-avatar-stack .hu-avatar { margin-left: -10px; box-shadow: 0 0 0 2px var(--bg-surface); }
+.hu-avatar-stack .hu-avatar:first-child { margin-left: 0; }
+
+.hu-divider { border: none; border-top: 1px solid var(--border-subtle); margin: var(--space-5) 0; }
+
+/* ---- Card ------------------------------------------------------------ */
+.hu-card {
+  border: 1px solid var(--border-subtle); border-radius: var(--r-md);
+  background: var(--bg-surface); overflow: hidden; display: flex; flex-direction: column;
+  transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
+}
+.hu-card--interactive { cursor: pointer; }
+.hu-card--interactive:hover { border-color: var(--border-default); box-shadow: var(--shadow-md); }
+.hu-card__media { height: 132px; background: linear-gradient(135deg, var(--hue-violet), var(--hue-blue)); }
+.hu-card__body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); }
+.hu-card__title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0; color: var(--text-primary); }
+.hu-card__text { font-size: 14px; color: var(--text-tertiary); margin: 0; line-height: 1.5; }
+.hu-card__foot { padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border-subtle); background: var(--bg-sunken); }
+
+/* ---- Alert ----------------------------------------------------------- */
+.hu-alert {
+  display: grid; grid-template-columns: 20px 1fr auto; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--r-md);
+  border: 1px solid; align-items: start; width: 100%;
+}
+.hu-alert__icon { font-size: 15px; line-height: 1.4; flex: none; }
+.hu-alert__title { font-weight: 600; font-size: 15px; margin: 0 0 2px; color: var(--text-primary); }
+.hu-alert__text { font-size: 14px; margin: 0; color: var(--text-secondary); line-height: 1.5; }
+.hu-alert__close {
+  background: none; border: none; cursor: pointer; color: var(--text-tertiary);
+  width: 32px; height: 32px; margin: -6px -6px 0 0; border-radius: var(--r-xs);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1;
+}
+.hu-alert__close:hover { background: rgba(128,128,128,0.15); color: var(--text-primary); }
+.hu-alert__close { position: relative; }
+.hu-alert__close::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: var(--tap-min); height: var(--tap-min); transform: translate(-50%,-50%);
+}
+.hu-alert--info    { background: var(--info-bg);    border-color: var(--info-border); }
+.hu-alert--info .hu-alert__icon { color: var(--info-fg); }
+.hu-alert--success { background: var(--success-bg); border-color: var(--success-border); }
+.hu-alert--success .hu-alert__icon { color: var(--success-fg); }
+.hu-alert--warning { background: var(--warning-bg); border-color: var(--warning-border); }
+.hu-alert--warning .hu-alert__icon { color: var(--warning-fg); }
+.hu-alert--danger  { background: var(--danger-bg);  border-color: var(--danger-border); }
+.hu-alert--danger .hu-alert__icon { color: var(--danger-fg); }
+
+/* ---- Toast ----------------------------------------------------------- */
+.hu-toast {
+  display: grid; grid-template-columns: 18px 1fr auto; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--r-md);
+  background: var(--bg-inverse); color: var(--white);
+  box-shadow: var(--shadow-lg); align-items: start; max-width: 400px;
+  border: 1px solid transparent;
+}
+.hu-toast__title { font-weight: 600; font-size: 14px; margin: 0; }
+.hu-toast__text  { font-size: 13px; margin: 2px 0 0; color: var(--grey-300); line-height: 1.45; }
+.hu-toast__icon  { font-size: 14px; line-height: 1.4; }
+.hu-toast--success .hu-toast__icon { color: var(--ink-green-d); }
+.hu-toast--danger  .hu-toast__icon { color: var(--ink-coral-d); }
+.hu-toast__close { background: none; border: none; color: var(--grey-300); cursor: pointer; width: 28px; height: 28px; margin: -4px -4px 0 0; border-radius: var(--r-xs); font-size: 15px; line-height: 1; }
+.hu-toast__close:hover { color: var(--white); background: rgba(255,255,255,0.12); }
+.hu-toast__close { position: relative; }
+.hu-toast__close::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: var(--tap-min); height: var(--tap-min); transform: translate(-50%,-50%);
+}
+:root[data-theme="dark"] .hu-toast, :root:not([data-theme="light"]) .hu-toast { border-color: var(--border-subtle); }
+
+/* ---- Spinner / Progress / Skeleton ----------------------------------- */
+.hu-spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: hu-spin 700ms linear infinite; display: inline-block; flex: none;
+}
+.hu-spinner--sm { width: 14px; height: 14px; border-width: 1.5px; }
+.hu-spinner--lg { width: 28px; height: 28px; border-width: 2.5px; }
+@keyframes hu-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .hu-spinner { animation: none; border-right-color: currentColor; opacity: 0.5; }
+}
+
+.hu-progress { width: 100%; }
+.hu-progress__track { height: 8px; border-radius: var(--r-pill); background: var(--bg-active); overflow: hidden; }
+.hu-progress__fill { height: 100%; border-radius: var(--r-pill); background: var(--action-accent-bg); transition: width var(--motion-slow) var(--ease-standard); }
+.hu-progress__meta { display: flex; justify-content: space-between; gap: var(--space-3); margin-bottom: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.hu-progress--indeterminate .hu-progress__fill { width: 35% !important; animation: hu-slide 1.4s var(--ease-standard) infinite; }
+@keyframes hu-slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
+.hu-skel { background: var(--bg-active); border-radius: var(--r-xs); position: relative; overflow: hidden; }
+.hu-skel--text { height: 12px; }
+.hu-skel--circle { border-radius: 50%; }
+.hu-skel[data-animate="true"]::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(140,140,140,0.22), transparent);
+  animation: hu-shimmer 1.4s infinite;
+}
+@keyframes hu-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .hu-skel[data-animate="true"]::after { animation: none; } }
+
+/* ---- Empty state ------------------------------------------------------ */
+.hu-empty {
+  text-align: center; padding: var(--space-9) var(--space-5);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+  border: 1px dashed var(--border-default); border-radius: var(--r-md);
+}
+.hu-empty__art { width: 52px; height: 52px; border-radius: var(--r-md); background: var(--bg-accent-subtle); display: grid; place-items: center; font-size: 22px; }
+.hu-empty__title { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.01em; color: var(--text-primary); }
+.hu-empty__text { font-size: 14px; color: var(--text-tertiary); margin: 0; max-width: 42ch; }
+.hu-empty__actions { display: flex; gap: var(--space-3); flex-wrap: wrap; justify-content: center; margin-top: var(--space-2); }
+
+/* ---- Tooltip / Popover / Menu ----------------------------------------- */
+.hu-tip-wrap { position: relative; display: inline-flex; }
+.hu-tip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: var(--bg-inverse); color: var(--text-inverse);
+  font-size: 13px; padding: 8px 10px; border-radius: var(--r-sm);
+  min-height: 24px; white-space: nowrap; z-index: var(--z-tooltip);
+  box-shadow: var(--shadow-md); pointer-events: none;
+}
+.hu-tip::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border: 5px solid transparent; border-top-color: var(--bg-inverse); }
+
+.hu-menu {
+  border: 1px solid var(--border-subtle); border-radius: var(--r-md);
+  background: var(--bg-raised); box-shadow: var(--shadow-lg);
+  padding: var(--space-2); min-width: 216px; display: flex; flex-direction: column; gap: 1px;
+}
+.hu-menu__item {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%;
+  min-height: var(--tap-min); padding: 0 var(--space-3);
+  background: none; border: none; cursor: pointer; border-radius: var(--r-sm);
+  font-family: var(--font-sans); font-size: 14.5px; color: var(--text-primary); text-align: left;
+}
+.hu-menu__item:hover { background: var(--bg-hover); }
+.hu-menu__item--danger { color: var(--danger-fg); }
+.hu-menu__sep { height: 1px; background: var(--border-subtle); margin: var(--space-2) 0; }
+.hu-menu__kbd { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+
+/* ---- Modal ------------------------------------------------------------ */
+.hu-modal-demo { position: relative; background: var(--bg-sunken); border-radius: var(--r-md); padding: var(--space-6) var(--space-4); display: grid; place-items: center; min-height: 260px; }
+.hu-modal {
+  background: var(--bg-raised); border-radius: var(--r-lg); box-shadow: var(--shadow-overlay);
+  width: 100%; max-width: 440px; border: 1px solid var(--border-subtle); overflow: hidden;
+}
+.hu-modal__head { padding: var(--space-5) var(--space-5) var(--space-3); display: flex; justify-content: space-between; gap: var(--space-3); align-items: start; }
+.hu-modal__title { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -0.015em; color: var(--text-primary); }
+.hu-modal__body { padding: 0 var(--space-5) var(--space-5); font-size: 14.5px; color: var(--text-secondary); }
+.hu-modal__foot { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: var(--space-3); background: var(--bg-sunken); flex-wrap: wrap; }
+
+/* ---- Table ------------------------------------------------------------ */
+.hu-table-wrap { border: 1px solid var(--border-subtle); border-radius: var(--r-md); overflow: auto; background: var(--bg-surface); }
+table.hu-table { width: 100%; border-collapse: collapse; min-width: 520px; }
+table.hu-table th {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-tertiary); text-align: left;
+  padding: var(--space-3) var(--space-4); background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border-subtle); white-space: nowrap; position: sticky; top: 0;
+}
+table.hu-table td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); font-size: 14px; color: var(--text-secondary); }
+table.hu-table tbody tr:last-child td { border-bottom: none; }
+table.hu-table tbody tr:hover td { background: var(--bg-hover); }
+table.hu-table td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+table.hu-table td:first-child { color: var(--text-primary); font-weight: 500; }
+
+/* ---- Breadcrumbs / Pagination / Stepper / Tabs ------------------------- */
+.hu-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 13.5px; }
+.hu-crumbs a { color: var(--text-tertiary); text-decoration: none; min-height: var(--tap-min); display: inline-flex; align-items: center; padding: 0 2px; }
+.hu-crumbs a:hover { color: var(--text-primary); text-decoration: underline; }
+.hu-crumbs [aria-current="page"] { color: var(--text-primary); font-weight: 500; }
+.hu-crumbs .sep { color: var(--text-tertiary); font-family: var(--font-mono); }
+
+.hu-pager { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+.hu-pager button {
+  min-width: var(--tap-min); min-height: var(--tap-min); padding: 0 var(--space-3);
+  border: 1px solid transparent; background: none; border-radius: var(--r-sm); cursor: pointer;
+  font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.hu-pager button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.hu-pager button[aria-current="page"] { background: var(--action-primary-bg); color: var(--action-primary-fg); }
+.hu-pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+.hu-pager .gap { padding: 0 var(--space-2); color: var(--text-tertiary); font-family: var(--font-mono); }
+
+.hu-stepper { display: flex; gap: 0; flex-wrap: wrap; }
+.hu-step { display: flex; align-items: center; gap: var(--space-3); flex: 1 1 150px; min-width: 0; min-height: var(--tap-min); }
+.hu-step__dot {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-family: var(--font-mono); font-size: 12px;
+  border: 1.5px solid var(--border-default); color: var(--text-tertiary); background: var(--bg-surface);
+}
+.hu-step__label { font-size: 13.5px; color: var(--text-tertiary); min-width: 0; }
+.hu-step__line { flex: 1; height: 1.5px; background: var(--border-subtle); margin: 0 var(--space-3); min-width: 12px; }
+.hu-step[data-state="done"] .hu-step__dot { background: var(--action-accent-bg); border-color: var(--action-accent-bg); color: var(--action-accent-fg); }
+.hu-step[data-state="done"] .hu-step__label { color: var(--text-secondary); }
+.hu-step[data-state="current"] .hu-step__dot { border-color: var(--border-accent); border-width: 2px; color: var(--text-accent); }
+.hu-step[data-state="current"] .hu-step__label { color: var(--text-primary); font-weight: 600; }
+
+.hu-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+.hu-tab {
+  min-height: var(--tap-min); padding: 0 var(--space-4); background: none; border: none;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer;
+  font-family: var(--font-sans); font-size: 14.5px; font-weight: 500; color: var(--text-tertiary);
+  transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+.hu-tab:hover { color: var(--text-primary); }
+.hu-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--border-strong); }
+
+/* ---- Dropzone --------------------------------------------------------- */
+.hu-dropzone {
+  border: 1.5px dashed var(--border-default); border-radius: var(--r-md);
+  padding: var(--space-7) var(--space-5); text-align: center; background: var(--bg-sunken);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2); cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
+}
+.hu-dropzone:hover { border-color: var(--border-accent); background: var(--bg-accent-subtle); }
+.hu-dropzone__title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.hu-dropzone__hint { font-size: 13px; color: var(--text-tertiary); }
+.hu-filerow { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
+.hu-filerow:last-child { border-bottom: none; }
+.hu-filerow__name { font-size: 14px; color: var(--text-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hu-filerow__size { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); }
+
+/* ---- Slider ----------------------------------------------------------- */
+.hu-slider { width: 100%; accent-color: var(--action-accent-bg); height: var(--tap-min); }
+
+/* ==========================================================================
+   PRODUCT PATTERNS: hueman-specific composites
+   ========================================================================== */
+.hu-meter { display: flex; flex-direction: column; gap: var(--space-2); }
+.hu-meter__top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.hu-meter__score { font-family: var(--font-mono); font-size: 30px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.hu-meter__score small { font-size: 15px; color: var(--text-tertiary); }
+.hu-meter__track { height: 10px; border-radius: var(--r-pill); background: var(--bg-active); overflow: hidden; display: flex; }
+.hu-meter__fill { height: 100%; border-radius: var(--r-pill); }
+.hu-meter__scale { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); letter-spacing: 0.06em; text-transform: uppercase; }
+.hu-meter[data-band="on"]    .hu-meter__score { color: var(--success-fg); }
+.hu-meter[data-band="on"]    .hu-meter__fill  { background: var(--success-border); }
+.hu-meter[data-band="drift"] .hu-meter__score { color: var(--warning-fg); }
+.hu-meter[data-band="drift"] .hu-meter__fill  { background: var(--warning-border); }
+.hu-meter[data-band="off"]   .hu-meter__score { color: var(--danger-fg); }
+.hu-meter[data-band="off"]   .hu-meter__fill  { background: var(--danger-border); }
+
+.hu-diff { display: flex; flex-direction: column; gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: var(--r-md); overflow: hidden; }
+.hu-diff__row { background: var(--bg-surface); padding: var(--space-4); display: grid; grid-template-columns: 76px 1fr; gap: var(--space-4); align-items: start; }
+.hu-diff__flag { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 7px; border-radius: var(--r-xs); text-align: center; }
+.hu-diff__row[data-verdict="on"]    .hu-diff__flag { background: var(--success-bg); color: var(--success-fg); }
+.hu-diff__row[data-verdict="drift"] .hu-diff__flag { background: var(--warning-bg); color: var(--warning-fg); }
+.hu-diff__row[data-verdict="off"]   .hu-diff__flag { background: var(--danger-bg);  color: var(--danger-fg); }
+.hu-diff__text { font-size: 14.5px; color: var(--text-primary); line-height: 1.55; margin: 0; }
+.hu-diff__why  { font-size: 13px; color: var(--text-tertiary); margin: 6px 0 0; }
+.hu-diff__why b { color: var(--text-secondary); font-weight: 500; }
+.hu-diff__fix { font-size: 13.5px; color: var(--success-fg); margin: 8px 0 0; padding-left: 10px; border-left: 2px solid var(--success-border); }
+
+.hu-corecard { border: 1px solid var(--border-subtle); border-radius: var(--r-lg); overflow: hidden; background: var(--bg-surface); }
+.hu-corecard__hue { height: 6px; display: flex; }
+.hu-corecard__hue span { flex: 1; }
+.hu-corecard__body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.hu-corecard__id { display: flex; align-items: center; gap: var(--space-3); }
+.hu-corecard__name { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.hu-corecard__sub { font-size: 13px; color: var(--text-tertiary); margin: 2px 0 0; }
+.hu-attrs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hu-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--space-4); }
+.hu-stat__n { font-family: var(--font-mono); font-size: 21px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; line-height: 1.1; }
+.hu-stat__k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); margin-top: 4px; }
+
+.hu-usage { border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: var(--space-4); background: var(--bg-surface); display: flex; flex-direction: column; gap: var(--space-3); }
+.hu-usage__row { display: flex; flex-direction: column; gap: 6px; }
+.hu-usage__label { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 13.5px; }
+.hu-usage__label b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.hu-usage__track { height: 6px; border-radius: var(--r-pill); background: var(--bg-active); overflow: hidden; }
+.hu-usage__fill { height: 100%; background: var(--action-accent-bg); border-radius: var(--r-pill); }
+.hu-usage__fill[data-state="near"] { background: var(--warning-border); }
+.hu-usage__fill[data-state="over"] { background: var(--danger-border); }
+
+.hu-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-4); }
+.hu-plan { border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg-surface); position: relative; }
+.hu-plan[data-recommended="true"] { border-color: var(--border-strong); border-width: 2px; }
+.hu-plan__flag { position: absolute; top: -10px; left: var(--space-5); background: var(--action-primary-bg); color: var(--action-primary-fg); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 9px; border-radius: var(--r-xs); }
+.hu-plan__name { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+.hu-plan__price { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.hu-plan__price small { font-size: 14px; font-weight: 400; color: var(--text-tertiary); letter-spacing: 0; }
+.hu-plan ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-2); font-size: 13.5px; color: var(--text-secondary); }
+.hu-plan ul li { display: grid; grid-template-columns: 16px 1fr; gap: 8px; }
+.hu-plan ul li::before { content: "→"; font-family: var(--font-mono); color: var(--text-tertiary); }
+
+.hu-appshell { border: 1px solid var(--border-subtle); border-radius: var(--r-md); overflow: hidden; display: grid; grid-template-columns: 200px 1fr; min-height: 300px; background: var(--bg-surface); }
+.hu-appshell__side { border-right: 1px solid var(--border-subtle); background: var(--bg-sunken); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+.hu-appshell__brand { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; padding: 0 var(--space-3) var(--space-4); }
+.hu-appshell__brand .dot { color: var(--text-accent); }
+.hu-navitem { display: flex; align-items: center; gap: var(--space-3); min-height: var(--tap-min); padding: 0 var(--space-3); border-radius: var(--r-sm); font-size: 14px; color: var(--text-secondary); text-decoration: none; }
+.hu-navitem:hover { background: var(--bg-hover); color: var(--text-primary); }
+.hu-navitem[aria-current="page"] { background: var(--bg-accent-subtle); color: var(--text-accent); font-weight: 500; }
+.hu-navitem .ico { width: 18px; text-align: center; flex: none; opacity: 0.75; }
+.hu-appshell__main { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.hu-appshell__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+
+.hu-trainstate { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-4); }
+.hu-trainstate > div { border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg-surface); }
+.hu-trainstate__k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-tertiary); }
+.hu-trainstate__t { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.hu-trainstate__d { font-size: 13px; color: var(--text-tertiary); margin: 0; line-height: 1.5; }
+
+@media (max-width: 620px) {
+  .hu-appshell { grid-template-columns: 1fr; }
+  .hu-appshell__side { border-right: none; border-bottom: 1px solid var(--border-subtle); }
+}
+</style>
+</head>
+<body>
+<div class="d-topbar">
+  <div class="d-topbar-left">
+    <span class="d-wordmark">hueman<span class="dot">.</span>studio</span>
+    <span class="d-ver">Design System v1.0 &middot; handoff</span>
+  </div>
+  <div class="d-topbar-right">
+    <button class="hu-btn hu-btn--outline hu-btn--sm" id="themeBtn" aria-pressed="false">
+      <span aria-hidden="true">◐</span> <span id="themeLabel">Dark</span>
+    </button>
+  </div>
+</div>
+
+<div class="d-shell">
+
+  <nav class="d-toc" aria-label="Table of contents">
+    <p class="d-toc-h">Contents</p>
+    <a href="#s00"><span class="n">00</span> Product context</a>
+    <a href="#s01"><span class="n">01</span> Using this document</a>
+    <a href="#s02"><span class="n">02</span> Principles</a>
+    <div class="d-toc-group">
+      <p class="d-toc-h">Foundations</p>
+      <a href="#s03"><span class="n">03</span> Typography</a>
+      <a href="#s04"><span class="n">04</span> Colour</a>
+      <a href="#s05"><span class="n">05</span> Space &amp; layout</a>
+      <a href="#s06"><span class="n">06</span> Motion &amp; elevation</a>
+      <a href="#s07"><span class="n">07</span> Icons</a>
+      <a href="#s08"><span class="n">08</span> Interaction states</a>
+    </div>
+    <div class="d-toc-group">
+      <p class="d-toc-h">Components</p>
+      <a href="#s09"><span class="n">09</span> Actions</a>
+      <a href="#s10"><span class="n">10</span> Forms</a>
+      <a href="#s11"><span class="n">11</span> Data display</a>
+      <a href="#s12"><span class="n">12</span> Feedback</a>
+      <a href="#s13"><span class="n">13</span> Overlays</a>
+      <a href="#s14"><span class="n">14</span> Navigation</a>
+    </div>
+    <div class="d-toc-group">
+      <p class="d-toc-h">Product</p>
+      <a href="#s15"><span class="n">15</span> hueman patterns</a>
+      <a href="#s16"><span class="n">16</span> UX copy</a>
+    </div>
+    <div class="d-toc-group">
+      <p class="d-toc-h">Shipping</p>
+      <a href="#s17"><span class="n">17</span> Acceptance criteria</a>
+      <a href="#s18"><span class="n">18</span> Handoff &amp; changelog</a>
+    </div>
+  </nav>
+
+  <main class="d-main">
+
+  <!-- ============================================================ 00 -->
+  <section class="d-sec" id="s00">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">00 &middot; Product context</span>
+      <h2>What we are building, and what that demands of the interface</h2>
+      <p class="d-lede">hueman.studio is a trainable voice and visual core for personal brands. It learns how someone sounds and how they look, then helps them create, check and ship content that stays on-brand. <em>hue</em> is their distinct colour and positioning. <em>human</em> is the promise that the output sounds like them, not like AI slop.</p>
+    </div>
+
+    <h3>Who is paying</h3>
+    <p>The payable middle of the creator and personal-brand market: coaches, consultants, B2B founders and solopreneurs. People who take their brand seriously enough to spend 29 to 99 dollars a month, but cannot justify a 1,000 to 3,000 dollar a month agency.</p>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>What is true of the user</th><th>What the interface has to do about it</th></tr></thead>
+        <tbody>
+          <tr><td>They are the brand. The output goes out under their own name.</td><td>Never ship generated text without showing how confident the system is and what it based that on. Trust is the product; a confident wrong answer costs a customer.</td></tr>
+          <tr><td>They are not designers or engineers. No one is trained on this tool.</td><td>Conventional patterns everywhere. This is not the place for an invented interaction. Novelty belongs in the visual treatment, never in how a control behaves.</td></tr>
+          <tr><td>They are paying 29 to 99 a month out of their own pocket, monthly.</td><td>The product is re-evaluated every thirty days. Perceived quality is retention. Loading states, empty states and error copy are not polish here, they are the churn surface.</td></tr>
+          <tr><td>They write at night, on a phone, between calls.</td><td>Dark mode ships in v1. Every control clears 44px. The composer works at 360px wide.</td></tr>
+          <tr><td>Their competitor is a blank page and a generic AI chat window.</td><td>The interface has to look like it belongs to <em>them</em>. The spectrum is how a customer's own hue enters the product surface, which is why it is a first-class token tier and not decoration.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Validated pains</h3>
+    <p>Four recurring complaints from the team's own market research across public creator and founder forums. Treat this as directional signal about what people say out loud, not as quantified research: none of it is a controlled study, and the counts below are impressions of frequency rather than measurements. It earns its place here because two of the four change what gets built.</p>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Pain</th><th>Signal</th><th>What it changes in the build</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Consistency</strong><br><span class="t-body-sm" style="color:var(--text-tertiary)">"What do I even post?"</span></td>
+            <td>The broadest of the four. The phrase "struggle to post consistently" recurs across a dozen unrelated forums.</td>
+            <td><strong>Create must never open on a blank composer.</strong> The blank page is the pain, so handing the user a cursor and a placeholder hands the pain back. The empty state in section 12 now proposes topics drawn from their own core instead of asking for one.</td>
+          </tr>
+          <tr>
+            <td><strong>2. "It sounds like AI"</strong><br><span class="t-body-sm" style="color:var(--text-tertiary)">Not like me</span></td>
+            <td>The sharpest emotional wedge. An entire anxiety culture around it: people scraping tens of thousands of posts to detect AI writing, and hunting prompts that will "write like a human".</td>
+            <td><strong>Already load-bearing across the system.</strong> It is why the confidence number is displayed wherever a draft is generated (15.1), why every drift finding cites evidence from the user's own samples rather than a generic rule (15.4), and why section 16 forbids the interface from ever saying "this sounds like AI".</td>
+          </tr>
+          <tr>
+            <td><strong>3. Clarity and positioning</strong><br><span class="t-body-sm" style="color:var(--text-tertiary)">The message keeps changing</span></td>
+            <td>Recurring theme: personal brands fail even with good content, because the message keeps changing. People follow clarity.</td>
+            <td><strong>An explicit non-goal.</strong> See below. This one is real and it is not tool-solvable, so nothing in the interface should imply the product solves it.</td>
+          </tr>
+          <tr>
+            <td><strong>4. ROI doubt</strong><br><span class="t-body-sm" style="color:var(--text-tertiary)">"Wealth, or a digital mirage?"</span></td>
+            <td>Surfaces as scepticism before purchase and as churn after it. At a monthly price the question gets asked again every thirty days.</td>
+            <td><strong>A gap.</strong> Nothing in this document currently answers it. The product has no surface that shows accumulated value. See the open questions in section 18.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-note warn">
+      <span class="h">Non-goal: the product does not decide anyone's positioning</span>
+      <p>Pain 3 is the deepest of the four and the product cannot fix it. Positioning is a methodology problem that gets solved by thinking, usually with a human, not by software holding a style guide. hueman.studio holds a voice and checks against it. It does not tell anyone what to stand for.</p>
+      <p>Concretely, for engineering: do not build a positioning wizard, a "find your niche" quiz, or an onboarding step that asks the user to declare their one big idea before they can proceed. Every one of those promises something the product cannot deliver, and the gap between the promise and the output is where trust dies. Where positioning genuinely needs work, the honest move is to say so and point at help, not to generate a positioning statement.</p>
+    </div>
+
+    <h3>The three surfaces</h3>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Surface</th><th>Job</th><th>Density</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Train</strong></td><td>Ingest what the user has written and designed. Show the system learning, and show what it has concluded.</td><td>Low. Reassurance and progress carry it.</td></tr>
+          <tr><td><strong>Create</strong></td><td>Draft in the user's voice. The composer, the brief, the generated draft.</td><td>Medium. One primary action per view, everything else recedes.</td></tr>
+          <tr><td><strong>Check</strong></td><td>Score a draft against the brand core, flag drift line by line, offer the fix.</td><td>High. This is where the information design earns the subscription.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Why assembly rather than delivery</h3>
+    <p>A tool that hands over a finished draft produces something the user then edits. The output stays ours and they approved it. A tool that hands over parts and an order of operations produces something they made. The difference is not tone, it is authorship, and authorship is the thing this market is actually short of.</p>
+    <p>This is a documented effect rather than a hunch. In the study that named it, people who assembled an IKEA box valued it at <strong>$1.46</strong>. People given the same box and the same task who <em>did not finish</em> valued it at <strong>$0.59</strong>. Participants who built a set and then took it apart again showed no premium at all.</p>
+  </section>
+
+  <!-- ============================================================ 01 -->
+  <section class="d-sec" id="s01">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">01 &middot; Using this document</span>
+      <h2>How to read this, and what counts as done</h2>
+      <p class="d-lede">Everything with a <span class="tok">--</span> token name or a <span class="tok">.hu-</span> class is normative: build it exactly. Everything prefixed <span class="tok neutral">.d-</span> is this document's own chrome and ships nowhere.</p>
+    </div>
+
+    <h3>The token contract</h3>
+    <p>Three tiers, and the rule that makes them worth having: <strong>a component may only reference tier 2.</strong> If you find yourself typing a hex value or a <span class="tok">--grey-</span> token inside a component rule, the semantic tier is missing a token. Add it there instead.</p>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Tier</th><th>Example</th><th>Who may reference it</th></tr></thead>
+        <tbody>
+          <tr><td><strong>1. Primitive</strong></td><td><span class="tok">--grey-400: #8C8C8C</span></td><td>Tier 2 only. Never a component, never a page.</td></tr>
+          <tr><td><strong>2. Semantic</strong></td><td><span class="tok">--border-default: var(--grey-400)</span></td><td>Every component. This is the layer that flips for dark mode.</td></tr>
+          <tr><td><strong>3. Component</strong></td><td><span class="tok">.hu-btn--primary</span></td><td>Application code.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-note">
+      <span class="h">Why this matters here</span>
+      <p>v0 of the kit had only tier 1. That is why <span class="tok">--hue-coral</span> meant both "the coral in the spectrum" and "the error colour", and why three badge colours ended up hardcoded with no token at all. Dark mode is impossible to add cleanly on top of that, and dark mode ships in v1.</p>
+    </div>
+
+    <h3>Definition of done, per component</h3>
+    <ul class="d-check">
+      <li><b>All six states exist.</b> Default, hover, focus-visible, active, disabled, and loading where the component can be in flight.</li>
+      <li><b>Keyboard map implemented</b> exactly as the component's table specifies, including Escape and arrow keys where listed.</li>
+      <li><b>ARIA role and state attributes</b> present and updating, not just on first render.</li>
+      <li><b>Renders correctly in both themes</b> with no colour declared outside the token tiers.</li>
+      <li><b>Every interactive target is at least 44 by 44</b>, including targets inside the component such as remove and close buttons.</li>
+      <li><b>Layout does not shift</b> between loading, error and loaded states.</li>
+      <li><b>Works at 360px wide</b> without horizontal page scroll.</li>
+    </ul>
+  </section>
+
+  <!-- ============================================================ 02 -->
+  <section class="d-sec" id="s02">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">02 &middot; Principles</span>
+      <h2>Three laws, written as rules you can fail a review against</h2>
+      <p class="d-lede">Three, not thirty. A principles page listing fifteen laws gives every one of them equal weight, which is the same as giving none of them any. Each of these three changed something concrete in v1.</p>
+    </div>
+
+    <h3>1. Fitts's Law: the target is the whole thing, not the glyph</h3>
+    <p>Time to hit a target falls as the target grows. In v0 the default button computed to 43px, the small button to 33px, the mono CTA link to roughly 17px, the nav links to roughly 16px, and the checkbox to 18px. All below the 44px floor.</p>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Rule</th><th>How it is enforced</th></tr></thead>
+        <tbody>
+          <tr><td>Every interactive element is at least 44 by 44 CSS px.</td><td><span class="tok">--tap-min: 44px</span> and <span class="tok">--control-h-sm: 44px</span>. Applied as <span class="tok">min-height</span>, never as fixed height, so text can wrap.</td></tr>
+          <tr><td>One exception: a link inside a sentence.</td><td>Inline links inherit the line box and cannot be padded without breaking the paragraph. They are exempt, and only they. Everything else, including every close and remove button, meets the floor.</td></tr>
+          <tr><td>A control that must look small still hits 44.</td><td>Use the <span class="tok">.hu-hit</span> expansion: a transparent 44px pseudo-element centred on the control. Visual size unchanged, target size correct.</td></tr>
+          <tr><td>A label is part of its control's target.</td><td>Every field has matching <span class="tok">for</span> and <span class="tok">id</span>. Checkbox and radio rows are wrapped in the label element, which is what turns an 18px box into a full-width row.</td></tr>
+          <tr><td>Adjacent targets have at least 8px between them.</td><td><span class="tok">gap: var(--space-2)</span> minimum on any row of controls.</td></tr>
+          <tr><td>Destructive actions are not adjacent to their most likely neighbour.</td><td>Delete sits at the bottom of a menu behind a separator, never beside Save.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>2. Feedback, with the Doherty Threshold: nothing happens silently</h3>
+    <p>Under 100ms reads as instant. Past 400ms with nothing shown, the user stops believing the click registered. Past 1,000ms they lose the thread. This matters more here than in most products, because generation is slow by nature and the user is watching something they will put their name on.</p>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th class="num">Elapsed</th><th>Required response</th><th>Component</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0 to 400ms</td><td>Nothing. Do not flash a spinner, it reads as slower than silence.</td><td>None. Use the spinner's <span class="tok">delay</span> prop.</td></tr>
+          <tr><td class="num">400ms to 1s</td><td>State inside the control itself. Dimensions held.</td><td>Button <span class="tok">isLoading</span></td></tr>
+          <tr><td class="num">1s to 10s</td><td>Skeleton of the shape that is coming, or determinate progress if the total is known.</td><td>Skeleton, Progress Bar</td></tr>
+          <tr><td class="num">Over 10s</td><td>Assume they left the tab. Named steps with an estimate, and a result that survives a refresh.</td><td>Stepper, Progress Bar, Toast on completion</td></tr>
+          <tr><td class="num">On finish</td><td>Say what happened, in the past tense, where the action was taken.</td><td>Toast for transient, Alert for anything the user must act on</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>3. Von Restorff Effect: one primary action per view</h3>
+    <p>The thing that differs from its neighbours is the thing that gets acted on. v0 put four button treatments plus a link CTA on one row at near-equal weight, and made the primary button turn accent blue on hover, so the two heaviest treatments traded identities mid-interaction.</p>
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>One filled button per view. Black is the primary. Accent blue is reserved for the single conversion action, typically upgrade or publish. Everything else is outline or ghost.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Two filled buttons side by side, or a hover state that changes a button's variant. Hover changes intensity, never identity: <span class="tok">--action-primary-bg-hover</span> is a lightened black, not the accent.</p></div>
+    </div>
+
+    <div class="d-note">
+      <span class="h">Convention versus distinction</span>
+      <p>hueman's visual identity is distinctive on purpose. Its interaction patterns are not. Novelty is permitted in visual treatment and forbidden in interaction pattern, unless there is a stated reason and a test behind it. A coach who has never used a brand tool should be able to operate this on the strength of every other app they have used.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 03 -->
+  <section class="d-sec" id="s03">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">03 &middot; Foundations</span>
+      <h2>Typography</h2>
+      <p class="d-lede">GT America carries the interface. GT Super Display Light is the editorial counterpoint and appears in hero statements only. GT America Mono carries labels, tokens, metadata and anything numeric.</p>
+    </div>
+
+    <div class="d-note warn">
+      <span class="h">Licensing: read before you build</span>
+      <p>GT America and GT Super are licensed from Grilli Type and are <strong>not embedded in this file</strong>, so what you are reading now renders in the documented fallbacks. Grilli Type prices a web licence on projected unique monthly visitors as a one-time fee, not a subscription, and one licence covers any number of sites and domains controlled by the same organisation.</p>
+      <p>Two consequences for engineering. Grilli Type <strong>only offers self-hosted webfonts</strong>, so there is no CDN to point at: the TTF, WOFF and WOFF2 files ship from our own origin. And the free trial fonts may be used in mockups and prototypes only, never in production, so the licence has to land before launch.</p>
+    </div>
+
+    <h3>Families and fallbacks</h3>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Role</th><th>Licensed face</th><th>Documented fallback</th><th>Token</th></tr></thead>
+        <tbody>
+          <tr><td><strong>UI and body</strong></td><td>GT America 400 / 500 / 700</td><td>Archivo, then Helvetica Neue</td><td><span class="tok">--font-sans</span></td></tr>
+          <tr><td><strong>Editorial display</strong></td><td>GT Super Display Light</td><td>Instrument Serif, then Georgia</td><td><span class="tok">--font-serif</span></td></tr>
+          <tr><td><strong>Mono, labels, data</strong></td><td>GT America Mono 400 / 500</td><td>IBM Plex Mono, then ui-monospace</td><td><span class="tok">--font-mono</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre class="d-code"><span class="c">/* self-hosted, subset to latin + latin-ext, one file per weight */</span>
+@font-face {
+  font-family: <span class="v">'GT America'</span>;
+  src: url(<span class="v">'/fonts/GTAmerica-Regular.woff2'</span>) format(<span class="v">'woff2'</span>),
+       url(<span class="v">'/fonts/GTAmerica-Regular.woff'</span>)  format(<span class="v">'woff'</span>);
+  font-weight: <span class="v">400</span>;
+  font-style: normal;
+  font-display: <span class="v">swap</span>;      <span class="c">/* never `block`, it costs us LCP */</span>
+  size-adjust: <span class="v">100%</span>;        <span class="c">/* tune against Archivo to kill the reflow jump */</span>
+}
+<span class="c">/* preload only the two faces above the fold */</span>
+&lt;link rel=<span class="v">"preload"</span> href=<span class="v">"/fonts/GTAmerica-Regular.woff2"</span> as=<span class="v">"font"</span> type=<span class="v">"font/woff2"</span> crossorigin&gt;</pre>
+
+    <h3>The scale</h3>
+    <p>Two changes from v0. Display sizes are now fluid, because 70px on a 360px viewport gives about five characters a line. And no style is set at 100 per cent line-height any more: Body Medium in particular is specified for intro paragraphs and pull quotes, which are multi-line by definition, and at 100 per cent the descenders clip.</p>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Style</th><th>Class</th><th class="num">Size</th><th class="num">Line</th><th class="num">Weight</th><th>Use</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Heading 0</strong></td><td class="mono">.t-h0</td><td class="num">clamp(40, 70)</td><td class="num">1.06</td><td class="num">400</td><td>One per page. Hero statement only.</td></tr>
+          <tr><td><strong>Heading 1</strong></td><td class="mono">.t-h1</td><td class="num">clamp(30, 40)</td><td class="num">1.15</td><td class="num">400</td><td>Page title. May take <span class="tok">--font-serif</span>.</td></tr>
+          <tr><td><strong>Heading 2</strong></td><td class="mono">.t-h2</td><td class="num">clamp(24, 30)</td><td class="num">1.18</td><td class="num">400</td><td>Section title.</td></tr>
+          <tr><td><strong>Heading 3</strong></td><td class="mono">.t-h3</td><td class="num">clamp(20, 24)</td><td class="num">1.22</td><td class="num">500</td><td>Sub-section, card title.</td></tr>
+          <tr><td><strong>Heading 4</strong></td><td class="mono">.t-h4</td><td class="num">16</td><td class="num">1.4</td><td class="num">700</td><td>Hierarchy through weight, not scale.</td></tr>
+          <tr><td><strong>Body Large</strong></td><td class="mono">.t-body-lg</td><td class="num">20</td><td class="num">1.45</td><td class="num">500</td><td>Lede, pull quote. Was 24/100%.</td></tr>
+          <tr><td><strong>Body</strong></td><td class="mono">.t-body</td><td class="num">16</td><td class="num">1.55</td><td class="num">400</td><td>Default reading text.</td></tr>
+          <tr><td><strong>Body Small</strong></td><td class="mono">.t-body-sm</td><td class="num">14</td><td class="num">1.55</td><td class="num">400</td><td>Secondary, captions, helper text.</td></tr>
+          <tr><td><strong>Body XS</strong></td><td class="mono">.t-body-xs</td><td class="num">12</td><td class="num">1.5</td><td class="num">500</td><td>Fine print. Medium weight for legibility.</td></tr>
+          <tr><td><strong>Tag 1</strong></td><td class="mono">.t-tag-1</td><td class="num">12</td><td class="num">1.3</td><td class="num">500</td><td>Mono. Metadata, tokens, counts.</td></tr>
+          <tr><td><strong>Tag 2</strong></td><td class="mono">.t-tag-2</td><td class="num">14</td><td class="num">1.3</td><td class="num">500</td><td>Mono uppercase. Section labels, CTA links.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Specimen &middot; live</span><span>rendering in fallback</span></div>
+      <div class="d-stage-body col">
+        <div class="t-h0">Sound like you</div>
+        <div class="t-h1 t-serif">Your hue, made repeatable.</div>
+        <div class="t-h2">Train once, check everything</div>
+        <div class="t-h3">Brand core</div>
+        <div class="t-h4">Voice attributes</div>
+        <p class="t-body-lg" style="margin:0;color:var(--text-secondary)">The system reads what you have already written and works out how you actually sound.</p>
+        <p class="t-body" style="margin:0;color:var(--text-secondary);max-width:var(--measure)">Default reading text at 16 over 1.55. Running measure is capped near 68 characters so lines stay scannable, which is the width this paragraph is set to.</p>
+        <p class="t-body-sm" style="margin:0;color:var(--text-tertiary)">Secondary text for helper copy and captions.</p>
+        <div class="t-tag-2" style="color:var(--text-accent)">Discover more →</div>
+      </div>
+    </div>
+
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Set headings with <span class="tok">text-wrap: balance</span> and cap running text at <span class="tok">--measure</span>. Use GT Super for one statement per page at most.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Use GT Super below 30px, or for any UI text. It is a display face; at label sizes it reads as a mistake and its contrast collapses.</p></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 04 -->
+  <section class="d-sec" id="s04">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">04 &middot; Foundations</span>
+      <h2>Colour</h2>
+      <p class="d-lede">A restrained neutral core, one deep brand blue, and the eight-hue spectrum that gives the product its name. The change in v1 is that the spectrum now exists at three strengths, because one hex value cannot legally be both a gradient and a body colour.</p>
+    </div>
+
+    <h3>The three-strength spectrum</h3>
+    <p>Every hue ships in three tiers. Picking the wrong one is the single most likely accessibility failure in this product, so the naming makes the legal use obvious.</p>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Tier</th><th>Prefix</th><th>Minimum contrast</th><th>Legal uses</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Expressive</strong></td><td><span class="tok">--hue-*</span></td><td>none required</td><td>Gradients, large fills, illustration, the customer's own brand swatch. Never text, never a border that carries meaning.</td></tr>
+          <tr><td><strong>Signal</strong></td><td><span class="tok">--sig-*</span></td><td>3:1 on surface</td><td>Borders, status dots, icons, chart marks, meter fills, focus indicators.</td></tr>
+          <tr><td><strong>Ink</strong></td><td><span class="tok">--ink-*</span></td><td>4.5:1 on the worst light surface it sits on</td><td>The only spectrum values legal for text of any size. Solved against the status tints, not just white, because that is where status text actually sits.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Spectrum &middot; expressive tier</span><span>--hue-*</span></div>
+      <div class="d-stage-body tight" style="display:block">
+        <div style="display:flex;height:64px;border-radius:var(--r-md);overflow:hidden">
+          <div style="flex:1;background:var(--hue-coral)"></div><div style="flex:1;background:var(--hue-orange)"></div>
+          <div style="flex:1;background:var(--hue-yellow)"></div><div style="flex:1;background:var(--hue-green)"></div>
+          <div style="flex:1;background:var(--hue-teal)"></div><div style="flex:1;background:var(--hue-blue)"></div>
+          <div style="flex:1;background:var(--hue-violet)"></div><div style="flex:1;background:var(--hue-magenta)"></div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Measured contrast, computed from the hex values</h3>
+    <p>Every ratio below was computed, not estimated. The <em>was</em> column is the v0 value that failed.</p>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Token</th><th>Value</th><th>Against</th><th class="num">Ratio</th><th class="num">Needs</th><th>v0</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tok">--text-primary</span></td><td class="mono">#0A0A0A</td><td class="mono">#FFFFFF</td><td class="num">19.80:1</td><td class="num">4.5</td><td><span class="d-flag pass">kept</span></td></tr>
+          <tr><td><span class="tok">--text-secondary</span></td><td class="mono">#3A3A3A</td><td class="mono">#FFFFFF</td><td class="num">11.37:1</td><td class="num">4.5</td><td><span class="d-flag pass">kept</span></td></tr>
+          <tr><td><span class="tok">--text-tertiary</span></td><td class="mono">#6B6B6B</td><td class="mono">#FFFFFF</td><td class="num">5.33:1</td><td class="num">4.5</td><td><span class="d-flag pass">kept</span></td></tr>
+          <tr><td><span class="tok">--text-placeholder</span></td><td class="mono">#6B6B6B</td><td class="mono">#FFFFFF</td><td class="num">5.33:1</td><td class="num">4.5</td><td><span class="d-flag fail">was 1.74</span></td></tr>
+          <tr><td><span class="tok">--border-default</span></td><td class="mono">#8C8C8C</td><td class="mono">#FFFFFF</td><td class="num">3.36:1</td><td class="num">3.0</td><td><span class="d-flag fail">was 1.74</span></td></tr>
+          <tr><td><span class="tok">--focus-ring</span></td><td class="mono">#060E9F</td><td class="mono">#FFFFFF</td><td class="num">13.37:1</td><td class="num">3.0</td><td><span class="d-flag fail">was 1.13</span></td></tr>
+          <tr><td><span class="tok">--danger-fg</span></td><td class="mono">#DC0006</td><td class="mono">#FFEBEC</td><td class="num">4.53:1</td><td class="num">4.5</td><td><span class="d-flag fail">was 3.05</span></td></tr>
+          <tr><td><span class="tok">--warning-fg</span></td><td class="mono">#8D6C0B</td><td class="mono">#FDF6E2</td><td class="num">4.54:1</td><td class="num">4.5</td><td><span class="d-flag new">new</span></td></tr>
+          <tr><td><span class="tok">--success-fg</span></td><td class="mono">#197E60</td><td class="mono">#E5F7F2</td><td class="num">4.51:1</td><td class="num">4.5</td><td><span class="d-flag new">new</span></td></tr>
+          <tr><td><span class="tok">--sig-yellow</span></td><td class="mono">#B98E0D</td><td class="mono">#FFFFFF</td><td class="num">3.03:1</td><td class="num">3.0</td><td><span class="d-flag fail">was 1.59</span></td></tr>
+          <tr><td><span class="tok">--sig-teal</span></td><td class="mono">#14A5A2</td><td class="mono">#FFFFFF</td><td class="num">3.03:1</td><td class="num">3.0</td><td><span class="d-flag fail">was 2.30</span></td></tr>
+          <tr><td><span class="tok">--sig-green</span></td><td class="mono">#22A780</td><td class="mono">#FFFFFF</td><td class="num">3.04:1</td><td class="num">3.0</td><td><span class="d-flag fail">was 2.32</span></td></tr>
+          <tr><td><span class="tok">--text-accent</span> dark</td><td class="mono">#858BFF</td><td class="mono">#151515</td><td class="num">6.20:1</td><td class="num">4.5</td><td><span class="d-flag new">new</span></td></tr>
+          <tr><td><span class="tok">--text-primary</span> dark</td><td class="mono">#F5F5F5</td><td class="mono">#151515</td><td class="num">16.75:1</td><td class="num">4.5</td><td><span class="d-flag new">new</span></td></tr>
+          <tr><td><span class="tok">--border-default</span> dark</td><td class="mono">#6B6B6B</td><td class="mono">#151515</td><td class="num">3.45:1</td><td class="num">3.0</td><td><span class="d-flag new">new</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Ink tier, both themes</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>--ink-* &middot; the only spectrum values legal for text</span><span>&ge; 4.5:1</span></div>
+      <div class="d-stage-body grid">
+        <div><div style="color:var(--ink-coral);font-weight:600;font-size:15px">Coral ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#DC0006 &middot; 5.19:1</div></div>
+        <div><div style="color:var(--ink-orange);font-weight:600;font-size:15px">Orange ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#C95000 &middot; 4.53:1</div></div>
+        <div><div style="color:var(--ink-yellow);font-weight:600;font-size:15px">Yellow ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#8D6C0B &middot; 4.90:1</div></div>
+        <div><div style="color:var(--ink-green);font-weight:600;font-size:15px">Green ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#197E60 &middot; 5.01:1</div></div>
+        <div><div style="color:var(--ink-teal);font-weight:600;font-size:15px">Teal ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#108381 &middot; 4.58:1</div></div>
+        <div><div style="color:var(--ink-blue);font-weight:600;font-size:15px">Blue ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#2D6BFF &middot; 4.51:1</div></div>
+        <div><div style="color:var(--ink-violet);font-weight:600;font-size:15px">Violet ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#5A62FF &middot; 4.54:1</div></div>
+        <div><div style="color:var(--ink-magenta);font-weight:600;font-size:15px">Magenta ink</div><div class="t-tag-1" style="color:var(--text-tertiary)">#DE2184 &middot; 4.51:1</div></div>
+      </div>
+    </div>
+
+    <h3>Status colour</h3>
+    <p>Status is semantic and separate from the accent. Colour is never the only signal: every status carries an icon or a dot as well, which is what makes it survive greyscale, colour blindness and a bright phone screen outdoors.</p>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Status &middot; colour plus shape, never colour alone</span><span>.hu-badge</span></div>
+      <div class="d-stage-body">
+        <span class="hu-badge hu-badge--success"><span class="hu-badge__dot"></span> On brand</span>
+        <span class="hu-badge hu-badge--warning"><span class="hu-badge__dot"></span> Drifting</span>
+        <span class="hu-badge hu-badge--danger"><span class="hu-badge__dot"></span> Off brand</span>
+        <span class="hu-badge hu-badge--info"><span class="hu-badge__dot"></span> Training</span>
+        <span class="hu-badge hu-badge--neutral"><span class="hu-badge__dot"></span> Draft</span>
+      </div>
+    </div>
+
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Let a customer's own hue enter the product through the expressive tier only: gradients, their brand core card, their avatar ring. Product chrome stays neutral.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Use <span class="tok">--hue-yellow</span> for a warning icon. It computes to 1.59:1 on white and disappears. That is what <span class="tok">--sig-yellow</span> exists for.</p></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 05 -->
+  <section class="d-sec" id="s05">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">05 &middot; Foundations</span>
+      <h2>Space, sizing and layout</h2>
+      <p class="d-lede">The scale from v0 is unchanged in value and now actually exists as tokens. v0 documented 4 through 60 and then built on 13, 22, 26 and 34.</p>
+    </div>
+
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Spacing scale &middot; 4pt base</span><span>--space-1 … --space-11</span></div>
+      <div class="d-stage-body" style="align-items:flex-end;gap:var(--space-4)">
+        <div style="text-align:center"><div style="width:28px;height:4px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">4</div></div>
+        <div style="text-align:center"><div style="width:28px;height:8px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">8</div></div>
+        <div style="text-align:center"><div style="width:28px;height:12px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">12</div></div>
+        <div style="text-align:center"><div style="width:28px;height:16px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">16</div></div>
+        <div style="text-align:center"><div style="width:28px;height:20px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">20</div></div>
+        <div style="text-align:center"><div style="width:28px;height:28px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">28</div></div>
+        <div style="text-align:center"><div style="width:28px;height:40px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">40</div></div>
+        <div style="text-align:center"><div style="width:28px;height:48px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">48</div></div>
+        <div style="text-align:center"><div style="width:28px;height:60px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">60</div></div>
+        <div style="text-align:center"><div style="width:28px;height:80px;background:var(--action-accent-bg);border-radius:2px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">80</div></div>
+      </div>
+    </div>
+
+    <h3>Control sizing</h3>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Token</th><th class="num">Value</th><th>Applies to</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tok">--tap-min</span></td><td class="num">44px</td><td>The floor for anything clickable, including close and remove buttons inside other components.</td></tr>
+          <tr><td><span class="tok">--control-h-sm</span></td><td class="num">44px</td><td>Small button, menu item, pager button, tab. The small size is the minimum, not smaller than the minimum.</td></tr>
+          <tr><td><span class="tok">--control-h-md</span></td><td class="num">48px</td><td>Text input, select, textarea row, default form controls.</td></tr>
+          <tr><td><span class="tok">--control-h-lg</span></td><td class="num">56px</td><td>Large button. Primary conversion actions and mobile-first forms.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Breakpoints and layout</h3>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Name</th><th class="num">Min width</th><th>Layout behaviour</th></tr></thead>
+        <tbody>
+          <tr><td><strong>base</strong></td><td class="num">360px</td><td>Single column. App shell nav collapses to a top bar with a menu trigger. Everything must work here.</td></tr>
+          <tr><td><strong>sm</strong></td><td class="num">640px</td><td>Two-column forms. Cards go to a 2-up grid.</td></tr>
+          <tr><td><strong>md</strong></td><td class="num">900px</td><td>App shell sidebar appears. Check view splits into draft and findings.</td></tr>
+          <tr><td><strong>lg</strong></td><td class="num">1200px</td><td>Three-column card grids. Container caps at <span class="tok">--container</span> 1320px.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-note warn">
+      <span class="h">Regression fixed from v0</span>
+      <p>v0's single breakpoint set <span class="tok">.nav-links { display: none }</span> at 768px with nothing put in its place, which made navigation unreachable on every phone. Hiding navigation is never the mobile pattern. See section 14 for the app shell's collapse behaviour.</p>
+    </div>
+
+    <h3>Radii</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Radii</span><span>--r-xs … --r-pill</span></div>
+      <div class="d-stage-body">
+        <div style="text-align:center"><div style="width:88px;height:64px;background:var(--bg-sunken);border:1px solid var(--border-subtle);border-radius:4px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">xs · 4</div></div>
+        <div style="text-align:center"><div style="width:88px;height:64px;background:var(--bg-sunken);border:1px solid var(--border-subtle);border-radius:6px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">sm · 6</div></div>
+        <div style="text-align:center"><div style="width:88px;height:64px;background:var(--bg-sunken);border:1px solid var(--border-subtle);border-radius:12px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">md · 12</div></div>
+        <div style="text-align:center"><div style="width:88px;height:64px;background:var(--bg-sunken);border:1px solid var(--border-subtle);border-radius:20px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">lg · 20</div></div>
+        <div style="text-align:center"><div style="width:88px;height:64px;background:var(--bg-sunken);border:1px solid var(--border-subtle);border-radius:999px"></div><div class="t-tag-1" style="color:var(--text-tertiary);margin-top:8px">pill</div></div>
+      </div>
+    </div>
+    <p class="t-body-sm" style="color:var(--text-tertiary)">Inputs and cards take <span class="tok">--r-sm</span> and <span class="tok">--r-md</span>. Buttons, badges and tags take <span class="tok">--r-pill</span>. Modals take <span class="tok">--r-lg</span>. Nothing takes an arbitrary radius.</p>
+  </section>
+
+  <!-- ============================================================ 06 -->
+  <section class="d-sec" id="s06">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">06 &middot; Foundations</span>
+      <h2>Motion and elevation</h2>
+      <p class="d-lede">v0 hardcoded 0.18s and 0.2s across eight rules, translated three components on hover, and had no reduced-motion block anywhere. Motion is now tokenised and every animation is behind a preference query.</p>
+    </div>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Token</th><th class="num">Value</th><th>Use</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tok">--motion-instant</span></td><td class="num">80ms</td><td>Colour change on hover. Fast enough to feel like a property, not an animation.</td></tr>
+          <tr><td><span class="tok">--motion-fast</span></td><td class="num">120ms</td><td>Buttons, inputs, links, tabs. The default for anything the pointer is on.</td></tr>
+          <tr><td><span class="tok">--motion-base</span></td><td class="num">180ms</td><td>Switch throw, menu open, card elevation.</td></tr>
+          <tr><td><span class="tok">--motion-slow</span></td><td class="num">280ms</td><td>Modal and drawer entry, progress fill, meter fill.</td></tr>
+          <tr><td><span class="tok">--ease-standard</span></td><td class="mono">cubic-bezier(.2,0,0,1)</td><td>Everything that starts and ends on screen.</td></tr>
+          <tr><td><span class="tok">--ease-enter</span></td><td class="mono">cubic-bezier(0,0,0,1)</td><td>Things arriving. Decelerate in.</td></tr>
+          <tr><td><span class="tok">--ease-exit</span></td><td class="mono">cubic-bezier(.3,0,1,1)</td><td>Things leaving. Accelerate out, and always faster than entry.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-note">
+      <span class="h">Non-negotiable</span>
+      <p>The global <span class="tok">prefers-reduced-motion</span> block is in the base layer and collapses all durations to 0.01ms. Components with continuous animation, the spinner and the skeleton shimmer, additionally provide a static alternative rather than simply freezing mid-cycle. Nothing in this product may flash more than three times per second.</p>
+    </div>
+
+    <h3>Elevation order</h3>
+    <p>A named scale, so that the first time a modal, a dropdown and a toast are open at once nobody has to invent a number. Elevation is a stacking contract, not a shadow palette.</p>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Token</th><th class="num">z-index</th><th>Shadow</th><th>Layer</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tok">--z-base</span></td><td class="num">0</td><td><span class="tok">--shadow-sm</span></td><td>Page content, cards at rest.</td></tr>
+          <tr><td><span class="tok">--z-sticky</span></td><td class="num">200</td><td><span class="tok">--shadow-sm</span></td><td>Sticky headers, table header row.</td></tr>
+          <tr><td><span class="tok">--z-dropdown</span></td><td class="num">300</td><td><span class="tok">--shadow-lg</span></td><td>Select listbox, combobox results, menu.</td></tr>
+          <tr><td><span class="tok">--z-overlay</span></td><td class="num">400</td><td>none</td><td>Modal backdrop. Minimum 0.5 opacity.</td></tr>
+          <tr><td><span class="tok">--z-modal</span></td><td class="num">500</td><td><span class="tok">--shadow-overlay</span></td><td>Dialogs.</td></tr>
+          <tr><td><span class="tok">--z-popover</span></td><td class="num">600</td><td><span class="tok">--shadow-lg</span></td><td>Popovers, including those opened from inside a modal.</td></tr>
+          <tr><td><span class="tok">--z-toast</span></td><td class="num">700</td><td><span class="tok">--shadow-lg</span></td><td>Toasts. Above modals by design, so a save confirmation is never buried.</td></tr>
+          <tr><td><span class="tok">--z-tooltip</span></td><td class="num">800</td><td><span class="tok">--shadow-md</span></td><td>Tooltips. Always top.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ 07 -->
+  <section class="d-sec" id="s07">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">07 &middot; Foundations</span>
+      <h2>Icons</h2>
+      <p class="d-lede">v0 had no icon system at all: the arrows were the "→" character set in the mono face. v1 specifies a real one, because icons carry status meaning and status may not be colour alone.</p>
+    </div>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Property</th><th>Spec</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Format</strong></td><td>Inline SVG, <span class="tok">currentColor</span> fill or stroke. Never an icon font, never a raster.</td></tr>
+          <tr><td><strong>Grid</strong></td><td>24 by 24 viewBox. Sizes 16, 20, 24. 20 is the default in UI.</td></tr>
+          <tr><td><strong>Stroke</strong></td><td>1.5px at 20px, scaled proportionally. Round caps, round joins.</td></tr>
+          <tr><td><strong>Optical alignment</strong></td><td>Icons sit on the text baseline box, not the cap height. In a button, <span class="tok">gap: var(--space-2)</span>.</td></tr>
+          <tr><td><strong>Decorative icons</strong></td><td><span class="tok">aria-hidden="true"</span> and no label. This is the case for icons beside text.</td></tr>
+          <tr><td><strong>Meaningful icons</strong></td><td>Wrapped in an element with <span class="tok">role="img"</span> and an <span class="tok">aria-label</span>.</td></tr>
+          <tr><td><strong>Icon-only buttons</strong></td><td>Require <span class="tok">aria-label</span> and a tooltip. Never for a destructive or irreversible action without a text label.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ 08 -->
+  <section class="d-sec" id="s08">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">08 &middot; Foundations</span>
+      <h2>Interaction states</h2>
+      <p class="d-lede">v0 documented one state: hover. This is the universal matrix. Any component that can be in a state below must implement it, and the visual treatment is the same everywhere so users only learn it once.</p>
+    </div>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>State</th><th>Treatment</th><th>Attribute</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Default</strong></td><td>As specified.</td><td>none</td></tr>
+          <tr><td><strong>Hover</strong></td><td>Background or border shifts one step in intensity. Never a change of variant, never a size or position change.</td><td>none</td></tr>
+          <tr><td><strong>Focus-visible</strong></td><td>2px solid <span class="tok">--focus-ring</span>, 2px offset. Identical on every component in the system. Never removed, never replaced by a colour change alone.</td><td><span class="tok">:focus-visible</span></td></tr>
+          <tr><td><strong>Active</strong></td><td>0.5px downward translate plus the hover background. Immediate, no transition.</td><td><span class="tok">:active</span></td></tr>
+          <tr><td><strong>Selected</strong></td><td>Accent background at subtle strength plus accent text, or a 2px bottom border for tabs. Always paired with a non-colour cue.</td><td><span class="tok">aria-selected</span> / <span class="tok">aria-current</span></td></tr>
+          <tr><td><strong>Disabled</strong></td><td>0.45 opacity, <span class="tok">cursor: not-allowed</span>, no focus ring, no hover.</td><td><span class="tok">disabled</span> plus <span class="tok">aria-disabled="true"</span></td></tr>
+          <tr><td><strong>Read-only</strong></td><td>Sunken background, subtle border, normal text colour. Still focusable and selectable. Visually distinct from disabled.</td><td><span class="tok">readonly</span></td></tr>
+          <tr><td><strong>Loading</strong></td><td>Spinner replaces the label, dimensions held so nothing reflows. Interaction blocked.</td><td><span class="tok">aria-busy="true"</span></td></tr>
+          <tr><td><strong>Invalid</strong></td><td>2px <span class="tok">--danger-border</span>, an error icon, and a message below the control. Three signals, so colour is never load-bearing on its own.</td><td><span class="tok">aria-invalid="true"</span> plus <span class="tok">aria-describedby</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>The full matrix on one component</span><span>tab to see focus</span></div>
+      <div class="d-stage-body">
+        <button class="hu-btn hu-btn--primary">Default</button>
+        <button class="hu-btn hu-btn--primary" style="background:var(--action-primary-bg-hover)">Hover</button>
+        <button class="hu-btn hu-btn--primary" style="outline:2px solid var(--focus-ring);outline-offset:2px">Focus</button>
+        <button class="hu-btn hu-btn--primary" aria-busy="true"><span class="hu-btn__label">Loading</span><span class="hu-spinner" aria-hidden="true"></span></button>
+        <button class="hu-btn hu-btn--primary" disabled>Disabled</button>
+      </div>
+    </div>
+
+    <div class="d-note">
+      <span class="h">Disabled versus read-only versus hidden</span>
+      <p>A disabled control is one the user could enable. A read-only control is one they will never edit but should still see. A control they cannot ever use is not disabled, it is absent. Do not disable a plan upgrade button when the user is on the top plan; remove it and say what plan they are on.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 09 -->
+  <section class="d-sec" id="s09">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">09 &middot; Components</span>
+      <h2>Actions</h2>
+      <p class="d-lede">Prop names below follow the convention the major design systems converge on, with the adoption figure that backs each one. Where our naming differs from a framework you are using, map it at the boundary rather than renaming ours.</p>
+    </div>
+
+    <h3>Button</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Variants</span><span>.hu-btn</span></div>
+      <div class="d-stage-body">
+        <button class="hu-btn hu-btn--primary">Save draft</button>
+        <button class="hu-btn hu-btn--accent">Publish <span class="arrow" aria-hidden="true">→</span></button>
+        <button class="hu-btn hu-btn--outline">Check against brand</button>
+        <button class="hu-btn hu-btn--ghost">Cancel</button>
+        <button class="hu-btn hu-btn--danger">Delete brand core</button>
+      </div>
+      <div class="d-stage-bar" style="border-top:1px solid var(--border-subtle)"><span>Sizes &middot; all clear 44px</span><span>--control-h-*</span></div>
+      <div class="d-stage-body">
+        <button class="hu-btn hu-btn--primary hu-btn--sm">Small · 44</button>
+        <button class="hu-btn hu-btn--primary">Default · 44</button>
+        <button class="hu-btn hu-btn--primary hu-btn--lg">Large · 56</button>
+      </div>
+      <div class="d-stage-bar" style="border-top:1px solid var(--border-subtle)"><span>In flight</span><span>aria-busy</span></div>
+      <div class="d-stage-body">
+        <button class="hu-btn hu-btn--accent" aria-busy="true"><span class="hu-btn__label">Generating</span><span class="hu-spinner" aria-hidden="true"></span></button>
+        <button class="hu-btn hu-btn--outline" disabled>Needs a trained core</button>
+        <button class="hu-btn hu-btn--primary hu-btn--full" style="max-width:280px">Full width</button>
+      </div>
+    </div>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Prop</th><th>Values</th><th>Default</th><th class="num">Adoption</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">size</td><td>sm, md, lg</td><td class="mono">md</td><td class="num">74%</td></tr>
+          <tr><td class="mono">variant</td><td>primary, accent, secondary, destructive</td><td class="mono">primary</td><td class="num">63%</td></tr>
+          <tr><td class="mono">appearance</td><td>contained, outlined, ghost</td><td class="mono">contained</td><td class="num">68%</td></tr>
+          <tr><td class="mono">isDisabled</td><td>boolean</td><td class="mono">false</td><td class="num">63%</td></tr>
+          <tr><td class="mono">isLoading</td><td>boolean</td><td class="mono">false</td><td class="num">53%</td></tr>
+          <tr><td class="mono">startIcon</td><td>svg, component</td><td>none</td><td class="num">68%</td></tr>
+          <tr><td class="mono">endIcon</td><td>svg, component</td><td>none</td><td class="num">63%</td></tr>
+          <tr><td class="mono">href</td><td>string, renders an anchor</td><td>none</td><td class="num">58%</td></tr>
+          <tr><td class="mono">isFullWidth</td><td>boolean</td><td class="mono">false</td><td class="num">37%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="t-body-sm"><strong>Keyboard</strong> Enter and Space activate, both with the same pressed state. <strong>Role</strong> <span class="tok">button</span>, or a real anchor when <span class="tok">href</span> is set. <strong>Required</strong> <span class="tok">aria-disabled="true"</span> alongside the <span class="tok">disabled</span> attribute, <span class="tok">aria-busy="true"</span> while loading, and <span class="tok">aria-hidden="true"</span> on decorative icons.</p>
+
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Hold the button's width while loading by keeping the label in the DOM at <span class="tok">visibility: hidden</span> and overlaying the spinner. The row must not reflow.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Swap the label to the word "Loading". It changes the width, moves everything beside it, and tells the user less than the spinner does.</p></div>
+    </div>
+
+    <h3>Link and CTA link</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Link, mono CTA link</span><span>.hu-link, .hu-link-cta</span></div>
+      <div class="d-stage-body">
+        <a href="#s09" class="hu-link">Inline text link</a>
+        <a href="#s09" class="hu-link-cta">About us <span aria-hidden="true">→</span></a>
+        <a href="#s09" class="hu-link-cta">Pricing <span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">href</span> required (53%), <span class="tok">variant</span> (33%), <span class="tok">isExternal</span> (33%), <span class="tok">hasUnderline</span> (33%), <span class="tok">target</span> (27%). <strong>Role</strong> <span class="tok">link</span>, always a real anchor with an href and never a div with a click handler. <strong>Fixed from v0</strong> the CTA link had no vertical padding and computed to about 17px tall; it now carries <span class="tok">min-height: var(--tap-min)</span>. Inline links are underlined by default rather than relying on colour, since colour alone fails for colour-blind readers scanning a paragraph.</p>
+
+    <h3>Toggle button</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Segmented selection</span><span>aria-pressed</span></div>
+      <div class="d-stage-body">
+        <button class="hu-btn hu-btn--outline hu-btn--sm" aria-pressed="true" style="background:var(--bg-active);border-color:var(--border-strong)">LinkedIn</button>
+        <button class="hu-btn hu-btn--ghost hu-btn--sm" aria-pressed="false">Newsletter</button>
+        <button class="hu-btn hu-btn--ghost hu-btn--sm" aria-pressed="false">X</button>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">isSelected</span> (36%), <span class="tok">size</span>, <span class="tok">variant</span>, <span class="tok">appearance</span>, <span class="tok">isDisabled</span> (all 43%). <strong>Required</strong> <span class="tok">aria-pressed</span> reflecting <span class="tok">isSelected</span>, and at least a 3:1 difference between selected and deselected so the state survives greyscale.</p>
+  </section>
+
+  <!-- ============================================================ 10 -->
+  <section class="d-sec" id="s10">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">10 &middot; Components</span>
+      <h2>Forms and inputs</h2>
+      <p class="d-lede">Every field in this section has a wired label. In v0 no label carried a <span class="tok">for</span> and no input carried an <span class="tok">id</span>, so clicking a label did nothing and screen readers announced an unnamed field.</p>
+    </div>
+
+    <h3>Text input, textarea, select</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Fields &middot; all states</span><span>.hu-field</span></div>
+      <div class="d-stage-body col">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--space-5)">
+          <div class="hu-field">
+            <label class="hu-label" for="f-name">Full name</label>
+            <input class="hu-input" id="f-name" type="text" placeholder="Jane Okonkwo">
+          </div>
+          <div class="hu-field">
+            <label class="hu-label" for="f-email">Email <span class="req" aria-hidden="true">*</span></label>
+            <input class="hu-input" id="f-email" type="email" placeholder="jane@example.com" required aria-describedby="f-email-h">
+            <span class="hu-hint" id="f-email-h">We send the weekly brand report here.</span>
+          </div>
+          <div class="hu-field">
+            <label class="hu-label" for="f-plat">Primary platform</label>
+            <span class="hu-select-wrap">
+              <select class="hu-select" id="f-plat">
+                <option>LinkedIn</option><option>Newsletter</option><option>X</option><option>Instagram</option>
+              </select>
+            </span>
+          </div>
+          <div class="hu-field">
+            <label class="hu-label" for="f-hand">Handle</label>
+            <span class="hu-inputgroup">
+              <span class="hu-affix" aria-hidden="true">@</span>
+              <input class="hu-input" id="f-hand" type="text" placeholder="janeokonkwo">
+            </span>
+          </div>
+          <div class="hu-field">
+            <label class="hu-label" for="f-err">Monthly volume</label>
+            <input class="hu-input" id="f-err" type="text" value="twelve" aria-invalid="true" aria-describedby="f-err-h">
+            <span class="hu-hint hu-hint--error" id="f-err-h"><span class="hu-hint__icon" aria-hidden="true">!</span> Enter a number, for example 12.</span>
+          </div>
+          <div class="hu-field">
+            <label class="hu-label" for="f-dis">Workspace ID</label>
+            <input class="hu-input" id="f-dis" type="text" value="hue_8841" readonly>
+            <span class="hu-hint">Read-only. Generated when the workspace was created.</span>
+          </div>
+        </div>
+        <div class="hu-field">
+          <label class="hu-label" for="f-ta">Paste something you have written</label>
+          <textarea class="hu-textarea" id="f-ta" placeholder="A newsletter, a post, a page of your site. Three samples is enough to start." aria-describedby="f-ta-h"></textarea>
+          <span class="hu-hint" id="f-ta-h">The more you paste, the higher the confidence score on your voice core.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Prop</th><th>Input</th><th>Textarea</th><th>Select</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">validationState</td><td class="num">83%</td><td class="num">81%</td><td class="num">68%</td></tr>
+          <tr><td class="mono">isDisabled</td><td class="num">78%</td><td class="num">56%</td><td class="num">74%</td></tr>
+          <tr><td class="mono">appearance</td><td class="num">50%</td><td class="num">63%</td><td class="num">47%</td></tr>
+          <tr><td class="mono">size</td><td class="num">56%</td><td class="num">44%</td><td class="num">47%</td></tr>
+          <tr><td class="mono">prefix / suffix</td><td class="num">67%</td><td>none</td><td>none</td></tr>
+          <tr><td class="mono">isReadOnly</td><td class="num">61%</td><td>none</td><td>none</td></tr>
+          <tr><td class="mono">isRequired</td><td class="num">28%</td><td class="num">44%</td><td>none</td></tr>
+          <tr><td class="mono">helperText</td><td class="num">28%</td><td>none</td><td>none</td></tr>
+          <tr><td class="mono">resize</td><td>none</td><td class="num">50%</td><td>none</td></tr>
+          <tr><td class="mono">options</td><td>none</td><td>none</td><td class="num">63%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="t-body-sm"><strong>Roles</strong> input and textarea are <span class="tok">textbox</span>; select is <span class="tok">combobox</span> with <span class="tok">aria-expanded</span>, <span class="tok">aria-haspopup="listbox"</span> and <span class="tok">aria-controls</span>. <strong>Select keyboard</strong> Enter or Space opens; Arrow keys move; Home and End jump to first and last; typing a character jumps to the next option starting with it; Escape closes and returns focus to the trigger. <strong>Required on every field</strong> <span class="tok">for</span> and <span class="tok">id</span> paired, <span class="tok">aria-required</span>, <span class="tok">aria-invalid</span>, and <span class="tok">aria-describedby</span> pointing at both helper and error text.</p>
+
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Keep the label visible above the field permanently, and validate on blur with the error message below the control.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Use the placeholder as the label. It vanishes the moment someone types, which removes the field's name exactly when they most need to check it.</p></div>
+    </div>
+
+    <h3>Checkbox, radio, switch</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Choice controls &middot; full-row targets</span><span>44px minimum</span></div>
+      <div class="d-stage-body col">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--space-5)">
+          <div>
+            <h4 style="margin-top:0">Checkbox</h4>
+            <label class="hu-choice" for="c1"><input type="checkbox" id="c1" checked><span class="hu-choice__text">Flag passive voice<small>Applies to every check from now on</small></span></label>
+            <label class="hu-choice" for="c2"><input type="checkbox" id="c2"><span class="hu-choice__text">Flag jargon</span></label>
+            <label class="hu-choice" for="c3"><input type="checkbox" id="c3" disabled><span class="hu-choice__text">Flag tone drift<small>Available on Studio</small></span></label>
+          </div>
+          <div>
+            <h4 style="margin-top:0">Radio</h4>
+            <fieldset style="border:none;padding:0;margin:0">
+              <legend class="hu-label" style="margin-bottom:4px">Draft length</legend>
+              <label class="hu-choice" for="r1"><input type="radio" name="len" id="r1" checked><span class="hu-choice__text">Short, under 120 words</span></label>
+              <label class="hu-choice" for="r2"><input type="radio" name="len" id="r2"><span class="hu-choice__text">Standard, 120 to 300</span></label>
+              <label class="hu-choice" for="r3"><input type="radio" name="len" id="r3"><span class="hu-choice__text">Long form, 300 plus</span></label>
+            </fieldset>
+          </div>
+          <div>
+            <h4 style="margin-top:0">Switch</h4>
+            <label class="hu-switch" for="s1"><span class="hu-switch__wrap"><input type="checkbox" role="switch" id="s1" checked><span class="hu-switch__track"></span></span><span class="hu-choice__text">Auto-check before publish</span></label>
+            <label class="hu-switch" for="s2"><span class="hu-switch__wrap"><input type="checkbox" role="switch" id="s2"><span class="hu-switch__track"></span></span><span class="hu-choice__text">Weekly brand report</span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Checkbox</strong> role <span class="tok">checkbox</span>, <span class="tok">aria-checked</span> takes <span class="tok">true</span>, <span class="tok">false</span> or <span class="tok">mixed</span>; <span class="tok">isIndeterminate</span> is at 80% adoption and is required for any "select all" header. Space toggles. <strong>Radio</strong> role <span class="tok">radio</span> inside <span class="tok">radiogroup</span>; arrow keys move <em>and</em> select; implement roving tabindex so the group is one tab stop, not five. <strong>Switch</strong> role <span class="tok">switch</span> with <span class="tok">aria-checked</span>; Space and Enter both toggle. A switch applies immediately and needs no Save; if the change needs confirming, use a checkbox.</p>
+
+    <div class="d-note">
+      <span class="h">Why the row is the target</span>
+      <p>The native box is 20px. Wrapping the row in a <span class="tok">&lt;label&gt;</span> with <span class="tok">min-height: var(--tap-min)</span> turns a 20px target into a full-width one at zero visual cost. This is the single highest-leverage accessibility fix in the whole form layer.</p>
+    </div>
+
+    <h3>Search and combobox</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Search, filterable select</span><span>role=searchbox / combobox</span></div>
+      <div class="d-stage-body col">
+        <div class="hu-field" style="max-width:420px">
+          <label class="hu-label" for="f-search">Search your drafts</label>
+          <span class="hu-inputgroup">
+            <span class="hu-affix" aria-hidden="true">⌕</span>
+            <input class="hu-input" id="f-search" type="search" role="searchbox" placeholder="Search">
+          </span>
+        </div>
+        <div style="max-width:420px">
+          <div class="hu-field">
+            <label class="hu-label" for="f-combo">Voice attribute</label>
+            <input class="hu-input" id="f-combo" type="text" role="combobox" aria-expanded="true" aria-controls="combo-list" aria-autocomplete="list" value="dir">
+          </div>
+          <div class="hu-menu" id="combo-list" role="listbox" style="margin-top:6px">
+            <button class="hu-menu__item" role="option" aria-selected="true">Direct</button>
+            <button class="hu-menu__item" role="option" aria-selected="false">Disarming</button>
+            <button class="hu-menu__item" role="option" aria-selected="false">Contrarian</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Search props</strong> <span class="tok">defaultValue</span> (56%), <span class="tok">placeholder</span> (44%), <span class="tok">isDisabled</span> (44%). Enter submits, Escape clears. <strong>Combobox props</strong> <span class="tok">options</span> required (80%), <span class="tok">isDisabled</span> (80%), <span class="tok">size</span> and <span class="tok">onChange</span> (53%), <span class="tok">isLoading</span> (40%). Arrow keys move, Enter selects, Escape closes without selecting, Alt plus ArrowDown opens without moving focus. Track the focused option with <span class="tok">aria-activedescendant</span>, not by moving real focus.</p>
+
+    <h3>File uploader</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Training material intake</span><span>.hu-dropzone</span></div>
+      <div class="d-stage-body col">
+        <label class="hu-dropzone" for="f-up">
+          <span aria-hidden="true" style="font-size:24px">⇪</span>
+          <span class="hu-dropzone__title">Drop your writing here</span>
+          <span class="hu-dropzone__hint">PDF, DOCX, TXT or Markdown &middot; up to 20 MB each</span>
+          <input type="file" id="f-up" multiple accept=".pdf,.docx,.txt,.md" style="position:absolute;width:1px;height:1px;opacity:0">
+        </label>
+        <div>
+          <div class="hu-filerow"><span aria-hidden="true">▪</span><span class="hu-filerow__name">newsletter-archive-2025.pdf</span><span class="hu-filerow__size">4.2 MB</span><span class="hu-badge hu-badge--success"><span class="hu-badge__dot"></span> Ingested</span></div>
+          <div class="hu-filerow"><span aria-hidden="true">▪</span><span class="hu-filerow__name">keynote-transcript.docx</span><span class="hu-filerow__size">88 KB</span><div style="width:110px"><div class="hu-progress"><div class="hu-progress__track"><div class="hu-progress__fill" style="width:62%"></div></div></div></div></div>
+          <div class="hu-filerow"><span aria-hidden="true">▪</span><span class="hu-filerow__name">brand-deck.key</span><span class="hu-filerow__size">18 MB</span><span class="hu-badge hu-badge--danger"><span class="hu-badge__dot"></span> Unsupported</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">isDisabled</span> (83%), <span class="tok">acceptMultiple</span> (58%), <span class="tok">validationState</span> (58%), <span class="tok">accept</span> and <span class="tok">onChange</span> (42%). <strong>Role</strong> <span class="tok">button</span>; Enter and Space open the picker. <strong>Required</strong> a real <span class="tok">input type="file"</span> underneath, accepted formats stated before upload rather than in the error, and per-file progress since these files are large and the ingest is the slowest thing in the product.</p>
+
+    <h3>Number input and slider</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Numeric</span><span>role=spinbutton / slider</span></div>
+      <div class="d-stage-body">
+        <div class="hu-field" style="max-width:180px">
+          <label class="hu-label" for="f-num">Drafts per brief</label>
+          <input class="hu-input" id="f-num" type="number" value="3" min="1" max="10" step="1">
+        </div>
+        <div class="hu-field" style="min-width:260px;flex:1">
+          <label class="hu-label" for="f-slide">Strictness &middot; <span style="font-family:var(--font-mono)">72</span></label>
+          <input class="hu-slider" id="f-slide" type="range" min="0" max="100" value="72">
+          <span class="hu-hint">Higher strictness flags more lines as drifting.</span>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Number input</strong> role <span class="tok">spinbutton</span>; <span class="tok">min</span>, <span class="tok">max</span>, <span class="tok">step</span> and <span class="tok">size</span> all at 78%. Arrow keys step, Home and End jump to min and max, PageUp and PageDown move ten steps. Increment and decrement buttons need a 44px target each. <strong>Slider</strong> role <span class="tok">slider</span>; <span class="tok">min</span>, <span class="tok">max</span>, <span class="tok">step</span> at 94%. Thumb is at least 24 by 24 regardless of size variant, and <span class="tok">aria-valuenow</span> updates on every change, not on release.</p>
+  </section>
+
+  <!-- ============================================================ 11 -->
+  <section class="d-sec" id="s11">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">11 &middot; Components</span>
+      <h2>Data display</h2>
+      <p class="d-lede">Card, table, avatar, tag, badge and divider. These carry the Check surface, which is the densest screen in the product and the one people are paying for.</p>
+    </div>
+
+    <h3>Card</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Card &middot; interactive and static</span><span>.hu-card</span></div>
+      <div class="d-stage-body grid">
+        <article class="hu-card hu-card--interactive" tabindex="0" role="button" aria-label="Open draft: Why most founder brands sound the same">
+          <div class="hu-card__media"></div>
+          <div class="hu-card__body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="hu-tag hu-tag--upper">LinkedIn</span><span class="hu-tag hu-tag--neutral hu-tag--upper">Draft</span></div>
+            <h4 class="hu-card__title">Why most founder brands sound the same</h4>
+            <p class="hu-card__text">Checked 2 hours ago against Jane's core. Two lines flagged as drifting.</p>
+          </div>
+          <div class="hu-card__foot"><span class="hu-badge hu-badge--warning"><span class="hu-badge__dot"></span> 74 &middot; Drifting</span></div>
+        </article>
+        <article class="hu-card">
+          <div class="hu-card__media" style="background:linear-gradient(135deg,var(--hue-coral),var(--hue-orange))"></div>
+          <div class="hu-card__body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="hu-tag hu-tag--upper">Newsletter</span></div>
+            <h4 class="hu-card__title">The clarity issue, no. 41</h4>
+            <p class="hu-card__text">Published 4 days ago. Scored 91 at publish.</p>
+          </div>
+          <div class="hu-card__foot"><span class="hu-badge hu-badge--success"><span class="hu-badge__dot"></span> 91 &middot; On brand</span></div>
+        </article>
+        <article class="hu-card">
+          <div class="hu-card__body" style="gap:var(--space-3)">
+            <span class="t-tag-1" style="color:var(--text-tertiary)">LOADING</span>
+            <div class="hu-skel hu-skel--text" data-animate="true" style="width:70%"></div>
+            <div class="hu-skel hu-skel--text" data-animate="true" style="width:92%"></div>
+            <div class="hu-skel hu-skel--text" data-animate="true" style="width:48%"></div>
+          </div>
+        </article>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">size</span> and <span class="tok">appearance</span> (elevated, outline, filled, unstyled) at 47%, <span class="tok">orientation</span> at 33%. <strong>Required</strong> add <span class="tok">role="button"</span> and <span class="tok">tabindex="0"</span> <em>only</em> when the card is clickable, and give it an accessible name from a visible heading or an <span class="tok">aria-label</span>. Enter and Space activate.</p>
+
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Make the whole card the target when the whole card is one action, and put the score in a footer so a row of cards can be scanned down a single column.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Nest a button inside a clickable card. The inner control steals the click and no keyboard user can reach the outer action predictably.</p></div>
+    </div>
+
+    <h3>Table</h3>
+    <div class="hu-table-wrap" style="margin:var(--space-4) 0">
+      <table class="hu-table">
+        <thead><tr><th scope="col">Draft</th><th scope="col">Channel</th><th scope="col" class="num">Score</th><th scope="col">Status</th><th scope="col" class="num">Checked</th></tr></thead>
+        <tbody>
+          <tr><td>Why most founder brands sound the same</td><td>LinkedIn</td><td class="num">74</td><td><span class="hu-badge hu-badge--warning"><span class="hu-badge__dot"></span> Drifting</span></td><td class="num">2h ago</td></tr>
+          <tr><td>The clarity issue, no. 41</td><td>Newsletter</td><td class="num">91</td><td><span class="hu-badge hu-badge--success"><span class="hu-badge__dot"></span> On brand</span></td><td class="num">4d ago</td></tr>
+          <tr><td>Cold outreach rewrite</td><td>Email</td><td class="num">38</td><td><span class="hu-badge hu-badge--danger"><span class="hu-badge__dot"></span> Off brand</span></td><td class="num">6d ago</td></tr>
+          <tr><td>Conference bio, short</td><td>Web</td><td class="num">88</td><td><span class="hu-badge hu-badge--success"><span class="hu-badge__dot"></span> On brand</span></td><td class="num">1w ago</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">data</span> (56%), <span class="tok">columns</span> (44%), <span class="tok">isStickyHeader</span> (39%), <span class="tok">size</span> (33%), <span class="tok">isStriped</span> (28%). <strong>Required</strong> semantic <span class="tok">table</span>, <span class="tok">thead</span>, <span class="tok">tbody</span>, with <span class="tok">scope="col"</span> on every column header. Numeric columns take <span class="tok">font-variant-numeric: tabular-nums</span> so digits align down the column. The sticky header needs a visible boundary once it sticks, otherwise rows appear to slide under nothing.</p>
+
+    <h3>Tag, badge, avatar, divider</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Atomic elements</span><span>.hu-tag .hu-badge .hu-avatar</span></div>
+      <div class="d-stage-body col">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span class="hu-tag">Direct</span>
+          <span class="hu-tag hu-tag--upper">Warm</span>
+          <span class="hu-tag hu-tag--neutral">Contrarian</span>
+          <span class="hu-tag">Plain-spoken <button class="hu-tag__remove" aria-label="Remove attribute Plain-spoken">×</button></span>
+        </div>
+        <hr class="hu-divider">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+          <span class="hu-avatar hu-avatar--sm">JO</span>
+          <span class="hu-avatar">JO</span>
+          <span class="hu-avatar hu-avatar--lg" style="background:var(--hue-magenta);color:var(--white)">JO</span>
+          <span class="hu-avatar hu-avatar--square" style="background:var(--hue-teal);color:var(--black)">EM</span>
+          <span class="hu-avatar-stack">
+            <span class="hu-avatar hu-avatar--sm">JO</span><span class="hu-avatar hu-avatar--sm" style="background:var(--hue-yellow);color:var(--black)">RK</span><span class="hu-avatar hu-avatar--sm" style="background:var(--hue-green);color:var(--black)">TP</span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Tag</strong> <span class="tok">variant</span> (67%), <span class="tok">size</span> (61%), <span class="tok">appearance</span> (56%), <span class="tok">text</span> required (50%), <span class="tok">hasRemoveButton</span> (44%). The remove button needs a 24px target minimum even on the small size, plus <span class="tok">aria-label="Remove [text]"</span>; Delete and Backspace remove when the tag is focused. <strong>Badge</strong> <span class="tok">variant</span> (79%), <span class="tok">size</span> (50%), <span class="tok">count</span> (43%). <strong>Avatar</strong> <span class="tok">size</span> (94%), <span class="tok">imageSrc</span> and <span class="tok">imageAlt</span> (81%), <span class="tok">appearance</span> (50%). Alt text is the person's name, never the word "avatar". <strong>Divider</strong> <span class="tok">aria-hidden="true"</span> unless it genuinely separates two labelled regions.</p>
+  </section>
+
+  <!-- ============================================================ 12 -->
+  <section class="d-sec" id="s12">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">12 &middot; Components</span>
+      <h2>Feedback</h2>
+      <p class="d-lede">None of these existed in v0, which is why the contact form there could double-submit in silence. This is the layer that carries the Doherty Threshold rules from section 02.</p>
+    </div>
+
+    <h3>Alert: persistent, in the flow</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Alert &middot; for anything the user must act on</span><span>role=alert</span></div>
+      <div class="d-stage-body col">
+        <div class="hu-alert hu-alert--info" role="alert"><span class="hu-alert__icon" aria-hidden="true">i</span><div><p class="hu-alert__title">Your core is still learning</p><p class="hu-alert__text">Confidence is 62%. Add two more samples and drafts will hold your voice more closely.</p></div><button class="hu-alert__close" aria-label="Dismiss">×</button></div>
+        <div class="hu-alert hu-alert--success" role="alert"><span class="hu-alert__icon" aria-hidden="true">✓</span><div><p class="hu-alert__title">Voice core updated</p><p class="hu-alert__text">Eleven samples ingested. Every draft from now on uses the new core.</p></div><button class="hu-alert__close" aria-label="Dismiss">×</button></div>
+        <div class="hu-alert hu-alert--warning" role="alert"><span class="hu-alert__icon" aria-hidden="true">!</span><div><p class="hu-alert__title">You are near your monthly limit</p><p class="hu-alert__text">42 of 50 checks used. The counter resets on 1 October.</p></div><button class="hu-alert__close" aria-label="Dismiss">×</button></div>
+        <div class="hu-alert hu-alert--danger" role="alert"><span class="hu-alert__icon" aria-hidden="true">×</span><div><p class="hu-alert__title">Two files could not be read</p><p class="hu-alert__text">brand-deck.key and old-site.zip are not supported. Export them as PDF and upload again.</p></div><button class="hu-alert__close" aria-label="Dismiss">×</button></div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">variant</span> (61%), <span class="tok">title</span> (44%), <span class="tok">icon</span> and <span class="tok">description</span> (39%), <span class="tok">appearance</span> (33%), <span class="tok">hasCloseButton</span> and <span class="tok">onClose</span> (28%). <strong>Required</strong> <span class="tok">role="alert"</span> or <span class="tok">aria-live="assertive"</span>, a unique icon per variant so colour is never alone, a 44px close target, and 3:1 between the alert background and the page behind it.</p>
+
+    <h3>Toast: transient, out of the flow</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Toast</span><span>.hu-toast</span></div>
+      <div class="d-stage-body col" style="align-items:flex-start">
+        <div class="hu-toast hu-toast--success" role="alert"><span class="hu-toast__icon" aria-hidden="true">✓</span><div><p class="hu-toast__title">Draft saved</p><p class="hu-toast__text">Autosaves every 20 seconds from here.</p></div><button class="hu-toast__close" aria-label="Dismiss">×</button></div>
+        <div class="hu-toast hu-toast--danger" role="alert"><span class="hu-toast__icon" aria-hidden="true">×</span><div><p class="hu-toast__title">Could not publish</p><p class="hu-toast__text">LinkedIn rejected the request. Your draft is safe.</p></div><button class="hu-toast__close" aria-label="Dismiss">×</button></div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">onClose</span> (53%), <span class="tok">description</span> and <span class="tok">variant</span> (47%), <span class="tok">timeout</span> (42%), <span class="tok">hasCloseButton</span> (37%), <span class="tok">title</span> and <span class="tok">hasIcon</span> (26%). <strong>Rule</strong> a toast may never be the only place an error appears. If the user has to do something about it, it is an Alert. Toasts confirm; alerts instruct. Never auto-dismiss an error toast.</p>
+
+    <h3>Spinner, progress, skeleton</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Waiting states, mapped to the Doherty thresholds</span><span>role=status / progressbar</span></div>
+      <div class="d-stage-body col">
+        <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+          <span class="hu-spinner hu-spinner--sm" role="status" aria-label="Loading"></span>
+          <span class="hu-spinner" role="status" aria-label="Loading"></span>
+          <span class="hu-spinner hu-spinner--lg" role="status" aria-label="Loading"></span>
+          <span class="t-body-sm" style="color:var(--text-tertiary)">400ms to 1s, inside the control</span>
+        </div>
+        <hr class="hu-divider">
+        <div class="hu-progress" role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100" aria-label="Ingesting samples">
+          <div class="hu-progress__meta"><span>Reading your writing</span><span>62%</span></div>
+          <div class="hu-progress__track"><div class="hu-progress__fill" style="width:62%"></div></div>
+        </div>
+        <div class="hu-progress hu-progress--indeterminate" role="progressbar" aria-label="Working">
+          <div class="hu-progress__meta"><span>Building your voice core</span><span>a minute or so</span></div>
+          <div class="hu-progress__track"><div class="hu-progress__fill"></div></div>
+        </div>
+        <hr class="hu-divider">
+        <div style="display:flex;gap:14px;align-items:center" aria-live="polite" aria-label="Loading">
+          <div class="hu-skel hu-skel--circle" data-animate="true" style="width:40px;height:40px"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+            <div class="hu-skel hu-skel--text" data-animate="true" style="width:38%"></div>
+            <div class="hu-skel hu-skel--text" data-animate="true" style="width:72%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Spinner</strong> <span class="tok">size</span> (95%), <span class="tok">variant</span> (53%); role <span class="tok">status</span> with a label, plus a delay so quick operations never flash. <strong>Progress bar</strong> <span class="tok">value</span> required (90%), <span class="tok">variant</span> (75%), <span class="tok">size</span> (60%), <span class="tok">maxValue</span> (45%), <span class="tok">isIndeterminate</span> (35%). Omit <span class="tok">aria-valuenow</span> when indeterminate. <strong>Skeleton</strong> <span class="tok">width</span> and <span class="tok">hasAnimation</span> (69%), <span class="tok">height</span> and <span class="tok">appearance</span> (46%); remove it from the DOM when content arrives rather than hiding it, and honour reduced motion.</p>
+
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Make the skeleton the shape of the thing that is coming. Three text bars where three text bars will be. That is what stops the layout jumping.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Show a full-page spinner for a partial update. It throws away everything already on screen and reads as slower than it is.</p></div>
+    </div>
+
+    <h3>Empty state</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Empty state &middot; first run</span><span>role=region</span></div>
+      <div class="d-stage-body col">
+        <section class="hu-empty" aria-label="No drafts yet">
+          <div class="hu-empty__art" aria-hidden="true">✎</div>
+          <h4 class="hu-empty__title">No drafts yet</h4>
+          <p class="hu-empty__text">Your core is trained. Here are three things it noticed you have opinions about.</p>
+          <div class="hu-empty__actions">
+            <button class="hu-btn hu-btn--outline hu-btn--sm">Why scoping kills ops projects</button>
+            <button class="hu-btn hu-btn--outline hu-btn--sm">The handover nobody documents</button>
+            <button class="hu-btn hu-btn--outline hu-btn--sm">What you got wrong about SOPs</button>
+          </div>
+          <div class="hu-empty__actions">
+            <button class="hu-btn hu-btn--primary">Something else</button>
+            <button class="hu-btn hu-btn--ghost">Check an existing draft</button>
+          </div>
+        </section>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">primaryAction</span> (70%), <span class="tok">secondaryAction</span> (60%), <span class="tok">imageSrc</span> and <span class="tok">title</span> (50%), <span class="tok">description</span> (40%). <strong>Required</strong> a <span class="tok">section</span> with an accessible name, decorative art marked <span class="tok">aria-hidden</span>, and a title larger than the description. <strong>Rule</strong> an empty state always names the next action, and on the Create surface it goes further: it proposes the action rather than requesting one. The blank page is the single most common complaint in the market this product sells into, so an empty composer that asks "what would you like to write about?" hands the user back the exact problem they paid to remove. Offer three topics derived from their core, and keep a way through for people who already know what they want to say.</p>
+  </section>
+
+  <!-- ============================================================ 13 -->
+  <section class="d-sec" id="s13">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">13 &middot; Components</span>
+      <h2>Overlays</h2>
+      <p class="d-lede">Focus management is the whole job here. Every overlay opens from a trigger, and every overlay returns focus to that trigger when it closes.</p>
+    </div>
+
+    <h3>Modal</h3>
+    <div class="hu-modal-demo">
+      <div class="hu-modal" role="dialog" aria-modal="true" aria-labelledby="mtitle">
+        <div class="hu-modal__head">
+          <h4 class="hu-modal__title" id="mtitle">Retrain your voice core?</h4>
+          <button class="hu-alert__close" aria-label="Close">×</button>
+        </div>
+        <div class="hu-modal__body">
+          <p style="margin:0">Retraining rebuilds the core from all 11 samples. Drafts already written keep their scores; new drafts use the new core. This takes about two minutes and cannot be undone.</p>
+        </div>
+        <div class="hu-modal__foot">
+          <button class="hu-btn hu-btn--ghost">Cancel</button>
+          <button class="hu-btn hu-btn--primary">Retrain core</button>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Props</strong> <span class="tok">isOpen</span> (53%), <span class="tok">aria-label</span> (33%), <span class="tok">size</span> (27%). <strong>Required</strong> <span class="tok">role="dialog"</span>, <span class="tok">aria-modal="true"</span> and <span class="tok">aria-labelledby</span> pointing at the title. Focus moves to the first interactive element or the close button on open, Tab and Shift+Tab cycle inside the modal only, Escape closes and focus returns to the trigger. The backdrop is at least 0.5 opacity and blocks interaction behind it.</p>
+
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Name the consequence in the title and put the outcome in the confirm button: "Retrain core", not "OK".</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Use a modal for anything the user can carry on working around. Blocking the whole screen for a non-blocking message is what trains people to dismiss dialogs unread.</p></div>
+    </div>
+
+    <h3>Menu, popover, tooltip</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Menu and tooltip</span><span>role=menu / tooltip</span></div>
+      <div class="d-stage-body" style="align-items:flex-start;gap:var(--space-7)">
+        <div class="hu-menu" role="menu" aria-label="Draft actions">
+          <button class="hu-menu__item" role="menuitem">Duplicate <span class="hu-menu__kbd">⌘D</span></button>
+          <button class="hu-menu__item" role="menuitem">Check against brand <span class="hu-menu__kbd">⌘K</span></button>
+          <button class="hu-menu__item" role="menuitem">Export as Markdown</button>
+          <div class="hu-menu__sep" role="separator"></div>
+          <button class="hu-menu__item hu-menu__item--danger" role="menuitem">Delete draft</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:var(--space-7);padding-top:var(--space-7)">
+          <span class="hu-tip-wrap">
+            <button class="hu-btn hu-btn--outline hu-btn--sm" aria-describedby="tip1">Confidence 62%</button>
+            <span class="hu-tip" role="tooltip" id="tip1">Based on 11 samples</span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Menu</strong> <span class="tok">isOpen</span> and <span class="tok">placement</span> (47%), <span class="tok">size</span> (35%); role <span class="tok">menu</span> with <span class="tok">menuitem</span> children, arrow keys move, Home and End jump, Escape closes and returns focus. The destructive item sits last, behind a separator. <strong>Popover</strong> <span class="tok">isOpen</span> and <span class="tok">placement</span> (79%), <span class="tok">content</span> (57%), <span class="tok">hasArrow</span> (50%); role <span class="tok">dialog</span>, focus trapped while open. <strong>Tooltip</strong> <span class="tok">title</span> required (70%), <span class="tok">placement</span> (70%), <span class="tok">delayShow</span> (55%); role <span class="tok">tooltip</span>, connected by <span class="tok">aria-describedby</span>, shown on focus as well as hover, minimum 24px tall with 8px padding.</p>
+
+    <div class="d-note warn">
+      <span class="h">Tooltips are never the only place information lives</span>
+      <p>A tooltip is invisible on touch, so anything essential goes in helper text instead. Use tooltips for the extra detail behind a number the user can already see, which is exactly the "Confidence 62%" case above.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 14 -->
+  <section class="d-sec" id="s14">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">14 &middot; Components</span>
+      <h2>Navigation</h2>
+      <p class="d-lede">The app shell, plus breadcrumbs, pagination, tabs and the stepper. Navigation is never hidden at a breakpoint; it changes shape.</p>
+    </div>
+
+    <h3>App shell</h3>
+    <div class="hu-appshell" style="margin:var(--space-4) 0">
+      <nav class="hu-appshell__side" aria-label="Main">
+        <div class="hu-appshell__brand">hueman<span class="dot">.</span>studio</div>
+        <a class="hu-navitem" href="#s14"><span class="ico" aria-hidden="true">◈</span> Brand core</a>
+        <a class="hu-navitem" href="#s14" aria-current="page"><span class="ico" aria-hidden="true">✎</span> Create</a>
+        <a class="hu-navitem" href="#s14"><span class="ico" aria-hidden="true">◎</span> Check</a>
+        <a class="hu-navitem" href="#s14"><span class="ico" aria-hidden="true">▤</span> Library</a>
+        <a class="hu-navitem" href="#s14"><span class="ico" aria-hidden="true">⚙</span> Settings</a>
+      </nav>
+      <div class="hu-appshell__main">
+        <div class="hu-appshell__top">
+          <nav class="hu-crumbs" aria-label="Breadcrumb">
+            <a href="#s14">Library</a><span class="sep" aria-hidden="true">/</span>
+            <a href="#s14">LinkedIn</a><span class="sep" aria-hidden="true">/</span>
+            <span aria-current="page">Founder brands</span>
+          </nav>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span class="hu-avatar hu-avatar--sm">JO</span>
+            <button class="hu-btn hu-btn--accent hu-btn--sm">Publish</button>
+          </div>
+        </div>
+        <div class="hu-tabs" role="tablist" aria-label="Draft views">
+          <button class="hu-tab" role="tab" aria-selected="true">Draft</button>
+          <button class="hu-tab" role="tab" aria-selected="false">Findings</button>
+          <button class="hu-tab" role="tab" aria-selected="false">History</button>
+        </div>
+        <p class="t-body-sm" style="color:var(--text-tertiary);margin:0">Main content region. Below 900px the sidebar collapses to a top bar with a menu trigger; it is never set to <span class="tok">display: none</span> without a replacement.</p>
+      </div>
+    </div>
+
+    <h3>Pagination and stepper</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Pagination &middot; every control 44px</span><span>nav aria-label="Pagination"</span></div>
+      <div class="d-stage-body">
+        <nav class="hu-pager" aria-label="Pagination">
+          <button disabled aria-label="Previous page">←</button>
+          <button aria-current="page">1</button><button>2</button><button>3</button>
+          <span class="gap" aria-hidden="true">…</span><button>12</button>
+          <button aria-label="Next page">→</button>
+        </nav>
+      </div>
+      <div class="d-stage-bar" style="border-top:1px solid var(--border-subtle)"><span>Stepper &middot; onboarding</span><span>role=tablist</span></div>
+      <div class="d-stage-body">
+        <div class="hu-stepper" role="tablist" aria-label="Setup progress">
+          <div class="hu-step" data-state="done" role="tab" aria-selected="false"><span class="hu-step__dot" aria-hidden="true">✓</span><span class="hu-step__label">Add samples</span><span class="hu-step__line" aria-hidden="true"></span></div>
+          <div class="hu-step" data-state="current" role="tab" aria-selected="true"><span class="hu-step__dot" aria-hidden="true">2</span><span class="hu-step__label">Confirm your voice</span><span class="hu-step__line" aria-hidden="true"></span></div>
+          <div class="hu-step" role="tab" aria-selected="false"><span class="hu-step__dot" aria-hidden="true">3</span><span class="hu-step__label">Set your hue</span><span class="hu-step__line" aria-hidden="true"></span></div>
+          <div class="hu-step" role="tab" aria-selected="false"><span class="hu-step__dot" aria-hidden="true">4</span><span class="hu-step__label">First draft</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="t-body-sm"><strong>Pagination</strong> <span class="tok">currentPage</span> and <span class="tok">totalPages</span> required (77%), <span class="tok">onPageChange</span> (69%), <span class="tok">isDisabled</span> (54%); wrapped in <span class="tok">nav</span> with a label, <span class="tok">aria-current="page"</span> on the current button, every control 44 by 44. <strong>Stepper</strong> <span class="tok">steps</span> required (77%), <span class="tok">orientation</span> and <span class="tok">currentStep</span> (54%), <span class="tok">isNonLinear</span> and <span class="tok">size</span> (31%); role <span class="tok">tablist</span> with <span class="tok">aria-setsize</span> and <span class="tok">aria-posinset</span> per step. <strong>Breadcrumbs</strong> <span class="tok">items</span> and <span class="tok">separator</span> (33%); <span class="tok">nav aria-label="Breadcrumb"</span> around an ordered list, last item <span class="tok">aria-current="page"</span> and not a link.</p>
+
+    <div class="d-note">
+      <span class="h">Why the stepper is not optional</span>
+      <p>Onboarding is a four-step flow, and a multi-step flow with no visible progress is a measurable drop-off: the user cannot see the distance to the end, so the Zeigarnik and Goal-Gradient pull that keeps people finishing never engages. The step count is visible from step one.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 15 -->
+  <section class="d-sec" id="s15">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">15 &middot; Product patterns</span>
+      <h2>The hueman composites</h2>
+      <p class="d-lede">Seven patterns that are specific to this product. They are built from the components above and nothing else. If one of these needs a new primitive, that is a signal the component layer is missing something, not a licence to write a one-off.</p>
+    </div>
+
+    <h3>15.1 Brand core card</h3>
+    <p>The single object the whole product revolves around: what the system has concluded about how someone sounds and looks. It appears on the dashboard, in settings, and collapsed in the composer sidebar.</p>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Brand core &middot; trained</span><span>.hu-corecard</span></div>
+      <div class="d-stage-body col" style="max-width:520px">
+        <article class="hu-corecard">
+          <div class="hu-corecard__hue" aria-hidden="true">
+            <span style="background:var(--hue-magenta)"></span><span style="background:var(--hue-coral)"></span>
+            <span style="background:var(--hue-orange)"></span><span style="background:var(--hue-yellow)"></span>
+          </div>
+          <div class="hu-corecard__body">
+            <div class="hu-corecard__id">
+              <span class="hu-avatar hu-avatar--lg" style="background:var(--hue-magenta);color:var(--white)">JO</span>
+              <div>
+                <h4 class="hu-corecard__name">Jane Okonkwo</h4>
+                <p class="hu-corecard__sub">Operations consultant &middot; core v4 &middot; updated 2 days ago</p>
+              </div>
+              <span class="hu-badge hu-badge--success" style="margin-left:auto"><span class="hu-badge__dot"></span> Trained</span>
+            </div>
+            <div>
+              <h4 style="margin:0 0 8px">Voice</h4>
+              <div class="hu-attrs">
+                <span class="hu-tag">Direct</span><span class="hu-tag">Plain-spoken</span><span class="hu-tag">Dry humour</span>
+                <span class="hu-tag">Evidence-led</span><span class="hu-tag hu-tag--neutral">No exclamation marks</span>
+              </div>
+            </div>
+            <div class="hu-stat-row">
+              <div><div class="hu-stat__n" style="color:var(--success-fg)">88<small style="font-size:14px;color:var(--text-tertiary)">%</small></div><div class="hu-stat__k">Confidence</div></div>
+              <div><div class="hu-stat__n">11</div><div class="hu-stat__k">Samples</div></div>
+              <div><div class="hu-stat__n">14.2k</div><div class="hu-stat__k">Words read</div></div>
+              <div><div class="hu-stat__n">4</div><div class="hu-stat__k">Hues</div></div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="hu-btn hu-btn--outline hu-btn--sm">Add samples</button>
+              <button class="hu-btn hu-btn--ghost hu-btn--sm">View what it learned</button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+    <div class="d-note">
+      <span class="h">The confidence number is not decoration</span>
+      <p>It is the product's honesty mechanism, and the reason a user forgives a bad draft instead of cancelling. Confidence is displayed anywhere a draft is generated, and a core below 70% shows an Alert offering more samples rather than quietly producing weaker output. Never round it up, and never hide it once training is complete.</p>
+    </div>
+
+    <h3>15.2 Training states</h3>
+    <p>Four states, and every one of them has a screen. The gap between "uploaded" and "trained" is where first-week churn lives.</p>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Voice core lifecycle</span><span>4 states</span></div>
+      <div class="d-stage-body col">
+        <div class="hu-trainstate">
+          <div>
+            <span class="hu-trainstate__k">01 · Empty</span>
+            <span class="hu-trainstate__t">Nothing to learn from</span>
+            <p class="hu-trainstate__d">Empty state with one action. Never a disabled dashboard.</p>
+            <div class="hu-badge hu-badge--neutral" style="align-self:flex-start"><span class="hu-badge__dot"></span> Not started</div>
+          </div>
+          <div>
+            <span class="hu-trainstate__k">02 · Ingesting</span>
+            <span class="hu-trainstate__t">Reading your writing</span>
+            <p class="hu-trainstate__d">Determinate progress, per file. The total is known, so the bar is honest.</p>
+            <div class="hu-progress" role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100" aria-label="Ingesting"><div class="hu-progress__track"><div class="hu-progress__fill" style="width:62%"></div></div></div>
+          </div>
+          <div>
+            <span class="hu-trainstate__k">03 · Learning</span>
+            <span class="hu-trainstate__t">Building your core</span>
+            <p class="hu-trainstate__d">Indeterminate, over ten seconds, so it survives a refresh and toasts on completion.</p>
+            <div class="hu-progress hu-progress--indeterminate" role="progressbar" aria-label="Learning"><div class="hu-progress__track"><div class="hu-progress__fill"></div></div></div>
+          </div>
+          <div>
+            <span class="hu-trainstate__k">04 · Trained</span>
+            <span class="hu-trainstate__t">Ready, with a number</span>
+            <p class="hu-trainstate__d">Confidence shown. Below 70% the card offers more samples before it offers a draft.</p>
+            <div class="hu-badge hu-badge--success" style="align-self:flex-start"><span class="hu-badge__dot"></span> 88% confident</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3>15.3 On-brand score</h3>
+    <p>The meter is the product's headline number. Three bands, each with a colour, a word and a position, so the verdict survives greyscale and a colour-blind reader.</p>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Score meter &middot; three bands</span><span>.hu-meter</span></div>
+      <div class="d-stage-body grid">
+        <div class="hu-meter" data-band="on">
+          <div class="hu-meter__top"><span class="hu-meter__score">91<small>/100</small></span><span class="hu-badge hu-badge--success"><span class="hu-badge__dot"></span> On brand</span></div>
+          <div class="hu-meter__track"><div class="hu-meter__fill" style="width:91%"></div></div>
+          <div class="hu-meter__scale"><span>Off</span><span>Drifting</span><span>On</span></div>
+        </div>
+        <div class="hu-meter" data-band="drift">
+          <div class="hu-meter__top"><span class="hu-meter__score">74<small>/100</small></span><span class="hu-badge hu-badge--warning"><span class="hu-badge__dot"></span> Drifting</span></div>
+          <div class="hu-meter__track"><div class="hu-meter__fill" style="width:74%"></div></div>
+          <div class="hu-meter__scale"><span>Off</span><span>Drifting</span><span>On</span></div>
+        </div>
+        <div class="hu-meter" data-band="off">
+          <div class="hu-meter__top"><span class="hu-meter__score">38<small>/100</small></span><span class="hu-badge hu-badge--danger"><span class="hu-badge__dot"></span> Off brand</span></div>
+          <div class="hu-meter__track"><div class="hu-meter__fill" style="width:38%"></div></div>
+          <div class="hu-meter__scale"><span>Off</span><span>Drifting</span><span>On</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Band</th><th class="num">Range</th><th>Token</th><th>What the UI does</th></tr></thead>
+        <tbody>
+          <tr><td><strong>On brand</strong></td><td class="num">85 to 100</td><td><span class="tok">--success-*</span></td><td>Publish is enabled and primary. Findings list collapsed by default.</td></tr>
+          <tr><td><strong>Drifting</strong></td><td class="num">60 to 84</td><td><span class="tok">--warning-*</span></td><td>Publish stays enabled. Findings open, with fixes offered inline.</td></tr>
+          <tr><td><strong>Off brand</strong></td><td class="num">0 to 59</td><td><span class="tok">--danger-*</span></td><td>Publish stays enabled and secondary; the rewrite action becomes primary. Never block publishing, because it is their brand and not ours.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>15.4 Drift findings</h3>
+    <p>The score alone is a judgement. The findings are the product. Each row shows the line, why it was flagged against a named attribute of their core, and the fix in their voice.</p>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Line-level findings</span><span>.hu-diff</span></div>
+      <div class="d-stage-body col">
+        <div class="hu-diff">
+          <div class="hu-diff__row" data-verdict="off">
+            <span class="hu-diff__flag">Off</span>
+            <div>
+              <p class="hu-diff__text">"We are thrilled to announce a game-changing new offering that will revolutionise how you think about operations!"</p>
+              <p class="hu-diff__why">Flagged against <b>Plain-spoken</b> and <b>No exclamation marks</b>. Three superlatives in one sentence; you have used "game-changing" zero times in 11 samples.</p>
+              <p class="hu-diff__fix">Suggested: "New thing. It changes how operations get scoped, and here is the part that matters."</p>
+            </div>
+          </div>
+          <div class="hu-diff__row" data-verdict="drift">
+            <span class="hu-diff__flag">Drift</span>
+            <div>
+              <p class="hu-diff__text">"It is believed by many practitioners that the process can be optimised."</p>
+              <p class="hu-diff__why">Flagged against <b>Direct</b>. Passive construction; you write in the active voice in 94% of sampled sentences.</p>
+              <p class="hu-diff__fix">Suggested: "Most operators think this can be tightened. They are right."</p>
+            </div>
+          </div>
+          <div class="hu-diff__row" data-verdict="on">
+            <span class="hu-diff__flag">On</span>
+            <div>
+              <p class="hu-diff__text">"I have run this twice now and it failed both times for the same boring reason."</p>
+              <p class="hu-diff__why">Matches <b>Direct</b>, <b>Dry humour</b> and <b>Evidence-led</b>.</p>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="hu-btn hu-btn--primary">Apply all fixes</button>
+          <button class="hu-btn hu-btn--ghost">Dismiss and publish anyway</button>
+        </div>
+      </div>
+    </div>
+    <div class="d-dd">
+      <div class="do"><span class="lbl">Do</span><p>Name the attribute the finding is measured against, and cite the evidence from their own samples. "94% of your sentences are active" is why this is not a generic grammar checker.</p></div>
+      <div class="no"><span class="lbl">Don't</span><p>Flag a line without offering a fix, and never say "this sounds like AI". Findings are about their voice, not the machine's opinion of quality.</p></div>
+    </div>
+
+    <h3>15.5 Usage and limits</h3>
+    <p>At 29 to 99 a month, limits are load-bearing. Show usage before it becomes a wall, and always name the reset date so the limit reads as a rhythm rather than a punishment.</p>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Usage meter</span><span>.hu-usage</span></div>
+      <div class="d-stage-body col" style="max-width:440px">
+        <div class="hu-usage">
+          <div class="hu-usage__row">
+            <span class="hu-usage__label"><span>Brand checks</span><b>42 / 50</b></span>
+            <div class="hu-usage__track"><div class="hu-usage__fill" data-state="near" style="width:84%"></div></div>
+          </div>
+          <div class="hu-usage__row">
+            <span class="hu-usage__label"><span>Drafts generated</span><b>18 / 100</b></span>
+            <div class="hu-usage__track"><div class="hu-usage__fill" style="width:18%"></div></div>
+          </div>
+          <div class="hu-usage__row">
+            <span class="hu-usage__label"><span>Training samples</span><b>11 / 25</b></span>
+            <div class="hu-usage__track"><div class="hu-usage__fill" style="width:44%"></div></div>
+          </div>
+          <p class="t-body-sm" style="margin:0;color:var(--text-tertiary)">Resets 1 October. <a href="#s15" class="hu-link">See what Studio includes</a></p>
+        </div>
+      </div>
+    </div>
+
+    <h3>15.6 Plans</h3>
+    <div class="d-stage">
+      <div class="d-stage-bar"><span>Pricing &middot; one recommended tier</span><span>Von Restorff</span></div>
+      <div class="d-stage-body col" style="padding-top:var(--space-7)">
+        <div class="hu-plans">
+          <div class="hu-plan">
+            <span class="hu-plan__name">Solo</span>
+            <span class="hu-plan__price">$29<small> /mo</small></span>
+            <ul><li>One voice core</li><li>50 checks a month</li><li>100 drafts</li><li>LinkedIn and newsletter</li></ul>
+            <button class="hu-btn hu-btn--outline hu-btn--sm hu-btn--full">Choose Solo</button>
+          </div>
+          <div class="hu-plan" data-recommended="true">
+            <span class="hu-plan__flag">Most chosen</span>
+            <span class="hu-plan__name">Studio</span>
+            <span class="hu-plan__price">$59<small> /mo</small></span>
+            <ul><li>Three voice cores</li><li>Unlimited checks</li><li>500 drafts</li><li>Visual core and hue kit</li><li>Weekly brand report</li></ul>
+            <button class="hu-btn hu-btn--primary hu-btn--sm hu-btn--full">Choose Studio</button>
+          </div>
+          <div class="hu-plan">
+            <span class="hu-plan__name">Signature</span>
+            <span class="hu-plan__price">$99<small> /mo</small></span>
+            <ul><li>Unlimited cores</li><li>Unlimited everything</li><li>Team seats</li><li>API and integrations</li><li>Priority support</li></ul>
+            <button class="hu-btn hu-btn--outline hu-btn--sm hu-btn--full">Choose Signature</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="d-note">
+      <span class="h">Why exactly one tier is marked</span>
+      <p>Three tiers at equal weight is a comparison with no exit: nothing gives the reader permission to stop weighing. Marking one differentiates it, which is the Von Restorff Effect doing its job, and it caps the real decision at two options rather than three. Mark one tier only, and mark it with treatment plus a label, never with colour alone.</p>
+    </div>
+
+    <h3>15.7 Composer</h3>
+    <p>The Create surface. One primary action, the core visible at all times so the user knows whose voice is being used, and the check available without leaving the draft.</p>
+    <div class="hu-appshell" style="margin:var(--space-4) 0;grid-template-columns:1fr 260px">
+      <div class="hu-appshell__main">
+        <div class="hu-appshell__top">
+          <div class="hu-crumbs"><span aria-current="page">Untitled draft</span><span class="hu-badge hu-badge--neutral"><span class="hu-badge__dot"></span> Saved</span></div>
+          <div style="display:flex;gap:8px"><button class="hu-btn hu-btn--ghost hu-btn--sm">Check</button><button class="hu-btn hu-btn--primary hu-btn--sm">Publish</button></div>
+        </div>
+        <div class="hu-field">
+          <label class="hu-label" for="cmp">Draft</label>
+          <textarea class="hu-textarea" id="cmp" style="min-height:150px">Most founder brands sound the same because they were written by someone describing a founder, not by the founder.</textarea>
+        </div>
+      </div>
+      <aside class="hu-appshell__side" style="border-right:none;border-left:1px solid var(--border-subtle);gap:var(--space-4)" aria-label="Brand core">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="hu-avatar hu-avatar--sm" style="background:var(--hue-magenta);color:var(--white)">JO</span>
+          <div><div style="font-size:13px;font-weight:600">Jane's core</div><div class="t-tag-1" style="color:var(--text-tertiary)">88% confident</div></div>
+        </div>
+        <div class="hu-attrs"><span class="hu-tag">Direct</span><span class="hu-tag">Dry humour</span></div>
+        <div class="hu-meter" data-band="on">
+          <div class="hu-meter__top"><span class="hu-meter__score" style="font-size:22px">89<small style="font-size:12px">/100</small></span></div>
+          <div class="hu-meter__track"><div class="hu-meter__fill" style="width:89%"></div></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ 16 -->
+  <section class="d-sec" id="s16">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">16 &middot; Product</span>
+      <h2>UX copy</h2>
+      <p class="d-lede">The product's promise is that it does not sound like AI slop. An interface that says "Oops! Something went wrong 🎉" has broken that promise before the user has read a single generated word. Interface copy is part of the demo.</p>
+    </div>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Rule</th><th>Instead of</th><th>Write</th></tr></thead>
+        <tbody>
+          <tr><td>Name the thing the user recognises, not the system's word for it.</td><td>"Ingest corpus"</td><td>"Add your writing"</td></tr>
+          <tr><td>Buttons say what happens. The confirmation echoes it in the past tense.</td><td>"Submit" then "Success!"</td><td>"Retrain core" then "Core retrained"</td></tr>
+          <tr><td>Errors say what went wrong and what to do. No apology, no blame.</td><td>"Oops! Something went wrong."</td><td>"We could not read brand-deck.key. Export it as PDF and upload again."</td></tr>
+          <tr><td>Never say "just", "simply" or "easy". It tells someone who is stuck that they are the problem.</td><td>"Simply paste your text"</td><td>"Paste anything you have written"</td></tr>
+          <tr><td>No exclamation marks in system copy. None.</td><td>"Your core is ready!"</td><td>"Your core is ready"</td></tr>
+          <tr><td>Numbers are specific. Vague reassurance reads as evasion.</td><td>"This may take a while"</td><td>"About two minutes for 11 samples"</td></tr>
+          <tr><td>Empty states name the next action.</td><td>"No results found"</td><td>"No drafts yet. Give it a topic and it writes the first one."</td></tr>
+          <tr><td>Never editorialise about the user's brand.</td><td>"This sounds generic"</td><td>"Three superlatives in one sentence. Your samples average zero."</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="d-note">
+      <span class="h">Sentence case everywhere</span>
+      <p>Buttons, labels, headings, menu items, toasts. The only uppercase in the system is the mono Tag 2 style, used for section labels and CTA links, where it is a typographic device rather than a sentence.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 17 -->
+  <section class="d-sec" id="s17">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">17 &middot; Shipping</span>
+      <h2>Acceptance criteria</h2>
+      <p class="d-lede">A component is not done when it looks right. Run this before opening the pull request; it is the same list QA will run.</p>
+    </div>
+
+    <h4>Keyboard</h4>
+    <ul class="d-check">
+      <li><b>Every interactive element is reachable by Tab</b> in the order it appears visually.</li>
+      <li><b>Focus is visible on every one of them.</b> 2px ring, 2px offset, and never removed by a reset.</li>
+      <li><b>Escape closes</b> every modal, menu, popover, tooltip and combobox, and focus returns to the trigger.</li>
+      <li><b>Arrow keys work</b> in menus, listboxes, radio groups, sliders, spinbuttons, steppers and pagination.</li>
+      <li><b>Radio groups and menus are one tab stop</b>, not one per item, via roving tabindex.</li>
+      <li><b>No keyboard trap</b> anywhere except inside an open modal, where the trap is intentional.</li>
+    </ul>
+
+    <h4>Screen reader</h4>
+    <ul class="d-check">
+      <li><b>Every form control has a programmatic name</b> via a wired label, and clicking the label focuses it.</li>
+      <li><b>Errors are announced</b> via <span class="tok">aria-invalid</span> plus <span class="tok">aria-describedby</span> pointing at the message.</li>
+      <li><b>Loading is announced</b> via <span class="tok">aria-busy</span> on controls, <span class="tok">role="status"</span> on spinners and skeletons.</li>
+      <li><b>Alerts and toasts announce immediately</b> via <span class="tok">role="alert"</span> or <span class="tok">aria-live="assertive"</span>.</li>
+      <li><b>Icon-only controls have an aria-label</b> that says the action, not the icon.</li>
+      <li><b>Decorative graphics are hidden</b> with <span class="tok">aria-hidden="true"</span> or <span class="tok">alt=""</span>.</li>
+    </ul>
+
+    <h4>Visual and layout</h4>
+    <ul class="d-check">
+      <li><b>Text contrast is at least 4.5:1</b>, and 3:1 for large text, borders, icons and focus rings.</li>
+      <li><b>No state is signalled by colour alone.</b> Every one carries an icon, a dot, a label or a position.</li>
+      <li><b>Both themes render correctly</b>, with no colour declared outside the token tiers.</li>
+      <li><b>Every target is at least 44 by 44</b>, with at least 8px between adjacent targets. Links inside a sentence are the only exception; icon-only and close controls use <span class="tok">.hu-hit</span> to reach it.</li>
+      <li><b>Nothing reflows</b> between default, loading, error and loaded.</li>
+      <li><b>Works at 360px</b> with no horizontal page scroll; wide tables scroll inside their own container.</li>
+      <li><b>Respects prefers-reduced-motion</b>, and nothing flashes more than three times a second.</li>
+      <li><b>Zooms to 200%</b> without content being cut off or overlapping.</li>
+    </ul>
+
+    <h4>Behaviour</h4>
+    <ul class="d-check">
+      <li><b>Nothing over 400ms happens silently.</b> See the threshold table in section 02.</li>
+      <li><b>No double-submit.</b> The control disables itself for the duration of the request.</li>
+      <li><b>One primary action per view.</b></li>
+      <li><b>Destructive actions are confirmed</b> and the confirm button names the outcome.</li>
+      <li><b>Every list has an empty state</b> and it names the next action.</li>
+      <li><b>Every request has an error state</b> that says what to do next.</li>
+    </ul>
+  </section>
+
+  <!-- ============================================================ 18 -->
+  <section class="d-sec" id="s18">
+    <div class="d-sec-head">
+      <span class="d-eyebrow">18 &middot; Shipping</span>
+      <h2>Handoff and changelog</h2>
+      <p class="d-lede">What to build first, how to structure it, and everything that changed from v0.</p>
+    </div>
+
+    <h3>Suggested file structure</h3>
+    <pre class="d-code"><span class="c">styles/</span>
+  <span class="k">tokens/</span>
+    primitives.css   <span class="c">// tier 1: colours, type stacks, space, motion, z</span>
+    semantic.css     <span class="c">// tier 2: light block, then the two dark blocks</span>
+  <span class="k">base/</span>
+    reset.css        <span class="c">// box-sizing, margin, :focus-visible, reduced-motion</span>
+    typography.css   <span class="c">// @font-face + the .t-* scale</span>
+  <span class="k">components/</span>
+    button.css  input.css  select.css  choice.css  card.css
+    alert.css   toast.css  modal.css   menu.css    table.css
+    ...one file per component, each referencing tier 2 only
+  <span class="k">patterns/</span>
+    core-card.css  meter.css  diff.css  usage.css  plans.css  app-shell.css</pre>
+
+    <div class="d-note">
+      <span class="h">The one lint rule worth adding</span>
+      <p>Fail the build on any hex value, <span class="tok">rgb()</span>, or <span class="tok">--grey-*</span> / <span class="tok">--hue-*</span> reference inside <span class="tok">components/</span> or <span class="tok">patterns/</span>. That single rule is what keeps the token architecture from eroding in month three, and it is what makes the next theme a one-file change.</p>
+    </div>
+
+    <h3>Build order</h3>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th class="num">Phase</th><th>Ship</th><th>Why this order</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>Both token tiers, base layer, typography, Button, Input, Textarea, Select, Checkbox, Radio, Switch</td><td>Nothing else can be built correctly until the semantic tier exists. Retrofitting it costs more than writing it now.</td></tr>
+          <tr><td class="num">2</td><td>Alert, Toast, Spinner, Progress, Skeleton, Empty State</td><td>Signup, upload and the first generation all move through this layer. Without it every slow moment is silent.</td></tr>
+          <tr><td class="num">3</td><td>App shell, Tabs, Breadcrumbs, Card, Table, Avatar, Tag, Badge</td><td>The Library and Check surfaces.</td></tr>
+          <tr><td class="num">4</td><td>Modal, Menu, Tooltip, Popover, Pagination, Stepper, File Uploader, Combobox</td><td>Onboarding and management. The stepper gates phase 5.</td></tr>
+          <tr><td class="num">5</td><td>Brand core card, training states, score meter, drift findings, usage, plans, composer</td><td>The product itself. Every one of these is assembled from phases 1 to 4 and adds no new primitives.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Changelog, v0 to v1.0</h3>
+    <div class="d-tw">
+      <table class="d-t">
+        <thead><tr><th>Change</th><th>Reason</th><th>Type</th></tr></thead>
+        <tbody>
+          <tr><td>Semantic token tier added; components no longer touch primitives</td><td>v0 had primitives only, so error red and spectrum coral were the same token</td><td><span class="d-flag new">Breaking</span></td></tr>
+          <tr><td>Dark theme added across all three states: stamped light, stamped dark, and system default</td><td>Ships in v1</td><td><span class="d-flag new">New</span></td></tr>
+          <tr><td>Spectrum split into <span class="tok">--hue-*</span>, <span class="tok">--sig-*</span>, <span class="tok">--ink-*</span></td><td>One hex cannot be both a gradient and legible text</td><td><span class="d-flag new">Breaking</span></td></tr>
+          <tr><td>Focus ring changed from <span class="tok">--tag-bg</span> to <span class="tok">--focus-ring</span></td><td>1.13:1 against white, effectively invisible</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>Placeholder and border moved off <span class="tok">--grey-300</span>; <span class="tok">--grey-400</span> added</td><td>1.74:1 against white, against a 4.5 and 3.0 requirement</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>All controls raised to 44px minimum</td><td>Button 43, small button 33, CTA link 17, nav link 16, checkbox 18</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>Labels wired with <span class="tok">for</span> and <span class="tok">id</span>; choice rows wrapped in the label</td><td>No label in v0 was associated with any input</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>Error text moved from <span class="tok">--hue-coral</span> to <span class="tok">--ink-coral</span></td><td>3.05:1 against a 4.5 requirement</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>100% line-heights removed from H2, H3 and Body Medium</td><td>Body Medium is specified for multi-line copy; descenders clipped</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>Display sizes made fluid with <span class="tok">clamp()</span></td><td>70px on a 360px viewport gave about five characters a line</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>Mobile navigation replaces <span class="tok">display: none</span> on nav links</td><td>Navigation was unreachable below 768px</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td><span class="tok">--purple-accent</span> deleted, folded into <span class="tok">--hue-violet</span>; <span class="tok">--tag-bg</span> renamed <span class="tok">--blue-050</span></td><td>Duplicate value under two names; a component name in the primitive tier</td><td><span class="d-flag new">Breaking</span></td></tr>
+          <tr><td>Spacing, motion, z-index, breakpoint and control-height tokens added</td><td>The v0 spacing scale was documented but referenced nowhere</td><td><span class="d-flag new">New</span></td></tr>
+          <tr><td><span class="tok">.btn-primary:hover</span> no longer becomes the accent blue</td><td>The two heaviest treatments traded identities mid-hover</td><td><span class="d-flag fail">Fix</span></td></tr>
+          <tr><td>Six interaction states specified where v0 had one</td><td>No disabled, loading, focus, active or read-only state existed</td><td><span class="d-flag new">New</span></td></tr>
+          <tr><td>29 components added, taking coverage from 9 of 38 to full</td><td>Everything that happens after a user acts was missing</td><td><span class="d-flag new">New</span></td></tr>
+          <tr><td>Icon system, prop tables, keyboard maps and ARIA notes added per component</td><td>v0 showed appearance but never named or specified anything</td><td><span class="d-flag new">New</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Open questions for the team</h3>
+    <ul class="d-list">
+      <li><strong>Font licence.</strong> Grilli Type prices on projected unique monthly visitors as a one-time fee. Someone needs to give them a traffic projection and get the licence in place before launch, since the trial files are prototype-only.</li>
+      <li><strong>Score bands.</strong> The 85 and 60 thresholds in 15.3 are a starting point, not a finding. They should be set from real check data once there is some, and the band names may need to change with them.</li>
+      <li><strong>Proof of value has no surface.</strong> ROI doubt is one of the four validated pains and nothing in v1.0 answers it. The Studio plan already promises a weekly brand report, which is the obvious hook: a view showing score trend over time, drafts shipped, drift caught before publishing, and time between first draft and publish. It needs a decision on what is actually worth counting before a pattern is designed, because counting the wrong thing here reads as vanity metrics and makes the doubt worse.</li>
+      <li><strong>Topic suggestion needs an owner.</strong> The Create empty state now proposes topics rather than requesting one, which assumes the core can produce them. Whether those come from the ingested samples, from what the user has published recently, or from something else is a product and model decision, not a UI one, and the pattern in section 12 is a placeholder until it is made.</li>
+      <li><strong>Not assessable from a spec.</strong> Whether users abandon during training, whether the confidence number reassures or alarms, and whether the drift findings read as helpful or as criticism. Each of those needs a test on real users; the document can specify the test but cannot report its result.</li>
+    </ul>
+  </section>
+
+  <footer style="margin-top:var(--space-11);padding-top:var(--space-6);border-top:2px solid var(--border-strong);color:var(--text-tertiary);font-size:14px;display:flex;flex-direction:column;gap:var(--space-3)">
+    <p style="margin:0;max-width:var(--measure)"><strong>hueman.studio Design System v1.0</strong>, developer handoff, 1 September 2026. Everything marked as measured in this document was computed from hex and pixel values, not estimated.</p>
+    <p style="margin:0;max-width:var(--measure)">Component naming, prop conventions and adoption percentages are drawn from the UI Guideline component spec packs, v0.1, February 2026, covering up to 20 major design systems. The UX laws, the 44px target minimum and the response-time thresholds are from <em>Laws of UX</em>, 2nd edition, Jon Yablonski, O'Reilly Media, 2024. The assembly and valuation figures in section 00 are from "The IKEA effect: When labor leads to love", Norton, Mochon and Ariely, Journal of Consumer Psychology, 2012. Font licensing terms are from Grilli Type's published licensing information.</p>
+  </footer>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btn = document.getElementById('themeBtn');
+  var label = document.getElementById('themeLabel');
+  function prefersDark() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function currentIsDark() {
+    var t = root.getAttribute('data-theme');
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return prefersDark();
+  }
+  function sync() {
+    var dark = currentIsDark();
+    label.textContent = dark ? 'Light' : 'Dark';
+    btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  }
+  btn.addEventListener('click', function () {
+    root.setAttribute('data-theme', currentIsDark() ? 'light' : 'dark');
+    sync();
+  });
+  sync();
+
+  // TOC scrollspy
+  var links = Array.prototype.slice.call(document.querySelectorAll('.d-toc a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.d-sec'));
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        links.forEach(function (a) { a.classList.remove('is-active'); });
+        var a = map[e.target.id];
+        if (a) a.classList.add('is-active');
+      });
+    }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
+    sections.forEach(function (s) { io.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>
