@@ -9,9 +9,63 @@
  *                      against with evidence, and the fix in the person's voice
  */
 import type { ReactNode } from "react";
-import { Badge } from "@/components/ui";
+import { Badge, Avatar } from "@/components/ui";
 
 const STRIP_HUES = ["--hue-magenta", "--hue-coral", "--hue-orange", "--hue-yellow", "--hue-green", "--hue-teal", "--hue-blue", "--hue-violet"];
+
+/**
+ * Brand core card §15.1 — the single object the product revolves around: what the
+ * system concluded about how someone sounds. Carries the product's colour: the
+ * hue strip, a coloured avatar, the confidence number (never rounded up, never
+ * hidden once trained) and the voice attributes.
+ */
+export function BrandCoreCard({
+  name, seed, subtitle, trained, attributes, confidence, stats,
+}: {
+  name: string; seed: string; subtitle: string; trained: boolean;
+  attributes: string[]; confidence: number;
+  stats: { label: string; value: string }[];
+}) {
+  return (
+    <div className="bg-paper border border-hairline rounded-[16px] overflow-hidden">
+      <HueStrip count={8} className="!rounded-none" />
+      <div className="p-6">
+        <div className="flex items-center gap-3.5">
+          <Avatar seed={seed} label={name} size="lg" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[1.15rem] font-medium truncate">{name}</p>
+            <p className="text-[0.82rem] text-ink-muted truncate">{subtitle}</p>
+          </div>
+          <Badge tone={trained ? "ok" : "warn"}>{trained ? "Trained" : "Provisional"}</Badge>
+        </div>
+
+        {attributes.length > 0 && (
+          <div className="mt-5">
+            <p className="label-mono text-ink-faint mb-2">Voice</p>
+            <div className="flex flex-wrap gap-1.5">
+              {attributes.map((a) => (
+                <span key={a} className="label-mono px-2.5 h-6 inline-flex items-center rounded-[7px] bg-accent-soft text-accent-ink">{a}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 pt-5 border-t border-hairline grid grid-cols-4 gap-3">
+          <div>
+            <p className="text-[1.5rem] font-medium tabular-nums leading-none" style={{ color: trained ? "var(--ok)" : "var(--ink)" }}>{confidence}<span className="text-[0.85rem] text-ink-faint">%</span></p>
+            <p className="label-mono text-ink-faint mt-1">Confidence</p>
+          </div>
+          {stats.map((s) => (
+            <div key={s.label}>
+              <p className="text-[1.5rem] font-medium tabular-nums leading-none">{s.value}</p>
+              <p className="label-mono text-ink-faint mt-1">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function HueStrip({ count = 4, className = "" }: { count?: number; className?: string }) {
   return (

@@ -157,16 +157,17 @@ async function main() {
     { tenantId: clientTenant, userId: clientUser, isPlatformAdmin: false },
     (c) =>
       c.query(
-        `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, status, voice_index, corpus_stats)
-         VALUES ($1,$2,'default',$3,'active',$4,$5)
+        `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, status, voice_index, corpus_stats, identity)
+         VALUES ($1,$2,'default',$3,'active',$4,$5,$6)
          ON CONFLICT (tenant_id, user_id, slug)
-         DO UPDATE SET voice_index = EXCLUDED.voice_index, corpus_stats = EXCLUDED.corpus_stats, status = 'active'`,
+         DO UPDATE SET voice_index = EXCLUDED.voice_index, corpus_stats = EXCLUDED.corpus_stats, identity = EXCLUDED.identity, status = 'active'`,
         [
           clientTenant,
           clientUser,
-          "demo@client.test",
+          "Alex Rivera",
           JSON.stringify({ neverWords: ["synergy", "leverage", "guru", "game-changing", "revolutionise"] }),
           JSON.stringify({ pieces: 12, words: 3400, channels: ["linkedin"] }),
+          JSON.stringify({ toneDescriptors: { value: ["Direct", "Warm", "Contrarian", "Evidence-led"], source: "ask", confidence: "inferred" } }),
         ],
       ),
   );

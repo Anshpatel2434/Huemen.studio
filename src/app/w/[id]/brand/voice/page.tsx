@@ -6,7 +6,7 @@ import { corpusLevel, CORPUS_MINIMUM_PIECES, DIAL_LABELS, DIAL_KEYS } from "@/li
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import { DocPage } from "@/components/doc-page";
 import { EmptyState, SubmitButton } from "@/components/ui";
-import { HueStrip } from "@/components/composites";
+import { BrandCoreCard } from "@/components/composites";
 import {
   addSamplesAction, deleteSampleAction, excludeSampleAction, rescanAction,
   resolveSignatureAction, saveVoiceAction,
@@ -73,6 +73,23 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
   const signatures = pack.mechanics.signaturePhrases?.value ?? [];
   const Hidden = () => <input type="hidden" name="tenantId" value={id} />;
 
+  // §15.1 brand core card — the coloured summary of the measured voice.
+  const coreAttrs = (pack.identity.toneDescriptors?.value ?? []).slice(0, 5);
+  const words = pack.corpusStats.words;
+  const coreCard = {
+    name: pack.displayName || "Your voice",
+    seed: pack.id,
+    subtitle: `${pack.corpusStats.channels[0] ? pack.corpusStats.channels.join(", ") + " · " : ""}core v${pack.version}${pack.scannedAt ? ` · measured ${new Date(pack.scannedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}`,
+    trained: pack.status !== "provisional" && pack.corpusStats.pieces > 0,
+    attributes: coreAttrs,
+    confidence: Math.min(96, Math.round((pack.corpusStats.pieces / 13) * 100)),
+    stats: [
+      { label: "Samples", value: String(pack.corpusStats.pieces) },
+      { label: "Words read", value: words >= 1000 ? `${(words / 1000).toFixed(1)}k` : String(words) },
+      { label: "Channels", value: String(pack.corpusStats.channels.length) },
+    ],
+  };
+
   return (
     <DocPage
       eyebrow="Onboarding · Voice"
@@ -80,8 +97,8 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
       accent="actually sound."
       sub="Measured from your own writing, not guessed from adjectives. Every number here has a count and a quote behind it, and you can change any of it."
     >
-      {/* ---- the corpus, because real writing is most of "sounds like me" ---- */}
-      <HueStrip count={8} className="mb-6" />
+      {/* ---- the brand core: the coloured summary of what was measured ---- */}
+      <div className="mb-6"><BrandCoreCard {...coreCard} /></div>
       <div className="flex flex-col gap-5">
         <Card label="01 · Your writing">
           <div className="flex items-center gap-3 flex-wrap">
