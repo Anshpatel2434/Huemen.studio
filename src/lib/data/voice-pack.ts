@@ -104,11 +104,19 @@ export async function getOrCreatePack(
     const created = (
       await c.query<PackRow>(
         `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, voice_index)
-         VALUES ($1,$2,$3,$4,$5) RETURNING ${COLS}`,
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (tenant_id, user_id, slug) DO NOTHING
+         RETURNING ${COLS}`,
         [scope.tenantId, userId, slug, email ?? null, JSON.stringify(emptyIndex())],
       )
     ).rows[0];
-    return toPack(created);
+    if (created) return toPack(created);
+    // Lost a concurrent create (two server components load the pack in parallel
+    // on first visit) — the row now exists, so read it back.
+    const existing = (
+      await c.query<PackRow>(`${SELECT} WHERE user_id=$1 AND slug=$2`, [userId, slug])
+    ).rows[0];
+    return toPack(existing);
   });
 }
 

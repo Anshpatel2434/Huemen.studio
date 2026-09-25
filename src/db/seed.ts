@@ -67,7 +67,7 @@ async function main() {
     async (c) => {
       const projectId = (
         await c.query<{ id: string }>(
-          "INSERT INTO projects (tenant_id, name, stage, created_by) VALUES ($1, 'Personal brand', 'pillars', $2) RETURNING id",
+          "INSERT INTO projects (tenant_id, name, stage, created_by) VALUES ($1, 'Personal brand', 'ideate', $2) RETURNING id",
           [clientTenant, clientUser],
         )
       ).rows[0].id;
