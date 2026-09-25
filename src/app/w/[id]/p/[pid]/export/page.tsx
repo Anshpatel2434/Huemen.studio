@@ -21,7 +21,7 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
   const fixHref = ctx.degraded ? `/w/${id}/p/${pid}/brief/edit` : firstFlagged ? `/w/${id}/p/${pid}/content?item=${firstFlagged.id}` : `/w/${id}/p/${pid}/content`;
 
   return (
-    <DocPage eyebrow={`${project.name} · Export`} title="Ship it" accent="clean." sub="Review brand health, then take the brief and content out as Markdown (Notion-compatible). Direct posting to LinkedIn or Instagram isn't part of v1." width={1000}>
+    <DocPage eyebrow={`${project.name} · Export`} title="Ship it" accent="clean." sub="Review brand health, then take the brief and content out as a PDF or as Markdown (Notion-compatible). Direct posting to LinkedIn or Instagram isn't part of v1." width={1000}>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
         <div className="flex flex-col gap-4 min-w-0">
           <div className="bg-paper border border-hairline rounded-[14px] p-5">
@@ -37,7 +37,8 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
             <div className="mt-5 flex flex-wrap gap-2">
               <a href={`/w/${id}/p/${pid}/export/markdown?scope=approved`} className={btnClass("primary")}><FileDown size={15} /> Markdown · approved only</a>
               <a href={`/w/${id}/p/${pid}/export/markdown`} className={btnClass("secondary")}><FileText size={15} /> Markdown · everything</a>
-              <button disabled title="PDF export is on the build plan (TASKS P3-7)." className={btnClass("secondary")}>PDF</button>
+              <a href={`/w/${id}/p/${pid}/export/pdf?scope=approved`} className={btnClass("secondary")}><FileDown size={15} /> PDF · approved only</a>
+              <a href={`/w/${id}/p/${pid}/export/pdf`} className={btnClass("secondary")}><FileText size={15} /> PDF · everything</a>
             </div>
           </div>
 
