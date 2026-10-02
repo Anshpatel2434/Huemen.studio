@@ -5,16 +5,20 @@
  * person can leave at any point and come back to exactly where they were.
  */
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { actionActor } from "@/lib/auth/workspace";
 import {
-  answer, completeOnboarding, dropOpener, finishIngest, ingestPieces, markIngesting, requirePack, resolveCard, saveDials,
-  setBenchmarks, setGuardrailRule, setNeverWords, setSources, setWorkMode, setWriteFor, updateOnboarding,
+  answer, completeOnboarding, dropOpener, finishIngest, ingestPieces, markIngesting, requirePack, resolveCard, resumeStep,
+  saveAbout, saveDials, setBenchmarks, setGuardrailRule, setNeverWords, setSources, setWorkMode, setWriteFor,
+  updateOnboarding, type About,
 } from "@/lib/data/onboarding";
+import { LATER_COOKIE } from "./gate";
 import { addSamples } from "@/lib/data/voice-pack";
 import { generatePillars } from "@/lib/data/pipeline";
 import { proposeTopics, startPiece, ownDraft, coWrite } from "@/lib/data/create";
-import { generateContent } from "@/lib/data/content";
+import { generateContent, listContent } from "@/lib/data/content";
+import { firstPieceStale } from "@/lib/voice/lifecycle";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { formatByKey, FORMATS } from "@/lib/content/formats";
 import { saveBriefAnswers } from "@/lib/data/foundation";
@@ -28,6 +32,26 @@ import { importFromUrl, WebImportError } from "@/lib/integrations/web";
 import { userMessage } from "@/lib/ai/errors";
 
 const refresh = (t: string) => revalidatePath(`/w/${t}`, "layout");
+
+// ---- step 0: about you --------------------------------------------------------
+
+/** Saves "About you" and opens the step they'd reached before (step 1 the first time). */
+export async function aboutAction(tenantId: string, about: About) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveAbout(scope, actor, await requirePack(scope), about);
+  refresh(tenantId);
+  redirect(`/w/${tenantId}/onboarding?step=${resumeStep((await requirePack(scope)).onboarding)}`);
+}
+
+/**
+ * "Finish later": the studio opens for the rest of this sitting. The next
+ * sign-in brings them back to the step they reached, so later never becomes never.
+ */
+export async function finishLaterAction(tenantId: string) {
+  await actionActor(tenantId);
+  (await cookies()).set(LATER_COOKIE, tenantId, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 8 * 60 * 60 });
+  redirect(`/w/${tenantId}`);
+}
 
 // ---- step 1: add samples ------------------------------------------------------
 
@@ -47,7 +71,23 @@ export async function ingestAction(tenantId: string, pieces: IngestedPiece[], so
   const { scope } = await actionActor(tenantId);
   const pack = await requirePack(scope);
   // Bounded per call: a mailbox export is sampled, never hoarded (file 06 §1).
-  return ingestPieces(scope, pack, pieces.slice(0, 400), source);
+  const added = await ingestPieces(scope, pack, pieces.slice(0, 400), source);
+  // The heartbeat: a batch that stops arriving was interrupted (lifecycle `ingestStalled`).
+  await markIngesting(scope, await requirePack(scope));
+  return added;
+}
+
+/**
+ * A batch cut off by a reload or a closed tab: what arrived is saved but not
+ * measured. Measure it now, so the checkpoint is "everything that landed".
+ */
+export async function resumeIngestAction(tenantId: string) {
+  const { scope } = await actionActor(tenantId);
+  const pack = await requirePack(scope);
+  if (pack.onboarding.scan?.state !== "ingesting") return null;
+  const result = await finishIngest(scope, pack);
+  refresh(tenantId);
+  return { pieces: result.stats.pieces };
 }
 
 /** "Learning": re-measure everything once the batch is in. */
@@ -104,7 +144,10 @@ export async function goToStepAction(tenantId: string, step: number) {
 
 // ---- step 3: set your hue ----------------------------------------------------
 
-/** Pillars from the brief and the strategy answers, then on to the payoff. */
+/**
+ * Pillars from the brief and the strategy answers. `intent=next` saves the
+ * answers and moves on to the payoff, so Continue never drops what was typed.
+ */
 export async function hueAction(fd: FormData) {
   const tenantId = String(fd.get("tenantId"));
   const { scope } = await actionActor(tenantId);
@@ -112,9 +155,11 @@ export async function hueAction(fd: FormData) {
     .map((key) => ({ key, question: key, answer: String(fd.get(key) ?? "").trim() }))
     .filter((a) => a.answer);
   if (answers.length) await saveBriefAnswers(scope, answers);
-  if (fd.get("intent") === "pillars") await generatePillars(scope);
+  const intent = fd.get("intent");
+  if (intent === "pillars") await generatePillars(scope);
+  if (intent === "next") await updateOnboarding(scope, await requirePack(scope), { step: 4 });
   refresh(tenantId);
-  redirect(`/w/${tenantId}/onboarding?step=3${fd.get("intent") === "pillars" ? "&pillars=1" : ""}`);
+  redirect(`/w/${tenantId}/onboarding?step=${intent === "next" ? 4 : 3}${intent === "pillars" ? "&pillars=1" : ""}`);
 }
 
 // ---- step 4: the payoff --------------------------------------------------------
@@ -126,23 +171,47 @@ export async function hueAction(fd: FormData) {
  */
 export async function firstPieceAction(tenantId: string): Promise<string> {
   const { scope } = await actionActor(tenantId);
-  const pack = await requirePack(scope);
-  if (pack.onboarding.firstProjectId) return pack.onboarding.firstProjectId;
-
-  const [topic] = await proposeTopics(scope);
-  const platform = pack.onboarding.writeFor?.[0] ?? "linkedin";
-  const format = FORMATS.find((f) => f.platform === platform)?.key ?? "linkedin_post";
-  const projectId = await startPiece(scope, { topic: topic?.title ?? "What I'd tell myself starting out", format, pillarName: topic?.pillar });
-  const p = { ...scope, projectId };
-  await unlockStage(p, "content");
-  const pillarId = (await getProject(p, projectId))?.pillarId ?? null;
-  if (pack.workMode === "cowrite") {
-    await coWrite(p, { format, topic: topic?.title ?? "", pillarId });
-  } else if (pack.workMode === "ghostwrite") {
-    await generateContent(p, { format, topic: topic?.title ?? "", pillarId });
+  let pack = await requirePack(scope);
+  const o = pack.onboarding;
+  if (o.firstProjectId) {
+    // Being written by a request that's still alive (a reload mid-write lands
+    // here): the same piece, never a second one.
+    if (o.firstPiece?.state === "writing" && !firstPieceStale(o.firstPiece, Date.now())) return o.firstProjectId;
+    // Already written, or theirs to write: nothing to do.
+    const hasDraft = (await listContent({ ...scope, projectId: o.firstProjectId })).length > 0;
+    if (hasDraft || pack.workMode === "check") return o.firstProjectId;
+    // Otherwise the write failed or died: try again, into the same project.
   }
-  // "Check mine" makes no draft: the person writes, and the check reads it.
-  await updateOnboarding(scope, pack, { firstProjectId: projectId, step: 4 });
+
+  const platform = o.writeFor?.[0] ?? "linkedin";
+  const format = FORMATS.find((f) => f.platform === platform)?.key ?? "linkedin_post";
+  let projectId = o.firstProjectId ?? null;
+  let topicTitle = projectId ? (await getProject(scope, projectId))?.name ?? "" : "";
+  if (!projectId) {
+    const [topic] = await proposeTopics(scope);
+    topicTitle = topic?.title ?? "What I'd tell myself starting out";
+    projectId = await startPiece(scope, { topic: topicTitle, format, pillarName: topic?.pillar });
+    await unlockStage({ ...scope, projectId }, "content");
+  }
+  // The checkpoint goes down before the slow part.
+  await updateOnboarding(scope, pack, { firstProjectId: projectId, step: 4, firstPiece: { state: "writing", at: new Date().toISOString() } });
+  pack = await requirePack(scope);
+
+  const p = { ...scope, projectId };
+  const pillarId = (await getProject(p, projectId))?.pillarId ?? null;
+  try {
+    if (pack.workMode === "cowrite") {
+      await coWrite(p, { format, topic: topicTitle, pillarId });
+    } else if (pack.workMode === "ghostwrite") {
+      await generateContent(p, { format, topic: topicTitle, pillarId });
+    }
+    // "Check mine" makes no draft: the person writes, and the check reads it.
+    await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "done", at: new Date().toISOString() } });
+  } catch (e) {
+    await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "failed", at: new Date().toISOString() } });
+    refresh(tenantId);
+    throw e;
+  }
   refresh(tenantId);
   return projectId;
 }
@@ -153,15 +222,18 @@ export async function workModeAction(tenantId: string, mode: WorkMode) {
   refresh(tenantId);
 }
 
-/** "Yes, that's me": the last item on the spec's definition of done. */
+/**
+ * "Yes, that's me": the last item on the spec's definition of done, and the
+ * end of the flow. They land in their studio, with their first piece in it.
+ */
 export async function finishOnboardingAction(fd: FormData) {
   const tenantId = String(fd.get("tenantId"));
   const { scope } = await actionActor(tenantId);
   const pack = await requirePack(scope);
   await completeOnboarding(scope, pack);
+  (await cookies()).delete(LATER_COOKIE);
   refresh(tenantId);
-  const first = pack.onboarding.firstProjectId;
-  redirect(first ? `/w/${tenantId}/p/${first}/content` : `/w/${tenantId}`);
+  redirect(`/w/${tenantId}?ready=1`);
 }
 
 /** Their own writing, checked: shown on the payoff screen. */

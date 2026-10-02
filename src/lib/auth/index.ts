@@ -16,6 +16,13 @@ import type { Session } from "./types";
 
 const COOKIE = "huemen_session";
 
+/**
+ * Onboarding's "Finish later": it lasts one sign-in, so starting or ending a
+ * session clears it and the next sign-in resumes onboarding. A managed auth
+ * provider must keep that: clear it in its own sign-in and sign-out hooks.
+ */
+export const ONBOARDING_LATER_COOKIE = "huemen_onb_later";
+
 function sign(payload: string): string {
   return createHmac("sha256", getEnv().AUTH_SECRET).update(payload).digest("hex");
 }
@@ -65,9 +72,11 @@ export async function devSignIn(session: Session): Promise<void> {
     path: "/",
     maxAge: 60 * 60 * 8,
   });
+  jar.delete(ONBOARDING_LATER_COOKIE);
 }
 
 export async function signOut(): Promise<void> {
   const jar = await cookies();
   jar.delete(COOKIE);
+  jar.delete(ONBOARDING_LATER_COOKIE);
 }

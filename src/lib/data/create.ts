@@ -27,11 +27,26 @@ import type { TopicSuggestion } from "@/lib/voice/types";
 /** Proposals older than this are refreshed on the next visit. */
 const TOPICS_TTL_MS = 7 * 24 * 3600 * 1000;
 
+/**
+ * Cached proposals are only good for the pillars they were made from. A pillar
+ * added since (the usual case: Create glanced at during onboarding, pillars made
+ * at step 3) makes them stale; otherwise the first piece would be written on a
+ * placeholder topic for a week. Compared by time, not by name, so a model that
+ * words a pillar differently can't make every visit pay for a new proposal.
+ */
+export const topicsStale = (generatedAt: string | null, newestPillarAt: string | null): boolean =>
+  !!generatedAt && !!newestPillarAt && new Date(newestPillarAt).getTime() > new Date(generatedAt).getTime();
+
 export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boolean } = {}): Promise<TopicSuggestion[]> {
   const pack = await loadPackForWorkspace(scope);
   if (!pack) return [];
   const fresh = pack.topicsGeneratedAt && Date.now() - new Date(pack.topicsGeneratedAt).getTime() < TOPICS_TTL_MS;
-  if (!opts.force && fresh && pack.topicSuggestions.length) return pack.topicSuggestions;
+  if (!opts.force && fresh && pack.topicSuggestions.length) {
+    const newest = await withTenantSession(scope, async (c) =>
+      (await c.query<{ at: Date | null }>(`SELECT max(created_at) AS at FROM pillars WHERE project_id IS NULL`)).rows[0]?.at ?? null,
+    );
+    if (!topicsStale(pack.topicsGeneratedAt, newest?.toISOString() ?? null)) return pack.topicSuggestions;
+  }
 
   const [pillars, recent] = await Promise.all([
     listPillars(scope),

@@ -1,6 +1,8 @@
 /**
- * Onboarding (Flow 1): the four steps that build a person's core once.
+ * Onboarding (Flow 1): the steps that take a person from zero to their studio.
  *
+ *   0 About you           their name and the brief's basics (what they do, who
+ *                         for, what they offer), asked inline, never a detour
  *   1 Add samples         sources (G1), platforms (F1), ingest, the scan
  *   2 Confirm your voice  confirm cards (H), dials (C4), words (C5–C6), the
  *                         Core questions, benchmarks (G2)
@@ -17,6 +19,7 @@ import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
 import { addSamples, listSamples, loadPackForWorkspace, rescan, type NewSample } from "./voice-pack";
 import { writePack, type Actor } from "./training";
+import { loadFoundation, saveFoundation } from "./foundation";
 import { applyAnswer, applyDials, type Answer } from "@/lib/voice/answers";
 import { confirmCards, estimateDials } from "@/lib/voice/derive";
 import type { IngestedPiece } from "@/lib/voice/ingest";
@@ -51,6 +54,48 @@ export async function updateOnboarding(scope: WorkspaceScope, pack: VoicePack, p
   await withTenantSession(scope, (c) =>
     c.query(`UPDATE voice_packs SET onboarding = $1 WHERE id = $2`, [JSON.stringify(next), pack.id]),
   );
+}
+
+/**
+ * Where onboarding opens: "About you" until it's saved, then the furthest step
+ * reached. One rule, shared by the stepper and the dashboard's gate. Someone
+ * who finished before "About you" existed is not sent back to it.
+ */
+export const resumeStep = (o: Onboarding): number =>
+  o.welcomedAt || o.completedAt ? Math.min(4, Math.max(1, o.step ?? 1)) : 0;
+
+export interface About {
+  name: string;
+  niche: string;
+  audience: string;
+  offers: string;
+  positioning: string;
+}
+
+/**
+ * Step 0, "About you". The name goes on their voice; the rest is the brief's
+ * basics, saved as the brand only (`voice: false`), so it never overwrites a
+ * voice field. A blank field keeps what the brief already had.
+ */
+export async function saveAbout(scope: WorkspaceScope, actor: Actor, pack: VoicePack, about: About): Promise<void> {
+  const name = about.name.trim().slice(0, 80);
+  if (name && name !== pack.displayName) await writePack(scope, actor, pack, { displayName: name }, "Set your name.");
+  const f = await loadFoundation(scope);
+  const keep = (next: string, cur: string) => next.trim() || cur;
+  await saveFoundation(
+    scope,
+    {
+      ...f,
+      niche: keep(about.niche, f.niche),
+      audience: keep(about.audience, f.audience),
+      offers: keep(about.offers, f.offers),
+      positioning: keep(about.positioning, f.positioning),
+    },
+    { voice: false },
+  );
+  await updateOnboarding(scope, (await loadPackForWorkspace(scope)) ?? pack, {
+    welcomedAt: pack.onboarding.welcomedAt ?? new Date().toISOString(),
+  });
 }
 
 export async function setSources(scope: WorkspaceScope, pack: VoicePack, sources: string[]): Promise<void> {

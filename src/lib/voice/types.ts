@@ -332,6 +332,11 @@ export const WORK_MODES: { key: WorkMode; label: string; sub: string }[] = [
 export interface Onboarding {
   /** 1 Add samples · 2 Confirm your voice · 3 Set your hue · 4 First draft. */
   step?: number;
+  /**
+   * When "About you" (the step before 1) was saved: their name and the brief's
+   * three basics. Until it is set, onboarding opens there.
+   */
+  welcomedAt?: string;
   completedAt?: string;
   /** G1: the sources they said we may read. */
   sources?: string[];
@@ -343,6 +348,11 @@ export interface Onboarding {
   resolvedCards?: string[];
   /** The project the payoff screen created, so a reload doesn't make another. */
   firstProjectId?: string;
+  /**
+   * The first piece being written. Stored before the model is called, so a
+   * reload mid-write shows it still writing instead of offering a second one.
+   */
+  firstPiece?: { state: "writing" | "done" | "failed"; at: string };
   /**
    * The scan in flight, so "Building your core" survives a refresh and the
    * page can tell the person when it finishes (design system §15.2).

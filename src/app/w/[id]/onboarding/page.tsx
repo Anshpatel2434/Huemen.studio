@@ -1,6 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Check, CheckCircle2 } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
+import { resumeStep } from "@/lib/data/onboarding";
+import { firstPieceStale, ingestStalled } from "@/lib/voice/lifecycle";
+import { PersistForm } from "@/components/persist";
+import { OnboardingDrafts } from "./draft";
 import { listSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { loadBriefAnswers, loadFoundation } from "@/lib/data/foundation";
 import { listPillars } from "@/lib/data/planning";
@@ -22,25 +27,27 @@ import {
 import { btnClass } from "@/components/btn";
 import { SubmitButton, Badge } from "@/components/ui";
 import { BrandCoreCard } from "@/components/composites";
-import { ConfirmStep, PayoffStep, QuestionField, SamplesStep } from "./steps";
-import { hueAction, goToStepAction } from "./actions";
+import { AboutStep, BackStep, ConfirmStep, PayoffStep, QuestionField, SamplesStep } from "./steps";
+import { hueAction } from "./actions";
 
 export const metadata = { title: "Set up your voice" };
 export const dynamic = "force-dynamic";
 
-const STEPS = ["Add samples", "Confirm your voice", "Set your hue", "First draft"];
+/** Step numbers are the stored ones: 0 is "About you", 1–4 the voice steps. */
+const STEPS = ["About you", "Add samples", "Confirm your voice", "Set your hue", "First draft"];
+const LAST = STEPS.length - 1;
 
 /**
- * The four-step stepper (design system §14: "the step count is visible from
- * step one"). Done steps carry a tick, the current one its number and weight:
- * position, shape and colour together, never colour alone.
+ * The stepper (design system §14: "the step count is visible from step one").
+ * Done steps carry a tick, the current one its number and weight: position,
+ * shape and colour together, never colour alone. Only steps already reached
+ * are links, so it goes back freely and never skips ahead.
  */
 function Stepper({ id, current, reached }: { id: string; current: number; reached: number }) {
   return (
     <ol className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Onboarding steps">
-      {STEPS.map((label, i) => {
-        const n = i + 1;
-        const done = n < reached || (n < current);
+      {STEPS.map((label, n) => {
+        const done = n < reached || n < current;
         const on = n === current;
         const open = n <= reached;
         const dot = (
@@ -50,7 +57,7 @@ function Stepper({ id, current, reached }: { id: string; current: number; reache
             }`}
             aria-hidden="true"
           >
-            {done && !on ? <Check size={13} /> : n}
+            {done && !on ? <Check size={13} /> : n + 1}
           </span>
         );
         const inner = (
@@ -59,9 +66,9 @@ function Stepper({ id, current, reached }: { id: string; current: number; reache
           </span>
         );
         return (
-          <li key={label} role="tab" aria-selected={on} aria-setsize={4} aria-posinset={n} className="flex items-center gap-2">
+          <li key={label} role="tab" aria-selected={on} aria-setsize={STEPS.length} aria-posinset={n + 1} className="flex items-center gap-2">
             {open ? <Link href={`/w/${id}/onboarding?step=${n}`}>{inner}</Link> : inner}
-            {n < 4 && <span className="w-6 h-px bg-line" aria-hidden="true" />}
+            {n < LAST && <span className="w-6 h-px bg-line" aria-hidden="true" />}
           </li>
         );
       })}
@@ -72,7 +79,7 @@ function Stepper({ id, current, reached }: { id: string; current: number; reache
 export default async function OnboardingPage({ params, searchParams }: PageProps<"/w/[id]/onboarding">) {
   const { id } = await params;
   const sp = await searchParams;
-  const { scope } = await workspaceScope(id);
+  const { session, scope } = await workspaceScope(id);
   const pack = await loadPackForWorkspace(scope);
   if (!pack) {
     return (
@@ -85,15 +92,21 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
     );
   }
 
-  const reached = Math.min(4, Math.max(1, pack.onboarding.step ?? 1));
-  const requested = Number(sp.step);
-  const step = requested >= 1 && requested <= reached ? requested : reached;
+  // The server checkpoint: the furthest step reached. The URL always names the
+  // step on screen, so a reload stays exactly there; a bare or out-of-range
+  // URL (a new sign-in, a step not reached yet) resumes at the checkpoint.
+  const reached = resumeStep(pack.onboarding);
+  const requested = typeof sp.step === "string" && /^\d$/.test(sp.step) ? Number(sp.step) : NaN;
+  if (!(requested >= 0 && requested <= reached)) {
+    redirect(`/w/${id}/onboarding?step=${reached}`);
+  }
+  const step = requested;
   const samples = await listSamples(scope, pack.id, { includeExcluded: true });
   const conf = confidence(pack);
   const live = samples.filter((s) => !s.excluded);
   const state = coreState(pack, Date.now());
   const canRecord = transcriptionEnabled();
-  const brief = step === 2 ? await loadFoundation(scope) : null;
+  const brief = step === 2 || step === 0 ? await loadFoundation(scope) : null;
   const sugg = pack.onboarding.suggestions;
   const suggestionsNeeded = !!brief && pack.corpusStats.pieces + (brief.audience ? 1 : 0) > 0 && sugg?.basis !== basisFrom(pack.corpusStats.pieces, brief);
   const current: Record<string, string | string[]> = {
@@ -108,18 +121,31 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
   };
   const CORE = ["A2", "A3", "C1", "C2", "D1", "D2", "D7", "E1"];
 
+  // The live preview needs something to work from; "About you" has nothing yet.
+  const withPreview = step >= 1 && step < 4;
+
   return (
+    <OnboardingDrafts prefix={`huemen:onb:${pack.id}`}>
     <div className="absolute inset-0 overflow-y-auto">
-      <div className={`${step < 4 ? "max-w-[1200px]" : "max-w-[880px]"} mx-auto px-5 sm:px-8 py-8 flex flex-col gap-8`}>
+      <div className={`${withPreview ? "max-w-[1200px]" : "max-w-[880px]"} mx-auto px-5 sm:px-8 py-8 flex flex-col gap-8`}>
         <div className="flex flex-col gap-4">
-          <p className="label-mono eyebrow">Onboarding · step {step} of 4</p>
+          <p className="label-mono eyebrow">Onboarding · step {step + 1} of {STEPS.length}</p>
           <Stepper id={id} current={step} reached={reached} />
         </div>
 
         <CoreWatcher state={state} pieces={pack.corpusStats.pieces} />
 
-        <div className={step < 4 ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-8 items-start" : ""}>
+        <div className={withPreview ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-8 items-start" : ""}>
         <div className="flex flex-col gap-8 min-w-0">
+
+        {step === 0 && brief && (
+          <AboutStep
+            tenantId={id}
+            returning={!!pack.onboarding.welcomedAt || pack.corpusStats.pieces > 0}
+            // A new pack is named after the email address; that's not a name to sign with.
+            saved={{ name: pack.displayName.toLowerCase() === session.email.toLowerCase() ? "" : pack.displayName, niche: brief.niche, audience: brief.audience, offers: brief.offers, positioning: brief.positioning }}
+          />
+        )}
 
         {step === 1 && (
           <SamplesStep
@@ -131,6 +157,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             level={corpusLevel(pack.corpusStats)}
             canRecord={canRecord}
             links={<UrlImport tenantId={id} />}
+            stalled={ingestStalled(pack.onboarding.scan, Date.now())}
           />
         )}
 
@@ -163,7 +190,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         </div>
 
         {/* The live preview: beside steps 1–3, so each answer visibly moves it. */}
-        {step < 4 && (
+        {withPreview && (
           <div className="lg:sticky lg:top-6 order-first lg:order-none">
             <VoicePreview tenantId={id} version={pack.version} />
           </div>
@@ -171,10 +198,12 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         </div>
 
         <p className="text-[0.78rem] text-ink-faint border-t border-hairline pt-4">
-          Your core is {conf.score}% confident{conf.trained ? "" : ", so it's still provisional"}. You can leave at any step; everything saves as you go.
+          {step > 0 && <>Your core is {conf.score}% confident{conf.trained ? "" : ", so it's still provisional"}. </>}
+          You can leave at any step; everything saves as you go, and you&apos;ll come back to this step.
         </p>
       </div>
     </div>
+    </OnboardingDrafts>
   );
 
   // ---- step 3 ------------------------------------------------------------------
@@ -199,7 +228,8 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         <div className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-3">
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-[1.05rem] flex-1">Your brief</h2>
-            <Link href={`/w/${id}/brand/edit`} className={btnClass("secondary", "sm")}>Edit the brief</Link>
+            {/* Back to step 0 rather than out to the brief editor: the flow never leaves itself. */}
+            <Link href={`/w/${id}/onboarding?step=0`} className={btnClass("secondary", "sm")}>Change in About you</Link>
           </div>
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[0.88rem]">
             {briefRows.map((r) => (
@@ -223,7 +253,8 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         <StoriesEditor tenantId={id} initial={pack!.identity.stories?.value ?? []} />
         <ProofsEditor tenantId={id} initial={pack!.identity.proofs?.value ?? []} />
 
-        <form action={hueAction} className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
+        {/* Typed answers are kept in the browser until this form is submitted. */}
+        <PersistForm id="onb-hue" storageKey={`huemen:onb:${pack!.id}:hue`} action={hueAction} className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
           <input type="hidden" name="tenantId" value={id} />
           <h2 className="text-[1.05rem]">Your pillars</h2>
           <p className="text-[0.88rem] text-ink-muted">Pillars come from your brief and two or three answers about what you stand for.</p>
@@ -249,7 +280,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             </SubmitButton>
             <SubmitButton name="intent" value="save" pendingLabel="Saving…" variant="ghost">Save answers</SubmitButton>
           </div>
-        </form>
+        </PersistForm>
 
         <div className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-2">
           <h2 className="text-[1.05rem]">The one idea <span className="text-ink-faint font-normal text-[0.85rem]">· optional</span></h2>
@@ -257,9 +288,11 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
           <QuestionField tenantId={id} q={questionById("A4")!} initial={carries} answered={!!carries} prefill={prefill("A4", carries, {}, pack!.onboarding.suggestions?.answers.A4) ?? undefined} />
         </div>
 
-        <form action={goToStepAction.bind(null, id, 4)}>
-          <SubmitButton pendingLabel="Opening…">Continue to your first draft</SubmitButton>
-        </form>
+        <div className="flex flex-wrap items-center gap-3">
+          <BackStep tenantId={id} to={2} label="Your voice" />
+          {/* Submits the pillar answers too, so nothing typed above is left behind. */}
+          <button type="submit" form="onb-hue" name="intent" value="next" className={btnClass("primary")}>Continue to your first draft</button>
+        </div>
       </section>
     );
   }
@@ -305,6 +338,11 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         missing={conf.missing}
         confidence={conf.score}
         first={first && { id: first.id, name: first.name, hook: draft?.hook ?? null, body: draft?.body ?? null, cta: draft?.cta ?? null, score: draftCheck?.score ?? null, band: draftCheck?.band ?? null }}
+        firstState={
+          p.onboarding.firstPiece?.state === "writing" && !firstPieceStale(p.onboarding.firstPiece, Date.now()) ? "writing"
+          : p.onboarding.firstPiece?.state === "writing" || p.onboarding.firstPiece?.state === "failed" ? "failed"
+          : null
+        }
         ownCheck={own && ownCheck ? { excerpt: own.body.split("\n")[0].slice(0, 160), score: ownCheck.score, band: ownCheck.band, issues: ownCheck.issues.slice(0, 3).map((i) => i.message) } : null}
       />
     );

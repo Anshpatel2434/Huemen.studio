@@ -24,6 +24,7 @@ import {
   finishIngestAction, importUrlAction, influencesAction, languagesAction, pairsAction, picksAction, previewAction,
   proofsAction, storiesAction, suggestionsAction,
 } from "./actions";
+import { useStepDraft } from "./draft";
 
 const Box = ({ title, sub, children }: { title: string; sub?: ReactNode; children: ReactNode }) => (
   <section className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
@@ -152,24 +153,30 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
   const router = useRouter();
   const [pairs, setPairs] = useState<Pair[] | null>(null);
   const [i, setI] = useState(0);
-  const [picks, setPicks] = useState<{ dial: DialKey; side: Side }[]>([]);
+  // Picks so far survive a reload: the pairs are cached on the server per basis,
+  // so "Carry on" fetches the same pairs and resumes at the next one.
+  const [picks, setPicks] = useStepDraft<{ dial: DialKey; side: Side }[]>("thisOrThat", []);
   const [error, setError] = useState<string | null>(null);
-  const [finished, setFinished] = useState(false);
+  /** How many picks set the dials, once they're saved. */
+  const [finished, setFinished] = useState<number | null>(null);
   const [sliders, setSliders] = useState(false);
   const [pending, start] = useTransition();
 
-  const begin = () => start(async () => {
+  const begin = (resume: boolean) => start(async () => {
     const r = await pairsAction(tenantId);
     if (!r.ok) return setError(r.error);
+    // Resume only if the saved picks are the start of these same pairs.
+    const fits = resume && picks.length < r.value.length && picks.every((p, j) => r.value[j]?.dial === p.dial);
     setPairs(r.value);
-    setI(0);
-    setPicks([]);
-    setFinished(false);
+    setI(fits ? picks.length : 0);
+    if (!fits) setPicks([]);
+    setFinished(null);
   });
 
   const finish = (all: { dial: DialKey; side: Side }[]) => start(async () => {
     await picksAction(tenantId, all);
-    setFinished(true);
+    setPicks([]);
+    setFinished(all.length);
     router.refresh();
   });
 
@@ -186,17 +193,22 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
 
   return (
     <Box title="Which sounds more like you?" sub="Two versions of the same line. Pick yours. It sets your dials, and the lines you pick teach every draft.">
-      {!pairs && !finished && (
+      {!pairs && finished == null && (
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" disabled={pending} onClick={begin} className={btnClass(done ? "secondary" : "primary", "sm")}>
-            {pending ? <><AgentDots /> Writing the pairs</> : done ? "Play again" : "Start"}
+          {picks.length > 0 && (
+            <button type="button" disabled={pending} onClick={() => begin(true)} className={btnClass("primary", "sm")}>
+              {pending ? <><AgentDots /> Loading your pairs</> : `Carry on from pair ${picks.length + 1}`}
+            </button>
+          )}
+          <button type="button" disabled={pending} onClick={() => begin(false)} className={btnClass(done || picks.length > 0 ? "secondary" : "primary", "sm")}>
+            {pending && !picks.length ? <><AgentDots /> Writing the pairs</> : picks.length > 0 ? "Start over" : done ? "Play again" : "Start"}
           </button>
           {done && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Your dials are set</span>}
         </div>
       )}
       {error && <p role="alert" className="text-[0.85rem] text-danger">{error}</p>}
 
-      {pair && !finished && (
+      {pair && finished == null && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <div className="flex-1 h-1.5 rounded-full bg-field overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={pairs!.length} aria-valuenow={i}>
@@ -227,8 +239,8 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
         </div>
       )}
 
-      {finished && (
-        <p role="status" className="text-[0.88rem] text-ok flex items-center gap-2"><Check size={15} aria-hidden="true" /> Dials set from your {picks.length} picks.</p>
+      {finished != null && (
+        <p role="status" className="text-[0.88rem] text-ok flex items-center gap-2"><Check size={15} aria-hidden="true" /> Dials set from your {finished} picks.</p>
       )}
 
       <button type="button" onClick={() => setSliders(!sliders)} className={`${btnClass("ghost", "sm")} self-start`}>
@@ -243,8 +255,8 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
 
 export function UrlImport({ tenantId }: { tenantId: string }) {
   const router = useRouter();
-  const [text, setText] = useState("");
-  const [mine, setMine] = useState(false);
+  const [text, setText] = useStepDraft("links", "");
+  const [mine, setMine] = useStepDraft("linksMine", false);
   const [log, setLog] = useState<{ url: string; ok: boolean; text: string }[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -265,7 +277,8 @@ export function UrlImport({ tenantId }: { tenantId: string }) {
     setBusy("measuring");
     if (total) await finishIngestAction(tenantId);
     setBusy(null);
-    setText("");
+    // Read links leave the box; the ones that failed stay, to fix and retry.
+    setText(out.filter((l) => !l.ok).map((l) => l.url).join("\n"));
     router.refresh();
   });
 
@@ -315,9 +328,12 @@ function RowList<T>({ rows, blank, render, onChange }: { rows: T[]; blank: T; re
 
 export function StoriesEditor({ tenantId, initial }: { tenantId: string; initial: Story[] }) {
   const router = useRouter();
-  const [rows, setRows] = useState<Story[]>(initial.length ? initial : [{ title: "", body: "" }]);
+  const [rows, setRows] = useStepDraft<Story[]>("stories", initial.length ? initial : [{ title: "", body: "" }]);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
+  // A story is kept only with both a name and what happened (lib/data/enrich);
+  // say so, rather than "Saved" over a story that wasn't.
+  const half = rows.filter((s) => !!s.title.trim() !== !!s.body.trim());
   return (
     <Box title="Stories you tell" sub="The 3 to 5 stories you come back to: on stage, in posts, over coffee. Drafts can use them; they can't invent them.">
       <RowList
@@ -334,17 +350,25 @@ export function StoriesEditor({ tenantId, initial }: { tenantId: string; initial
       />
       <div className="flex items-center gap-3">
         <button type="button" disabled={pending} onClick={() => start(async () => { await storiesAction(tenantId, rows); setSaved(true); router.refresh(); })} className={btnClass("secondary", "sm")}>Save stories</button>
-        <Saved on={saved} />
+        <Saved on={saved && !half.length} />
       </div>
+      {half.length > 0 && (
+        <p role={saved ? "alert" : undefined} className="text-[0.82rem] text-warn">
+          {half.map((s) => (s.title.trim() ? `“${s.title.trim()}” needs what happened` : "A story needs a short name")).join("; ")}
+          {saved ? ". It isn't saved until it has both." : " before it can be saved."}
+        </p>
+      )}
     </Box>
   );
 }
 
 export function ProofsEditor({ tenantId, initial }: { tenantId: string; initial: Proof[] }) {
   const router = useRouter();
-  const [rows, setRows] = useState<Proof[]>(initial.length ? initial : [{ claim: "" }]);
+  const [rows, setRows] = useStepDraft<Proof[]>("proofs", initial.length ? initial : [{ claim: "" }]);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
+  // A source with no claim is dropped on save; say so.
+  const orphan = rows.filter((p) => !p.claim.trim() && p.source?.trim());
   return (
     <Box title="Facts you can stand behind" sub="Numbers, results, client wins. Drafts never invent a fact, so these are the ones they're allowed to use. Say where each comes from.">
       <RowList
@@ -360,8 +384,13 @@ export function ProofsEditor({ tenantId, initial }: { tenantId: string; initial:
       />
       <div className="flex items-center gap-3">
         <button type="button" disabled={pending} onClick={() => start(async () => { await proofsAction(tenantId, rows); setSaved(true); router.refresh(); })} className={btnClass("secondary", "sm")}>Save facts</button>
-        <Saved on={saved} />
+        <Saved on={saved && !orphan.length} />
       </div>
+      {orphan.length > 0 && (
+        <p role={saved ? "alert" : undefined} className="text-[0.82rem] text-warn">
+          {orphan.length === 1 ? "A source has" : `${orphan.length} sources have`} no fact beside it{saved ? ", so it isn't saved." : " yet."}
+        </p>
+      )}
     </Box>
   );
 }
@@ -389,7 +418,7 @@ function Chips({ label, items, onChange, placeholder }: { label: string; items: 
 
 export function InfluencesEditor({ tenantId, initial }: { tenantId: string; initial: { admire: string[]; avoid: string[] } }) {
   const router = useRouter();
-  const [v, setV] = useState(initial);
+  const [v, setV] = useStepDraft("influences", initial);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
   return (
@@ -406,9 +435,9 @@ export function InfluencesEditor({ tenantId, initial }: { tenantId: string; init
 
 export function LanguagesEditor({ tenantId, initial }: { tenantId: string; initial: LanguageMix | null }) {
   const router = useRouter();
-  const [primary, setPrimary] = useState<LanguageKey>(initial?.primary ?? "en");
-  const [also, setAlso] = useState<LanguageKey[]>(initial?.also ?? []);
-  const [when, setWhen] = useState(initial?.when ?? "");
+  const [primary, setPrimary] = useStepDraft<LanguageKey>("lang:primary", initial?.primary ?? "en");
+  const [also, setAlso] = useStepDraft<LanguageKey[]>("lang:also", initial?.also ?? []);
+  const [when, setWhen] = useStepDraft("lang:when", initial?.when ?? "");
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
   return (

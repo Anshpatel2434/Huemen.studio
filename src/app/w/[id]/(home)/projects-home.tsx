@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
   Plus, FileText, Network, PenLine, Palette, FolderOpen, X, ArrowRight, Copy, ClipboardPaste, Sparkles,
-  LayoutGrid, List, ChevronDown, MoreHorizontal, Star, Pencil, Archive, RotateCcw, ExternalLink, Trash2, Lightbulb,
+  LayoutGrid, List, ChevronDown, MoreHorizontal, Star, Pencil, Archive, RotateCcw, ExternalLink, Trash2, Lightbulb, CheckCircle2,
 } from "lucide-react";
 import { Modal, SubmitButton, EmptyState, AgentDots, useToast, hueFor } from "@/components/ui";
 import { btnClass } from "@/components/btn";
@@ -69,12 +69,14 @@ function ago(iso: string): string {
   const mo = Math.round(d / 30); return mo < 12 ? `${mo} month${mo === 1 ? "" : "s"} ago` : `${Math.round(mo / 12)} year ago`;
 }
 
-export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQuery, showHero, showWhatsNew, setupStep, rescanDays }: {
+export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQuery, showHero, showWhatsNew, setupStep, rescanDays, justFinished = false }: {
   tenantId: string; workspaceName: string; projects: Project[]; view: View; initialQuery: string; showHero: boolean; showWhatsNew: boolean;
-  /** The onboarding step the person reached, or null once their voice is set up. */
+  /** The onboarding step the person reached (0 About you … 4 First draft), or null once their voice is set up. */
   setupStep: number | null;
   /** Days since the voice was measured, when a re-measure is due (90 days and new writing). */
   rescanDays: number | null;
+  /** Arrived straight from the last onboarding step. */
+  justFinished?: boolean;
 }) {
   const router = useRouter();
   const q = initialQuery;
@@ -112,7 +114,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
 
   return (
     <div className="absolute inset-0 flex flex-col">
-      {showWhatsNew && <WhatsNew onStart={() => setCreating("blank")} />}
+      {showWhatsNew && !justFinished && <WhatsNew onStart={() => setCreating("blank")} />}
       {/* Top bar */}
       <header className="h-12 shrink-0 flex items-center gap-2 px-5 border-b border-hairline bg-paper">
         <h1 className="text-[0.9rem] font-medium flex-1">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
@@ -130,14 +132,26 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
             </div>
           </section>
         )}
+        {justFinished && view !== "archived" && (
+          <section role="status" className="border-b border-hairline bg-ok-soft">
+            <div className="max-w-[1180px] mx-auto px-5 py-4 flex flex-wrap items-center gap-3">
+              <CheckCircle2 size={17} className="text-ok shrink-0" aria-hidden="true" />
+              <p className="flex-1 min-w-0 text-[0.88rem]">
+                <span className="font-medium">You&apos;re set up.</span>
+                <span className="text-ink-muted"> Your voice is in every piece from here, and your first one is below.</span>
+              </p>
+              <Link href={`/w/${tenantId}/create`} className={btnClass("primary", "sm")}>Write the next one</Link>
+            </div>
+          </section>
+        )}
         {setupStep != null && view !== "archived" && (
           <section className="border-b border-hairline bg-accent-soft">
             <div className="max-w-[1180px] mx-auto px-5 py-4 flex flex-wrap items-center gap-3">
               <p className="flex-1 min-w-0 text-[0.88rem]">
                 <span className="font-medium">Set up your voice</span>
-                <span className="text-ink-muted"> · step {setupStep} of 4. Until it's done, drafts won't sound much like you.</span>
+                <span className="text-ink-muted"> · step {setupStep + 1} of 5. Until it&apos;s done, drafts won&apos;t sound much like you.</span>
               </p>
-              <Link href={`/w/${tenantId}/onboarding`} className={btnClass("primary", "sm")}>{setupStep > 1 ? "Carry on" : "Start"}</Link>
+              <Link href={`/w/${tenantId}/onboarding?step=${setupStep}`} className={btnClass("primary", "sm")}>{setupStep > 0 ? "Carry on" : "Start"}</Link>
             </div>
           </section>
         )}

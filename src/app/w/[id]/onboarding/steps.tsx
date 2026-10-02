@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * Onboarding steps 1, 2 and 4 (step 3 is a plain server form).
+ * Onboarding steps 0, 1, 2 and 4 (step 3 is mostly a server form).
  *
  * Step 1 reads files in the browser, strips private sources there, and sends
  * one file at a time so the progress shown is real: "Ingesting" is determinate
  * per file, "Learning" is the re-measure after (design system §15.2).
+ *
+ * Anything typed or picked and not yet saved is a draft (`useStepDraft`), so a
+ * reload puts it back; saved answers come back from the server.
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
-import { Check, FileUp, Lock, Mic, AlertTriangle, CheckCircle2, Circle, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { ArrowLeft, Check, FileUp, Lock, Mic, AlertTriangle, CheckCircle2, Circle, History, X } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { AgentDots, Badge } from "@/components/ui";
 import { ScoreMeter } from "@/components/composites";
@@ -28,10 +31,30 @@ import { parseCaptions } from "@/lib/integrations/text";
 import { InfluencesEditor, LanguagesEditor, ThisOrThat } from "./enrich-ui";
 import type { LanguageMix } from "@/lib/voice/types";
 import {
-  answerAction, benchmarksAction, cardAction, dialsAction, dropOpenerAction, finishIngestAction, firstPieceAction,
+  aboutAction, answerAction, benchmarksAction, cardAction, dialsAction, dropOpenerAction, finishIngestAction, firstPieceAction,
   goToStepAction, guardrailAction, ingestAction, markIngestingAction, neverWordsAction, ownDraftForFirstPieceAction,
-  saveSourcesAction, voiceNotesAction, workModeAction,
+  resumeIngestAction, saveSourcesAction, voiceNotesAction, workModeAction,
 } from "./actions";
+import { clearOnboardingDrafts, pendingDrafts, useDraftPrefix, useStepDraft } from "./draft";
+
+/** Back one step: a plain link, so it works mid-save and never loses a draft. */
+export function BackStep({ tenantId, to, label }: { tenantId: string; to: number; label: string }) {
+  return (
+    <Link href={`/w/${tenantId}/onboarding?step=${to}`} className={btnClass("secondary")}>
+      <ArrowLeft size={15} aria-hidden="true" /> {label}
+    </Link>
+  );
+}
+
+/** Shown once when a reload gave back unsaved work, so nobody wonders where it came from. */
+function RestoredNote({ on }: { on: boolean }) {
+  if (!on) return null;
+  return (
+    <p role="status" className="text-[0.82rem] text-ink-muted flex items-center gap-1.5">
+      <History size={13} aria-hidden="true" /> We kept what you hadn&apos;t saved yet.
+    </p>
+  );
+}
 
 const Section = ({ title, sub, children }: { title: string; sub?: ReactNode; children: ReactNode }) => (
   <section className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
@@ -52,6 +75,65 @@ const Choice = ({ on, onToggle, children, radio }: { on: boolean; onToggle: () =
 );
 
 // =============================================================================
+// Step 0 — About you
+// =============================================================================
+
+type AboutForm = { name: string; niche: string; audience: string; offers: string; positioning: string };
+
+const ABOUT_FIELDS: { key: keyof AboutForm; label: string; hint: string; rows?: number; required?: boolean }[] = [
+  { key: "name", label: "Your name, as you sign your writing", hint: "Alex Rivera", required: true },
+  { key: "niche", label: "What do you do?", hint: "Leadership coaching for first-time managers", required: true },
+  { key: "audience", label: "Who is it for?", hint: "Engineers promoted into their first management role", rows: 2 },
+  { key: "offers", label: "What do you offer them?", hint: "1:1 coaching, a six-week cohort, team workshops", rows: 2 },
+  { key: "positioning", label: "In one line, why you? (optional)", hint: "I help new managers stop firefighting and start leading", rows: 2 },
+];
+
+export function AboutStep({ tenantId, saved, returning }: { tenantId: string; saved: AboutForm; returning: boolean }) {
+  const [form, setForm, draft] = useStepDraft<AboutForm>("about", saved);
+  const [pending, start] = useTransition();
+  const missing = ABOUT_FIELDS.filter((f) => f.required && !form[f.key].trim());
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-[1.9rem]">{returning ? <>Welcome <span className="serif-accent">back.</span></> : <>Let&apos;s set up your <span className="serif-accent">brand.</span></>}</h1>
+        <p className="text-ink-muted mt-2 max-w-[62ch]">
+          Five short steps, about fifteen minutes. You tell us who you are, we read some of your writing, and you leave with a first piece in your own voice.
+          Everything saves as you go: leave at any point and you&apos;ll come back to the same place.
+        </p>
+      </div>
+
+      <Section title="About you" sub="The basics every piece starts from. You can change any of it later in Brand core.">
+        <RestoredNote on={draft.restored} />
+        {ABOUT_FIELDS.map((f) => (
+          <label key={f.key} className="block">
+            <span className="block text-[0.88rem] font-medium mb-1.5">{f.label}</span>
+            {f.rows ? (
+              <textarea rows={f.rows} value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.hint} className="field" />
+            ) : (
+              <input value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.hint} required={f.required} autoComplete={f.key === "name" ? "name" : "off"} className="field" />
+            )}
+          </label>
+        ))}
+      </Section>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={pending || missing.length > 0}
+          aria-busy={pending}
+          onClick={() => start(async () => { await aboutAction(tenantId, form); })}
+          className={btnClass("primary")}
+        >
+          {pending ? <><AgentDots /> Saving</> : "Continue to add your writing"}
+        </button>
+        {missing.length > 0 && <span className="text-[0.82rem] text-ink-faint">Add {missing.map((m) => (m.key === "name" ? "your name" : "what you do")).join(" and ")} to carry on.</span>}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // Step 1 — Add samples
 // =============================================================================
 
@@ -59,27 +141,51 @@ const WRITE_FOR = ["linkedin", "linkedin_comment", "instagram", "x", "threads", 
 
 interface Batch { label: string; run: () => Promise<{ pieces: IngestedPiece[]; summary: string }>; source: "paste" | "upload" | "export" }
 
-export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level, canRecord, links }: {
+export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level, canRecord, links, stalled }: {
   tenantId: string; sources: string[]; writeFor: string[]; pieces: number; words: number; level: string; canRecord: boolean;
   /** Reading their own writing from links (site, blog, Substack, Medium, podcast). */
   links?: ReactNode;
+  /** A batch was cut off by a reload: what arrived is saved, not yet measured. */
+  stalled?: boolean;
 }) {
   const router = useRouter();
-  const [picked, setPicked] = useState<string[]>(sources);
-  const [platforms, setPlatforms] = useState<string[]>(writeFor.length ? writeFor : ["linkedin"]);
+  const savedPlatforms = writeFor.length ? writeFor : ["linkedin"];
+  const [picked, setPicked, pickedDraft] = useStepDraft<string[]>("sources", sources);
+  const [platforms, setPlatforms] = useStepDraft<string[]>("writeFor", savedPlatforms);
   const [files, setFiles] = useState<Record<string, File[]>>({});
-  const [pastes, setPastes] = useState<Record<string, string>>({});
-  const [waName, setWaName] = useState("");
+  // A File can't be stored, but its name can: after a reload we say which to choose again.
+  const [fileNames, setFileNames] = useStepDraft<Record<string, string[]>>("files", {});
+  const [pastes, setPastes, pastesDraft] = useStepDraft<Record<string, string>>("pastes", {});
+  const [waName, setWaName] = useStepDraft("waName", "");
   const [progress, setProgress] = useState<{ done: number; total: number; phase: "ingesting" | "learning" | "done"; log: string[] } | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
-  const [notes, setNotes] = useState(["", "", ""]);
+  const [notes, setNotes] = useStepDraft("notes", ["", "", ""]);
+  const [resuming, setResuming] = useState(false);
+  const resumed = useRef(false);
 
   const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const allSources = SOURCE_GROUPS.flatMap((g) => g.sources.map((s) => ({ ...s, private: g.private })));
   const chosen = allSources.filter((s) => picked.includes(s.key));
+  const choicesDirty = JSON.stringify([...picked].sort()) !== JSON.stringify([...sources].sort())
+    || JSON.stringify([...platforms].sort()) !== JSON.stringify([...savedPlatforms].sort());
 
   const save = () => start(async () => { await saveSourcesAction(tenantId, picked, platforms); setSaved(true); router.refresh(); });
+
+  // An upload cut off by a reload: measure what landed, once, then say so.
+  useEffect(() => {
+    if (!stalled || resumed.current) return;
+    resumed.current = true;
+    setResuming(true);
+    resumeIngestAction(tenantId).finally(() => { setResuming(false); router.refresh(); });
+  }, [stalled, tenantId, router]);
+
+  // Continuing saves the choices first, so "where we write for you" is never lost
+  // to someone who skipped the Save button.
+  const next = () => start(async () => {
+    if (choicesDirty) await saveSourcesAction(tenantId, picked, platforms);
+    await goToStepAction(tenantId, 2);
+  });
 
   const batches = (): Batch[] => {
     const out: Batch[] = [];
@@ -147,6 +253,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
     log.push(`Your core now reads ${r.pieces} pieces, ${r.words.toLocaleString()} words.`);
     setProgress({ done: list.length, total: list.length, phase: "done", log: [...log] });
     setFiles({});
+    setFileNames({});
     setPastes({});
     router.refresh();
   });
@@ -159,6 +266,13 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
         <h1 className="text-[1.9rem]">Add your <span className="serif-accent">writing.</span></h1>
         <p className="text-ink-muted mt-2 max-w-[62ch]">Real writing is most of what makes a draft sound like you. Pick where you write, then add some of it. Uploads and pastes only for now: nothing is read from an account.</p>
       </div>
+
+      {resuming && (
+        <p role="status" className="text-[0.88rem] bg-field rounded-[10px] px-4 py-3 flex items-center gap-2">
+          <AgentDots /> Picking up where you left off: measuring the writing that arrived before the page reloaded.
+        </p>
+      )}
+      <RestoredNote on={(pickedDraft.restored && choicesDirty) || (pastesDraft.restored && Object.values(pastes).some((p) => p.trim()))} />
 
       <Section title="Where do you write?" sub="Pick everything you're happy for us to read. We read only what you pick.">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
@@ -223,11 +337,21 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
                     multiple
                     accept={s.key === "linkedin" ? ".csv,.txt,.md" : s.key === "spoken" ? ".txt,.md,.vtt,.srt" : ".txt,.md"}
                     className="sr-only"
-                    onChange={(e) => setFiles({ ...files, [s.key]: Array.from(e.target.files ?? []) })}
+                    onChange={(e) => {
+                      const list = Array.from(e.target.files ?? []);
+                      setFiles({ ...files, [s.key]: list });
+                      setFileNames({ ...fileNames, [s.key]: list.map((f) => f.name) });
+                    }}
                   />
                 </label>
                 {(files[s.key] ?? []).length > 0 && (
                   <ul className="text-[0.8rem] text-ink-muted">{files[s.key].map((f) => <li key={f.name}>{f.name} · {(f.size / 1024).toFixed(0)} KB</li>)}</ul>
+                )}
+                {!(files[s.key] ?? []).length && (fileNames[s.key] ?? []).length > 0 && (
+                  <p className="text-[0.8rem] text-warn flex items-start gap-1.5">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    Before the page reloaded you&apos;d chosen {fileNames[s.key].join(", ")}. Files can&apos;t be kept by the browser, so choose them again.
+                  </p>
                 )}
                 {s.key !== "whatsapp" && (
                   <textarea
@@ -292,10 +416,11 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
         </Section>
       )}
 
-      <div className="flex items-center gap-3">
-        <form action={goToStepAction.bind(null, tenantId, 2)}>
-          <button type="submit" disabled={pieces === 0} className={btnClass("primary")}>Continue to confirm your voice</button>
-        </form>
+      <div className="flex flex-wrap items-center gap-3">
+        <BackStep tenantId={tenantId} to={0} label="About you" />
+        <button type="button" onClick={next} disabled={pieces === 0 || pending} aria-busy={pending && !progress} className={btnClass("primary")}>
+          {pending && !progress ? <AgentDots /> : null} Continue to confirm your voice
+        </button>
         {pieces === 0 && <span className="text-[0.82rem] text-ink-faint">Add at least one piece first.</span>}
       </div>
     </div>
@@ -336,6 +461,9 @@ export function ConfirmStep(props: {
 }) {
   const { tenantId } = props;
   const { pending, done, run } = useSaver();
+  const prefix = useDraftPrefix();
+  const [unsaved, setUnsaved] = useState<number | null>(null);
+  const [moving, go] = useTransition();
 
   return (
     <div className="flex flex-col gap-6">
@@ -371,9 +499,32 @@ export function ConfirmStep(props: {
         <Benchmarks tenantId={tenantId} candidates={props.candidates} initial={props.benchmarks} />
       )}
 
-      <form action={goToStepAction.bind(null, tenantId, 3)}>
-        <button type="submit" disabled={pending} className={btnClass("primary")}>Continue to set your hue</button>
-      </form>
+      <div className="flex flex-wrap items-center gap-3">
+        <BackStep tenantId={tenantId} to={1} label="Your writing" />
+        <button
+          type="button"
+          disabled={pending || moving}
+          aria-busy={moving}
+          onClick={() => {
+            // Each answer here saves on its own button. Moving on with one typed
+            // but not saved keeps it as a draft that no piece reads: say so, once.
+            const n = prefix ? pendingDrafts(prefix, /^(q:|dials$|words$|fourWords$|benchmarks$|influences$|lang:)/) : 0;
+            if (n > 0 && unsaved == null) return setUnsaved(n);
+            go(async () => { await goToStepAction(tenantId, 3); });
+          }}
+          className={btnClass("primary")}
+        >
+          {moving ? <AgentDots /> : null} {unsaved ? "Continue anyway" : "Continue to set your hue"}
+        </button>
+      </div>
+      {unsaved != null && unsaved > 0 && (
+        <p role="alert" className="text-[0.85rem] text-warn flex items-start gap-1.5 -mt-3">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          {unsaved === 1
+            ? "One answer above isn't saved yet. It'll wait for you here, but nothing is written from it until you press its Save."
+            : `${unsaved} answers above aren't saved yet. They'll wait for you here, but nothing is written from them until you press their Save.`}
+        </p>
+      )}
     </div>
   );
 }
@@ -411,11 +562,13 @@ function CardView({ tenantId, card }: { tenantId: string; card: ConfirmCard }) {
 
 function Dials({ tenantId, dials, estimated }: { tenantId: string; dials: Partial<Record<DialKey, number>>; estimated: Partial<Record<DialKey, number>> }) {
   const { pending, done, run } = useSaver();
-  const [v, setV] = useState<Partial<Record<DialKey, number>>>(() =>
+  const [v, setV, draft] = useStepDraft<Partial<Record<DialKey, number>>>(
+    "dials",
     Object.fromEntries(DIAL_KEYS.map((k) => [k, dials[k] ?? estimated[k] ?? 5])) as Partial<Record<DialKey, number>>,
   );
   return (
     <Section title="The dials" sub="We've pre-set the ones your writing speaks to. Move anything that feels wrong; moving one far from your writing asks which to write like.">
+      <RestoredNote on={draft.restored} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
         {DIAL_KEYS.map((k) => {
           const [l, r] = DIAL_LABELS[k];
@@ -441,8 +594,8 @@ function Dials({ tenantId, dials, estimated }: { tenantId: string; dials: Partia
 
 function Words({ tenantId, longlist, fourWords }: { tenantId: string; longlist: string[]; fourWords: string[] }) {
   const { pending, done, run } = useSaver();
-  const [picks, setPicks] = useState<string[]>(longlist);
-  const [keep, setKeep] = useState<Record<string, string>>({});
+  const [picks, setPicks] = useStepDraft<string[]>("words", longlist);
+  const [keep, setKeep] = useStepDraft<Record<string, string>>("fourWords", {});
   const groups = useMemo(() => groupPicks(longlist.length ? longlist : []), [longlist]);
   const enough = picks.length >= MIN_PICKS && picks.length <= MAX_PICKS;
 
@@ -480,7 +633,10 @@ function Words({ tenantId, longlist, fourWords }: { tenantId: string; longlist: 
           ))}
           <div className="flex items-center gap-3">
             <button type="button" disabled={pending}
-              onClick={() => run("C6", () => answerAction(tenantId, "C6", groups.map((g) => keep[g.family] ?? fourWords.find((f) => g.words.includes(f)) ?? g.words[0])))}
+              onClick={() => run("C6", async () => {
+                await answerAction(tenantId, "C6", groups.map((g) => keep[g.family] ?? fourWords.find((f) => g.words.includes(f)) ?? g.words[0]));
+                setKeep({}); // saved: the radios now read the four words from the server
+              })}
               className={btnClass("secondary", "sm")}>Save my four words</button>
             {(done.includes("C6") || fourWords.length > 0) && <span className="text-[0.85rem] text-ink-muted">Current: {fourWords.join(", ") || "none yet"}</span>}
           </div>
@@ -502,13 +658,19 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
   prefill?: Prefill;
   canRecord?: boolean;
 }) {
-  const { pending, done, run } = useSaver();
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState<string>(Array.isArray(initial) ? "" : initial);
-  const [chips, setChips] = useState<string[]>(Array.isArray(initial) ? initial : []);
+  const { pending, done, run: runSave } = useSaver();
+  const [editingState, setEditing] = useState(false);
+  const [value, setValue, valueDraft] = useStepDraft<string>(`q:${q.id}:text`, Array.isArray(initial) ? "" : initial);
+  const [chips, setChips, chipsDraft] = useStepDraft<string[]>(`q:${q.id}:chips`, Array.isArray(initial) ? initial : []);
   const shortKeys = q.prompts ?? keys ?? [];
-  const [shorts, setShorts] = useState<Record<string, string>>({});
+  const [shorts, setShorts, shortsDraft] = useStepDraft<Record<string, string>>(`q:${q.id}:shorts`, {});
   const [followed, setFollowed] = useState(false);
+  // An unsaved answer that came back after a reload opens the box, not the summary.
+  const restored = valueDraft.restored || chipsDraft.restored || shortsDraft.restored;
+  const editing = editingState || restored;
+  // Once saved, the server has it: the drafts go.
+  const run = (key: string, fn: () => Promise<unknown>) =>
+    runSave(key, async () => { await fn(); valueDraft.discard(); chipsDraft.discard(); shortsDraft.discard(); });
   const saved = done.includes(q.id) || (answered && !followed);
   const empty =
     q.format === "chips" || q.format === "multi" ? chips.length === 0
@@ -558,6 +720,7 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
         <span className="font-mono text-[0.72rem] text-accent">{q.id}</span> {q.ask}
       </label>
       {q.example && <p className="text-[0.8rem] text-ink-faint italic">e.g. {q.example}</p>}
+      <RestoredNote on={restored && !done.includes(q.id)} />
       {q.format === "mcq" && q.options && (
         <div className="flex flex-col gap-1.5" role="radiogroup" aria-labelledby={`q-${q.id}-label`}>
           {q.options.map((o) => <Choice key={o} radio on={value === o} onToggle={() => setValue(o)}>{o}</Choice>)}
@@ -610,7 +773,7 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
 
 function Benchmarks({ tenantId, candidates, initial }: { tenantId: string; candidates: { id: string; text: string; channel: string }[]; initial: string[] }) {
   const { pending, done, run } = useSaver();
-  const [picks, setPicks] = useState<string[]>(initial.slice(0, 3));
+  const [picks, setPicks] = useStepDraft<string[]>("benchmarks", initial.slice(0, 3));
   return (
     <Section title="Pick the three that are most you" sub="Not the most liked. The most you. These are the pieces drafts learn your rhythm from first.">
       <div className="flex flex-col gap-2">
@@ -649,13 +812,36 @@ export function PayoffStep(props: {
   missing: string[];
   confidence: number;
   first: { id: string; name: string; hook: string | null; body: string | null; cta: string | null; score: number | null; band: string | null } | null;
+  /** The first piece is still being written (a reload mid-write), or that write died. */
+  firstState: "writing" | "failed" | null;
   ownCheck: { excerpt: string; score: number; band: string; issues: string[] } | null;
 }) {
   const { tenantId } = props;
   const router = useRouter();
+  const prefix = useDraftPrefix();
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<WorkMode>(props.mode);
-  const [own, setOwn] = useState("");
+  const [own, setOwn] = useStepDraft("ownFirst", "");
+  const [writeError, setWriteError] = useState(false);
+  const writing = props.firstState === "writing" && !props.first?.hook;
+
+  // Written by a request this page didn't start (it was reloaded mid-write):
+  // re-read until it lands or goes stale.
+  useEffect(() => {
+    if (!writing) return;
+    const t = setInterval(() => router.refresh(), 2500);
+    return () => clearInterval(t);
+  }, [writing, router]);
+
+  const writeFirst = () => start(async () => {
+    setWriteError(false);
+    try {
+      await firstPieceAction(tenantId);
+    } catch {
+      setWriteError(true);
+    }
+    router.refresh();
+  });
   const band = (b: string | null) => (b === "on_brand" ? "on" : b === "drifting" ? "drift" : "off") as "on" | "drift" | "off";
 
   return (
@@ -690,10 +876,17 @@ export function PayoffStep(props: {
       </Section>
 
       <Section title="Your first piece" sub="On a topic from your own pillars, for the first place you said you write. It becomes your first project.">
-        {!props.first ? (
-          <button type="button" disabled={pending} onClick={() => start(async () => { await firstPieceAction(tenantId); router.refresh(); })} className={`${btnClass("primary")} self-start`}>
-            {pending ? <><AgentDots /> Writing it in your voice</> : mode === "check" ? "Set up my first piece" : "Write my first piece"}
-          </button>
+        {writing ? (
+          <p role="status" className="text-[0.9rem] flex items-center gap-2"><AgentDots /> Writing it in your voice. This page will show it when it&apos;s ready.</p>
+        ) : !props.first || ((props.firstState === "failed" || writeError) && !props.first.hook && props.mode !== "check") ? (
+          <div className="flex flex-col gap-2 items-start">
+            {(props.firstState === "failed" || writeError) && (
+              <p role="alert" className="text-[0.85rem] text-warn flex items-center gap-1.5"><AlertTriangle size={14} aria-hidden="true" /> That didn&apos;t finish. Nothing was lost; try again.</p>
+            )}
+            <button type="button" disabled={pending} aria-busy={pending} onClick={writeFirst} className={btnClass("primary")}>
+              {pending ? <><AgentDots /> Writing it in your voice</> : props.first ? "Try again" : mode === "check" ? "Set up my first piece" : "Write my first piece"}
+            </button>
+          </div>
         ) : props.first.hook ? (
           <div className="flex flex-col gap-3">
             <div className="border border-hairline rounded-[10px] p-4 text-[0.92rem] leading-relaxed whitespace-pre-wrap">
@@ -708,7 +901,7 @@ export function PayoffStep(props: {
           <div className="flex flex-col gap-2">
             <label htmlFor="own-first" className="text-[0.88rem]">You chose to write it yourself. Write or paste it here and we'll check it against your voice.</label>
             <textarea id="own-first" rows={6} value={own} onChange={(e) => setOwn(e.target.value)} className="field" />
-            <button type="button" disabled={pending || !own.trim()} onClick={() => start(async () => { await ownDraftForFirstPieceAction(tenantId, own); router.refresh(); })} className={`${btnClass("primary", "sm")} self-start`}>Check it</button>
+            <button type="button" disabled={pending || !own.trim()} onClick={() => start(async () => { await ownDraftForFirstPieceAction(tenantId, own); setOwn(""); router.refresh(); })} className={`${btnClass("primary", "sm")} self-start`}>Check it</button>
           </div>
         )}
       </Section>
@@ -724,10 +917,17 @@ export function PayoffStep(props: {
         </Section>
       )}
 
-      <form action={async (fd) => { const { finishOnboardingAction } = await import("./actions"); await finishOnboardingAction(fd); }}>
-        <input type="hidden" name="tenantId" value={tenantId} />
-        <button type="submit" disabled={!props.first} className={btnClass("primary", "lg")}>Yes, that&apos;s me</button>
-      </form>
+      <div className="flex flex-wrap items-center gap-3">
+        <BackStep tenantId={tenantId} to={3} label="Your hue" />
+        <form
+          action={async (fd) => { const { finishOnboardingAction } = await import("./actions"); await finishOnboardingAction(fd); }}
+          onSubmit={() => { if (prefix) clearOnboardingDrafts(prefix); }}
+        >
+          <input type="hidden" name="tenantId" value={tenantId} />
+          <button type="submit" disabled={!props.first || writing} className={btnClass("primary", "lg")}>Yes, that&apos;s me. Open my studio</button>
+        </form>
+        {(!props.first || writing) && <span className="text-[0.82rem] text-ink-faint">{writing ? "One moment: your first piece is still being written." : "Make your first piece above to finish."}</span>}
+      </div>
     </div>
   );
 }
@@ -746,11 +946,13 @@ function MirrorRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
-function ChipEditor({ items, max, tone, onSave, placeholder }: {
+function ChipEditor({ name, items, max, tone, onSave, placeholder }: {
+  /** Draft name: unsaved chips come back after a reload. */
+  name: string;
   items: string[]; max?: number; tone: "accent" | "danger"; onSave: (next: string[]) => Promise<unknown>; placeholder: string;
 }) {
   const { pending, done, run } = useSaver();
-  const [list, setList] = useState(items);
+  const [list, setList] = useStepDraft(name, items);
   const [draft, setDraft] = useState("");
   const dirty = list.join("|") !== items.join("|");
   const add = () => {
@@ -793,8 +995,9 @@ function ChipEditor({ items, max, tone, onSave, placeholder }: {
 
 function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameters<typeof PayoffStep>[0]["mirror"] }) {
   const saver = useSaver();
-  const [rule, setRule] = useState(mirror.guardrail?.rule ?? "");
-  const [dials, setDials] = useState<Partial<Record<DialKey, number>>>(() =>
+  const [rule, setRule] = useStepDraft("mirror:rule", mirror.guardrail?.rule ?? "");
+  const [dials, setDials] = useStepDraft<Partial<Record<DialKey, number>>>(
+    "mirror:dials",
     Object.fromEntries(DIAL_KEYS.map((k) => [k, mirror.dials[k] ?? mirror.estimated[k] ?? 5])) as Partial<Record<DialKey, number>>,
   );
   const dialsDirty = DIAL_KEYS.some((k) => dials[k] !== (mirror.dials[k] ?? mirror.estimated[k] ?? 5));
@@ -802,7 +1005,7 @@ function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameter
   return (
     <Section title="Your voice mirror" sub="What your core concluded about how you sound. Change anything that's wrong, right here.">
       <MirrorRow label="Your four words">
-        <ChipEditor items={mirror.words} max={4} tone="accent" placeholder="Add a word" onSave={(w) => answerAction(tenantId, "C6", w)} />
+        <ChipEditor name="mirror:words" items={mirror.words} max={4} tone="accent" placeholder="Add a word" onSave={(w) => answerAction(tenantId, "C6", w)} />
       </MirrorRow>
 
       <MirrorRow label="How you open">
@@ -840,7 +1043,7 @@ function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameter
       </MirrorRow>
 
       <MirrorRow label="Never">
-        <ChipEditor items={mirror.never} tone="danger" placeholder="Add a word or phrase" onSave={(w) => neverWordsAction(tenantId, w)} />
+        <ChipEditor name="mirror:never" items={mirror.never} tone="danger" placeholder="Add a word or phrase" onSave={(w) => neverWordsAction(tenantId, w)} />
       </MirrorRow>
 
       <MirrorRow label={mirror.guardrail ? mirror.guardrail.name : "A line you don't cross"}>

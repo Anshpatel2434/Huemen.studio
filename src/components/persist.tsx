@@ -53,6 +53,26 @@ export function useDraftPersist<T>(key: string | null, value: T, restore: (v: T)
   }, [ready, key, value]);
 }
 
+/**
+ * Drafts belong to a signed-in person. On sign-out they go, so the next person
+ * at a shared computer can't read what someone pasted and didn't save (it can
+ * be private email or chat). Saved work is on the server and unaffected.
+ * The public questionnaire's drafts (`huemen:q:`) belong to no account and stay.
+ */
+const ACCOUNT_DRAFTS = ["huemen:onb:", "huemen:brief:", "huemen:intake:"];
+
+export function ClearAccountDrafts() {
+  useEffect(() => {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && ACCOUNT_DRAFTS.some((p) => k.startsWith(p))) localStorage.removeItem(k);
+      }
+    } catch {}
+  }, []);
+  return null;
+}
+
 const SKIP_TYPES = new Set(["file", "password", "submit", "button", "hidden", "reset"]);
 
 export function PersistForm({

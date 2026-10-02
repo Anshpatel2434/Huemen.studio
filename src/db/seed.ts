@@ -61,7 +61,25 @@ async function main() {
     )
   ).rows[0].id;
 
-  // Full brand foundation for the demo client, inside its first project.
+  // A client who has never signed in: no brief, no voice, no projects. Signing
+  // in as them walks the whole onboarding flow from zero to the dashboard.
+  const freshTenant = (
+    await withTenantSession(admin, (c) =>
+      c.query<{ id: string }>("INSERT INTO tenants (name) VALUES ('Fresh Client') RETURNING id"),
+    )
+  ).rows[0].id;
+  const freshUser = (
+    await withTenantSession(admin, (c) =>
+      c.query<{ id: string }>(
+        `INSERT INTO users (tenant_id, email, role, status)
+         VALUES ($1, 'fresh@client.test', 'client', 'active') RETURNING id`,
+        [freshTenant],
+      ),
+    )
+  ).rows[0].id;
+
+  // Full brand foundation for the demo client. Since 0007 the brief and pillars
+  // belong to the workspace (project_id NULL); the project only holds the pieces.
   await withTenantSession(
     { tenantId: clientTenant, userId: clientUser, isPlatformAdmin: false },
     async (c) => {
@@ -74,8 +92,8 @@ async function main() {
       const bp = (
         await c.query<{ id: string }>(
           `INSERT INTO brand_profiles
-             (tenant_id, project_id, status, story_arc, positioning_statement, niche, audience, offers_summary, completeness)
-           VALUES ($1,$7,'active',$2,$3,$4,$5,$6,100) RETURNING id`,
+             (tenant_id, status, story_arc, positioning_statement, niche, audience, offers_summary, completeness)
+           VALUES ($1,'active',$2,$3,$4,$5,$6,100) RETURNING id`,
           [
             clientTenant,
             JSON.stringify([
@@ -87,7 +105,6 @@ async function main() {
             "Personal branding for B2B founders",
             JSON.stringify({ role: "founders", stage: "post-PMF" }),
             "1:1 coaching and cohort workshops.",
-            projectId,
           ],
         )
       ).rows[0].id;
@@ -122,8 +139,8 @@ async function main() {
 
       for (const [i, name] of ["Authority", "Systems", "Contrarian takes"].entries()) {
         await c.query(
-          `INSERT INTO pillars (tenant_id, project_id, brand_profile_id, name, sort_order) VALUES ($1,$5,$2,$3,$4)`,
-          [clientTenant, bp, name, i, projectId],
+          `INSERT INTO pillars (tenant_id, brand_profile_id, name, sort_order) VALUES ($1,$2,$3,$4)`,
+          [clientTenant, bp, name, i],
         );
       }
 
@@ -195,6 +212,7 @@ async function main() {
       {
         adminLogin: { userId: adminUser, tenantId: ownerTenant, role: "owner_admin", email: "admin@huemen.studio" },
         clientLogin: { userId: clientUser, tenantId: clientTenant, role: "client", email: "demo@client.test" },
+        freshClientLogin: { userId: freshUser, tenantId: freshTenant, role: "client", email: "fresh@client.test" },
       },
       null,
       2,

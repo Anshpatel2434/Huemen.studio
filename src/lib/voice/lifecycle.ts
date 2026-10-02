@@ -34,6 +34,28 @@ export function scanInProgress(scan: Onboarding["scan"], now: number): "ingestin
 }
 
 /**
+ * Files are read in the browser and sent one at a time, and every file that
+ * lands refreshes `scan.at`. So "ingesting" with no file for this long means
+ * the tab that was sending them closed or reloaded: the pieces that arrived
+ * are saved but not yet measured, and the page should finish the job.
+ */
+export const INGEST_HEARTBEAT_MS = 20 * 1000;
+
+export function ingestStalled(scan: Onboarding["scan"], now: number): boolean {
+  return scan?.state === "ingesting" && now - new Date(scan.at).getTime() >= INGEST_HEARTBEAT_MS;
+}
+
+/**
+ * The first piece is one model call, bounded by the request timeout
+ * (AI_TEXT_TIMEOUT_MS, two minutes by default). Still "writing" well past that
+ * means the request died, and the payoff screen offers to try again.
+ */
+export const FIRST_PIECE_STALE_MS = 3 * 60 * 1000;
+
+export const firstPieceStale = (fp: Onboarding["firstPiece"], now: number): boolean =>
+  !!fp && now - new Date(fp.at).getTime() >= FIRST_PIECE_STALE_MS;
+
+/**
  * Trained is "ready, with a number" (§15.2): it says nothing about how high
  * the number is. Below 70% the card stays Trained but labels the core
  * provisional and offers more samples before a draft.

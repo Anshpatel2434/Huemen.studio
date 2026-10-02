@@ -12,6 +12,7 @@ import { Check, Pipette, Plus, X } from "lucide-react";
 import { paletteFromPixels } from "@/lib/visual/palette";
 import { btnClass } from "@/components/btn";
 import { saveVisualAction } from "@/app/w/[id]/brand/actions";
+import { useStepDraft } from "@/app/w/[id]/onboarding/draft";
 import type { VisualIdentity } from "@/lib/data/foundation";
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -36,9 +37,10 @@ async function coloursFrom(url: string): Promise<string[]> {
 
 export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; initial: VisualIdentity; logoUrl?: string | null }) {
   const router = useRouter();
-  const [palette, setPalette] = useState<string[]>(initial.palette.length ? initial.palette : ["#0A0A0A", "#FFFFFF"]);
-  const [fonts, setFonts] = useState(initial.fonts.join(", "));
-  const [notes, setNotes] = useState(initial.imageStyleNotes);
+  // Drafts inside onboarding (a reload keeps unsaved colours); plain state elsewhere.
+  const [palette, setPalette] = useStepDraft<string[]>("visual:palette", initial.palette.length ? initial.palette : ["#0A0A0A", "#FFFFFF"]);
+  const [fonts, setFonts] = useStepDraft("visual:fonts", initial.fonts.join(", "));
+  const [notes, setNotes] = useStepDraft("visual:notes", initial.imageStyleNotes);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
   const [suggested, setSuggested] = useState<string[] | null>(null);
