@@ -4,7 +4,10 @@
  * visibly proves context WAS injected (INV-2) and has the real draft shape
  * (hook / body / "→ CTA"). Swap for real providers via env (AI_TEXT_PROVIDER).
  */
+import type { ZodType } from "zod";
+import { TASKS } from "../tasks";
 import type {
+  StructuredResult,
   ImageGenRequest,
   ImageGenResult,
   ImageProvider,
@@ -96,6 +99,15 @@ export const mockTextProvider: TextProvider = {
       tokensIn: req.context.serialized.length + req.taskInput.length,
       tokensOut: variants.join("").length,
     };
+  },
+
+  async structured<T>(req: TextGenRequest, model: string, schema: ZodType<T>): Promise<StructuredResult<T>> {
+    const task = TASKS[req.templateKey];
+    if (!task) throw new Error(`No stand-in answer for task "${req.templateKey}".`);
+    // Validated like a real reply, so a stand-in can never pass a shape the
+    // real provider would fail.
+    const data = schema.parse(task.mock(req.taskInput));
+    return { data, model, tokensIn: req.context.serialized.length + req.taskInput.length, tokensOut: JSON.stringify(data).length };
   },
 };
 

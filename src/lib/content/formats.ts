@@ -7,18 +7,25 @@ export interface FormatDef {
   label: string;
   channel: "linkedin" | "instagram" | "newsletter" | "email" | "talk";
   templateKey: string;
+  /**
+   * The platform whose rules and whose voice block apply (lib/voice/platforms,
+   * the person's contexts). Distinct from `channel`, which is the coarser
+   * grouping stored on content rows: a talk abstract is channel "talk" but is
+   * written for the ear, so it reads the spoken-script rules.
+   */
+  platform: string;
   /** Export frame for the templated visual (brief §4.3 export dimensions). */
   frame: { w: number; h: number; label: string };
 }
 
 export const FORMATS: FormatDef[] = [
-  { key: "linkedin_post", label: "LinkedIn post", channel: "linkedin", templateKey: "linkedin_post", frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
-  { key: "hook_set", label: "LinkedIn hook set", channel: "linkedin", templateKey: "linkedin_hook_set", frame: { w: 1080, h: 1080, label: "1:1 · 1080×1080" } },
-  { key: "ig_caption", label: "Instagram caption", channel: "instagram", templateKey: "ig_caption", frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
-  { key: "ig_carousel", label: "Instagram carousel", channel: "instagram", templateKey: "ig_carousel", frame: { w: 1080, h: 1350, label: "4:5 frames · 1080×1350" } },
-  { key: "newsletter_section", label: "Newsletter section", channel: "newsletter", templateKey: "newsletter_section", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
-  { key: "pitch_email", label: "Pitch email", channel: "email", templateKey: "pitch_email", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
-  { key: "talk_abstract", label: "Talk abstract", channel: "talk", templateKey: "talk_abstract", frame: { w: 1920, h: 1080, label: "16:9 · 1920×1080" } },
+  { key: "linkedin_post", label: "LinkedIn post", channel: "linkedin", platform: "linkedin", templateKey: "linkedin_post", frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
+  { key: "hook_set", label: "LinkedIn hook set", channel: "linkedin", platform: "linkedin", templateKey: "linkedin_hook_set", frame: { w: 1080, h: 1080, label: "1:1 · 1080×1080" } },
+  { key: "ig_caption", label: "Instagram caption", channel: "instagram", platform: "instagram", templateKey: "ig_caption", frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
+  { key: "ig_carousel", label: "Instagram carousel", channel: "instagram", platform: "instagram", templateKey: "ig_carousel", frame: { w: 1080, h: 1350, label: "4:5 frames · 1080×1350" } },
+  { key: "newsletter_section", label: "Newsletter section", channel: "newsletter", platform: "newsletter", templateKey: "newsletter_section", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
+  { key: "pitch_email", label: "Pitch email", channel: "email", platform: "email", templateKey: "pitch_email", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
+  { key: "talk_abstract", label: "Talk abstract", channel: "talk", platform: "spoken", templateKey: "talk_abstract", frame: { w: 1920, h: 1080, label: "16:9 · 1920×1080" } },
 ];
 
 export const formatByKey = (k: string): FormatDef => FORMATS.find((f) => f.key === k) ?? FORMATS[0];

@@ -50,3 +50,12 @@ export async function actionScope(tenantId: string) {
 export async function actionProjectScope(tenantId: string, projectId: string): Promise<ProjectScope> {
   return (await projectScope(tenantId, projectId)).scope;
 }
+
+/**
+ * Scope plus who is acting, for actions that change a voice: the owner's
+ * change saves, a coach's becomes a proposal (lib/data/training `writePack`).
+ */
+export async function actionActor(tenantId: string) {
+  const { session, scope } = await workspaceScope(tenantId);
+  return { scope, actor: { userId: session.userId, role: session.role } };
+}

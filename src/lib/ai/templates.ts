@@ -7,6 +7,7 @@
  */
 import "server-only";
 import { withTenantSession, type SessionScope } from "@/db/session";
+import { TASKS } from "./tasks";
 
 export interface ResolvedTemplate {
   id: string | null;
@@ -36,5 +37,10 @@ export async function resolveTemplate(scope: SessionScope, key: string): Promise
     )
   ).rows[0];
   if (row) return { id: row.id, key, version: row.version, body: row.body };
-  return { id: null, key, version: 0, body: FALLBACK[key] ?? "You write on-brand content." };
+  return {
+    id: null,
+    key,
+    version: 0,
+    body: FALLBACK[key] ?? TASKS[key]?.template ?? "You write on-brand content.",
+  };
 }

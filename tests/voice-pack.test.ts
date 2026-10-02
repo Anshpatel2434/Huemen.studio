@@ -257,7 +257,7 @@ describe("the one context builder", () => {
     }, "voice set");
 
     const ctx = await loadBrandContext(A, "en", "linkedin");
-    expect(ctx.version).toBe(2);
+    expect(ctx.version).toBe(3);
     expect(ctx.serialized).toContain("Finds the big idea in a small moment.");
     expect(ctx.serialized).toContain("Never call herself a thought leader.");
     expect(ctx.serialized).toContain("Why: If people think it");
@@ -269,5 +269,24 @@ describe("the one context builder", () => {
     if (!dbReachable) return;
     const ctx = await loadBrandContext(A, "en", "email");
     expect(ctx.serialized).not.toContain("41 lakh");
+  });
+});
+
+describe("platform-aware context (build step 2)", () => {
+  it("puts the platform's rules into the one context block, between the fingerprint and the real writing", async () => {
+    if (!dbReachable) return;
+    const ctx = await loadBrandContext(A, "en", "linkedin");
+    const s = ctx.serialized;
+    expect(s).toContain("Platform: LinkedIn post");
+    expect(s).toContain("At most 3000 characters");
+    expect(s).toContain("first 210 characters show");
+    // Spec load order (file 01 §3, file 07): mechanics, platform rules, then samples.
+    expect(s.indexOf("Platform: LinkedIn post")).toBeLessThan(s.indexOf("Their real writing"));
+  });
+
+  it("leaves platform rules out when nothing is being written for a platform", async () => {
+    if (!dbReachable) return;
+    const ctx = await loadBrandContext(A);
+    expect(ctx.serialized).not.toContain("Platform:");
   });
 });

@@ -7,7 +7,7 @@ import { useFormStatus } from "react-dom";
 import { AgentDots } from "@/components/ui";
 import { useDraftPersist, clearDraft } from "@/components/persist";
 import { parseIntake } from "@/lib/intake/parse";
-import { submitIntakeAction } from "../brief/actions";
+import { submitIntakeAction } from "../actions";
 
 const FIELD_LABELS: Record<string, string> = {
   niche: "Niche", positioning: "Positioning", audience: "Audience", offers: "Offers",
@@ -65,9 +65,9 @@ function Submit({ disabled }: { disabled: boolean }) {
   );
 }
 
-export function IntakeForm({ tenantId, projectId }: { tenantId: string; projectId: string }) {
+export function IntakeForm({ tenantId }: { tenantId: string }) {
   const [text, setText] = useState("");
-  const draftKey = `huemen:intake:${projectId}`;
+  const draftKey = `huemen:intake:${tenantId}`;
   useDraftPersist(draftKey, text, setText);
   const parsed = useMemo(() => parseIntake(text), [text]);
   const placed = Object.keys(parsed.fields);
@@ -77,7 +77,6 @@ export function IntakeForm({ tenantId, projectId }: { tenantId: string; projectI
     <div className="w-full max-w-[720px] mt-9 fade-up">
       <form action={submitIntakeAction} onSubmit={() => clearDraft(draftKey)} className="bg-paper border border-hairline rounded-[14px] shadow-[var(--shadow)] focus-within:border-line">
         <input type="hidden" name="tenantId" value={tenantId} />
-        <input type="hidden" name="projectId" value={projectId} />
         <textarea
           name="notes"
           value={text}
@@ -90,7 +89,7 @@ export function IntakeForm({ tenantId, projectId }: { tenantId: string; projectI
           <span className="text-[0.78rem] text-ink-faint flex-1">
             {text.trim() ? `${placed.length} field${placed.length === 1 ? "" : "s"} recognised` : "Plain text · nothing is sent until you submit"}
           </span>
-          <Link href={`/w/${tenantId}/p/${projectId}/brief/edit`} className="text-[0.8rem] text-ink-muted hover:text-ink px-2">Skip to editor</Link>
+          <Link href={`/w/${tenantId}/brand/edit`} className="text-[0.8rem] text-ink-muted hover:text-ink px-2">Skip to editor</Link>
           <Submit disabled={!text.trim()} />
         </div>
       </form>

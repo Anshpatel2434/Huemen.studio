@@ -53,14 +53,14 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
       eyebrow={`${project.name} · Ideate`}
       title="What's this one"
       accent="about?"
-      sub="Your brand is already set. Pick where this piece goes, which pillar it belongs to and the angle it takes — then we draft it in your voice."
+      sub="Your brand is already set. Pick where this piece goes, which pillar it belongs to and the angle it takes. Then write it: drafted for you, together, or yourself with a check."
     >
       {!ready && (
         <div className="bg-field border border-hairline rounded-[12px] p-4 mb-6 text-[0.85rem]">
           {pillars.length === 0 ? (
             <>
               No pillars yet. They&apos;re set up once for the whole workspace, not per piece.{" "}
-              <Link href={`/w/${id}/p/${pid}/pillars`} className="underline underline-offset-2">Set up pillars →</Link>
+              <Link href={`/w/${id}/brand/pillars`} className="underline underline-offset-2">Set up pillars →</Link>
             </>
           ) : (
             <>
@@ -107,7 +107,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
                   key={p.id}
                   className="border border-hairline rounded-[999px] px-3 h-8 flex items-center gap-1.5 cursor-pointer text-[0.82rem] hover:bg-field has-[:checked]:bg-ink has-[:checked]:text-on-ink has-[:checked]:border-ink"
                 >
-                  <input type="radio" name="pillarId" value={p.id} className="sr-only" />
+                  <input type="radio" name="pillarId" value={p.id} defaultChecked={project.pillarId === p.id} className="sr-only" />
                   {p.name}
                 </label>
               ))}
@@ -142,7 +142,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
 
         <div className="flex items-center gap-3">
           <button type="submit" name="next" value="content" className={btnClass("primary", "md")}>
-            Draft it <ArrowRight size={14} />
+            Write it <ArrowRight size={14} />
           </button>
           <SubmitButton pendingLabel="Saving…" size="md" variant="ghost">Save and stay</SubmitButton>
         </div>

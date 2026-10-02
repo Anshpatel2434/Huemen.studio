@@ -19,7 +19,13 @@
  * two brands run by the same human now speak in one voice instead of two.
  * `voiceGuide` is still read when a tenant has no pack yet.
  */
-export const CONTEXT_VERSION = 2;
+/*
+ * v3 — the VOICE section also carries what onboarding now collects: their
+ * stories, the facts they can stand behind (the only facts a draft may use),
+ * the voices they admire and avoid, how they mix languages, and their
+ * "this or that" picks as paired examples.
+ */
+export const CONTEXT_VERSION = 3;
 
 // ---- Input shapes (all fields optional: the foundation may be thin) ---------
 
@@ -78,10 +84,28 @@ export interface VoicePackInput {
   /** The block for the platform being written for, if there is one. */
   context?: { channel: string; tag: "measured" | "inferred"; lines: string[] } | null;
   samples?: { channel: string; body: string }[];
+  stories?: { title: string; body: string; lesson?: string }[];
+  proofs?: { claim: string; source?: string }[];
+  influences?: { admire: string[]; avoid: string[] } | null;
+  languages?: { primary: string; also: string[]; when?: string } | null;
+  preferences?: { chosen: string; over: string }[];
   corpusPieces?: number;
 }
 
+/**
+ * The rules of the platform being written for (lib/voice/platforms, spec file
+ * 07). System level: the same for every person. Rendered between the measured
+ * fingerprint and the person's own block for that platform — the spec's load
+ * order — so their habits sit on top of the platform's norms, never under them.
+ */
+export interface PlatformInput {
+  label: string;
+  lines: string[];
+}
+
 export interface BrandContextInput {
+  /** The platform this context is being built for, if any. */
+  platform?: PlatformInput | null;
   brandProfile?: BrandProfileInput | null;
   /** The person's Voice Pack. Supersedes `voiceGuide` when present. */
   voicePack?: VoicePackInput | null;
@@ -189,7 +213,13 @@ function scoreCompleteness(input: BrandContextInput): {
  * The hard rules come first and are stated as overrides, because a rule buried
  * under three paragraphs of description is a rule that gets ignored.
  */
-function serializeVoicePack(vp: VoicePackInput): string[] {
+function serializePlatform(p: PlatformInput): string[] {
+  const lines = p.lines.filter(nonEmpty);
+  if (!lines.length) return [];
+  return [`Platform: ${p.label}. Hard limits beat everything except the guardrails above:`, ...lines.map((l) => `  - ${l}`)];
+}
+
+function serializeVoicePack(vp: VoicePackInput, platform?: PlatformInput | null): string[] {
   const out: string[] = ["## VOICE"];
   if (nonEmpty(vp.voiceLine)) out.push(`In one line: ${vp.voiceLine!.trim()}`);
 
@@ -221,6 +251,14 @@ function serializeVoicePack(vp: VoicePackInput): string[] {
     });
   }
   if ((vp.neverWords ?? []).length) out.push(`Never use: ${vp.neverWords!.join(", ")}`);
+  if (vp.languages) {
+    const also = vp.languages.also.length ? `, mixing in ${vp.languages.also.join(", ")}` : "";
+    out.push(`Language: ${vp.languages.primary}${also}${nonEmpty(vp.languages.when) ? ` (${vp.languages.when!.trim()})` : ""}.`);
+  }
+  if (vp.influences && (vp.influences.admire.length || vp.influences.avoid.length)) {
+    if (vp.influences.admire.length) out.push(`Admires how these write (borrow the qualities, never the words): ${vp.influences.admire.join("; ")}`);
+    if (vp.influences.avoid.length) out.push(`Must never sound like: ${vp.influences.avoid.join("; ")}`);
+  }
   if ((vp.mustHaves ?? []).length) out.push(`Every piece has: ${vp.mustHaves!.join(", ")}`);
 
   const mech = (vp.mechanicsLines ?? []).filter(nonEmpty);
@@ -229,12 +267,30 @@ function serializeVoicePack(vp: VoicePackInput): string[] {
     mech.forEach((l) => out.push(`  - ${l}`));
   }
 
+  if (platform) out.push(...serializePlatform(platform));
+
   if (vp.context) {
     const { channel, tag, lines: ctxLines } = vp.context;
     out.push(`On ${channel} (${tag}):`);
     ctxLines.filter(nonEmpty).forEach((l) => out.push(`  - ${l}`));
     if (tag === "inferred")
       out.push("  - No real writing from this platform yet, so keep close to the general voice.");
+  }
+
+  const stories = (vp.stories ?? []).filter((s) => nonEmpty(s?.body));
+  if (stories.length) {
+    out.push("Stories they tell. Use one when it fits; keep its facts exactly as told:");
+    stories.forEach((s) => out.push(`  - ${s.title.trim()}: ${s.body.trim()}${nonEmpty(s.lesson) ? ` (shows: ${s.lesson!.trim()})` : ""}`));
+  }
+  const proofs = (vp.proofs ?? []).filter((p) => nonEmpty(p?.claim));
+  if (proofs.length) {
+    out.push("Facts they can stand behind. These are the ONLY numbers, results and client details a draft may use:");
+    proofs.forEach((p) => out.push(`  - ${p.claim.trim()}${nonEmpty(p.source) ? ` [${p.source!.trim()}]` : ""}`));
+  }
+  const prefs = (vp.preferences ?? []).filter((p) => nonEmpty(p?.chosen));
+  if (prefs.length) {
+    out.push("Lines they picked as more like them, over a near-identical twin:");
+    prefs.forEach((p) => out.push(`  + "${p.chosen.trim()}"  rather than  "${p.over.trim()}"`));
   }
 
   const samples = (vp.samples ?? []).filter((s) => nonEmpty(s?.body));
@@ -268,7 +324,7 @@ function serialize(input: BrandContextInput): string {
   if (chapters.length) lines.push("Story arc:", ...chapters);
   if (nonEmpty(bp.offersSummary)) lines.push(`Offers: ${bp.offersSummary!.trim()}`);
 
-  if (input.voicePack) lines.push("", ...serializeVoicePack(input.voicePack));
+  if (input.voicePack) lines.push("", ...serializeVoicePack(input.voicePack, input.platform));
   else {
     lines.push("", "## VOICE");
     if ((vg.toneDescriptors ?? []).length)
@@ -283,6 +339,7 @@ function serialize(input: BrandContextInput): string {
       lines.push("Sample posts (match this voice):");
       samples.forEach((s, i) => lines.push(`  [${i + 1}] ${s.trim()}`));
     }
+    if (input.platform) lines.push(...serializePlatform(input.platform));
   }
 
   lines.push("", "## VISUAL IDENTITY");

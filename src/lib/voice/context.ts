@@ -10,7 +10,7 @@
  * user can read it back and tell us we got them wrong.
  */
 import type { VoicePackInput } from "@/lib/context/context-builder";
-import type { VoiceContext, VoicePack, VoiceSample } from "./types";
+import { LANGUAGES, type VoiceContext, type VoicePack, type VoiceSample } from "./types";
 
 const pctWord = (n: number): string => `${Math.round(n)}%`;
 
@@ -140,5 +140,18 @@ export function packToContextInput(
     context: ctx ? { channel: ctx.channel, tag: ctx.tag, lines: contextLines(ctx) } : null,
     samples: samples.map((s) => ({ channel: s.channel, body: s.body })),
     corpusPieces: pack.corpusStats.pieces,
+    stories: pack.identity.stories?.value ?? [],
+    proofs: pack.identity.proofs?.value ?? [],
+    influences: pack.identity.influences?.value ?? null,
+    languages: pack.identity.languages?.value
+      ? {
+          primary: languageLabel(pack.identity.languages.value.primary),
+          also: pack.identity.languages.value.also.map(languageLabel),
+          when: pack.identity.languages.value.when,
+        }
+      : null,
+    preferences: (pack.identity.preferences?.value ?? []).map((p) => ({ chosen: p.chosen, over: p.over })),
   };
 }
+
+const languageLabel = (k: string) => LANGUAGES.find((l) => l.key === k)?.label.split(" (")[0] ?? k;

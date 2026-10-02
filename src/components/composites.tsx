@@ -20,12 +20,20 @@ const STRIP_HUES = ["--hue-magenta", "--hue-coral", "--hue-orange", "--hue-yello
  * hidden once trained) and the voice attributes.
  */
 export function BrandCoreCard({
-  name, seed, subtitle, trained, attributes, confidence, stats,
+  name, seed, subtitle, trained, attributes, confidence, stats, state = "trained",
 }: {
   name: string; seed: string; subtitle: string; trained: boolean;
   attributes: string[]; confidence: number;
   stats: { label: string; value: string }[];
+  /** §15.2: Empty, Ingesting, Learning, Trained. Trained below 70% reads Provisional. */
+  state?: "empty" | "ingesting" | "learning" | "trained";
 }) {
+  const badge =
+    state === "empty" ? { tone: "neutral" as const, word: "Not started" }
+    : state === "ingesting" ? { tone: "accent" as const, word: "Reading your writing" }
+    : state === "learning" ? { tone: "accent" as const, word: "Building your core" }
+    : trained ? { tone: "ok" as const, word: "Trained" }
+    : { tone: "warn" as const, word: "Provisional" };
   return (
     <div className="bg-paper border border-hairline rounded-[16px] overflow-hidden">
       <HueStrip count={8} className="!rounded-none" />
@@ -36,7 +44,7 @@ export function BrandCoreCard({
             <p className="text-[1.15rem] font-medium truncate">{name}</p>
             <p className="text-[0.82rem] text-ink-muted truncate">{subtitle}</p>
           </div>
-          <Badge tone={trained ? "ok" : "warn"}>{trained ? "Trained" : "Provisional"}</Badge>
+          <Badge tone={badge.tone}>{badge.word}</Badge>
         </div>
 
         {attributes.length > 0 && (

@@ -17,6 +17,8 @@ import { btnClass } from "@/components/btn";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
 import { STAGES, STAGE_LABEL, stageIndex, type Stage } from "@/lib/projects/stages";
 import { WhatsNew } from "./whats-new";
+import { formatByKey } from "@/lib/content/formats";
+import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import {
   createProjectAction, createFromPromptAction, dismissHeroAction, starProjectAction, renameProjectAction,
   archiveProjectAction, restoreProjectAction, duplicateProjectAction, deleteProjectAction,
@@ -25,7 +27,29 @@ import {
 type Project = {
   id: string; name: string; stage: Stage; updatedAt: string; createdAt: string; completeness: number; niche: string | null;
   palette: string[]; pillarCount: number; contentCount: number; firstHook: string | null; starred: boolean;
+  format: string | null; contentStatus: string | null;
+  voiceBand: "on_brand" | "drifting" | "off_brand" | null; voiceScore: number | null;
 };
+
+// The Library's filters (plan, Flows 5–7): platform, status and band.
+const platformOf = (p: Project) => (p.format ? formatByKey(p.format).platform ?? null : null);
+const STATUS_LABEL: Record<string, string> = { none: "No copy yet", draft: "Draft", edited: "Edited", approved: "Approved" };
+const BAND_LABEL: Record<string, string> = { on_brand: "On brand", drifting: "Drifting", off_brand: "Off brand", unchecked: "Not checked" };
+const BAND_TONE: Record<string, string> = {
+  on_brand: "bg-ok-soft text-ok", drifting: "bg-warn-soft text-warn", off_brand: "bg-danger-soft text-danger", unchecked: "bg-ground text-ink-faint",
+};
+
+function BandPill({ p }: { p: Project }) {
+  if (!p.contentStatus) return null;
+  const b = p.voiceBand ?? "unchecked";
+  return (
+    <span className={`label-mono inline-flex items-center gap-1.5 h-5 px-2 rounded-full shrink-0 ${BAND_TONE[b]}`} title={p.voiceScore != null ? `${p.voiceScore}/100 against your voice` : "Not checked yet"}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
+      {p.voiceScore != null ? p.voiceScore : "–"}
+      <span className="sr-only"> {BAND_LABEL[b]}</span>
+    </span>
+  );
+}
 type View = "recents" | "all" | "archived";
 type Sort = "edited" | "name" | "created";
 
@@ -45,12 +69,21 @@ function ago(iso: string): string {
   const mo = Math.round(d / 30); return mo < 12 ? `${mo} month${mo === 1 ? "" : "s"} ago` : `${Math.round(mo / 12)} year ago`;
 }
 
-export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQuery, showHero, showWhatsNew }: {
+export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQuery, showHero, showWhatsNew, setupStep, rescanDays }: {
   tenantId: string; workspaceName: string; projects: Project[]; view: View; initialQuery: string; showHero: boolean; showWhatsNew: boolean;
+  /** The onboarding step the person reached, or null once their voice is set up. */
+  setupStep: number | null;
+  /** Days since the voice was measured, when a re-measure is due (90 days and new writing). */
+  rescanDays: number | null;
 }) {
   const router = useRouter();
   const q = initialQuery;
   const [stage, setStage] = useState<Stage | "all">("all");
+  const [platform, setPlatform] = useState<string>("all");
+  const [status, setStatus] = useState<string>("all");
+  const [band, setBand] = useState<string>("all");
+  const platforms = useMemo(() => [...new Set(projects.map(platformOf).filter((x): x is string => !!x))], [projects]);
+  const filtered = stage !== "all" || platform !== "all" || status !== "all" || band !== "all";
   const [sort, setSort] = useState<Sort>("edited");
   const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [creating, setCreating] = useState<null | "blank" | "copy">(null);
@@ -58,12 +91,17 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
   const [prompt, setPrompt] = useState("");
 
   const shown = useMemo(() => {
-    let list = projects.filter((p) => (stage === "all" || p.stage === stage) && `${p.name} ${p.niche ?? ""}`.toLowerCase().includes(q.toLowerCase()));
+    let list = projects.filter((p) =>
+      (stage === "all" || p.stage === stage) &&
+      (platform === "all" || platformOf(p) === platform) &&
+      (status === "all" || (p.contentStatus ?? "none") === status) &&
+      (band === "all" || (p.contentStatus ? (p.voiceBand ?? "unchecked") : null) === band) &&
+      `${p.name} ${p.niche ?? ""}`.toLowerCase().includes(q.toLowerCase()));
     list = [...list].sort((a, b) =>
       sort === "name" ? a.name.localeCompare(b.name) : sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt),
     );
     return view === "recents" ? list.slice(0, 12) : list;
-  }, [projects, q, stage, sort, view]);
+  }, [projects, q, stage, platform, status, band, sort, view]);
 
   const title = view === "all" ? "All projects" : view === "archived" ? "Archived" : "Recents";
   const tabs: { v: View; label: string }[] = [
@@ -84,6 +122,25 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
       </header>
 
       <div className="flex-1 overflow-y-auto">
+        {rescanDays != null && setupStep == null && view !== "archived" && (
+          <section className="border-b border-hairline bg-field">
+            <div className="max-w-[1180px] mx-auto px-5 py-3 flex flex-wrap items-center gap-3">
+              <p className="flex-1 min-w-0 text-[0.85rem]">It&apos;s been {rescanDays} days since we measured your writing, and you&apos;ve published since. A fresh look keeps drafts close to how you sound now.</p>
+              <Link href={`/w/${tenantId}/brand/voice?preview=1#remeasure`} className={btnClass("secondary", "sm")}>See what would change</Link>
+            </div>
+          </section>
+        )}
+        {setupStep != null && view !== "archived" && (
+          <section className="border-b border-hairline bg-accent-soft">
+            <div className="max-w-[1180px] mx-auto px-5 py-4 flex flex-wrap items-center gap-3">
+              <p className="flex-1 min-w-0 text-[0.88rem]">
+                <span className="font-medium">Set up your voice</span>
+                <span className="text-ink-muted"> · step {setupStep} of 4. Until it's done, drafts won't sound much like you.</span>
+              </p>
+              <Link href={`/w/${tenantId}/onboarding`} className={btnClass("primary", "sm")}>{setupStep > 1 ? "Carry on" : "Start"}</Link>
+            </div>
+          </section>
+        )}
         {/* AI banner */}
         {hero && view !== "archived" && (
           <section className="relative border-b border-hairline bg-panel">
@@ -124,6 +181,11 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
             ))}
             <span className="flex-1" />
             <Dropdown label={stage === "all" ? "All steps" : `${stageIndex(stage) + 1}. ${STAGE_LABEL[stage]}`} options={[["all", "All steps"], ...STAGES.map((s) => [s, `${stageIndex(s) + 1}. ${STAGE_LABEL[s]}`] as [string, string])]} onPick={(v) => setStage(v as Stage | "all")} />
+            {platforms.length > 1 && (
+              <Dropdown label={platform === "all" ? "All platforms" : PLATFORM_RULES[platform]?.label ?? platform} options={[["all", "All platforms"], ...platforms.map((x) => [x, PLATFORM_RULES[x]?.label ?? x] as [string, string])]} onPick={setPlatform} />
+            )}
+            <Dropdown label={status === "all" ? "Any status" : STATUS_LABEL[status]} options={[["all", "Any status"], ...Object.entries(STATUS_LABEL)]} onPick={setStatus} />
+            <Dropdown label={band === "all" ? "Any band" : BAND_LABEL[band]} options={[["all", "Any band"], ...Object.entries(BAND_LABEL)]} onPick={setBand} />
             <Dropdown label={sort === "edited" ? "Last edited" : sort === "name" ? "Alphabetical" : "Date created"} options={[["edited", "Last edited"], ["name", "Alphabetical"], ["created", "Date created"]]} onPick={(v) => setSort(v as Sort)} />
             <div className="flex items-center ml-1">
               <button onClick={() => setLayout("grid")} className={`w-8 h-8 rounded-[7px] flex items-center justify-center ${layout === "grid" ? "bg-field" : "text-ink-muted hover:text-ink"}`} aria-label="Grid"><LayoutGrid size={14} /></button>
@@ -135,7 +197,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
             <div className="mt-8 bg-paper border border-hairline rounded-[14px] max-w-xl mx-auto">
               <EmptyState
                 icon={view === "archived" ? <Archive size={18} /> : <FolderOpen size={18} />}
-                title={view === "archived" ? "Nothing archived" : q || stage !== "all" ? "No projects match" : "No projects yet"}
+                title={view === "archived" ? "Nothing archived" : q || filtered ? "No projects match" : "No projects yet"}
                 sub={view === "archived" ? "Archived projects land here and can be restored." : "A project takes one brand from brief to pillars to content to visuals."}
                 action={view === "archived" ? undefined : <button onClick={() => setCreating("blank")} className={btnClass("primary")}><Plus size={14} /> New project</button>}
               />
@@ -147,7 +209,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
           ) : (
             <div className="mt-4 bg-paper border border-hairline rounded-[12px] overflow-hidden">
               <div className="grid grid-cols-[minmax(0,1fr)_120px_90px_140px_40px] px-4 h-9 items-center text-[0.72rem] text-ink-faint border-b border-hairline">
-                <span>Name</span><span>Step</span><span>Pieces</span><span>Last edited</span><span />
+                <span>Name</span><span>Step</span><span>Voice</span><span>Last edited</span><span />
               </div>
               {shown.map((p) => {
                 const Icon = STAGE_ICON[p.stage];
@@ -159,7 +221,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
                       {p.starred && <Star size={12} className="fill-current text-accent shrink-0" />}
                     </Link>
                     <span className="text-ink-muted">{stageIndex(p.stage) + 1}. {STAGE_LABEL[p.stage]}</span>
-                    <span className="text-ink-muted tabular-nums">{p.contentCount}</span>
+                    <span><BandPill p={p} /></span>
                     <span className="text-ink-muted" suppressHydrationWarning>{ago(p.updatedAt)}</span>
                     <CardMenu p={p} tenantId={tenantId} archived={view === "archived"} />
                   </div>
@@ -302,9 +364,10 @@ function ProjectCard({ p, tenantId, archived }: { p: Project; tenantId: string; 
       <div className="flex items-center gap-2.5 px-3 py-2.5">
         <span className="w-6 h-6 rounded-[6px] flex items-center justify-center bg-ink text-on-ink shrink-0" title={`Step ${stageIndex(p.stage) + 1}: ${STAGE_LABEL[p.stage]}`}><Icon size={12} /></span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[0.8rem] font-medium truncate">{p.name}</span>
+          <span className="flex items-center gap-1.5 min-w-0"><span className="block text-[0.8rem] font-medium truncate">{p.name}</span></span>
           <span className="block text-[0.7rem] text-ink-faint" suppressHydrationWarning>{archived ? "Archived" : "Edited"} {ago(p.updatedAt)}</span>
         </span>
+        <BandPill p={p} />
       </div>
       </Link>
     </div>

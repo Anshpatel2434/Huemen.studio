@@ -15,7 +15,8 @@ import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "@/lib/data/projects";
 import { fewShotSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { packToContextInput } from "@/lib/voice/context";
-import { buildBrandContext, type BrandContext, type VoicePackInput } from "./context-builder";
+import { buildBrandContext, type BrandContext, type PlatformInput, type VoicePackInput } from "./context-builder";
+import { platformLines, platformRule } from "@/lib/voice/platforms";
 
 export async function loadBrandContext(
   scope: WorkspaceScope,
@@ -31,6 +32,9 @@ export async function loadBrandContext(
     voicePack = packToContextInput(pack, samples, channel);
   }
 
+  const rule = platformRule(channel);
+  const platform: PlatformInput | null = rule ? { label: rule.label, lines: platformLines(rule) } : null;
+
   return withTenantSession(scope, async (c) => {
     const bp = (
       await c.query(
@@ -39,7 +43,7 @@ export async function loadBrandContext(
       )
     ).rows[0];
 
-    if (!bp) return buildBrandContext({ language, voicePack });
+    if (!bp) return buildBrandContext({ language, voicePack, platform });
 
     const vg = (
       await c.query(`SELECT * FROM voice_guides WHERE brand_profile_id = $1 LIMIT 1`, [bp.id])
@@ -51,6 +55,7 @@ export async function loadBrandContext(
     return buildBrandContext({
       language,
       voicePack,
+      platform,
       brandProfile: {
         storyArc: bp.story_arc ?? [],
         positioningStatement: bp.positioning_statement,

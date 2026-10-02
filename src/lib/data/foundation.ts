@@ -121,6 +121,8 @@ export async function loadFoundation(scope: WorkspaceScope): Promise<FoundationF
 export async function saveFoundation(
   scope: WorkspaceScope,
   form: FoundationForm,
+  /** `voice: false` saves the brand only: a colour change is not a voice edit. */
+  opts: { voice?: boolean } = {},
 ): Promise<number> {
   const storyArc = form.chapters.map((ch, i) => ({
     chapter: i + 1,
@@ -134,7 +136,7 @@ export async function saveFoundation(
   // record nothing loads — a silent no-op the user would read as data loss.
   const pack = await loadPackForWorkspace(scope);
   let saved: VoicePack | null = pack;
-  if (pack) {
+  if (pack && opts.voice !== false) {
     const tone = csv(form.tone);
     const doW = csv(form.doWords);
     const never = csv(form.dontWords);
@@ -330,4 +332,35 @@ export async function saveBriefAnswers(scope: WorkspaceScope, answers: StrategyA
       [JSON.stringify([...byKey.values()])],
     ),
   );
+}
+
+// ---------------------------------------------------------------- visual ---
+
+export interface VisualIdentity {
+  palette: string[];
+  fonts: string[];
+  imageStyleNotes: string;
+}
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+export async function loadVisualIdentity(scope: WorkspaceScope): Promise<VisualIdentity> {
+  const f = await loadFoundation(scope);
+  const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+  return { palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes };
+}
+
+/**
+ * The customer's hue (onboarding step 3, Brand core › Visual). Saved through
+ * the one foundation writer, so completeness and the context block stay in
+ * step with the brief. Only real hex colours are kept, at most eight.
+ */
+export async function saveVisualIdentity(scope: WorkspaceScope, v: VisualIdentity): Promise<void> {
+  const form = await loadFoundation(scope);
+  await saveFoundation(scope, {
+    ...form,
+    palette: v.palette.map((c) => c.trim()).filter((c) => HEX.test(c)).slice(0, 8).join(", "),
+    fonts: v.fonts.map((f) => f.trim()).filter(Boolean).slice(0, 4).join(", "),
+    imageStyleNotes: v.imageStyleNotes.trim(),
+  }, { voice: false });
 }

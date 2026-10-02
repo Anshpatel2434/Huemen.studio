@@ -133,7 +133,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                 <div className="flex flex-col gap-10 items-start" data-canvas-bg="1">
                   {g.items.length === 0 && (
                     <div data-canvas-bg="1" className="rounded-[6px] border-2 border-dashed border-line text-ink-faint text-[0.8rem] flex items-center justify-center text-center px-6" style={{ width: WIDTH[device], height: 160 }}>
-                      {dragId ? "Drop here to move it to this pillar" : "No pieces yet. Drag one here, or draft from the Pillars step."}
+                      {dragId ? "Drop here to move it to this pillar" : "No pieces yet. Drag one here."}
                     </div>
                   )}
                   {g.items.map((i) => (

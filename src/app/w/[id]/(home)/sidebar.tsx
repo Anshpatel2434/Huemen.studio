@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Avatar } from "@/components/ui";
 import {
   ChevronDown, Check, Clock, LayoutGrid, BarChart3, Settings, Users, LogOut, Plus, Search, Archive, Star, ChevronRight,
+  PenLine, ScanText, Fingerprint, CalendarDays,
 } from "lucide-react";
 import { signOutAction } from "@/app/dashboard/actions";
 import { ThemeSwitch } from "@/components/theme";
@@ -91,6 +92,14 @@ export function HomeSidebar({ workspace, workspaces, user, isAdmin, starred, usa
         <Row href={home} icon={Clock} label="Recents" on={isHome && view === "recents"} />
       </nav>
 
+      {/* The design system's app shell (§14): Brand core, Create, Check, Library. */}
+      <nav className="px-2 mt-2 flex flex-col gap-0.5" aria-label="Studio">
+        <Row href={`${home}/create`} icon={PenLine} label="Create" on={path.startsWith(`${home}/create`)} />
+        <Row href={`${home}/check`} icon={ScanText} label="Check" on={path.startsWith(`${home}/check`)} />
+        <Row href={`${home}/brand`} icon={Fingerprint} label="Brand core" on={path.startsWith(`${home}/brand`) || path.startsWith(`${home}/onboarding`)} />
+        <Row href={`${home}/plan`} icon={CalendarDays} label="Plan" on={path.startsWith(`${home}/plan`)} />
+      </nav>
+
       <div className="mx-3 my-3 h-px bg-hairline" />
 
       {/* Workspace section */}
@@ -101,7 +110,7 @@ export function HomeSidebar({ workspace, workspaces, user, isAdmin, starred, usa
           <span className="h-5 px-1.5 rounded-[5px] bg-accent-soft text-accent-ink text-[0.62rem] font-medium flex items-center">{ROLE[user.role]}</span>
         </div>
         <nav className="flex flex-col gap-0.5 mt-0.5">
-          <Row href={`${home}?view=all`} icon={LayoutGrid} label="All projects" on={isHome && view === "all"} />
+          <Row href={`${home}?view=all`} icon={LayoutGrid} label="Library" on={isHome && view === "all"} />
           <Row href={`${home}?view=archived`} icon={Archive} label="Archived" on={isHome && view === "archived"} />
           <Row href={`${home}/usage`} icon={BarChart3} label="Usage" on={path === `${home}/usage`} />
         </nav>
