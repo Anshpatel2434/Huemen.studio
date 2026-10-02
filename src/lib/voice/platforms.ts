@@ -155,3 +155,22 @@ export const ANTI_AI_PHRASES = [
   "a myriad of", "seamlessly", "robust solution", "leverage synergies",
   "embark on a journey", "in conclusion", "the bottom line is",
 ];
+
+/**
+ * A platform's rules as plain lines for the prompt. Numbers stay numbers, so
+ * the model can hit them; the same numbers drive the deterministic check, so
+ * what a draft is told and what it is checked against can never disagree.
+ */
+export function platformLines(rule: PlatformRule): string[] {
+  const out: string[] = [];
+  if (rule.maxChars != null) out.push(`At most ${rule.maxChars} characters in total.`);
+  if (rule.visibleChars != null)
+    out.push(`Only the first ${rule.visibleChars} characters show before the cut; the opening has to land inside them.`);
+  if (rule.maxHashtags === 0) out.push("No hashtags.");
+  else if (rule.maxHashtags != null) out.push(`At most ${rule.maxHashtags} hashtags.`);
+  if (rule.formatting === "whatsapp") out.push("Formatting: *bold*, _italic_, ~strike~ only. No markdown headers.");
+  else if (rule.formatting === "slack") out.push("Formatting: Slack mrkdwn only.");
+  else if (rule.formatting === "plain") out.push("Plain text. No markdown.");
+  out.push(...rule.norms);
+  return out;
+}

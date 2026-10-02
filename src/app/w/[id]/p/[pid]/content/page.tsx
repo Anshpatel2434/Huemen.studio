@@ -10,6 +10,9 @@ import { SubmitButton } from "@/components/ui";
 import { BrandCheck } from "@/components/brand-check";
 import { generateVisualsAction } from "../pipeline-actions";
 import { ContentBoard } from "./content-board";
+import { WritePiece } from "./write-piece";
+import { loadPackForWorkspace } from "@/lib/data/voice-pack";
+import { confidence } from "@/lib/voice/derive";
 
 export const metadata = { title: "Content" };
 
@@ -19,26 +22,38 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
   const { scope, project } = await projectScope(id, pid);
   const base = `/w/${id}/p/${pid}`;
   if (stageIndex(project.stage) < stageIndex("content")) {
-    const pillarsOpen = true; // set once in onboarding, always available
     return (
       <LockedStep
-        step={3}
+        step={2}
         title="Content"
-        needs={pillarsOpen ? "Content is drafted from your pillars. Generate it from the Pillars step." : "Content comes from pillars, and pillars come from the brief. Start with the brief questions."}
-        href={pillarsOpen ? `${base}/pillars` : `${base}/brief/questions`}
-        cta={pillarsOpen ? "Go to Pillars" : "Answer brief questions"}
+        needs="Say what this piece is about first: its format, its pillar and its angle."
+        href={`${base}/ideate`}
+        cta="Go to Ideate"
       />
     );
   }
-  const [items, pillars, ctx] = await Promise.all([listContent(scope), listPillars(scope), loadBrandContext(scope)]);
+  const [items, pillars, ctx, pack] = await Promise.all([listContent(scope), listPillars(scope), loadBrandContext(scope), loadPackForWorkspace(scope)]);
   const approved = items.filter((i) => i.status === "approved").length;
   const flagged = items.filter((i) => i.violations.length).length;
   const visualDone = stageIndex(project.stage) >= stageIndex("visual");
   const stats: [string, number][] = [["Pieces", items.length], ["Approved", approved], ["Flagged", flagged]];
 
+  const conf = pack ? confidence(pack) : null;
+
   return (
     <>
       <div className="absolute inset-0 right-[280px]">
+        {items.length === 0 ? (
+          <WritePiece
+            tenantId={id}
+            projectId={pid}
+            topic={project.name}
+            format={project.format}
+            angle={project.angle}
+            mode={pack?.workMode ?? "ghostwrite"}
+            confidence={conf ? { score: conf.score, missing: conf.missing } : null}
+          />
+        ) : (
         <ContentBoard
           tenantId={id}
           projectId={pid}
@@ -49,6 +64,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           degraded={ctx.degraded}
           dontWords={ctx.guardrails.dontWords}
         />
+        )}
       </div>
       <StepPanel step={3} title="Content">
         {sp.generated && (
@@ -60,6 +76,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
               <div key={k} className="bg-panel rounded-[8px] py-2"><p className="text-[1.05rem] tabular-nums">{v}</p><p className="text-[0.66rem] text-ink-faint">{k}</p></div>
             ))}
           </div>
+          {conf && <p className="text-[0.72rem] text-ink-muted mt-2">Voice core: <span className={conf.score < 70 ? "text-warn font-medium" : "font-medium"}>{conf.score}% confident</span>{conf.score < 70 ? ", still learning" : ""}</p>}
           <p className="text-[0.72rem] text-ink-muted mt-2 leading-relaxed">Double-click any text on the canvas to edit it in place. Drag a post by its label to move it to another pillar. Click a post for variants, steers and approval.</p>
         </PanelSection>
         {(() => {

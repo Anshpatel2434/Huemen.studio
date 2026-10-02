@@ -172,7 +172,8 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
             <Link href={`/w/${workspace.id}`} className="flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><ArrowLeft size={14} /> Back to files</Link>
             <div className="h-px bg-white/10 my-1" />
             <button onClick={() => { setOpen(false); setRenaming(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Pencil size={14} /> Rename</button>
-            <button disabled={pending} onClick={() => start(async () => { const id = await duplicateProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}/p/${id}/brief`); })} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Files size={14} /> New project from this brief</button>
+            <Link href={`/w/${workspace.id}/create`} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Files size={14} /> New piece</Link>
+            <Link href={`/w/${workspace.id}/brand`} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><FileText size={14} /> Brand core</Link>
             <Link href={`/w/${workspace.id}/usage`} className="flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><BarChart3 size={14} /> Workspace usage</Link>
             <div className="h-px bg-white/10 my-1" />
             <button disabled={pending} onClick={() => { if (confirm(`Archive “${project.name}”? It disappears from the workspace.`)) start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); }); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10 text-menu-fg/70"><Archive size={14} /> Archive project</button>
@@ -231,8 +232,9 @@ function LayersPanel({ base, seg, unlocked, layers, brief }: { base: string; seg
         <div className="h-px bg-hairline my-1.5 mx-2" />
         {PLANNING.map((p) => {
           const Icon = p.icon;
+          // Planning belongs to the workspace (build step 3), not this piece.
           return (
-            <Link key={p.seg} href={`${base}/${p.seg}`} className={`flex items-center gap-2 h-8 px-2 rounded-[7px] text-[0.8rem] ${seg === p.seg ? "bg-accent-soft font-medium" : "text-ink-muted hover:bg-field"}`}>
+            <Link key={p.seg} href={`${base.replace(/\/p\/[^/]+$/, "")}/plan/${p.seg}`} className={`flex items-center gap-2 h-8 px-2 rounded-[7px] text-[0.8rem] ${seg === p.seg ? "bg-accent-soft font-medium" : "text-ink-muted hover:bg-field"}`}>
               <Icon size={13} /> {p.label}
             </Link>
           );

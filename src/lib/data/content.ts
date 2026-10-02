@@ -100,7 +100,8 @@ export async function generateContent(
   input: { format: string; topic?: string; pillarId?: string | null; variants?: number; ideaId?: string | null },
 ): Promise<string> {
   const fmt = formatByKey(input.format);
-  const context = await loadBrandContext(scope);
+  // The platform's rules and the person's own block for it (build step 2).
+  const context = await loadBrandContext(scope, "en", fmt.platform);
   const template = await resolveTemplate(scope, fmt.templateKey);
   const topic = (input.topic ?? "").trim();
 
@@ -145,7 +146,7 @@ export async function regenerateWithSteer(scope: ProjectScope, itemId: string, s
   ).rows[0];
   if (!item) throw new Error("content item not found");
   const fmt = formatByKey(item.format);
-  const context = await loadBrandContext(scope);
+  const context = await loadBrandContext(scope, "en", fmt.platform);
   const template = await resolveTemplate(scope, fmt.templateKey);
   const result = await generateText(scope, {
     templateKey: template.key,
@@ -232,4 +233,43 @@ export async function patchContent(
 
 export async function deleteContent(scope: ProjectScope, itemId: string): Promise<void> {
   await withTenantSession(scope, (c) => c.query("DELETE FROM content_items WHERE id=$1 AND project_id=$2", [itemId, scope.projectId]));
+}
+
+/**
+ * A piece that did not come from a ghostwritten draft (F2 modes): the person's
+ * own writing ("check mine"), or an outline they fill in ("co-write"). Stored
+ * like any other piece, with its origin in the generation history, so the
+ * library, check and export treat it the same way.
+ */
+export async function createContentItem(
+  scope: ProjectScope,
+  input: {
+    format: string;
+    topic: string;
+    hook: string;
+    body: string;
+    cta: string;
+    pillarId?: string | null;
+    status: "draft" | "edited";
+    origin: "own-writing" | "co-write-outline";
+  },
+): Promise<string> {
+  const fmt = formatByKey(input.format);
+  return withTenantSession(scope, async (c) => {
+    const id = (
+      await c.query<{ id: string }>(
+        `INSERT INTO content_items
+           (tenant_id, project_id, channel, format, topic, hook, body, cta, pillar_id, status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+        [scope.tenantId, scope.projectId, fmt.channel, fmt.key, input.topic || null, input.hook, input.body,
+         input.cta, input.pillarId || null, input.status, scope.userId],
+      )
+    ).rows[0].id;
+    await c.query(
+      `INSERT INTO content_generations (tenant_id, content_item_id, variant_index, hook, body, cta, model)
+       VALUES ($1,$2,0,$3,$4,$5,$6)`,
+      [scope.tenantId, id, input.hook, input.body, input.cta, input.origin],
+    );
+    return id;
+  });
 }

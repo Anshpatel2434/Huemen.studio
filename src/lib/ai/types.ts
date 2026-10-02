@@ -6,6 +6,8 @@
  * imports a concrete provider. Retry/fallback policy lives once at the facade.
  */
 import type { BrandContext } from "@/lib/context/context-builder";
+import type { AssembledPrompt } from "./prompt";
+import type { ZodType } from "zod";
 
 /** Route short/cheap tasks (hooks, tags) vs. strong drafting (§09). */
 export type TextRoute = "strong" | "cheap";
@@ -47,9 +49,45 @@ export interface ImageGenResult {
   height?: number;
 }
 
+/** Thinking depth, where the model supports it. Config, never chosen in feature code. */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
+export interface TextCallOptions {
+  /** Omitted when unset: some models reject the parameter outright. */
+  effort?: Effort;
+}
+
 export interface TextProvider {
   readonly name: string;
-  generate(req: TextGenRequest, model: string): Promise<TextGenResult>;
+  /**
+   * `prompt` is the assembled system + user pair from lib/ai/prompt (INV-2).
+   * A provider must send THAT, never rebuild a prompt of its own from
+   * `context` and `taskInput` — that is how two modules end up describing the
+   * same brand two different ways.
+   */
+  generate(
+    req: TextGenRequest & { prompt: AssembledPrompt },
+    model: string,
+    opts?: TextCallOptions,
+  ): Promise<TextGenResult>;
+  /**
+   * A task whose answer is DATA, not prose: topic proposals, check findings,
+   * a rewrite. The schema is enforced by the provider (structured output) and
+   * re-validated here, so a caller never handles a half-shaped reply.
+   */
+  structured<T>(
+    req: TextGenRequest & { prompt: AssembledPrompt },
+    model: string,
+    schema: ZodType<T>,
+    opts?: TextCallOptions,
+  ): Promise<StructuredResult<T>>;
+}
+
+export interface StructuredResult<T> {
+  data: T;
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
 }
 
 export interface ImageProvider {

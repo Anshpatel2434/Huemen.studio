@@ -1,21 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useState, useTransition } from "react";
 import { FileText, Network, MoreHorizontal, Plus, Sparkles, Check, Circle, Lightbulb, CalendarDays, PenLine, Trash2, Pencil, GripVertical, ArrowLeft, ArrowRight } from "lucide-react";
 import { Canvas } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
-import { DraftModal } from "@/components/draft-modal";
 import { useToast } from "@/components/ui";
 import { formatByKey } from "@/lib/content/formats";
 import type { PillarView } from "@/lib/data/planning";
-import { createPillarAction, deletePillarAction, reorderPillarsAction, updatePillarAction } from "./actions";
+import { createPillarAction, deletePillarAction, reorderPillarsAction, startFromPillarAction, updatePillarAction } from "./actions";
 
 const CARD_W = 260;
 const GAP = 28;
 
 type Props = {
-  tenantId: string; projectId: string; selectedId: string | null; brandName: string; completeness: number; briefRows: { label: string; ok: boolean }[]; pillars: PillarView[];
+  tenantId: string; selectedId: string | null; brandName: string; completeness: number; briefRows: { label: string; ok: boolean }[]; pillars: PillarView[];
 };
 
 /**
@@ -32,10 +32,14 @@ export function PillarMap(props: Props) {
   );
 }
 
-function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, pillars, selectedId }: Props) {
+function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, selectedId }: Props) {
+  const router = useRouter();
+  const [starting, startTransition] = useTransition();
+  // Drafting from a pillar starts a new piece: each output is its own project.
+  const draftFrom = (p: PillarView) =>
+    startTransition(async () => router.push(await startFromPillarAction(tenantId, p.name)));
   const toast = useToast();
   const history = useCanvasHistory();
-  const [draftFor, setDraftFor] = useState<string | null | undefined>(undefined);
 
   // Selection: seeded from ?pillar= (Layers panel), then local.
   const [sel, setSel] = useState<string | null>(selectedId);
@@ -54,7 +58,7 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
   const [drag, setDrag] = useState<{ id: string; to: number } | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const base = `/w/${tenantId}/p/${projectId}`;
+  const base = `/w/${tenantId}`;
   const children = ordered.length + 1; // + "add pillar" card
   const rowWidth = children * CARD_W + (children - 1) * GAP;
 
@@ -62,7 +66,7 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
     const prev = ordered.map((p) => p.id);
     if (next.join() === prev.join()) return;
     setLocalOrder(next);
-    const save = (ids: string[]) => { setLocalOrder(ids); return reorderPillarsAction(tenantId, projectId, ids); };
+    const save = (ids: string[]) => { setLocalOrder(ids); return reorderPillarsAction(tenantId, ids); };
     save(next).catch(() => { setLocalOrder(null); toast("Couldn't save the new order."); });
     history.push({ label, undo: () => save(prev), redo: () => save(next) });
   };
@@ -77,7 +81,7 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
   const edit = (p: PillarView, patch: { name?: string; description?: string }) => {
     const before = { name: p.name, description: p.description ?? "" };
     const after = { ...before, ...patch };
-    const save = (v: typeof before) => updatePillarAction(tenantId, projectId, p.id, v.name, v.description);
+    const save = (v: typeof before) => updatePillarAction(tenantId, p.id, v.name, v.description);
     history.push({ label: patch.name !== undefined ? "rename pillar" : "edit description", undo: () => save(before), redo: () => save(after) });
     return save(after);
   };
@@ -85,7 +89,7 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
   const add = async () => {
     setAdding(true);
     try {
-      const id = await createPillarAction(tenantId, projectId, "Untitled pillar", "");
+      const id = await createPillarAction(tenantId, "Untitled pillar", "");
       if (id) { setSel(id); setEditName(id); }
     } catch {
       toast("Couldn't add a pillar. Try again.");
@@ -96,13 +100,13 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
   const remove = useCallback(async (p: PillarView) => {
     if (!confirm(`Delete “${p.name}”? Its content stays, just without a pillar.`)) return;
     try {
-      await deletePillarAction(tenantId, projectId, p.id);
+      await deletePillarAction(tenantId, p.id);
       setSel(null);
       toast("Pillar deleted");
     } catch {
       toast("Couldn't delete that pillar.");
     }
-  }, [tenantId, projectId, toast]);
+  }, [tenantId, toast]);
 
   const selected = ordered.find((p) => p.id === sel) ?? null;
   useDeleteKey(selected && !editName ? () => remove(selected) : null);
@@ -143,7 +147,7 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
             </div>
             <div className="p-2 flex flex-col gap-1">
               {briefRows.map((r) => (
-                <Link key={r.label} href={`${base}/brief/edit`} className="flex items-center gap-2 h-8 px-2.5 rounded-[7px] border border-hairline bg-paper text-[0.8rem] hover:border-line">
+                <Link key={r.label} href={`${base}/brand/edit`} className="flex items-center gap-2 h-8 px-2.5 rounded-[7px] border border-hairline bg-paper text-[0.8rem] hover:border-line">
                   {r.ok ? <Check size={13} className="text-ok" /> : <Circle size={11} className="text-accent" />}
                   <span className={r.ok ? "" : "text-ink-muted"}>{r.label}</span>
                 </Link>
@@ -175,7 +179,7 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
                   editingName={editName === p.id}
                   onEditingName={(on) => setEditName(on ? p.id : null)}
                   onSelect={() => setSel(p.id)}
-                  onDraft={() => setDraftFor(p.id)}
+                  onDraft={() => !starting && draftFrom(p)}
                   onEdit={(patch) => edit(p, patch)}
                   onDelete={() => remove(p)}
                   onMove={(by) => move(p.id, by)}
@@ -197,9 +201,6 @@ function PillarTree({ tenantId, projectId, brandName, completeness, briefRows, p
         </div>
       </Canvas>
 
-      {draftFor !== undefined && (
-        <DraftModal open onClose={() => setDraftFor(undefined)} tenantId={tenantId} projectId={projectId} pillars={pillars} defaultPillar={draftFor} />
-      )}
     </>
   );
 }
@@ -254,7 +255,7 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
         </div>
         {p.formats.length > 0 ? (
           p.formats.map((f) => (
-            <Link key={f} href={`${base}/content`} className="flex items-center gap-2 h-8 px-2.5 rounded-[7px] border border-hairline text-[0.8rem] hover:border-line">
+            <Link key={f} href={base} className="flex items-center gap-2 h-8 px-2.5 rounded-[7px] border border-hairline text-[0.8rem] hover:border-line">
               <PenLine size={12} className="text-ink-faint" /> {formatByKey(f).label}
             </Link>
           ))
@@ -262,8 +263,8 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
           <p className="text-[0.75rem] text-ink-faint px-2.5 py-1.5">No content yet</p>
         )}
         <div className="flex gap-1">
-          <Link href={`${base}/ideas`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-[7px] bg-panel text-[0.75rem] text-ink-muted hover:text-ink"><Lightbulb size={12} /> {p.ideaCount} ideas</Link>
-          <Link href={`${base}/calendar`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-[7px] bg-panel text-[0.75rem] text-ink-muted hover:text-ink"><CalendarDays size={12} /> {p.calendarCount} slots</Link>
+          <Link href={`${base}/plan/ideas`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-[7px] bg-panel text-[0.75rem] text-ink-muted hover:text-ink"><Lightbulb size={12} /> {p.ideaCount} ideas</Link>
+          <Link href={`${base}/plan/calendar`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-[7px] bg-panel text-[0.75rem] text-ink-muted hover:text-ink"><CalendarDays size={12} /> {p.calendarCount} slots</Link>
         </div>
         <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-[7px] border border-dashed border-line text-[0.8rem] text-ink-muted hover:border-ink hover:text-ink"><Plus size={13} /> Draft content</button>
         <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-[7px] text-[0.8rem] text-ink-muted hover:bg-field"><Sparkles size={13} /> Ask AI</button>

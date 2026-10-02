@@ -10,15 +10,17 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { withTenantSession } from "@/db/session";
-import type { ProjectScope } from "./projects";
+import type { WorkspaceScope } from "./projects";
 import { storage, tenantKey } from "@/lib/storage";
 
-export type AssetKind = "logo" | "reference_image" | "font" | "other";
+export type AssetKind = "logo" | "reference_image" | "headshot" | "font" | "other";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED: Record<AssetKind, string[]> = {
   logo: ["image/png", "image/jpeg", "image/svg+xml", "image/webp"],
   reference_image: ["image/png", "image/jpeg", "image/webp"],
+  // A person's face (0014): kept apart from reference images so it can be found and removed on its own.
+  headshot: ["image/png", "image/jpeg", "image/webp"],
   font: ["font/woff", "font/woff2", "font/ttf", "font/otf", "application/font-woff"],
   other: [],
 };
@@ -29,7 +31,7 @@ const EXT: Record<string, string> = {
 };
 
 export async function uploadAsset(
-  scope: ProjectScope,
+  scope: WorkspaceScope,
   file: File,
   kind: AssetKind,
 ): Promise<void> {
@@ -50,7 +52,9 @@ export async function uploadAsset(
     c.query(
       `INSERT INTO assets (tenant_id, project_id, kind, storage_key, mime, bytes, created_by)
        VALUES ($1,$7,$2,$3,$4,$5,$6)`,
-      [scope.tenantId, kind, key, file.type, file.size, scope.userId, scope.projectId],
+      // Brand uploads (logos, fonts, references) belong to the workspace, not a
+      // piece (migration 0007), so project_id is NULL like the rest of the brand.
+      [scope.tenantId, kind, key, file.type, file.size, scope.userId, null],
     ),
   );
 }
@@ -62,12 +66,12 @@ export interface AssetView {
   url: string;
 }
 
-export async function listAssets(scope: ProjectScope): Promise<AssetView[]> {
+export async function listAssets(scope: WorkspaceScope): Promise<AssetView[]> {
   const rows = (
     await withTenantSession(scope, (c) =>
       c.query<{ id: string; kind: string; mime: string; storage_key: string }>(
-        `SELECT id, kind, mime, storage_key FROM assets WHERE project_id=$1 ORDER BY created_at DESC LIMIT 24`,
-        [scope.projectId],
+        `SELECT id, kind, mime, storage_key FROM assets WHERE project_id IS NULL ORDER BY created_at DESC LIMIT 24`,
+        [],
       ),
     )
   ).rows;

@@ -105,6 +105,57 @@ export interface Identity {
   language?: Tagged<string>;
   /** Carried over from the old brief voice step. Not one of the spec's fields. */
   toneDescriptors?: Tagged<string[]>;
+  /**
+   * Answers with no dedicated field (A5, A6, B2, B4, F3, F5), keyed by
+   * question id and prompt. Kept verbatim; shown back to the person and read
+   * by the identity lines of the context.
+   */
+  answers?: Record<string, string>;
+  /** Stories they tell often: their best material, which a draft can't invent. */
+  stories?: Tagged<Story[]>;
+  /** Facts they can stand behind: numbers, results, client wins. The only facts a draft may use. */
+  proofs?: Tagged<Proof[]>;
+  /** Voices they admire, and voices they never want to sound like. */
+  influences?: Tagged<{ admire: string[]; avoid: string[] }>;
+  /** The languages they write in, and how they mix them. */
+  languages?: Tagged<LanguageMix>;
+  /** "This or that" picks: the line they chose over its twin, per dial. */
+  preferences?: Tagged<Preference[]>;
+}
+
+export interface Story {
+  title: string;
+  body: string;
+  /** What it shows, in a line. Optional. */
+  lesson?: string;
+}
+
+export interface Proof {
+  claim: string;
+  /** Where it comes from, so a reader could check it: "client survey, 2025". */
+  source?: string;
+}
+
+export const LANGUAGES = [
+  { key: "en", label: "English" },
+  { key: "hinglish", label: "Hinglish (Hindi in Latin script, mixed with English)" },
+  { key: "hi", label: "Hindi (Devanagari)" },
+  { key: "gu", label: "Gujarati" },
+] as const;
+export type LanguageKey = (typeof LANGUAGES)[number]["key"];
+
+export interface LanguageMix {
+  primary: LanguageKey;
+  /** Others they mix in, and where. */
+  also: LanguageKey[];
+  /** "Hinglish on Instagram, English on LinkedIn" — in their words. */
+  when?: string;
+}
+
+export interface Preference {
+  dial: DialKey;
+  chosen: string;
+  over: string;
 }
 
 // ---- guardrails.md ----------------------------------------------------------
@@ -269,6 +320,53 @@ export const EMPTY_INDEX: VoiceIndex = Object.freeze({
 
 export type PackStatus = "provisional" | "active" | "archived";
 
+/** F2: how the person wants to work. The Create default; a piece may override. */
+export type WorkMode = "ghostwrite" | "cowrite" | "check";
+export const WORK_MODES: { key: WorkMode; label: string; sub: string }[] = [
+  { key: "check", label: "Check mine", sub: "I write, you check it sounds like me" },
+  { key: "cowrite", label: "Co-write", sub: "We write it together" },
+  { key: "ghostwrite", label: "Ghostwrite", sub: "You write, I edit and approve" },
+];
+
+/** Where the person is in onboarding, and what they chose along the way. */
+export interface Onboarding {
+  /** 1 Add samples · 2 Confirm your voice · 3 Set your hue · 4 First draft. */
+  step?: number;
+  completedAt?: string;
+  /** G1: the sources they said we may read. */
+  sources?: string[];
+  /** F1: the platforms we write for. Creates their context blocks. */
+  writeFor?: string[];
+  /** Question ids answered or deliberately skipped, Core and Deep. */
+  answered?: string[];
+  /** Confirm cards already resolved, so they never come back. */
+  resolvedCards?: string[];
+  /** The project the payoff screen created, so a reload doesn't make another. */
+  firstProjectId?: string;
+  /**
+   * The scan in flight, so "Building your core" survives a refresh and the
+   * page can tell the person when it finishes (design system §15.2).
+   */
+  scan?: { state: "ingesting" | "learning" | "done"; at: string; pieces?: number };
+  /**
+   * Answers proposed from what they've already given us (their writing, the
+   * brief, the pre-workshop questionnaire), shown as one-tap confirms. Made
+   * once per `basis` (what they were made from: the writing and the brief), so
+   * answering a question doesn't buy a new pass, but new writing does.
+   */
+  suggestions?: { basis: string; at: string; answers: Record<string, { value: string | string[]; evidence?: string }> };
+  /** The "this or that" pairs, made once per basis like the suggestions. */
+  pairs?: { basis: string; list: { dial: DialKey; left: string; right: string }[] };
+  /** The live preview paragraph, rewritten in their voice; cached per pack version. */
+  preview?: { version: number; text: string };
+}
+
+export interface TopicSuggestion {
+  title: string;
+  why: string;
+  pillar: string;
+}
+
 export interface VoicePack {
   id: string;
   userId: string;
@@ -286,6 +384,10 @@ export interface VoicePack {
   index: VoiceIndex;
   corpusStats: CorpusStats;
   scannedAt: string | null;
+  onboarding: Onboarding;
+  workMode: WorkMode;
+  topicSuggestions: TopicSuggestion[];
+  topicsGeneratedAt: string | null;
 }
 
 export interface CorpusStats {
@@ -314,6 +416,8 @@ export interface VoiceSample {
   note?: string;
   excluded: boolean;
   exclusionReason?: string;
+  /** Reads unlike the rest of their writing (H3). The person decides. */
+  suspectReason?: string;
   publishedAt?: string;
 }
 

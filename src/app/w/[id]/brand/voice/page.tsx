@@ -1,15 +1,23 @@
 import { Mic, ScanLine, Quote, Lock, AlertTriangle, CheckCircle2, Trash2, EyeOff, Eye } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
-import { listSamples, listVersions, loadPackForWorkspace } from "@/lib/data/voice-pack";
+import { listSamples, listVersions, loadPackForWorkspace, previewRescan } from "@/lib/data/voice-pack";
+import { coreState, diffPacks, rescanDue } from "@/lib/voice/lifecycle";
+import { CoreWatcher } from "@/components/core-watcher";
 import { mechanicsLines } from "@/lib/voice/context";
 import { corpusLevel, CORPUS_MINIMUM_PIECES, DIAL_LABELS, DIAL_KEYS } from "@/lib/voice/types";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import { DocPage } from "@/components/doc-page";
+import { btnClass } from "@/components/btn";
 import { EmptyState, SubmitButton } from "@/components/ui";
+import Link from "next/link";
 import { BrandCoreCard } from "@/components/composites";
+import { confidence } from "@/lib/voice/derive";
+import { nextDeepQuestions } from "@/lib/voice/questions";
+import { approvedPieceCount, approvedSince, listEditProposals, listProposals, ownsVoice } from "@/lib/data/training";
+import { QuestionField } from "../../onboarding/steps";
 import {
-  addSamplesAction, deleteSampleAction, excludeSampleAction, rescanAction,
-  resolveSignatureAction, saveVoiceAction,
+  addSamplesAction, decideEditAction, decideProposalAction, deleteSampleAction, excludeSampleAction, previewRescanAction, rescanAction,
+  resolveSignatureAction, restoreVersionAction, saveVoiceAction,
 } from "./actions";
 
 export const metadata = { title: "Voice" };
@@ -47,14 +55,15 @@ function Tag({ confidence, count }: { confidence?: string; count?: number }) {
  * the part that makes the difference between a voice file that works and one
  * that just asserts things.
  */
-export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voice">) {
+export default async function VoicePage({ params, searchParams }: PageProps<"/w/[id]/brand/voice">) {
   const { id } = await params;
-  const { scope } = await workspaceScope(id);
+  const sp = await searchParams;
+  const { session, scope } = await workspaceScope(id);
   const pack = await loadPackForWorkspace(scope);
 
   if (!pack) {
     return (
-      <DocPage eyebrow="Onboarding · Voice" title="No voice yet." accent="Let's build one." sub="A Voice Pack belongs to a person. Sign in as the person whose brand this is and it will be created for them.">
+      <DocPage eyebrow="Brand core · Voice" title="No voice yet." accent="Let's build one." sub="A Voice Pack belongs to a person. Sign in as the person whose brand this is and it will be created for them.">
         <div className="bg-paper border border-hairline rounded-[14px]">
           <EmptyState icon={<Mic size={18} />} title="No pack on file" sub="Voice packs are created for the person whose writing they describe." />
         </div>
@@ -62,10 +71,25 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
     );
   }
 
-  const [samples, versions] = await Promise.all([
+  const [samples, versions, proposals, learned, approved, sinceScan, preview] = await Promise.all([
     listSamples(scope, pack.id, { includeExcluded: true }),
     listVersions(scope, pack.id, 8),
+    listProposals(scope, pack.id),
+    listEditProposals(scope, pack.id),
+    approvedPieceCount(scope),
+    approvedSince(scope, pack.scannedAt),
+    sp.preview ? previewRescan(scope, pack.id) : Promise.resolve(null),
   ]);
+  const now = Date.now();
+  const state = coreState(pack, now);
+  const due = rescanDue(pack, sinceScan, now);
+  // Each saved version is the state a change replaced; diff it against the
+  // state that came after (the next version, or now).
+  const changedFrom = (i: number) => diffPacks(versions[i].snapshot, i === 0 ? pack : versions[i - 1].snapshot);
+  const owner = ownsVoice({ userId: session.userId, role: session.role }, pack);
+  const conf = confidence(pack);
+  const deep = nextDeepQuestions(pack.onboarding.answered ?? [], approved);
+  const moved = ([] as string[]).concat(sp.moved ?? []);
   const level = corpusLevel(pack.corpusStats);
   const lines = mechanicsLines(pack);
   const never = pack.index.neverWords.length ? pack.index.neverWords : (pack.redPen.neverList?.value ?? []);
@@ -80,9 +104,10 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
     name: pack.displayName || "Your voice",
     seed: pack.id,
     subtitle: `${pack.corpusStats.channels[0] ? pack.corpusStats.channels.join(", ") + " · " : ""}core v${pack.version}${pack.scannedAt ? ` · measured ${new Date(pack.scannedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}`,
-    trained: pack.status !== "provisional" && pack.corpusStats.pieces > 0,
+    trained: conf.trained,
+    state,
     attributes: coreAttrs,
-    confidence: Math.min(96, Math.round((pack.corpusStats.pieces / 13) * 100)),
+    confidence: conf.score,
     stats: [
       { label: "Samples", value: String(pack.corpusStats.pieces) },
       { label: "Words read", value: words >= 1000 ? `${(words / 1000).toFixed(1)}k` : String(words) },
@@ -92,14 +117,104 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
 
   return (
     <DocPage
-      eyebrow="Onboarding · Voice"
+      eyebrow="Brand core · Voice"
       title="How you"
       accent="actually sound."
       sub="Measured from your own writing, not guessed from adjectives. Every number here has a count and a quote behind it, and you can change any of it."
     >
       {/* ---- the brand core: the coloured summary of what was measured ---- */}
-      <div className="mb-6"><BrandCoreCard {...coreCard} /></div>
+      <div className="mb-6 flex flex-col gap-3"><BrandCoreCard {...coreCard} /><CoreWatcher state={state} pieces={pack.corpusStats.pieces} /></div>
       <div className="flex flex-col gap-5">
+        {due.due && !preview && (
+          <div role="status" className="text-[0.85rem] bg-accent-soft rounded-[10px] px-4 py-3 flex flex-wrap items-center gap-3">
+            <span className="flex-1 min-w-0">It&apos;s been {due.days} days since we measured your writing, and you&apos;ve approved {sinceScan} new {sinceScan === 1 ? "piece" : "pieces"} since. Worth a fresh look?</span>
+            <form action={previewRescanAction}><Hidden /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>
+          </div>
+        )}
+        {preview && (
+          <div id="remeasure" role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3 flex flex-col gap-2">
+            <p className="font-medium">{preview.length ? "If we re-measure now:" : "Re-measuring now would change nothing."}</p>
+            {preview.length > 0 && <ul className="flex flex-col gap-0.5 text-ink-muted">{preview.map((m) => <li key={m}>{m}</li>)}</ul>}
+            <p className="text-[0.78rem] text-ink-faint">Only what was measured changes. Anything you typed or decided stays yours.</p>
+            <div className="flex flex-wrap gap-2">
+              {preview.length > 0 && (
+                <form action={rescanAction}><Hidden /><SubmitButton pendingLabel="Applying…" size="sm">Apply</SubmitButton></form>
+              )}
+              <a href={`/w/${id}/brand/voice`} className={btnClass("ghost", "sm")}>{preview.length ? "Keep it as it is" : "Close"}</a>
+            </div>
+          </div>
+        )}
+        {sp.proposed && (
+          <p role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3">Sent to {pack.displayName || "the owner"} to approve. It&apos;s their voice, so a coach&apos;s change waits for a yes.</p>
+        )}
+        {sp.scanned && (
+          <div role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3">
+            <p className="font-medium">{moved.length ? "Re-measured. What moved:" : "Re-measured. Nothing moved."}</p>
+            {moved.length > 0 && <ul className="mt-1.5 flex flex-col gap-0.5 text-ink-muted">{moved.map((m) => <li key={m}>{m}</li>)}</ul>}
+          </div>
+        )}
+
+        {conf.score < 70 && (
+          <p className="flex items-start gap-2 text-[0.85rem] text-warn bg-warn-soft rounded-[10px] px-4 py-3">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span>
+              {conf.score}% confident, so still learning. {conf.missing.slice(0, 2).map((m) => `${m}.`).join(" ")}{" "}
+              {!pack.onboarding.completedAt && <Link href={`/w/${id}/onboarding`} className="underline underline-offset-2">Carry on setting up</Link>}
+            </span>
+          </p>
+        )}
+
+        {(proposals.length > 0 || learned.length > 0) && (
+          <Card label="Waiting for a decision">
+            <div className="flex flex-col gap-2">
+              {proposals.map((p) => (
+                <div key={p.id} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
+                  <span className="flex-1 min-w-0 text-[0.88rem]">
+                    {p.note ?? "A change"} <span className="text-ink-faint">· from {p.proposedBy ?? "a coach"} · {p.fields.join(", ")}</span>
+                  </span>
+                  {owner ? (
+                    <>
+                      <form action={decideProposalAction}><Hidden /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="1" />
+                        <SubmitButton pendingLabel="…" size="sm">Approve</SubmitButton>
+                      </form>
+                      <form action={decideProposalAction}><Hidden /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="0" />
+                        <SubmitButton pendingLabel="…" size="sm" variant="ghost">Reject</SubmitButton>
+                      </form>
+                    </>
+                  ) : (
+                    <span className="label-mono text-ink-faint">Waiting for the owner</span>
+                  )}
+                </div>
+              ))}
+              {learned.map((l) => (
+                <div key={l.id} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
+                  <span className="flex-1 min-w-0 text-[0.88rem]">
+                    You&apos;ve cut &ldquo;{l.value}&rdquo; from {l.count} drafts. Never use it?
+                  </span>
+                  <form action={decideEditAction}><Hidden /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="1" />
+                    <SubmitButton pendingLabel="…" size="sm">Add to never-list</SubmitButton>
+                  </form>
+                  <form action={decideEditAction}><Hidden /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="0" />
+                    <SubmitButton pendingLabel="…" size="sm" variant="ghost">It was a one-off</SubmitButton>
+                  </form>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {deep.length > 0 && (
+          <Card label="A few deeper questions">
+            <p className="text-[0.82rem] text-ink-muted mb-3">
+              You&apos;ve approved {approved} {approved === 1 ? "piece" : "pieces"}. These are the next few that sharpen your voice. Answer any, skip the rest.
+            </p>
+            <div className="flex flex-col gap-4">
+              {deep.map((q) => (
+                <QuestionField key={q.id} tenantId={id} q={q} keys={q.id === "C7" ? (pack.identity.personalityWords?.value ?? []).map((w) => w.word) : undefined} />
+              ))}
+            </div>
+          </Card>
+        )}
         <Card label="01 · Your writing">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-[1.6rem] font-medium tabular-nums">{pack.corpusStats.pieces}</span>
@@ -108,7 +223,7 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
               {pack.corpusStats.channels.length > 0 && ` · ${pack.corpusStats.channels.join(", ")}`}
             </span>
             <span className="flex-1" />
-            <form action={rescanAction}>
+            <form action={previewRescanAction}>
               <Hidden />
               <SubmitButton pendingLabel="Measuring…" size="sm" variant="ghost"><ScanLine size={13} /> Re-measure</SubmitButton>
             </form>
@@ -304,7 +419,11 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
                       <SubmitButton pendingLabel="…" size="sm" variant="ghost"><Trash2 size={12} /></SubmitButton>
                     </form>
                   </div>
-                  <p className="text-[0.85rem] leading-relaxed whitespace-pre-wrap line-clamp-4">{s.body}</p>
+                  {s.visibility === "private" && !owner ? (
+                    <p className="text-[0.82rem] text-ink-faint italic">Private writing. Measured, but only its owner can read it.</p>
+                  ) : (
+                    <p className="text-[0.85rem] leading-relaxed whitespace-pre-wrap line-clamp-4">{s.body}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -314,14 +433,39 @@ export default async function VoicePage({ params }: PageProps<"/w/[id]/brand/voi
         {/* ---- history: every save keeps what it replaced ----------------- */}
         <Card label="08 · History">
           <ul className="flex flex-col gap-2 text-[0.82rem]">
-            {versions.map((v) => (
-              <li key={v.version} className="flex items-center gap-2">
-                <CheckCircle2 size={13} className="text-ink-faint shrink-0" />
-                <span className="tabular-nums text-ink-faint w-8">v{v.version}</span>
-                <span className="flex-1">{v.note ?? "Saved"}</span>
-                <span className="text-ink-faint">{new Date(v.createdAt).toLocaleString()}</span>
-              </li>
-            ))}
+            {versions.map((v, i) => {
+              const changed = changedFrom(i);
+              const back = diffPacks(pack, v.snapshot);
+              return (
+                <li key={v.version} className="flex flex-col gap-1 border-b border-hairline pb-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CheckCircle2 size={13} className="text-ink-faint shrink-0" />
+                    <span className="tabular-nums text-ink-faint w-14">v{v.version} → v{i === 0 ? pack.version : versions[i - 1].version}</span>
+                    <span className="flex-1 min-w-0">{v.note ?? "Saved"}</span>
+                    <span className="text-ink-faint">{new Date(v.createdAt).toLocaleString()}</span>
+                  </div>
+                  {changed.length > 0 && (
+                    <ul className="pl-6 text-ink-muted flex flex-col gap-0.5">{changed.slice(0, 6).map((c) => <li key={c}>{c}</li>)}</ul>
+                  )}
+                  <details className="pl-6">
+                    <summary className="cursor-pointer min-h-9 flex items-center text-ink-faint">Restore v{v.version}</summary>
+                    <div className="flex flex-col gap-2 pt-1">
+                      {back.length ? (
+                        <>
+                          <p className="text-ink-muted">Restoring brings back:</p>
+                          <ul className="flex flex-col gap-0.5 text-ink-muted">{back.slice(0, 8).map((c) => <li key={c}>{c}</li>)}</ul>
+                        </>
+                      ) : (
+                        <p className="text-ink-muted">Nothing you decided differs from now.</p>
+                      )}
+                      <form action={restoreVersionAction}><Hidden /><input type="hidden" name="version" value={v.version} />
+                        <SubmitButton pendingLabel="Restoring…" size="sm" variant="secondary">Restore this version</SubmitButton>
+                      </form>
+                    </div>
+                  </details>
+                </li>
+              );
+            })}
             <li className="flex items-center gap-2 font-medium">
               <CheckCircle2 size={13} className="text-ok shrink-0" />
               <span className="tabular-nums text-ink-faint w-8">v{pack.version}</span>

@@ -51,6 +51,8 @@ export interface ProjectRow {
   channel: string | null;
   angle: string | null;
   ideaId: string | null;
+  /** The pillar picked at Ideate, kept before the piece has any copy (0011). */
+  pillarId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,6 +64,11 @@ export interface ProjectCard extends ProjectRow {
   pillarCount: number;
   contentCount: number;
   firstHook: string | null;
+  /** The latest piece's status: draft, edited, approved — or null with no copy yet. */
+  contentStatus: string | null;
+  /** The latest piece's last voice check (0012), or null if never checked. */
+  voiceBand: "on_brand" | "drifting" | "off_brand" | null;
+  voiceScore: number | null;
 }
 
 const toRow = (r: Record<string, unknown>): ProjectRow => ({
@@ -76,6 +83,7 @@ const toRow = (r: Record<string, unknown>): ProjectRow => ({
   channel: (r.channel as string) ?? null,
   angle: (r.angle as string) ?? null,
   ideaId: (r.idea_id as string) ?? null,
+  pillarId: (r.pillar_id as string) ?? null,
   createdAt: new Date(r.created_at as string).toISOString(),
   updatedAt: new Date(r.updated_at as string).toISOString(),
 });
@@ -88,12 +96,16 @@ export async function listProjects(scope: SessionScope, opts: { archived?: boole
                 bp.completeness, bp.niche, vi.palette,
                 (SELECT count(*)::int FROM pillars x WHERE x.project_id = p.id) AS pillar_count,
                 (SELECT count(*)::int FROM content_items x WHERE x.project_id = p.id) AS content_count,
-                (SELECT hook FROM content_items x WHERE x.project_id = p.id ORDER BY created_at DESC LIMIT 1) AS first_hook
+                latest.hook AS first_hook, latest.status AS content_status,
+                latest.voice_band, latest.voice_score
            FROM projects p
            LEFT JOIN LATERAL (
              SELECT id, completeness, niche FROM brand_profiles b WHERE b.project_id = p.id
               ORDER BY status='active' DESC, updated_at DESC LIMIT 1) bp ON true
            LEFT JOIN visual_identities vi ON vi.brand_profile_id = bp.id
+           LEFT JOIN LATERAL (
+             SELECT hook, status, voice_band, voice_score FROM content_items x
+              WHERE x.project_id = p.id ORDER BY created_at DESC LIMIT 1) latest ON true
           WHERE p.status = $1
           ORDER BY p.updated_at DESC`,
         [opts.archived ? "archived" : "active"],
@@ -107,6 +119,9 @@ export async function listProjects(scope: SessionScope, opts: { archived?: boole
       pillarCount: r.pillar_count,
       contentCount: r.content_count,
       firstHook: r.first_hook ?? null,
+      contentStatus: r.content_status ?? null,
+      voiceBand: r.voice_band ?? null,
+      voiceScore: r.voice_score ?? null,
     }));
   });
 }
@@ -235,9 +250,11 @@ export async function setIdeate(
               channel = COALESCE($2, channel),
               angle   = COALESCE($3, angle),
               idea_id = COALESCE($4::uuid, idea_id),
-              name    = CASE WHEN $5 <> '' THEN left($5, 120) ELSE name END
+              name    = CASE WHEN $5 <> '' THEN left($5, 120) ELSE name END,
+              pillar_id = COALESCE(
+                (SELECT id FROM pillars WHERE id = $7::uuid AND project_id IS NULL), pillar_id)
         WHERE id = $6`,
-      [v.format, v.format ? formatByKey(v.format).channel : null, v.angle, v.ideaId, v.topic, scope.projectId],
+      [v.format, v.format ? formatByKey(v.format).channel : null, v.angle, v.ideaId, v.topic, scope.projectId, v.pillarId],
     );
     // The pillar lives on the piece's content once it exists; until then the
     // idea link carries it.

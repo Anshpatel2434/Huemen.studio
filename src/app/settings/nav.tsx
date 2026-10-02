@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { UserSquare2, Sparkles, Users } from "lucide-react";
+import { UserSquare2, Sparkles, Users, Plug } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { PageTransition } from "@/components/page-transition";
 
@@ -11,6 +11,7 @@ export function SettingsNav({ children, isAdmin, home }: { children: ReactNode; 
   const path = usePathname();
   const items = [
     { href: "/settings", label: "Account", icon: UserSquare2 },
+    { href: "/settings/connections", label: "Connections", icon: Plug },
     { href: "/settings/usage", label: "AI usage", icon: Sparkles },
     ...(isAdmin ? [{ href: "/settings/workspaces", label: "Workspaces & access", icon: Users }] : []),
   ];

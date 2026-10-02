@@ -97,6 +97,8 @@ export interface IdeaView {
   pillarId: string | null;
   pillarName: string | null;
   convertedTo: string | null;
+  /** The piece started from this idea, if any (one output per project). */
+  projectId: string | null;
   createdAt: string;
 }
 
@@ -116,7 +118,9 @@ export async function listIdeas(scope: WorkspaceScope): Promise<IdeaView[]> {
   return withTenantSession(scope, async (c) =>
     (
       await c.query(
-        `SELECT i.*, p.name AS pillar_name FROM ideas i LEFT JOIN pillars p ON p.id = i.pillar_id
+        `SELECT i.*, p.name AS pillar_name,
+                (SELECT pr.id FROM projects pr WHERE pr.idea_id = i.id ORDER BY pr.created_at DESC LIMIT 1) AS started_project
+           FROM ideas i LEFT JOIN pillars p ON p.id = i.pillar_id
           WHERE i.project_id IS NULL AND i.status <> 'archived' ORDER BY i.created_at DESC`,
         [],
       )
@@ -128,6 +132,7 @@ export async function listIdeas(scope: WorkspaceScope): Promise<IdeaView[]> {
       pillarId: r.pillar_id,
       pillarName: r.pillar_name,
       convertedTo: r.converted_to_content_item_id,
+      projectId: r.started_project ?? null,
       createdAt: new Date(r.created_at).toISOString(),
     })),
   );
@@ -156,6 +161,11 @@ export async function markIdeaConverted(scope: WorkspaceScope, id: string, conte
   await withTenantSession(scope, (c) =>
     c.query("UPDATE ideas SET status='converted', converted_to_content_item_id=$1 WHERE id=$2 AND project_id IS NULL", [contentItemId, id]),
   );
+}
+
+/** An idea that became a piece. The piece links back through projects.idea_id. */
+export async function markIdeaStarted(scope: WorkspaceScope, id: string): Promise<void> {
+  await withTenantSession(scope, (c) => c.query("UPDATE ideas SET status='converted' WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
 export async function getIdea(scope: WorkspaceScope, id: string) {

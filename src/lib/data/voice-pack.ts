@@ -21,6 +21,7 @@ import "server-only";
 import { withTenantSession, type SessionScope } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
 import { measureCorpus } from "@/lib/voice/measure";
+import { scanChanges } from "@/lib/voice/derive";
 import {
   emptyIndex,
   MEASURED_CONTEXT_MINIMUM,
@@ -35,6 +36,9 @@ import {
   type VoiceIndex,
   type VoicePack,
   type VoiceSample,
+  type Onboarding,
+  type WorkMode,
+  type TopicSuggestion,
 } from "@/lib/voice/types";
 
 /** How many real pieces go into any one prompt (our answer to question 15). */
@@ -46,7 +50,8 @@ interface PackRow {
   hard_rules: string[]; identity: Identity; guardrails: Guardrail[];
   mechanics: Mechanics; contexts: Record<string, VoiceContext>; red_pen: RedPen;
   voice_index: Partial<VoiceIndex>; corpus_stats: Partial<CorpusStats>;
-  scanned_at: Date | null;
+  scanned_at: Date | null; onboarding: Onboarding | null; work_mode: WorkMode;
+  topic_suggestions: TopicSuggestion[] | null; topics_generated_at: Date | null;
 }
 
 const EMPTY_STATS: CorpusStats = { pieces: 0, words: 0, sentences: 0, channels: [] };
@@ -69,13 +74,18 @@ function toPack(r: PackRow): VoicePack {
     index: { ...emptyIndex(), ...(r.voice_index ?? {}) },
     corpusStats: { ...EMPTY_STATS, ...(r.corpus_stats ?? {}) },
     scannedAt: r.scanned_at ? r.scanned_at.toISOString() : null,
+    onboarding: r.onboarding ?? {},
+    workMode: r.work_mode ?? "ghostwrite",
+    topicSuggestions: r.topic_suggestions ?? [],
+    topicsGeneratedAt: r.topics_generated_at ? r.topics_generated_at.toISOString() : null,
   };
 }
 
 const PACK_COLUMNS = [
   "id", "user_id", "slug", "display_name", "status", "version", "voice_line",
   "hard_rules", "identity", "guardrails", "mechanics", "contexts", "red_pen",
-  "voice_index", "corpus_stats", "scanned_at",
+  "voice_index", "corpus_stats", "scanned_at", "onboarding", "work_mode",
+  "topic_suggestions", "topics_generated_at",
 ] as const;
 
 const COLS = PACK_COLUMNS.join(", ");
@@ -225,13 +235,18 @@ export async function linkBrandToPack(scope: WorkspaceScope, packId: string): Pr
 // ---- saving -----------------------------------------------------------------
 
 export type PackPatch = Partial<
-  Pick<VoicePack, "voiceLine" | "hardRules" | "identity" | "guardrails" | "mechanics" | "contexts" | "redPen" | "index" | "status" | "displayName">
+  Pick<
+    VoicePack,
+    | "voiceLine" | "hardRules" | "identity" | "guardrails" | "mechanics" | "contexts"
+    | "redPen" | "index" | "status" | "displayName" | "workMode"
+  >
 >;
 
 const COLUMN: Record<keyof PackPatch, string> = {
   voiceLine: "voice_line", hardRules: "hard_rules", identity: "identity",
   guardrails: "guardrails", mechanics: "mechanics", contexts: "contexts",
   redPen: "red_pen", index: "voice_index", status: "status", displayName: "display_name",
+  workMode: "work_mode",
 };
 const JSON_COLUMNS = new Set(["hard_rules", "identity", "guardrails", "mechanics", "contexts", "red_pen", "voice_index"]);
 
@@ -320,6 +335,9 @@ export interface NewSample {
   visibility?: "public" | "private";
   publishedAt?: string | null;
   note?: string;
+  /** Imported from a connection (0013): which one, and the provider's own id. */
+  connectionId?: string | null;
+  externalId?: string | null;
 }
 
 const sampleRow = (r: Record<string, unknown>): VoiceSample => ({
@@ -333,10 +351,11 @@ const sampleRow = (r: Record<string, unknown>): VoiceSample => ({
   note: (r.note as string) ?? undefined,
   excluded: r.excluded as boolean,
   exclusionReason: (r.exclusion_reason as string) ?? undefined,
+  suspectReason: (r.suspect_reason as string) ?? undefined,
   publishedAt: r.published_at ? (r.published_at as Date).toISOString().slice(0, 10) : undefined,
 });
 
-const SAMPLE_COLS = `id, channel, kind, source, visibility, body, word_count, note, excluded, exclusion_reason, published_at`;
+const SAMPLE_COLS = `id, channel, kind, source, visibility, body, word_count, note, excluded, exclusion_reason, suspect_reason, published_at`;
 
 export async function addSamples(
   scope: SessionScope & { tenantId: string },
@@ -351,13 +370,19 @@ export async function addSamples(
       const body = s.body.trim();
       const res = await c.query(
         `INSERT INTO voice_samples
-           (tenant_id, pack_id, channel, kind, source, visibility, body, word_count, note, published_at)
-         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
-          WHERE NOT EXISTS (SELECT 1 FROM voice_samples WHERE pack_id=$2 AND body=$7)`,
+           (tenant_id, pack_id, channel, kind, source, visibility, body, word_count, note, published_at, connection_id, external_id)
+         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+          WHERE NOT EXISTS (SELECT 1 FROM voice_samples WHERE pack_id=$2 AND body=$7)
+            AND ($12::text IS NULL OR NOT EXISTS (SELECT 1 FROM voice_samples WHERE pack_id=$2 AND external_id=$12))
+            -- The pack must be visible to THIS session. Under RLS another
+            -- workspace's pack is invisible, so this refuses the insert rather
+            -- than relying on the foreign key, which ignores RLS (0010).
+            AND EXISTS (SELECT 1 FROM voice_packs WHERE id=$2)`,
         [
           scope.tenantId, packId, s.channel ?? "unknown", s.kind ?? "corpus",
           s.source ?? "paste", s.visibility ?? "public", body,
           body.split(/\s+/).filter(Boolean).length, s.note ?? null, s.publishedAt ?? null,
+          s.connectionId ?? null, s.externalId ?? null,
         ],
       );
       added += res.rowCount ?? 0;
@@ -446,6 +471,8 @@ export async function fewShotSamples(
 // ---- the scan ---------------------------------------------------------------
 
 export interface ScanResult {
+  /** What moved since the last scan, in plain English (file 06 §6). */
+  changes: string[];
   stats: CorpusStats;
   measuredChannels: string[];
   inferredChannels: string[];
@@ -463,10 +490,7 @@ export interface ScanResult {
  * Private pieces ARE measured here. That is the point of keeping them: they
  * teach how the person writes without their content going anywhere.
  */
-export async function rescan(
-  scope: SessionScope & { tenantId: string },
-  packId: string,
-): Promise<ScanResult> {
+async function measurePack(scope: SessionScope & { tenantId: string }, packId: string) {
   const samples = await listSamples(scope, packId);
   const measurement = measureCorpus(
     samples.map((s) => ({
@@ -502,16 +526,57 @@ export async function rescan(
     };
   }
 
+  // A punctuation habit the person kept or dropped on a confirm card (H2) is
+  // their decision; the corpus doesn't get to overrule it on the next scan.
+  const decided = new Set(
+    (pack.onboarding.resolvedCards ?? []).filter((c) => c.startsWith("H2:")).map((c) => c.slice(3)),
+  );
+  const punctuation = { ...measurement.index.punctuation };
+  for (const mark of decided) {
+    const k = mark as keyof typeof punctuation;
+    if (pack.index.punctuation[k]) punctuation[k] = pack.index.punctuation[k];
+  }
+
   // The user's own never-list and exceptions survive a re-scan untouched.
   const index: VoiceIndex = {
     ...measurement.index,
+    punctuation,
     neverWords: pack.index.neverWords,
     allowedExceptions: pack.index.allowedExceptions,
     dials: pack.index.dials,
     lastOpeners: pack.index.lastOpeners,
   };
 
+  const changes = scanChanges(pack, { mechanics: { ...pack.mechanics, ...measurement.mechanics }, corpusStats: measurement.stats });
+  return { pack, measurement, index, contexts, measuredChannels, inferredChannels, changes };
+}
+
+/**
+ * What a re-measure WOULD change, without changing anything. The Voice page
+ * shows this first, so a re-scan is a proposal the person applies (plan,
+ * Flow 4: "re-scans propose, they never overwrite").
+ */
+export async function previewRescan(scope: SessionScope & { tenantId: string }, packId: string): Promise<string[]> {
+  return (await measurePack(scope, packId)).changes;
+}
+
+export async function rescan(
+  scope: SessionScope & { tenantId: string },
+  packId: string,
+): Promise<ScanResult> {
+  const { pack, measurement, index, contexts, measuredChannels, inferredChannels, changes } = await measurePack(scope, packId);
+
   await withTenantSession(scope, async (c) => {
+    // Flag pieces that read unlike the rest (H3). Flag only: the person
+    // decides, and a piece they already confirmed is never flagged again.
+    await c.query(`UPDATE voice_samples SET suspect_reason = NULL WHERE pack_id = $1 AND suspect_reason IS NOT NULL`, [packId]);
+    for (const s of measurement.suspected) {
+      if (!s.id) continue;
+      await c.query(
+        `UPDATE voice_samples SET suspect_reason = $1 WHERE id = $2 AND pack_id = $3 AND note IS DISTINCT FROM 'confirmed-mine'`,
+        [s.reason, s.id, packId],
+      );
+    }
     await c.query(
       `INSERT INTO voice_pack_versions (tenant_id, pack_id, version, snapshot, note, changed_by)
        VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (pack_id, version) DO NOTHING`,
@@ -537,6 +602,7 @@ export async function rescan(
   });
 
   return {
+    changes,
     stats: measurement.stats,
     measuredChannels,
     inferredChannels,
