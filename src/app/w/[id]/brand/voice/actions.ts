@@ -6,9 +6,10 @@ import { actionActor } from "@/lib/auth/workspace";
 import {
   addSamples, deleteSample, loadPackForWorkspace, rescan, setSampleExcluded,
 } from "@/lib/data/voice-pack";
-import { decideEditProposal, decideProposal, restoreVersion, writePack, type WriteOutcome } from "@/lib/data/training";
+import { decideEditProposal, decideProposal, ownsVoice, restoreVersion, writePack, type WriteOutcome } from "@/lib/data/training";
 import { tagged } from "@/lib/voice/types";
 import { finishIngest } from "@/lib/data/onboarding";
+import { decidePattern } from "@/lib/data/patterns";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -147,4 +148,21 @@ export async function restoreVersionAction(fd: FormData): Promise<void> {
 export async function previewRescanAction(fd: FormData): Promise<void> {
   const { path } = await packFor(fd);
   redirect(`${path}?preview=1#remeasure`);
+}
+
+// ---- what we noticed across sources --------------------------------------------
+
+/**
+ * Keep or drop a pattern found across their sources. Theirs to decide: a
+ * coach sees the public half but can't settle it for them.
+ */
+export async function decidePatternAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack || !ownsVoice(actor, pack)) return;
+  await decidePattern(scope, actor, pack, {
+    kind: str(fd, "kind") === "private" ? "private" : "everywhere",
+    value: str(fd, "value"),
+    keep: str(fd, "keep") === "1",
+  });
+  revalidatePath(path);
 }

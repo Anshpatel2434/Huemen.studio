@@ -19,6 +19,7 @@ import { generatePillars } from "@/lib/data/pipeline";
 import { proposeTopics, startPiece, ownDraft, coWrite } from "@/lib/data/create";
 import { generateContent, listContent } from "@/lib/data/content";
 import { firstPieceStale } from "@/lib/voice/lifecycle";
+import { scoreProject } from "@/lib/data/check";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { formatByKey, FORMATS } from "@/lib/content/formats";
 import { saveBriefAnswers } from "@/lib/data/foundation";
@@ -206,6 +207,8 @@ export async function firstPieceAction(tenantId: string): Promise<string> {
       await generateContent(p, { format, topic: topicTitle, pillarId });
     }
     // "Check mine" makes no draft: the person writes, and the check reads it.
+    // Scored now, so the dashboard card shows the same band the payoff did.
+    await scoreProject(p).catch(() => undefined);
     await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "done", at: new Date().toISOString() } });
   } catch (e) {
     await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "failed", at: new Date().toISOString() } });
@@ -244,6 +247,7 @@ export async function ownDraftForFirstPieceAction(tenantId: string, text: string
   if (!projectId || !text.trim()) return;
   const format = FORMATS.find((f) => f.platform === (pack.onboarding.writeFor?.[0] ?? "linkedin"))?.key ?? "linkedin_post";
   await ownDraft({ ...scope, projectId }, { format: formatByKey(format).key, topic: "", text });
+  await scoreProject({ ...scope, projectId }).catch(() => undefined);
   refresh(tenantId);
 }
 

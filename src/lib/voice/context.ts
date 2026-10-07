@@ -84,10 +84,12 @@ export function mechanicsLines(pack: VoicePack): string[] {
   const lex = (m.lexicon?.value ?? []).slice(0, 12);
   if (lex.length) out.push(`Words they reach for: ${lex.join(", ")}.`);
 
-  const sigs = (m.signaturePhrases?.value ?? []).slice(0, 5);
+  // The ones they confirmed come first: a phrase they use across email, posts
+  // and talks is theirs whether or not this scan counted it.
+  const sigs = [...new Set([...(pack.onboarding.patterns?.kept ?? []), ...(m.signaturePhrases?.value ?? []).map((s2) => s2.phrase)])].slice(0, 5);
   if (sigs.length)
     out.push(
-      `Signature phrases (at most ${pack.index.signaturePhraseMaxPerPiece} per piece, rotate them): ${sigs.map((s2) => `"${s2.phrase}"`).join(", ")}.`,
+      `Signature phrases (at most ${pack.index.signaturePhraseMaxPerPiece} per piece, rotate them): ${sigs.map((s2) => `"${s2}"`).join(", ")}.`,
     );
 
   const emphasis = m.emphasis?.value ?? [];

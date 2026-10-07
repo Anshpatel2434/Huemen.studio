@@ -1,5 +1,5 @@
 /**
- * GET /settings/connections/[provider]/start?cap=gmail — begin a connection.
+ * GET /settings/connections/[provider]/start?cap=gmail[&from=onboarding] — begin a connection.
  *
  * Connections are account settings: they belong to the signed-in person, in
  * their own workspace, and feed their own voice. Asks only for the capability
@@ -15,18 +15,21 @@ import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { ownsVoice } from "@/lib/data/training";
 import { clientFor, listConnections, unavailableReason } from "@/lib/data/connections";
 import { authorizeUrl, CAPABILITIES, PROVIDERS, redirectUri, scopesFor, type CapabilityKey, type ProviderKey } from "@/lib/integrations/providers";
-import { encodeState, newNonce, pkcePair } from "@/lib/integrations/state";
+import { encodeState, newNonce, pkcePair, returnPath, type ReturnTo } from "@/lib/integrations/state";
 
 const OAUTH_COOKIE = "huemen_oauth";
 
 export async function GET(req: Request, ctx: RouteContext<"/settings/connections/[provider]/start">) {
   const { provider: p } = await ctx.params;
-  const back = (msg: string) => NextResponse.redirect(new URL(`/settings/connections?error=${encodeURIComponent(msg)}`, req.url), 303);
+  const params = new URL(req.url).searchParams;
+  const from: ReturnTo = params.get("from") === "onboarding" ? "onboarding" : "settings";
 
   if (!(p in PROVIDERS)) return new Response("Not found", { status: 404 });
   const provider = p as ProviderKey;
   const session = await getSession();
   if (!session) return NextResponse.redirect(new URL("/login?next=/settings/connections", req.url), 303);
+  const back = (msg: string) =>
+    NextResponse.redirect(new URL(returnPath(from, session.tenantId, `error=${encodeURIComponent(msg)}`), req.url), 303);
   const scope = { ...(await resolveScope(session, session.tenantId)), tenantId: session.tenantId };
 
   const pack = await loadPackForWorkspace(scope);
@@ -34,7 +37,7 @@ export async function GET(req: Request, ctx: RouteContext<"/settings/connections
     return back("Connections feed your own voice, and there isn't one for this account yet.");
   }
 
-  const capParam = new URL(req.url).searchParams.get("cap");
+  const capParam = params.get("cap");
   const cap = capParam && capParam in CAPABILITIES ? (capParam as CapabilityKey) : null;
   if (cap && CAPABILITIES[cap].provider !== provider) return back("That doesn't belong to this provider.");
   const reason = cap ? unavailableReason(cap) : clientFor(provider) ? null : `${PROVIDERS[provider].label} isn't connected to this app yet.`;
@@ -45,7 +48,7 @@ export async function GET(req: Request, ctx: RouteContext<"/settings/connections
   const existing = (await listConnections(scope)).find((c) => c.provider === provider);
   const nonce = newNonce();
   const pkce = PROVIDERS[provider].pkce ? pkcePair() : null;
-  const state = encodeState({ t: session.tenantId, u: session.userId, p: provider, c: cap, n: nonce }, env.AUTH_SECRET);
+  const state = encodeState({ t: session.tenantId, u: session.userId, p: provider, c: cap, n: nonce, r: from }, env.AUTH_SECRET);
 
   const res = NextResponse.redirect(
     authorizeUrl(provider, {

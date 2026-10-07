@@ -5,19 +5,19 @@ import { getSession } from "@/lib/auth";
 import { resolveScope } from "@/lib/auth/scope";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { ownsVoice } from "@/lib/data/training";
-import { clientFor, listConnections, unavailableReason } from "@/lib/data/connections";
+import { clientFor, importedEmailCount, listConnections, unavailableReason } from "@/lib/data/connections";
 import { capabilitiesOf, PROVIDERS, type Capability, type ProviderKey } from "@/lib/integrations/providers";
 import { Badge, SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { CapabilityRun } from "./capability-run";
-import { disconnectAction } from "./actions";
+import { disconnectAction, removeImportedEmailAction } from "./actions";
 
 export const metadata = { title: "Connections" };
 
 const REVIEW: Record<Capability["review"], string | null> = {
   none: null,
   verification: "Needs Google verification before launch",
-  restricted: "Needs Google's security review before launch",
+  restricted: "Invited accounts only, until Google's security review",
   partner: "Needs LinkedIn partner approval",
 };
 
@@ -39,6 +39,8 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
   const scope = { ...(await resolveScope(session, id)), tenantId: id };
   const [pack, connections] = await Promise.all([loadPackForWorkspace(scope), listConnections(scope)]);
   const owner = !!pack && ownsVoice({ userId: session.userId, role: session.role }, pack);
+  // Email outlives the connection (it's withdrawn after the read), so it's counted on its own.
+  const emailPieces = pack && owner ? await importedEmailCount(scope, pack.id) : 0;
 
   return (
     <>
@@ -129,9 +131,16 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
                         ) : cap.key === "profile" ? (
                           <span className="text-[0.82rem] text-ok flex items-center gap-1.5"><CheckCircle2 size={13} aria-hidden="true" /> Confirmed</span>
                         ) : (
-                          <CapabilityRun tenantId={id} cap={cap.key} />
+                          <CapabilityRun tenantId={id} cap={cap.key} autoStart={cap.key === "gmail" && sp.connected === "google" && sp.cap === "gmail"} />
                         )}
                       </div>
+                      {cap.key === "gmail" && owner && emailPieces > 0 && (
+                        <form action={removeImportedEmailAction} className="flex flex-wrap items-center gap-2 text-[0.8rem] text-ink-muted">
+                          <input type="hidden" name="tenantId" value={id} />
+                          <span>{emailPieces.toLocaleString("en-IN")} {emailPieces === 1 ? "email is" : "emails are"} part of your voice.</span>
+                          <SubmitButton size="sm" variant="ghost" pendingLabel="Removing…">Remove them</SubmitButton>
+                        </form>
+                      )}
                     </li>
                   );
                 })}

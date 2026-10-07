@@ -3,10 +3,11 @@
  * upcoming events (Calendar). Each returns plain pieces; nothing here writes.
  *
  * What is kept, and what never is:
- *  - Gmail: only messages in Sent. Only the body the person wrote: quoted
- *    replies, forwarded chains and signatures are stripped (stripEmail). No
- *    recipients, no subjects, no attachments. Stored PRIVATE: measured, never
- *    quoted in a draft (spec question 12).
+ *  - Gmail: only messages in Sent, the last two years, up to GMAIL_IMPORT_MAX.
+ *    Only the body the person wrote: quoted replies, forwarded chains and
+ *    signatures are stripped (stripEmail). No recipients, no subjects, no
+ *    attachments, never the inbox. Stored PRIVATE: measured, never quoted in a
+ *    draft (spec question 12). Read once, then the connection is withdrawn.
  *  - Drive: only files the person picked with the Google Picker (drive.file
  *    can't see anything else). Exported as plain text.
  *  - Calendar: title, date and a short description. Attendees are never
@@ -60,34 +61,72 @@ export function messageText(payload: GmailPart): string {
 /** Below this, a message says nothing about how someone writes ("Thanks!", "See you then"). */
 export const MIN_EMAIL_WORDS = 25;
 
+/**
+ * The whole-mailbox read: every sent email from the last two years, up to this
+ * many. Enough to see what someone says over and over; past it, older mail
+ * adds little and the read takes long.
+ */
+export const GMAIL_IMPORT_MAX = 2000;
+/** Messages per page: one server call reads one page, so each call stays well inside a request. */
+export const GMAIL_PAGE_SIZE = 100;
+
+const sentQuery = (since?: string) =>
+  `in:sent newer_than:2y${since ? ` after:${Math.floor(new Date(since).getTime() / 1000)}` : ""}`;
+
+/**
+ * One page of sent mail: list up to `size` ids, then read them. The browser
+ * calls this page after page, so a read of thousands of emails shows real
+ * progress and survives a slow page without a job queue.
+ */
+export async function sentMailPage(
+  token: string,
+  opts: { pageToken?: string; size?: number; since?: string } = {},
+  fetchImpl: FetchLike = fetch,
+): Promise<{ pieces: ImportedPiece[]; scanned: number; nextPageToken: string | null; estimate: number }> {
+  const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+  url.searchParams.set("q", sentQuery(opts.since));
+  url.searchParams.set("maxResults", String(Math.min(opts.size ?? GMAIL_PAGE_SIZE, 100)));
+  if (opts.pageToken) url.searchParams.set("pageToken", opts.pageToken);
+  const page = (await (await call(fetchImpl, url.toString(), auth(token))).json()) as {
+    messages?: { id: string }[];
+    nextPageToken?: string;
+    resultSizeEstimate?: number;
+  };
+  const ids = (page.messages ?? []).map((m) => m.id);
+  return {
+    pieces: await readSent(token, ids, fetchImpl),
+    scanned: ids.length,
+    nextPageToken: page.nextPageToken ?? null,
+    estimate: page.resultSizeEstimate ?? ids.length,
+  };
+}
+
+/** Sent email in one go, for small reads (and tests). The whole-mailbox read pages through `sentMailPage`. */
 export async function importSentMail(
   token: string,
   opts: { max?: number; since?: string } = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<{ pieces: ImportedPiece[]; scanned: number }> {
-  const max = Math.min(opts.max ?? 200, 400);
-  const ids: string[] = [];
+  const max = Math.min(opts.max ?? 200, GMAIL_IMPORT_MAX);
+  const pieces: ImportedPiece[] = [];
+  let scanned = 0;
   let pageToken: string | undefined;
-  const q = `in:sent newer_than:2y${opts.since ? ` after:${Math.floor(new Date(opts.since).getTime() / 1000)}` : ""}`;
-  while (ids.length < max) {
-    const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    url.searchParams.set("q", q);
-    url.searchParams.set("maxResults", String(Math.min(100, max - ids.length)));
-    if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const page = (await (await call(fetchImpl, url.toString(), auth(token))).json()) as {
-      messages?: { id: string }[];
-      nextPageToken?: string;
-    };
-    ids.push(...(page.messages ?? []).map((m) => m.id));
-    if (!page.nextPageToken) break;
+  while (scanned < max) {
+    const page = await sentMailPage(token, { pageToken, size: Math.min(GMAIL_PAGE_SIZE, max - scanned), since: opts.since }, fetchImpl);
+    pieces.push(...page.pieces);
+    scanned += page.scanned;
+    if (!page.nextPageToken || page.scanned === 0) break;
     pageToken = page.nextPageToken;
   }
+  return { pieces, scanned };
+}
 
+async function readSent(token: string, ids: string[], fetchImpl: FetchLike): Promise<ImportedPiece[]> {
   const pieces: ImportedPiece[] = [];
-  // A few at a time: Gmail's per-user quota is generous but not unlimited.
-  for (let i = 0; i < ids.length; i += 5) {
+  // Ten at a time: well inside Gmail's per-user quota (250 units a second; a read costs 5).
+  for (let i = 0; i < ids.length; i += 10) {
     const batch = await Promise.all(
-      ids.slice(i, i + 5).map(async (id) => {
+      ids.slice(i, i + 10).map(async (id) => {
         const m = (await (await call(
           fetchImpl,
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full&fields=id,internalDate,payload`,
@@ -108,7 +147,7 @@ export async function importSentMail(
       });
     }
   }
-  return { pieces, scanned: ids.length };
+  return pieces;
 }
 
 // ---- Drive (Docs, Slides) via the Picker -----------------------------------------

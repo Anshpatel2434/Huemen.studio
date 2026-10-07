@@ -117,6 +117,15 @@ const MARKS: [keyof PunctuationRates, string, string][] = [
   ["semicolon", ";", "semicolon"],
 ];
 
+/** A quote cut to `max` characters at a word boundary, with an ellipsis when cut. */
+export function clip(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, "")}…`;
+}
+
 /**
  * Every card the current state raises, minus the ones already resolved. The
  * caller decides how many to show: three during onboarding (file 05: "Show a
@@ -132,9 +141,11 @@ export function confirmCards(pack: VoicePack, samples: VoiceSample[]): ConfirmCa
     cards.push({
       id: "H3", kind: "H3",
       title: `${suspect.length} ${suspect.length === 1 ? "piece reads" : "pieces read"} differently from the rest`,
-      body: "Did you write them yourself? If someone else did, they'll stop shaping your voice.",
-      options: [{ key: "mine", label: "Yes, mine" }, { key: "remove", label: "No, remove them" }],
-      items: suspect.map((s) => ({ id: s.id, text: s.body.split("\n")[0].slice(0, 120) })),
+      body: suspect.length === 1
+        ? "Did you write it yourself? If someone else did, it'll stop shaping your voice."
+        : "Did you write them yourself? If someone else did, they'll stop shaping your voice.",
+      options: [{ key: "mine", label: "Yes, mine" }, { key: "remove", label: suspect.length === 1 ? "No, remove it" : "No, remove them" }],
+      items: suspect.map((s) => ({ id: s.id, text: clip(s.body.split("\n")[0], 120) })),
     });
   }
 

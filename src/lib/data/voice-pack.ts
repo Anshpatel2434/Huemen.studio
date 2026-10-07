@@ -545,6 +545,8 @@ async function measurePack(scope: SessionScope & { tenantId: string }, packId: s
     allowedExceptions: pack.index.allowedExceptions,
     dials: pack.index.dials,
     lastOpeners: pack.index.lastOpeners,
+    // A phrase they kept from "What we noticed" is theirs, measured this time or not.
+    signaturePhrases: [...new Set([...(pack.onboarding.patterns?.kept ?? []), ...measurement.index.signaturePhrases])],
   };
 
   const changes = scanChanges(pack, { mechanics: { ...pack.mechanics, ...measurement.mechanics }, corpusStats: measurement.stats });

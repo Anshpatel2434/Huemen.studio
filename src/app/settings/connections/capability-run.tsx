@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Running one capability: import sent email, pick documents with the Google
+ * Running one capability: read the sent folder (GmailImport), pick documents with the Google
  * Picker, choose upcoming events to keep as ideas, or import LinkedIn posts.
  * Every run says what it did in numbers, and every failure says what to do.
  */
@@ -13,8 +13,9 @@ import { AgentDots } from "@/components/ui";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import type { CapabilityKey } from "@/lib/integrations/providers";
 import type { UpcomingEvent } from "@/lib/integrations/google";
+import { GmailImport } from "@/components/gmail-import";
 import {
-  importDocsAction, importGmailAction, importLinkedInPostsAction, importYouTubeAction, listEventsAction, pickerConfigAction, saveEventsAsIdeasAction,
+  importDocsAction, importLinkedInPostsAction, importYouTubeAction, listEventsAction, pickerConfigAction, saveEventsAsIdeasAction,
 } from "./actions";
 
 type Picked = { id: string; name: string; channel: string; published: boolean };
@@ -55,7 +56,7 @@ function loadPicker(): Promise<GooglePicker> {
 
 const CHANNELS = ["newsletter", "linkedin", "bio", "spoken", "email"];
 
-export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: CapabilityKey }) {
+export function CapabilityRun({ tenantId, cap, autoStart = false }: { tenantId: string; cap: CapabilityKey; autoStart?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -64,12 +65,6 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
   const [chosen, setChosen] = useState<string[]>([]);
 
   const say = (ok: boolean, text: string) => { setMsg({ ok, text }); router.refresh(); };
-
-  const runGmail = () => start(async () => {
-    const r = await importGmailAction(tenantId);
-    if (!r.ok) return say(false, r.error);
-    say(true, `Read ${r.value.read} sent ${r.value.read === 1 ? "email" : "emails"}; ${r.value.added} new ${r.value.added === 1 ? "piece" : "pieces"} kept. Short replies and quoted text were left out.`);
-  });
 
   const openPicker = () => start(async () => {
     setMsg(null);
@@ -139,11 +134,7 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
 
   return (
     <div className="flex flex-col gap-3">
-      {cap === "gmail" && (
-        <button type="button" disabled={pending} onClick={runGmail} className={`${btnClass("secondary", "sm")} self-start`}>
-          {pending ? <><AgentDots /> Reading sent email</> : "Import sent email"}
-        </button>
-      )}
+      {cap === "gmail" && <GmailImport tenantId={tenantId} autoStart={autoStart} />}
 
       {cap === "docs" && (
         <>

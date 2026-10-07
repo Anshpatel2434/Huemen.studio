@@ -12,6 +12,7 @@ import { generatePillars } from "@/lib/data/pipeline";
 import { generateContent } from "@/lib/data/content";
 import { unlockStage } from "@/lib/data/projects";
 import { startPiece } from "@/lib/data/create";
+import { scoreProject } from "@/lib/data/check";
 
 const refresh = (tenantId: string) => revalidatePath(`/w/${tenantId}`, "layout");
 
@@ -66,9 +67,10 @@ export async function draftFromPillarsAction(fd: FormData): Promise<void> {
   // Sequential on purpose: each call is logged, and a failure keeps the
   // pieces already made (there is no job queue yet).
   for (const p of pillars) {
-    const projectId = await startPiece(scope, { topic: `${p.name}: ${p.description ?? "what I've learned"}`.slice(0, 120), format, pillarName: p.name });
+    const projectId = await startPiece(scope, { topic: `${p.name}: ${p.description ?? "what I've learned"}`, format, pillarName: p.name });
     const ps = { ...scope, projectId };
     await generateContent(ps, { format, topic: p.name, pillarId: p.id });
+    await scoreProject(ps).catch(() => undefined);
     await unlockStage(ps, "content");
   }
   refresh(tenantId);

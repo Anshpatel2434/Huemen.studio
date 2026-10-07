@@ -12,7 +12,7 @@ import { listPillars } from "@/lib/data/planning";
 import { listContent } from "@/lib/data/content";
 import { checkText } from "@/lib/data/check";
 import { getProject } from "@/lib/data/projects";
-import { benchmarkPicks, confidence, confirmCards, estimateDials } from "@/lib/voice/derive";
+import { benchmarkPicks, clip, confidence, confirmCards, estimateDials } from "@/lib/voice/derive";
 import { corpusLevel, type DialKey } from "@/lib/voice/types";
 import { QUESTIONS, questionById } from "@/lib/voice/questions";
 import { coreState, prefill } from "@/lib/voice/lifecycle";
@@ -28,6 +28,9 @@ import { btnClass } from "@/components/btn";
 import { SubmitButton, Badge } from "@/components/ui";
 import { BrandCoreCard } from "@/components/composites";
 import { AboutStep, BackStep, ConfirmStep, PayoffStep, QuestionField, SamplesStep } from "./steps";
+import { GmailCard, type GmailCardState } from "./gmail-card";
+import { importedEmailCount, listConnections, unavailableReason } from "@/lib/data/connections";
+import { ownsVoice } from "@/lib/data/training";
 import { hueAction } from "./actions";
 
 export const metadata = { title: "Set up your voice" };
@@ -121,6 +124,17 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
   };
   const CORE = ["A2", "A3", "C1", "C2", "D1", "D2", "D7", "E1"];
 
+  // Sent email, read in one go: only for the person whose voice this is, and
+  // only once Google is set up for this app.
+  let gmail: GmailCardState | null = null;
+  if (step === 1 && !unavailableReason("gmail") && ownsVoice({ userId: session.userId, role: session.role }, pack)) {
+    const google = (await listConnections(scope)).find((c) => c.provider === "google");
+    const emailPieces = await importedEmailCount(scope, pack.id);
+    gmail = google?.status === "connected" && google.granted.includes("gmail")
+      ? { kind: "ready", autoStart: sp.connected === "google" && sp.cap === "gmail" }
+      : emailPieces > 0 ? { kind: "done", pieces: emailPieces } : { kind: "connect" };
+  }
+
   // The live preview needs something to work from; "About you" has nothing yet.
   const withPreview = step >= 1 && step < 4;
 
@@ -156,7 +170,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             words={pack.corpusStats.words}
             level={corpusLevel(pack.corpusStats)}
             canRecord={canRecord}
-            links={<UrlImport tenantId={id} />}
+            links={<>{gmail && <GmailCard tenantId={id} state={gmail} error={typeof sp.error === "string" ? sp.error : undefined} />}<UrlImport tenantId={id} /></>}
             stalled={ingestStalled(pack.onboarding.scan, Date.now())}
           />
         )}
@@ -343,7 +357,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
           : p.onboarding.firstPiece?.state === "writing" || p.onboarding.firstPiece?.state === "failed" ? "failed"
           : null
         }
-        ownCheck={own && ownCheck ? { excerpt: own.body.split("\n")[0].slice(0, 160), score: ownCheck.score, band: ownCheck.band, issues: ownCheck.issues.slice(0, 3).map((i) => i.message) } : null}
+        ownCheck={own && ownCheck ? { excerpt: clip(own.body.split("\n")[0], 160), score: ownCheck.score, band: ownCheck.band, issues: ownCheck.issues.slice(0, 3).map((i) => i.message) } : null}
       />
     );
   }

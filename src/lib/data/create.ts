@@ -18,6 +18,7 @@ import { runTask } from "@/lib/ai";
 import { coWriteOutline, topicProposals } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { formatByKey } from "@/lib/content/formats";
+import { clip } from "@/lib/voice/derive";
 import { createProject, setIdeate, unlockStage, type ProjectScope, type WorkspaceScope } from "./projects";
 import { listPillars } from "./planning";
 import { createContentItem } from "./content";
@@ -77,7 +78,7 @@ export async function startPiece(
   input: { topic: string; format?: string | null; pillarName?: string | null; ideaId?: string | null },
 ): Promise<string> {
   const topic = input.topic.trim() || "Untitled piece";
-  const projectId = await createProject(scope, topic.slice(0, 120));
+  const projectId = await createProject(scope, clip(topic, 120));
   const p: ProjectScope = { ...scope, projectId };
   const pillars = input.pillarName ? await listPillars(scope) : [];
   // A suggestion names its pillar the way the prompt listed it, which can carry

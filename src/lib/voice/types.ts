@@ -369,6 +369,21 @@ export interface Onboarding {
   pairs?: { basis: string; list: { dial: DialKey; left: string; right: string }[] };
   /** The live preview paragraph, rewritten in their voice; cached per pack version. */
   preview?: { version: number; text: string };
+  /**
+   * Patterns found across sources (lib/voice/patterns) and what was decided.
+   * Only what was said publicly is stored in the clear: the onboarding state
+   * is visible to a coach, so topics from private writing are never cached
+   * here, and the ones already decided are kept as hashes.
+   */
+  patterns?: {
+    found?: { basis: string; everywhere: { phrase: string; pieces: number; channels: string[] }[] };
+    /** Phrases kept as signatures. They survive a re-scan. */
+    kept?: string[];
+    /** Phrases dismissed. */
+    dismissed?: string[];
+    /** Private topics already acted on (made an idea, or not me), as hashes. */
+    privateDecided?: string[];
+  };
 }
 
 export interface TopicSuggestion {

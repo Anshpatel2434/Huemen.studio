@@ -264,7 +264,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-[1.9rem]">Add your <span className="serif-accent">writing.</span></h1>
-        <p className="text-ink-muted mt-2 max-w-[62ch]">Real writing is most of what makes a draft sound like you. Pick where you write, then add some of it. Uploads and pastes only for now: nothing is read from an account.</p>
+        <p className="text-ink-muted mt-2 max-w-[62ch]">Real writing is most of what makes a draft sound like you. Pick where you write, then add some of it. Upload or paste it here. Nothing is read from an account unless you connect one.</p>
       </div>
 
       {resuming && (

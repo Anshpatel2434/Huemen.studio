@@ -254,7 +254,7 @@ function repeatedPhrases(
  * drop the commonest English words, then rank by how many separate pieces use
  * the word. Appearing in many pieces is what makes a word part of a voice.
  */
-const STOPWORDS = new Set(
+export const STOPWORDS = new Set(
   ("a about after all also an and any are as at be because been before but by can could did do does " +
    "down for from get go had has have he her here him his how i if in into is it its just like make " +
    "me more most my no not now of on one only or other our out over own really same see she so some " +

@@ -14,6 +14,7 @@ import { captureIdea, createPillar, listPillars } from "@/lib/data/planning";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { stageIndex } from "@/lib/projects/stages";
 import { FORMATS } from "@/lib/content/formats";
+import { scoreProject } from "@/lib/data/check";
 
 export interface AgentReply {
   text: string;
@@ -49,6 +50,7 @@ export async function askAgent(tenantId: string, projectId: string, message: str
     const topic = topicOf(msg);
     const pillar = pillars.find((p) => msg.toLowerCase().includes(p.name.toLowerCase()));
     const id = await generateContent(scope, { format, topic, pillarId: pillar?.id ?? null });
+    await scoreProject(scope).catch(() => undefined);
     await unlockStage(scope, "content");
     refresh();
     return {

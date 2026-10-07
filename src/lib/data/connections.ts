@@ -212,6 +212,38 @@ export async function addImported(
 }
 
 /**
+ * True when this connection exists only for `cap`: nothing else it was granted
+ * needs a scope. Google withdraws a grant whole, so a one-time read (Gmail)
+ * may disconnect itself only when that won't also cut off Docs, Calendar or
+ * YouTube the person switched on.
+ */
+export function onlyFor(c: ConnectionView, cap: CapabilityKey): boolean {
+  return c.granted.every((g) => g === cap || CAPABILITIES[g].scopes.length === 0);
+}
+
+/**
+ * Email read from Gmail stays after the connection is withdrawn (its link to
+ * the connection is cleared), so it is found by its Gmail id instead.
+ */
+export async function importedEmailCount(scope: WorkspaceScope, packId: string): Promise<number> {
+  return (
+    await withTenantSession(scope, (c) =>
+      c.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM voice_samples WHERE pack_id = $1 AND external_id LIKE 'gmail:%'`,
+        [packId],
+      ),
+    )
+  ).rows[0]?.n ?? 0;
+}
+
+/** "Remove the email you read": every piece that came from Gmail. The caller re-measures. */
+export async function removeImportedEmail(scope: WorkspaceScope, packId: string): Promise<number> {
+  return withTenantSession(scope, async (c) =>
+    (await c.query(`DELETE FROM voice_samples WHERE pack_id = $1 AND external_id LIKE 'gmail:%'`, [packId])).rowCount ?? 0,
+  );
+}
+
+/**
  * Disconnect: revoke at the provider (best effort), then forget the tokens.
  * With `removeWriting`, everything that connection brought in goes too
  * ("removing a source deletes and rebuilds"); the caller re-measures.

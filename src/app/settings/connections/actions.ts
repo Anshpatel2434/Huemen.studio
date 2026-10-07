@@ -11,10 +11,14 @@ import { actionActor } from "@/lib/auth/workspace";
 import { getEnv } from "@/lib/env";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { ownsVoice } from "@/lib/data/training";
-import { finishIngest } from "@/lib/data/onboarding";
+import { finishIngest, markIngesting } from "@/lib/data/onboarding";
 import { captureIdea } from "@/lib/data/planning";
-import { accessToken, addImported, disconnect, recordSync, unavailableReason } from "@/lib/data/connections";
-import { importPickedFiles, importSentMail, importYouTubeCaptions, upcomingEvents, type UpcomingEvent } from "@/lib/integrations/google";
+import {
+  accessToken, addImported, disconnect, importedEmailCount, listConnections, onlyFor, recordSync, removeImportedEmail, unavailableReason,
+} from "@/lib/data/connections";
+import {
+  GMAIL_IMPORT_MAX, importPickedFiles, importYouTubeCaptions, sentMailPage, upcomingEvents, type UpcomingEvent,
+} from "@/lib/integrations/google";
 import { importPosts } from "@/lib/integrations/linkedin";
 import { ConnectionError } from "@/lib/integrations/oauth";
 import { hasCapability, type CapabilityKey, type ProviderKey } from "@/lib/integrations/providers";
@@ -61,17 +65,84 @@ async function guarded<T>(tenantId: string, provider: ProviderKey, cap: Capabili
   }
 }
 
-/** Sent email: up to 200 messages from the last two years, private. */
-export async function importGmailAction(tenantId: string): Promise<Result<{ added: number; read: number }>> {
-  return guarded(tenantId, "google", "gmail", async () => {
+export interface GmailPage {
+  nextPageToken: string | null;
+  /** Running totals across every page so far. */
+  scanned: number;
+  added: number;
+  /** Gmail's own estimate of how many sent emails match, capped at what we'll read. */
+  estimate: number;
+  done: boolean;
+}
+
+/**
+ * Sent email, one page per call: the browser keeps calling until `done`, so
+ * reading the whole mailbox (up to GMAIL_IMPORT_MAX) shows real progress and
+ * no single request runs long. Private: measured, never quoted.
+ */
+export async function gmailPageAction(
+  tenantId: string,
+  cursor: { pageToken: string | null; scanned: number; added: number },
+): Promise<Result<GmailPage>> {
+  try {
     const { scope, pack } = await ctx(tenantId, "gmail");
     const { token, connection } = await accessToken(scope, "google");
     if (!hasCapability("gmail", connection.scopes)) throw new Refusal("Sent email isn't switched on yet.");
-    const { pieces, scanned } = await importSentMail(token, { max: 200 });
-    const added = await addImported(scope, pack, connection.id, pieces);
-    if (added) await finishIngest(scope, pack);
-    return { value: { added, read: scanned }, count: added };
+    // The heartbeat: the core shows "Reading your writing", and a read that
+    // stops arriving is noticed as interrupted (lifecycle `ingestStalled`).
+    await markIngesting(scope, pack);
+    const page = await sentMailPage(token, { pageToken: cursor.pageToken ?? undefined });
+    const added = await addImported(scope, pack, connection.id, page.pieces);
+    const scanned = cursor.scanned + page.scanned;
+    return {
+      ok: true,
+      value: {
+        nextPageToken: page.nextPageToken,
+        scanned,
+        added: cursor.added + added,
+        estimate: Math.min(Math.max(page.estimate, scanned), GMAIL_IMPORT_MAX),
+        done: !page.nextPageToken || page.scanned === 0 || scanned >= GMAIL_IMPORT_MAX,
+      },
+    };
+  } catch (e) {
+    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) console.error("[connections] gmail page", e);
+    return { ok: false, error: e instanceof Refusal ? e.message : say(e) };
+  }
+}
+
+/**
+ * The read is over: measure everything that arrived, then withdraw the
+ * connection. Gmail is read once; nothing is left that could read it again.
+ * The one exception: when the same Google connection also serves Docs,
+ * Calendar or YouTube, withdrawing it would cut those off too, so it stays
+ * and the page says so.
+ */
+export async function gmailFinishAction(tenantId: string, totals: { scanned: number }): Promise<Result<{ pieces: number; disconnected: boolean }>> {
+  return guarded(tenantId, "google", "gmail", async () => {
+    const { scope, pack } = await ctx(tenantId, "gmail");
+    await finishIngest(scope, pack);
+    const pieces = await importedEmailCount(scope, pack.id);
+    const google = (await listConnections(scope)).find((c) => c.provider === "google");
+    let disconnected = false;
+    if (google && onlyFor(google, "gmail")) {
+      await recordSync(scope, "google", "gmail", { count: pieces });
+      await disconnect(scope, "google", { removeWriting: false });
+      disconnected = true;
+    }
+    console.info(`[connections] gmail read: ${totals.scanned} scanned, ${pieces} kept, disconnected=${disconnected}`);
+    return { value: { pieces, disconnected }, count: pieces };
   });
+}
+
+/** Remove every email that was read from Gmail, then re-measure without it. */
+export async function removeImportedEmailAction(fd: FormData): Promise<void> {
+  const tenantId = String(fd.get("tenantId"));
+  const { scope, actor } = await actionActor(tenantId);
+  const pack = await loadPackForWorkspace(scope);
+  if (!pack || !ownsVoice(actor, pack)) return;
+  if (await removeImportedEmail(scope, pack.id)) await finishIngest(scope, pack);
+  revalidatePath(`/w/${tenantId}`, "layout");
+  revalidatePath("/settings/connections");
 }
 
 /** What the Google Picker needs in the browser: a short-lived token and the app's public ids. */
