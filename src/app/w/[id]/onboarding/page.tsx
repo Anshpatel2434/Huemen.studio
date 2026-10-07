@@ -124,14 +124,18 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
   };
   const CORE = ["A2", "A3", "C1", "C2", "D1", "D2", "D7", "E1"];
 
-  // Sent email, read in one go: only for the person whose voice this is, and
-  // only once Google is set up for this app.
+  // Sent email, read once: only for the person whose voice this is, only once
+  // Google is set up for this app, and only when they ticked "Sent email" as a
+  // source (spec 06 §1: "scan only what the user ticks").
   let gmail: GmailCardState | null = null;
-  if (step === 1 && !unavailableReason("gmail") && ownsVoice({ userId: session.userId, role: session.role }, pack)) {
+  if (
+    step === 1 && !unavailableReason("gmail") && (pack.onboarding.sources ?? []).includes("email")
+    && ownsVoice({ userId: session.userId, role: session.role }, pack)
+  ) {
     const google = (await listConnections(scope)).find((c) => c.provider === "google");
     const emailPieces = await importedEmailCount(scope, pack.id);
     gmail = google?.status === "connected" && google.granted.includes("gmail")
-      ? { kind: "ready", autoStart: sp.connected === "google" && sp.cap === "gmail" }
+      ? { kind: "ready", prompted: sp.connected === "google" && sp.cap === "gmail" }
       : emailPieces > 0 ? { kind: "done", pieces: emailPieces } : { kind: "connect" };
   }
 
@@ -319,7 +323,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
     const draft = first ? (await listContent({ ...scope, projectId: first.id }))[0] ?? null : null;
     const own = live.filter((s) => s.visibility === "public").sort((a, b) => b.wordCount - a.wordCount)[0];
     const ownCheck = own ? await checkText(scope, own.body, own.channel) : null;
-    const draftCheck = draft ? await checkText(scope, [draft.hook, draft.body, draft.cta].filter(Boolean).join("\n\n"), first?.channel ?? "linkedin") : null;
+    const draftCheck = draft ? await checkText(scope, [draft.hook, draft.body, draft.cta].filter(Boolean).join("\n\n"), first?.channel ?? "linkedin", { copyCheck: true }) : null;
     const words = (p.identity.personalityWords?.value ?? []).map((w) => w.word);
     return (
       <PayoffStep

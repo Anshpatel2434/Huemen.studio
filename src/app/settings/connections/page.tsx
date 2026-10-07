@@ -131,7 +131,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
                         ) : cap.key === "profile" ? (
                           <span className="text-[0.82rem] text-ok flex items-center gap-1.5"><CheckCircle2 size={13} aria-hidden="true" /> Confirmed</span>
                         ) : (
-                          <CapabilityRun tenantId={id} cap={cap.key} autoStart={cap.key === "gmail" && sp.connected === "google" && sp.cap === "gmail"} />
+                          <CapabilityRun tenantId={id} cap={cap.key} prompted={cap.key === "gmail" && sp.connected === "google" && sp.cap === "gmail"} />
                         )}
                       </div>
                       {cap.key === "gmail" && owner && emailPieces > 0 && (

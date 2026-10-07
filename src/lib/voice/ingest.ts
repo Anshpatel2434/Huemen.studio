@@ -154,18 +154,48 @@ export function ingestWhatsApp(text: string, myName: string): IngestResult {
  * One sent email, pasted. Quoted replies, forwarded text and the signature are
  * stripped (file 06: "strip other people's words before storing anything").
  */
+/**
+ * Split a paste into pieces. A single blank line is a paragraph break inside a
+ * post, so it never splits; pieces are separated by a line of `---` (or `***`),
+ * or by two or more blank lines. Splitting on every blank line used to shred
+ * one multi-paragraph post into several "pieces", inflating counts and breaking
+ * the paragraph, opener and closer numbers (spec 06 §3).
+ */
+export function splitPieces(paste: string): string[] {
+  const t = paste.replace(/\r\n/g, "\n").replace(/^﻿/, "");
+  const parts = /^\s*(---|\*\*\*)\s*$/m.test(t) ? t.split(/^\s*(?:---|\*\*\*)\s*$/m) : t.split(/\n[ \t]*\n(?:[ \t]*\n)+/);
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+
+/** An auto-reply says nothing about how they write: the whole message is dropped. */
+const AUTO_REPLY = /^(automatic reply|auto(matic)?[- ]?reply|out of (the )?office|i am (currently )?(out of|away from) (the )?office|i('m| am) on leave|thank you for your (e-?mail|message)[,.]? i (will|shall) (respond|get back))/i;
+
+/** Where a legal footer or mailing-list boilerplate starts (spec 06 §1: strip footers and templates). */
+const FOOTER = /^(this (e-?mail|message)( and any (files|attachments)[\w ]*)? (is|are|may be|contains?) (confidential|privileged|intended)|confidentiality (notice|note)|disclaimer\s*:|the information (contained )?in this (e-?mail|message)|if you (are not|have received this) (the intended|in error)|please consider the environment|to unsubscribe|unsubscribe\b|view (this e-?mail )?in (your )?browser|you('re| are) receiving this (e-?mail|because))/i;
+
+/** A signature's contact lines: a phone number, an address, a URL, a pipe-separated title row. */
+const CONTACT_LINE = /(\+?\d[\d\s().-]{8,}\d)|([\w.+-]+@[\w-]+\.[\w.]+)|(https?:\/\/|www\.)|(\s\|\s)/i;
+
 export function stripEmail(raw: string): string {
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  const first = lines.find((l) => l.trim())?.trim() ?? "";
+  if (AUTO_REPLY.test(first)) return "";
   const out: string[] = [];
   for (const line of lines) {
-    if (/^On .+wrote:\s*$/i.test(line.trim())) break; // the quoted thread starts here
-    if (/^-{2,}\s*(original|forwarded) message/i.test(line.trim())) break;
-    if (/^From: .+/i.test(line.trim()) && out.length > 0) break;
-    if (line.trim() === "--" || line.trim() === "-- ") break; // signature delimiter
-    if (/^>/.test(line.trim())) continue;
-    if (/^sent from my (iphone|android|phone)/i.test(line.trim())) continue;
+    const t = line.trim();
+    if (/^On .+wrote:\s*$/i.test(t)) break; // the quoted thread starts here
+    // Gmail wraps the attribution: "On Mon, 3 Jun 2026 at 10:02, Sam <…>" / "wrote:"
+    if (/^wrote:\s*$/i.test(t) && /^On\b/i.test(out.at(-1)?.trim() ?? "")) { out.pop(); break; }
+    if (/^-{2,}\s*(original|forwarded) message/i.test(t)) break;
+    if (/^(From|Sent|To): .+/i.test(t) && out.length > 0) break;
+    if (t === "--" || t === "-- " || /^_{5,}$/.test(t)) break; // signature delimiter
+    if (FOOTER.test(t)) break;
+    if (/^>/.test(t)) continue;
+    if (/^(sent from my|get outlook for) /i.test(t)) continue;
     out.push(line);
   }
+  // A signature block without a delimiter: trailing contact lines go.
+  while (out.length && (CONTACT_LINE.test(out.at(-1)!) || !out.at(-1)!.trim())) out.pop();
   return out.join("\n").trim();
 }
 

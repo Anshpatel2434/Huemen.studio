@@ -1,7 +1,7 @@
 /**
- * "Add samples": read their sent email in one go. Connecting with Google is the
- * only click; the read starts by itself on the way back, pages through the
- * whole sent folder, and then withdraws access.
+ * "Add samples": read their sent email once. They sign in with Google, pick how
+ * far back (default 12 months), and we keep an even sample of about 200, then
+ * withdraw access. Shown only when they ticked "Sent email" as a source.
  */
 import { AlertTriangle, CheckCircle2, Lock } from "lucide-react";
 import { btnClass } from "@/components/btn";
@@ -9,7 +9,7 @@ import { GmailImport } from "@/components/gmail-import";
 
 export type GmailCardState =
   | { kind: "connect" }
-  | { kind: "ready"; autoStart: boolean }
+  | { kind: "ready"; prompted: boolean }
   | { kind: "done"; pieces: number };
 
 export function GmailCard({ tenantId, state, error }: { tenantId: string; state: GmailCardState; error?: string }) {
@@ -18,7 +18,7 @@ export function GmailCard({ tenantId, state, error }: { tenantId: string; state:
       <div>
         <h2 className="text-[1.05rem]">From your sent email</h2>
         <p className="text-[0.88rem] text-ink-muted mt-1">
-          The fastest way to teach us how you sound. Sign in with Google and we read the email you sent in the last two years, once.
+          The fastest way to teach us how you sound. Sign in with Google, choose how far back, and we read a sample of the email you sent, once.
         </p>
       </div>
 
@@ -33,7 +33,7 @@ export function GmailCard({ tenantId, state, error }: { tenantId: string; state:
           Sign in with Google
         </a>
       )}
-      {state.kind === "ready" && <GmailImport tenantId={tenantId} autoStart={state.autoStart} />}
+      {state.kind === "ready" && <GmailImport tenantId={tenantId} prompted={state.prompted} />}
       {state.kind === "done" && (
         <p className="text-[0.85rem] text-ok flex items-center gap-1.5">
           <CheckCircle2 size={14} aria-hidden="true" /> {state.pieces.toLocaleString("en-IN")} of your emails are part of your voice. Remove them any time in Settings › Connections.

@@ -10,6 +10,7 @@ import { decideEditProposal, decideProposal, ownsVoice, restoreVersion, writePac
 import { tagged } from "@/lib/voice/types";
 import { finishIngest } from "@/lib/data/onboarding";
 import { decidePattern } from "@/lib/data/patterns";
+import { splitPieces } from "@/lib/voice/ingest";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -32,15 +33,15 @@ function done(path: string, outcome: WriteOutcome | null): never {
 }
 
 /**
- * Add writing to the corpus. Pieces are separated by a blank line, because a
- * real post has line breaks inside it and one-per-line would shred it.
+ * Add writing to the corpus. Pieces are separated by a --- line or two blank
+ * lines; a single blank line is a paragraph inside a post (ingest `splitPieces`).
  */
 export async function addSamplesAction(fd: FormData): Promise<void> {
   const { scope, pack, path } = await packFor(fd);
   if (!pack) return;
   const channel = str(fd, "channel") || "unknown";
   const visibility = str(fd, "visibility") === "private" ? "private" : "public";
-  const bodies = str(fd, "text").split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const bodies = splitPieces(String(fd.get("text") ?? ""));
   if (bodies.length) {
     await addSamples(scope, pack.id, bodies.map((body) => ({ body, channel, visibility, source: "paste" as const })));
     await finishIngest(scope, pack);
@@ -160,7 +161,6 @@ export async function decidePatternAction(fd: FormData): Promise<void> {
   const { scope, actor, pack, path } = await packFor(fd);
   if (!pack || !ownsVoice(actor, pack)) return;
   await decidePattern(scope, actor, pack, {
-    kind: str(fd, "kind") === "private" ? "private" : "everywhere",
     value: str(fd, "value"),
     keep: str(fd, "keep") === "1",
   });

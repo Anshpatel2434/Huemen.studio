@@ -1,17 +1,25 @@
 "use client";
 
 /**
- * Read the whole sent folder: page after page from the browser, with a real
- * count, then measure and withdraw the connection. Used in Settings and in
- * onboarding's "Add samples", where it starts by itself on the way back from
- * Google, so connecting is the only click.
+ * Read sent email once: the person picks how far back (default 12 months),
+ * we look through that range page by page from the browser with a real count,
+ * keep an even sample of about 200 (spec 06 §1: "sample, don't hoard"), then
+ * measure and withdraw the connection. Used in Settings and in onboarding's
+ * "Add samples".
  */
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Check, CheckCircle2 } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { AgentDots } from "@/components/ui";
-import { gmailFinishAction, gmailPageAction } from "@/app/settings/connections/actions";
+import { gmailFinishAction, gmailPageAction, type GmailCursor } from "@/app/settings/connections/actions";
+
+type Range = GmailCursor["months"];
+const RANGES: { months: Range; label: string }[] = [
+  { months: 6, label: "Last 6 months" },
+  { months: 12, label: "Last 12 months" },
+  { months: 24, label: "Last 2 years" },
+];
 
 type Phase =
   | { kind: "idle" }
@@ -20,15 +28,16 @@ type Phase =
   | { kind: "done"; scanned: number; pieces: number; disconnected: boolean }
   | { kind: "failed"; error: string; scanned: number };
 
-export function GmailImport({ tenantId, autoStart = false }: { tenantId: string; autoStart?: boolean }) {
+export function GmailImport({ tenantId, prompted = false }: { tenantId: string; prompted?: boolean }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [months, setMonths] = useState<Range>(12);
   const started = useRef(false);
 
   const run = async () => {
     if (started.current) return;
     started.current = true;
-    let cursor = { pageToken: null as string | null, scanned: 0, added: 0 };
+    let cursor: GmailCursor = { pageToken: null, scanned: 0, added: 0, months };
     setPhase({ kind: "reading", scanned: 0, added: 0, estimate: 0 });
     for (;;) {
       const r = await gmailPageAction(tenantId, cursor);
@@ -41,9 +50,10 @@ export function GmailImport({ tenantId, autoStart = false }: { tenantId: string;
         router.refresh();
         return;
       }
-      cursor = { pageToken: r.value.nextPageToken, scanned: r.value.scanned, added: r.value.added };
-      setPhase({ kind: "reading", scanned: r.value.scanned, added: r.value.added, estimate: r.value.estimate });
-      if (r.value.done) break;
+      const v = r.value;
+      cursor = { pageToken: v.nextPageToken, scanned: v.scanned, added: v.added, months: v.months, every: v.every };
+      setPhase({ kind: "reading", scanned: v.scanned, added: v.added, estimate: v.estimate });
+      if (v.done) break;
     }
     setPhase({ kind: "measuring", scanned: cursor.scanned, added: cursor.added });
     const f = await gmailFinishAction(tenantId, { scanned: cursor.scanned });
@@ -56,17 +66,31 @@ export function GmailImport({ tenantId, autoStart = false }: { tenantId: string;
     router.refresh();
   };
 
-  useEffect(() => {
-    if (autoStart) void run();
-    // Once, on arrival from Google.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart]);
-
   if (phase.kind === "idle") {
     return (
-      <button type="button" onClick={() => void run()} className={`${btnClass("secondary", "sm")} self-start`}>
-        Read my sent email
-      </button>
+      <div className="flex flex-col gap-3">
+        {prompted && <p className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Google is connected. One last choice:</p>}
+        <div role="radiogroup" aria-label="How far back to read" className="flex flex-wrap gap-2">
+          {RANGES.map((r) => (
+            <button
+              key={r.months}
+              type="button"
+              role="radio"
+              aria-checked={months === r.months}
+              onClick={() => setMonths(r.months)}
+              className={`min-h-11 px-4 rounded-full border text-[0.85rem] transition-colors ${
+                months === r.months ? "bg-ink text-on-ink border-ink" : "border-line text-ink-muted hover:border-ink"
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[0.78rem] text-ink-faint">We look through that range and keep an even sample of about 200 emails. That&apos;s plenty to learn how you write.</p>
+        <button type="button" onClick={() => void run()} className={`${btnClass("primary", "sm")} self-start`}>
+          Read my sent email
+        </button>
+      </div>
     );
   }
 
@@ -81,7 +105,7 @@ export function GmailImport({ tenantId, autoStart = false }: { tenantId: string;
         <div
           className="h-1.5 rounded-full bg-paper overflow-hidden"
           role="progressbar"
-          aria-label="Sent email read"
+          aria-label="Sent email looked through"
           aria-valuemin={0}
           aria-valuemax={total}
           aria-valuenow={phase.kind === "reading" ? done : undefined}
@@ -92,8 +116,8 @@ export function GmailImport({ tenantId, autoStart = false }: { tenantId: string;
           />
         </div>
         <p className="text-[0.78rem] text-ink-muted tabular-nums">
-          {phase.scanned.toLocaleString("en-IN")}
-          {phase.kind === "reading" && phase.estimate > phase.scanned ? ` of about ${phase.estimate.toLocaleString("en-IN")}` : ""} emails read ·{" "}
+          Looked through {phase.scanned.toLocaleString("en-IN")}
+          {phase.kind === "reading" && phase.estimate > phase.scanned ? ` of about ${phase.estimate.toLocaleString("en-IN")}` : ""} ·{" "}
           {phase.added.toLocaleString("en-IN")} kept. Keep this page open until it finishes.
         </p>
       </div>
@@ -105,7 +129,7 @@ export function GmailImport({ tenantId, autoStart = false }: { tenantId: string;
       <div className="flex flex-col gap-2">
         <p role="alert" className="text-[0.82rem] text-danger">
           {phase.error}
-          {phase.scanned ? ` ${phase.scanned.toLocaleString("en-IN")} emails were read before it stopped, and those are kept.` : ""}
+          {phase.scanned ? ` What was read before it stopped is kept.` : ""}
         </p>
         <button type="button" onClick={() => void run()} className={`${btnClass("secondary", "sm")} self-start`}>Try again</button>
       </div>
@@ -115,11 +139,11 @@ export function GmailImport({ tenantId, autoStart = false }: { tenantId: string;
   return (
     <div role="status" className="flex flex-col gap-1.5 bg-ok-soft rounded-[10px] px-4 py-3">
       <p className="text-[0.88rem] font-medium text-ok flex items-center gap-2">
-        <CheckCircle2 size={15} aria-hidden="true" /> Read {phase.scanned.toLocaleString("en-IN")} sent {phase.scanned === 1 ? "email" : "emails"}
+        <CheckCircle2 size={15} aria-hidden="true" /> Looked through {phase.scanned.toLocaleString("en-IN")} sent {phase.scanned === 1 ? "email" : "emails"}
       </p>
       <p className="text-[0.8rem] text-ink-muted flex items-start gap-1.5">
         <Check size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-        {phase.pieces.toLocaleString("en-IN")} kept to learn from. Short replies, quoted text and signatures were left out, and none of it is ever quoted in a draft.
+        {phase.pieces.toLocaleString("en-IN")} kept to learn your rhythm from. Short replies, quoted text, signatures and footers were left out, and none of it is ever quoted in a draft.
       </p>
       <p className="text-[0.8rem] text-ink-muted flex items-start gap-1.5">
         <Check size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -127,9 +151,6 @@ export function GmailImport({ tenantId, autoStart = false }: { tenantId: string;
           ? "Done with Gmail: we've withdrawn our access, so nothing can read your email again."
           : "Your Google connection stays on for the other things you switched on. Disconnect it any time in Settings."}
       </p>
-      <a href={`/w/${tenantId}/brand/voice#noticed`} className="text-[0.8rem] text-accent underline underline-offset-2 self-start">
-        See what we noticed across your writing
-      </a>
     </div>
   );
 }

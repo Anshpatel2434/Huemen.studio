@@ -13,6 +13,7 @@
 import { questionById } from "./questions";
 import {
   tagged,
+  withUserEdits,
   type DialKey,
   type Guardrail,
   type PersonalityWord,
@@ -135,21 +136,30 @@ export function applyAnswer(pack: VoicePack, questionId: string, answer: Answer)
 
     // Mechanics: observed beats claimed. Typed words join a measured lexicon;
     // they never replace it.
+    // Each is also a hand edit (types `UserEdits`), so a re-scan keeps it.
     case "mechanics.lexicon": {
-      const cur = pack.mechanics.lexicon;
-      const merged = [...new Set([...(cur?.value ?? []), ...list(answer).map((w) => w.toLowerCase())])];
-      return { patch: { mechanics: { ...pack.mechanics, lexicon: cur ? { ...cur, value: merged } : tagged(merged, "ask") } } };
+      const words = list(answer).map((w) => w.toLowerCase());
+      const m = withUserEdits(pack.mechanics, { addedLexicon: words });
+      const cur = m.lexicon;
+      const merged = [...new Set([...(cur?.value ?? []), ...words])];
+      return { patch: { mechanics: { ...m, lexicon: cur ? { ...cur, value: merged } : tagged(merged, "ask") } } };
     }
     case "mechanics.signature": {
-      const phrase = value.replace(/^.+?→\s*/, "").trim();
+      const phrase = value.replace(/^.+?→\s*/, "").trim().toLowerCase();
       if (!phrase) return { patch: {} };
-      const sigs = [...new Set([...pack.index.signaturePhrases, phrase.toLowerCase()])];
-      return { patch: { index: { ...pack.index, signaturePhrases: sigs } } };
+      const sigs = [...new Set([...pack.index.signaturePhrases, phrase])];
+      return {
+        patch: {
+          index: { ...pack.index, signaturePhrases: sigs },
+          mechanics: withUserEdits(pack.mechanics, { keptSignatures: [phrase] }),
+        },
+      };
     }
     case "mechanics.opener": {
-      const cur = pack.mechanics.openers;
-      const openers = [{ pattern: "Their own pick", example: value }, ...(cur?.value ?? [])];
-      return { patch: { mechanics: { ...pack.mechanics, openers: cur ? { ...cur, value: openers } : tagged(openers, "ask") } } };
+      const m = withUserEdits(pack.mechanics, { addedOpeners: [value] });
+      const cur = m.openers;
+      const openers = [{ pattern: "Their own pick", example: value }, ...(cur?.value ?? []).filter((o) => o.example !== value)];
+      return { patch: { mechanics: { ...m, openers: cur ? { ...cur, value: openers } : tagged(openers, "ask") } } };
     }
   }
   throw new Error(`Question ${q.id} fills "${q.fills}", which has no writer.`);

@@ -13,6 +13,7 @@ import { loadBrandContext } from "@/lib/context/context-loader";
 import { generateText } from "@/lib/ai";
 import { resolveTemplate } from "@/lib/ai/templates";
 import { findViolations, formatByKey, splitDraft } from "@/lib/content/formats";
+import { recordOpener } from "./voice-pack";
 
 export interface ContentVariant {
   id: string;
@@ -101,7 +102,7 @@ export async function generateContent(
 ): Promise<string> {
   const fmt = formatByKey(input.format);
   // The platform's rules and the person's own block for it (build step 2).
-  const context = await loadBrandContext(scope, "en", fmt.platform);
+  const context = await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write");
   const template = await resolveTemplate(scope, fmt.templateKey);
   const topic = (input.topic ?? "").trim();
 
@@ -146,7 +147,7 @@ export async function regenerateWithSteer(scope: ProjectScope, itemId: string, s
   ).rows[0];
   if (!item) throw new Error("content item not found");
   const fmt = formatByKey(item.format);
-  const context = await loadBrandContext(scope, "en", fmt.platform);
+  const context = await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write");
   const template = await resolveTemplate(scope, fmt.templateKey);
   const result = await generateText(scope, {
     templateKey: template.key,
@@ -198,6 +199,9 @@ export async function updateContent(
       [patch.hook, patch.body, patch.cta, patch.pillarId, patch.status, itemId, scope.projectId],
     ),
   );
+  // An approved piece's opening joins the recent openers, so the check can say
+  // "you opened a recent piece the same way" (voice.json last_openers).
+  if (patch.status === "approved" && patch.hook.trim()) await recordOpener(scope, patch.hook);
 }
 
 /**

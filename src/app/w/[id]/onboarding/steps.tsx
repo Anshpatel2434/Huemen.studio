@@ -18,7 +18,7 @@ import { btnClass } from "@/components/btn";
 import { AgentDots, Badge } from "@/components/ui";
 import { ScoreMeter } from "@/components/composites";
 import {
-  SOURCE_GROUPS, ingestLinkedIn, ingestText, ingestWhatsApp, stripEmail, type IngestedPiece,
+  SOURCE_GROUPS, ingestLinkedIn, ingestText, ingestWhatsApp, splitPieces, stripEmail, type IngestedPiece,
 } from "@/lib/voice/ingest";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import { DEFAULT_FOLLOW_UP, isGeneric, type Question } from "@/lib/voice/questions";
@@ -217,9 +217,10 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
           label: `${s.label} (pasted)`,
           source: "paste",
           run: async () => {
-            // A paste separates pieces with a blank line; emails are stripped
-            // of quoted replies and signatures before anything is sent.
-            const parts = s.key === "email" ? paste.split(/^\s*---\s*$/m).map(stripEmail) : paste.split(/\n\s*\n/);
+            // Pieces are separated by a --- line or two blank lines (one blank
+            // line is a paragraph); emails are stripped of quoted replies,
+            // signatures and footers before anything is sent.
+            const parts = s.key === "email" ? splitPieces(paste).map(stripEmail) : splitPieces(paste);
             const bodies = parts.map((p) => p.trim()).filter(Boolean);
             return {
               pieces: bodies.map((body) => ({ body, channel: s.channel, visibility: vis as "public" | "private", kind: "corpus" as const })),
@@ -358,7 +359,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
                     rows={3}
                     value={pastes[s.key] ?? ""}
                     onChange={(e) => setPastes({ ...pastes, [s.key]: e.target.value })}
-                    placeholder={s.key === "email" ? "Paste sent emails. Separate each with a line of ---" : "Or paste. A blank line starts a new piece."}
+                    placeholder={s.key === "email" ? "Paste sent emails. Separate each with a line of ---" : "Or paste. Put a line with --- between pieces."}
                     className="field text-[0.88rem]"
                     aria-label={`Paste ${s.label}`}
                   />

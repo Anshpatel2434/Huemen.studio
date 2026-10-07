@@ -23,6 +23,7 @@ import type { WorkspaceScope } from "./projects";
 import { measureCorpus } from "@/lib/voice/measure";
 import { scanChanges } from "@/lib/voice/derive";
 import {
+  applyUserEdits,
   emptyIndex,
   MEASURED_CONTEXT_MINIMUM,
   type CorpusStats,
@@ -424,6 +425,34 @@ export async function setSampleExcluded(
   );
 }
 
+/** How many recent openers the repeat check remembers. */
+export const LAST_OPENERS = 5;
+
+/**
+ * Remember an approved piece's first line (voice.json `last_openers`). A
+ * bookkeeping write, not a change to the voice: no version, no proposal.
+ */
+export async function recordOpener(scope: WorkspaceScope, opener: string): Promise<void> {
+  const line = opener.trim().split("\n")[0].slice(0, 200);
+  const pack = line ? await loadPackForWorkspace(scope) : null;
+  if (!pack) return;
+  await withTenantSession(scope, (c) =>
+    c.query(
+      `UPDATE voice_packs
+          SET voice_index = jsonb_set(
+                voice_index, '{lastOpeners}',
+                (SELECT COALESCE(jsonb_agg(x), '[]'::jsonb) FROM (
+                   SELECT x FROM jsonb_array_elements_text(
+                     jsonb_build_array($1::text) || COALESCE(voice_index->'lastOpeners', '[]'::jsonb)
+                   ) WITH ORDINALITY AS t(x, n)
+                   GROUP BY x ORDER BY min(n) LIMIT $2) s),
+                true)
+        WHERE id = $3`,
+      [line, LAST_OPENERS, pack.id],
+    ),
+  );
+}
+
 export async function deleteSample(
   scope: SessionScope & { tenantId: string },
   sampleId: string,
@@ -511,7 +540,13 @@ async function measurePack(scope: SessionScope & { tenantId: string }, packId: s
   const pack = toPack(existing);
 
   // Context blocks: measured where the corpus earns it, inferred otherwise.
-  const contexts: Record<string, VoiceContext> = { ...pack.contexts };
+  // A channel whose pieces are gone falls back to inferred (or goes, when they
+  // don't write for it), so a removed source never leaves a stale "measured".
+  const writeFor = new Set(pack.onboarding.writeFor ?? []);
+  const contexts: Record<string, VoiceContext> = {};
+  for (const [channel, ctx] of Object.entries(pack.contexts)) {
+    if (measurement.piecesByChannel[channel] || writeFor.has(channel)) contexts[channel] = { ...ctx, tag: "inferred", pieceCount: 0 };
+  }
   const measuredChannels: string[] = [];
   const inferredChannels: string[] = [];
   for (const [channel, pieces] of Object.entries(measurement.piecesByChannel)) {
@@ -523,8 +558,11 @@ async function measurePack(scope: SessionScope & { tenantId: string }, packId: s
       channel,
       tag: measured ? "measured" : "inferred",
       pieceCount: pieces,
+      ...(measurement.channelBlocks?.[channel] ?? {}),
     };
   }
+  // Their hand edits ride on top of every fresh measurement (01 §6).
+  const mechanics = applyUserEdits(measurement.mechanics, pack.mechanics.userEdits);
 
   // A punctuation habit the person kept or dropped on a confirm card (H2) is
   // their decision; the corpus doesn't get to overrule it on the next scan.
@@ -546,11 +584,15 @@ async function measurePack(scope: SessionScope & { tenantId: string }, packId: s
     dials: pack.index.dials,
     lastOpeners: pack.index.lastOpeners,
     // A phrase they kept from "What we noticed" is theirs, measured this time or not.
-    signaturePhrases: [...new Set([...(pack.onboarding.patterns?.kept ?? []), ...measurement.index.signaturePhrases])],
+    signaturePhrases: [...new Set([
+      ...(pack.onboarding.patterns?.kept ?? []),
+      ...(pack.mechanics.userEdits?.keptSignatures ?? []),
+      ...measurement.index.signaturePhrases,
+    ])],
   };
 
-  const changes = scanChanges(pack, { mechanics: { ...pack.mechanics, ...measurement.mechanics }, corpusStats: measurement.stats });
-  return { pack, measurement, index, contexts, measuredChannels, inferredChannels, changes };
+  const changes = scanChanges(pack, { mechanics: { ...pack.mechanics, ...mechanics }, corpusStats: measurement.stats });
+  return { pack, measurement, mechanics, index, contexts, measuredChannels, inferredChannels, changes };
 }
 
 /**
@@ -566,7 +608,7 @@ export async function rescan(
   scope: SessionScope & { tenantId: string },
   packId: string,
 ): Promise<ScanResult> {
-  const { pack, measurement, index, contexts, measuredChannels, inferredChannels, changes } = await measurePack(scope, packId);
+  const { pack, measurement, mechanics, index, contexts, measuredChannels, inferredChannels, changes } = await measurePack(scope, packId);
 
   await withTenantSession(scope, async (c) => {
     // Flag pieces that read unlike the rest (H3). Flag only: the person
@@ -596,7 +638,7 @@ export async function rescan(
               status = CASE WHEN $5::int > 0 THEN 'active' ELSE status END
         WHERE id=$6`,
       [
-        JSON.stringify(measurement.mechanics), JSON.stringify(index),
+        JSON.stringify(mechanics), JSON.stringify(index),
         JSON.stringify(contexts), JSON.stringify(measurement.stats),
         measurement.stats.pieces, packId,
       ],

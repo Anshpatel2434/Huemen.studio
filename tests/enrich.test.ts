@@ -88,7 +88,7 @@ describe("context v3 carries what a draft can't invent", () => {
         preferences: [{ chosen: "Get out of the car.", over: "Step back further." }],
       },
     });
-    expect(ctx.version).toBe(3);
+    expect(ctx.version).toBe(4);
     expect(ctx.serialized).toContain("The client who fired me: In 2019 a client let me go. (shows: Listen first)");
     expect(ctx.serialized).toContain("ONLY numbers, results and client details a draft may use");
     expect(ctx.serialized).toContain("140 managers coached [my records]");

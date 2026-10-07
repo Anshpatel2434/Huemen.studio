@@ -23,8 +23,10 @@ import {
   type PatternExample,
   type PunctuationRates,
   type SentenceStats,
+  type VoiceContext,
   type VoiceIndex,
   emptyIndex,
+  MEASURED_CONTEXT_MINIMUM,
 } from "./types";
 
 export interface MeasurableSample {
@@ -95,6 +97,7 @@ export interface PieceMetrics {
   punctuation: PunctuationRates;
   firstLine: string;
   lastLine: string;
+  closingLines: string[];
   endsWithQuestion: boolean;
   sentenceInitials: string[];
   pronouns: { i: number; we: number; you: number; they: number };
@@ -105,6 +108,8 @@ export interface PieceMetrics {
   markdownEmphasis: number;
   unicodeEmphasis: number;
   nonLatinTokens: number;
+  emojis: string[];
+  emojiAtEnd: boolean;
 }
 
 const EMOJI = /\p{Extended_Pictographic}/gu;
@@ -122,8 +127,35 @@ const EXPANDED = [
 
 const count = (text: string, re: RegExp): number => (text.match(re) ?? []).length;
 
+/**
+ * The clean step (spec 06 §4): what is not their prose comes out before
+ * anything is counted. Links, @mentions and hashtags (counted on their own),
+ * and platform boilerplate ("Repost", "Celebrating 5 years at…"). Line breaks
+ * stay: they are part of the voice.
+ */
+// Each takes its line break with it, so a removed line leaves no stray paragraph.
+const AUTO_LINES = [
+  /^[ \t]*repost(ed)?\b.*(\n|$)/gim,
+  /^[ \t]*(celebrating|i'?m happy to share|i'?m excited to share|starting a new position)\b.*\b(years?|position|role|at)\b.*(\n|$)/gim,
+  /^[ \t]*(see more|show more|…see more|translate|see translation)[ \t]*(\n|$)/gim,
+  /^[ \t]*(sent from my \w+.*|get outlook for \w+.*)(\n|$)/gim,
+];
+export function cleanForMeasure(text: string): string {
+  let t = text.replace(/\r\n/g, "\n");
+  for (const re of AUTO_LINES) t = t.replace(re, "");
+  return t
+    .replace(/https?:\/\/\S+|www\.\S+/gi, "")
+    .replace(/(^|\s)@[\p{L}\p{N}_.]+/gu, "$1")
+    .replace(/(^|\s)#[\p{L}\p{N}_]+/gu, "$1")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 export function measurePiece(text: string): PieceMetrics {
-  const body = text.replace(/\r\n/g, "\n").trim();
+  const raw = text.replace(/\r\n/g, "\n").trim();
+  const body = cleanForMeasure(raw);
   const sentences = splitSentences(body);
   const paras = paragraphs(body);
   const lower = body.toLowerCase();
@@ -165,6 +197,8 @@ export function measurePiece(text: string): PieceMetrics {
     },
     firstLine: (body.split("\n")[0] ?? "").trim(),
     lastLine: (body.split("\n").filter((l) => l.trim()).pop() ?? "").trim(),
+    // An email ends "Best,\nRiya": the sign-off is the line before the name.
+    closingLines: body.split("\n").map((l) => l.trim()).filter(Boolean).slice(-3),
     endsWithQuestion: /\?\s*$/.test(body),
     sentenceInitials: sentences
       .map((s) => (words(s)[0] ?? "").toLowerCase())
@@ -177,7 +211,10 @@ export function measurePiece(text: string): PieceMetrics {
     },
     contractionsUsed,
     contractionOpportunities: contractionsUsed + expandedUsed,
-    hashtags: body.match(/#[\p{L}\p{N}_]+/gu) ?? [],
+    // Counted from the raw text: the clean step lifts them out of the prose.
+    hashtags: raw.match(/#[\p{L}\p{N}_]+/gu) ?? [],
+    emojis: body.match(EMOJI) ?? [],
+    emojiAtEnd: /\p{Extended_Pictographic}/u.test(body.slice(-8)),
     capsWords: allWords.filter((w) => w.length > 1 && w === w.toUpperCase() && /\p{L}/u.test(w)).length,
     markdownEmphasis: count(body, /\*\*|__|\*\w|_\w/g),
     unicodeEmphasis: count(body, UNICODE_EMPHASIS),
@@ -197,7 +234,21 @@ export interface CorpusMeasurement {
   piecesByChannel: Record<string, number>;
   /** Pieces that read unlike the rest. Never auto-excluded; the user confirms. */
   suspected: { id?: string; reason: string }[];
+  /**
+   * How they write on each platform with enough pieces to measure (contexts.md,
+   * spec 06 §4 "per piece and per channel"). Private channels describe patterns
+   * only, never quote: an email block says "opens with 'Hi [name],'", not who.
+   */
+  channelBlocks: Record<string, Partial<VoiceContext>>;
 }
+
+/**
+ * The overall fingerprint is measured from a balanced, recent slice: at most
+ * this many pieces per channel, newest first. Otherwise 2,000 emails would set
+ * the rhythm of their LinkedIn posts, and a voice from five years ago would
+ * outvote last month's (spec 06 §3: weight the last 12–18 months higher).
+ */
+export const CHANNEL_BALANCE_CAP = 40;
 
 const quotableHashtags = (per: PieceMetrics[], samples: MeasurableSample[]): string[] =>
   per.flatMap((p, i) => (samples[i].private ? [] : p.hashtags));
@@ -310,8 +361,7 @@ export function measureCorpus(samples: MeasurableSample[]): CorpusMeasurement {
   const usable = samples.filter((s) => s.body.trim().length > 0);
   const per = usable.map((s) => measurePiece(s.body));
   const n = per.length;
-  const bodies = usable.map((s) => s.body);
-  const publicBodies = usable.filter((s) => !s.private).map((s) => s.body);
+  const publicBodies = usable.filter((s) => !s.private).map((s) => cleanForMeasure(s.body));
 
   const piecesByChannel: Record<string, number> = {};
   usable.forEach((s) => {
@@ -319,11 +369,11 @@ export function measureCorpus(samples: MeasurableSample[]): CorpusMeasurement {
     piecesByChannel[ch] = (piecesByChannel[ch] ?? 0) + 1;
   });
 
-  const allSentenceLengths = per.flatMap((p) => p.sentenceLengths);
+  const allLengths = per.flatMap((p) => p.sentenceLengths);
   const stats: CorpusStats = {
     pieces: n,
     words: per.reduce((a, p) => a + p.wordCount, 0),
-    sentences: allSentenceLengths.length,
+    sentences: allLengths.length,
     channels: Object.keys(piecesByChannel).sort(),
     from: usable.map((s) => s.publishedAt).filter(Boolean).sort()[0],
     to: usable.map((s) => s.publishedAt).filter(Boolean).sort().at(-1),
@@ -337,30 +387,37 @@ export function measureCorpus(samples: MeasurableSample[]): CorpusMeasurement {
       signatureCandidates: [],
       piecesByChannel,
       suspected: [],
+      channelBlocks: {},
     };
   }
 
-  const sentenceStats: SentenceStats = {
-    mean: round(mean(allSentenceLengths), 1),
-    median: median(allSentenceLengths),
-    shortPct: pct(allSentenceLengths.filter((l) => l <= 4).length, allSentenceLengths.length),
-    midPct: pct(allSentenceLengths.filter((l) => l > 4 && l <= 18).length, allSentenceLengths.length),
-    longPct: pct(allSentenceLengths.filter((l) => l > 18).length, allSentenceLengths.length),
-    fragmentRate: round(
-      allSentenceLengths.filter((l) => l <= 3).length / (allSentenceLengths.length || 1),
-      3,
-    ),
-  };
+  // The balanced, recent slice the overall fingerprint is measured from.
+  const byChannel = new Map<string, number[]>();
+  usable.forEach((s, i) => {
+    const ch = s.channel ?? "unknown";
+    byChannel.set(ch, [...(byChannel.get(ch) ?? []), i]);
+  });
+  const balanced: number[] = [];
+  for (const idx of byChannel.values()) {
+    const newestFirst = [...idx].sort((a, b) => (usable[b].publishedAt ?? "").localeCompare(usable[a].publishedAt ?? ""));
+    balanced.push(...newestFirst.slice(0, CHANNEL_BALANCE_CAP));
+  }
+  balanced.sort((a, b) => a - b);
+  const bp = balanced.map((i) => per[i]);
+  const bs = balanced.map((i) => usable[i]);
+  const bn = bp.length;
+
+  const lengths = bp.flatMap((p) => p.sentenceLengths);
+  const sentenceStats = sentenceStatsOf(lengths);
 
   // Punctuation as a rate PER PIECE — the unit the user thinks in ("you use an
   // ellipsis about 1.6 times a post").
   const punctuation = {} as PunctuationRates;
-  const punctuationKeys = Object.keys(per[0].punctuation) as (keyof PunctuationRates)[];
-  for (const k of punctuationKeys) {
-    punctuation[k] = round(mean(per.map((p) => p.punctuation[k])), 2);
+  for (const k of Object.keys(bp[0].punctuation) as (keyof PunctuationRates)[]) {
+    punctuation[k] = round(mean(bp.map((p) => p.punctuation[k])), 2);
   }
 
-  const pronounTotals = per.reduce(
+  const pronounTotals = bp.reduce(
     (acc, p) => ({
       i: acc.i + p.pronouns.i, we: acc.we + p.pronouns.we,
       you: acc.you + p.pronouns.you, they: acc.they + p.pronouns.they,
@@ -369,93 +426,78 @@ export function measureCorpus(samples: MeasurableSample[]): CorpusMeasurement {
   );
   const pronounSum = pronounTotals.i + pronounTotals.we + pronounTotals.you + pronounTotals.they;
 
+  // Public pieces only: in an email the first word is often a name ("Rahul,
+  // can you…"), and names never go into the voice files (spec 06 §1).
   const initials = new Map<string, number>();
-  per.flatMap((p) => p.sentenceInitials).forEach((w) => initials.set(w, (initials.get(w) ?? 0) + 1));
+  bp.forEach((p, i) => {
+    if (bs[i].private) return;
+    p.sentenceInitials.forEach((w) => initials.set(w, (initials.get(w) ?? 0) + 1));
+  });
   const sentenceInitial = [...initials.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 20)
     .map(([word, c]) => ({ word, count: c }));
 
-  const dedupe = (xs: PatternExample[]) => {
-    const seen = new Set<string>();
-    return xs.filter((x) => !seen.has(x.example) && seen.add(x.example));
-  };
-  // Verbatim banks: public pieces only (see MeasurableSample.private).
-  const quotable = per
-    .map((p, i) => ({ p, sample: usable[i] }))
-    .filter((x) => !x.sample.private);
-  const openers = dedupe(
-    quotable.map(({ p, sample }) => ({
-      pattern: openerPattern(p.firstLine),
-      example: p.firstLine,
-      sampleId: sample.id,
-    })).filter((o) => o.example),
-  ).slice(0, 10);
-  const closers = dedupe(
-    quotable.map(({ p, sample }) => ({
-      pattern: closerPattern(p.lastLine),
-      example: p.lastLine,
-      sampleId: sample.id,
-    })).filter((c) => c.example),
-  ).slice(0, 10);
+  // Verbatim banks: public pieces only (see MeasurableSample.private), newest first.
+  const quotable = bp.map((p, i) => ({ p, sample: bs[i] })).filter((x) => !x.sample.private).reverse();
+  const openers = patternBank(quotable.map(({ p, sample }) => ({ pattern: openerPattern(p.firstLine), example: p.firstLine, sampleId: sample.id })));
+  const closers = patternBank(quotable.map(({ p, sample }) => ({ pattern: closerPattern(p.lastLine), example: p.lastLine, sampleId: sample.id })));
 
   const contractionRate = round(
-    per.reduce((a, p) => a + p.contractionsUsed, 0) /
-      (per.reduce((a, p) => a + p.contractionOpportunities, 0) || 1),
+    bp.reduce((a, p) => a + p.contractionsUsed, 0) / (bp.reduce((a, p) => a + p.contractionOpportunities, 0) || 1),
     2,
   );
 
   const emphasis: string[] = [];
-  if (per.some((p) => p.unicodeEmphasis > 0)) emphasis.push("unicode bold");
-  if (per.some((p) => p.markdownEmphasis > 0)) emphasis.push("markdown");
-  if (mean(per.map((p) => p.capsWords)) >= 1) emphasis.push("caps");
+  const share = (f: (p: PieceMetrics) => boolean) => Math.round((bp.filter(f).length / bn) * 100);
+  if (bp.some((p) => p.unicodeEmphasis > 0)) emphasis.push(`unicode bold (${share((p) => p.unicodeEmphasis > 0)}% of pieces)`);
+  if (bp.some((p) => p.markdownEmphasis > 0)) emphasis.push(`markdown (${share((p) => p.markdownEmphasis > 0)}% of pieces)`);
+  if (mean(bp.map((p) => p.capsWords)) >= 1) emphasis.push(`caps (about ${round(mean(bp.map((p) => p.capsWords)), 1)} words a piece)`);
   if (!emphasis.length) emphasis.push("none");
 
   const hashtagsAll = quotableHashtags(per, usable);
   const signatureCandidates = repeatedPhrases(publicBodies);
 
   const lengthsByChannel: Record<string, [number, number]> = {};
-  for (const ch of stats.channels) {
-    const lens = usable
-      .map((s, i) => ({ ch: s.channel ?? "unknown", w: per[i].wordCount }))
-      .filter((x) => x.ch === ch)
-      .map((x) => x.w)
-      .sort((a, b) => a - b);
-    if (lens.length) {
-      lengthsByChannel[ch] = [
-        lens[Math.floor(lens.length * 0.1)],
-        lens[Math.min(lens.length - 1, Math.floor(lens.length * 0.9))],
-      ];
-    }
+  for (const [ch, idx] of byChannel) {
+    const lens = idx.map((i) => per[i].wordCount).sort((a, b) => a - b);
+    lengthsByChannel[ch] = [lens[Math.floor(lens.length * 0.1)], lens[Math.min(lens.length - 1, Math.floor(lens.length * 0.9))]];
   }
 
-  const ev = (test: (t: string) => boolean) =>
-    evidenceFrom(usable.filter((s) => !s.private), test);
-  const measured = <T>(value: T, evidence: Evidence[] = [], c = n) =>
+  // Emoji: which (public only), how often, and where.
+  const publicEmojis = bp.flatMap((p, i) => (bs[i].private ? [] : p.emojis));
+  const emojiCounts = new Map<string, number>();
+  publicEmojis.forEach((e) => emojiCounts.set(e, (emojiCounts.get(e) ?? 0) + 1));
+  const withEmoji = bp.filter((p) => p.emojis.length);
+  const emojiPosition = !withEmoji.length ? "none" : withEmoji.filter((p) => p.emojiAtEnd).length / withEmoji.length >= 0.6 ? "end" : "inline";
+
+  // Language mixing: the share of words in a non-Latin script, and where.
+  const totalWords = bp.reduce((a, p) => a + p.wordCount, 0) || 1;
+  const nonLatin = bp.reduce((a, p) => a + p.nonLatinTokens, 0);
+  const mixedChannels = [...new Set(bp.flatMap((p, i) => (p.nonLatinTokens > 0 ? [bs[i].channel ?? "unknown"] : [])))];
+
+  const ev = (test: (t: string) => boolean) => evidenceFrom(bs.filter((s) => !s.private), test);
+  const measured = <T>(value: T, evidence: Evidence[] = [], c = bn) =>
     tagged(value, "scan" as const, "measured" as const, { count: c, evidence });
+  const endsQuestionPct = pct(bp.filter((p) => p.endsWithQuestion).length, bn);
 
   const mechanics: Mechanics = {
     sentences: measured(sentenceStats, ev((t) => words(t).length <= 3)),
     paragraphs: measured({
-      sentencesPerParagraph: round(
-        mean(per.map((p) => (p.paragraphCount ? p.sentenceLengths.length / p.paragraphCount : 0))),
-        1,
-      ),
-      singleLinePct: pct(
-        per.reduce((a, p) => a + p.singleSentenceParagraphs, 0),
-        per.reduce((a, p) => a + p.paragraphCount, 0),
-      ),
-    }),
-    punctuation: measured(punctuation, ev((t) => /…|\.{3,}|—/.test(t))),
+      sentencesPerParagraph: round(mean(bp.map((p) => (p.paragraphCount ? p.sentenceLengths.length / p.paragraphCount : 0))), 1),
+      singleLinePct: pct(bp.reduce((a, p) => a + p.singleSentenceParagraphs, 0), bp.reduce((a, p) => a + p.paragraphCount, 0)),
+    }, ev((t) => words(t).length <= 6)),
+    punctuation: measured(punctuation, ev((t) => /…|\.{3,}|—|!|;/.test(t))),
     pronouns: measured({
       i: pct(pronounTotals.i, pronounSum), we: pct(pronounTotals.we, pronounSum),
       you: pct(pronounTotals.you, pronounSum), they: pct(pronounTotals.they, pronounSum),
-    }),
-    contractions: measured(contractionRate),
+    }, ev((t) => /\b(i|you)\b/i.test(t))),
+    contractions: measured(contractionRate, ev((t) => /\b\w+['’](s|t|re|ve|ll|d|m)\b/i.test(t))),
     emphasis: measured(emphasis),
-    sentenceInitial: measured(sentenceInitial),
-    openers: measured(openers, [], openers.length),
-    closers: measured(closers, [], closers.length),
+    sentenceInitial: measured(sentenceInitial, ev((t) => /^(and|but|so)\b/i.test(t.trim()))),
+    openers: measured(openers, openers.slice(0, 2).map((o) => ({ quote: o.example, sampleId: o.sampleId })), openers.length),
+    closers: measured(closers, closers.slice(0, 2).map((o) => ({ quote: o.example, sampleId: o.sampleId })), closers.length),
+    closingQuestionPct: measured(endsQuestionPct),
     lexicon: measured(distinctiveWords(publicBodies)),
     signaturePhrases: measured(signatureCandidates, [], signatureCandidates.length),
     lengthByFormat: measured(lengthsByChannel),
@@ -464,11 +506,63 @@ export function measureCorpus(samples: MeasurableSample[]): CorpusMeasurement {
       casing: hashtagsAll.some((h) => /[A-Z]/.test(h.slice(1))) ? "mixed" : "lower",
       tags: [...new Set(hashtagsAll)].slice(0, 15),
     }),
+    emoji: measured({
+      perPiece: round(mean(bp.map((p) => p.emojis.length)), 2),
+      top: [...emojiCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([e]) => e),
+      position: emojiPosition,
+    }),
+    languageMix: measured({ nonLatinPct: pct(nonLatin, totalWords), channels: mixedChannels }),
   };
 
-  // Suspected not-them (spec 06 §4). Flagged for the user to confirm, never cut.
+  return {
+    stats,
+    mechanics,
+    index: deriveIndex(punctuation, sentenceStats, bp, signatureCandidates, lengthsByChannel),
+    signatureCandidates,
+    piecesByChannel,
+    suspected: suspectedPieces(per, usable, contractionRate),
+    channelBlocks: channelBlocks(byChannel, per, usable, sentenceStats),
+  };
+}
+
+function sentenceStatsOf(lengths: number[]): SentenceStats {
+  return {
+    mean: round(mean(lengths), 1),
+    median: median(lengths),
+    shortPct: pct(lengths.filter((l) => l <= 4).length, lengths.length),
+    midPct: pct(lengths.filter((l) => l > 4 && l <= 18).length, lengths.length),
+    longPct: pct(lengths.filter((l) => l > 18).length, lengths.length),
+    fragmentRate: round(lengths.filter((l) => l <= 3).length / (lengths.length || 1), 3),
+  };
+}
+
+/** Openers or closers grouped by pattern, two real examples each (spec 06 §4 "Read"). */
+function patternBank(xs: PatternExample[]): PatternExample[] {
+  const seen = new Set<string>();
+  const perPattern = new Map<string, number>();
+  const out: PatternExample[] = [];
+  for (const x of xs) {
+    if (!x.example || seen.has(x.example)) continue;
+    seen.add(x.example);
+    const k = perPattern.get(x.pattern) ?? 0;
+    if (k >= 2) continue;
+    perPattern.set(x.pattern, k + 1);
+    out.push(x);
+  }
+  return out.slice(0, 10);
+}
+
+/** The generic words that give machine-written text away (spec 06 §4 filter). */
+const AI_LEXICON = [
+  "delve", "tapestry", "fast-paced world", "ever-evolving", "navigate the complexities", "it's important to note",
+  "in conclusion", "game-changer", "unlock the power", "leverage", "elevate", "seamlessly", "in today's",
+  "embark", "testament to", "realm", "furthermore", "moreover",
+];
+
+/** Suspected not-them (spec 06 §4). Flagged for the user to confirm, never cut. */
+function suspectedPieces(per: PieceMetrics[], usable: MeasurableSample[], corpusContractions: number) {
   const medianEmDash = median(per.map((p) => p.punctuation.emDash));
-  const suspected = per
+  return per
     .map((p, i) => {
       const reasons: string[] = [];
       if (p.punctuation.emDash >= 3 && p.punctuation.emDash > medianEmDash + 2)
@@ -478,22 +572,97 @@ export function measureCorpus(samples: MeasurableSample[]): CorpusMeasurement {
         const spread = Math.max(...lens) - Math.min(...lens);
         if (spread <= 4) reasons.push("every sentence is nearly the same length");
       }
+      const lower = usable[i].body.toLowerCase();
+      const aiHits = AI_LEXICON.filter((w) => lower.includes(w)).length;
+      if (aiHits >= 2) reasons.push("uses several stock phrases that read machine-written");
+      // A register shift: someone who contracts almost everything, writing fully formally.
+      if (corpusContractions >= 0.6 && p.contractionOpportunities >= 5 && p.contractionsUsed / p.contractionOpportunities <= 0.1)
+        reasons.push("far more formal than the rest of your writing");
       if (!reasons.length) return null;
       const flagged: { id?: string; reason: string } = { reason: reasons.join("; ") };
       if (usable[i].id !== undefined) flagged.id = usable[i].id;
       return flagged;
     })
     .filter((x): x is { id?: string; reason: string } => x !== null);
-
-  return {
-    stats,
-    mechanics,
-    index: deriveIndex(punctuation, sentenceStats, per, signatureCandidates, lengthsByChannel),
-    signatureCandidates,
-    piecesByChannel,
-    suspected,
-  };
 }
+
+const GREETING = /^(hi|hey|hello|dear|good (morning|afternoon|evening)|hii+|namaste)\b/i;
+const SIGNOFF = /^(thanks|thank you|best|regards|warm regards|kind regards|cheers|talk soon|take care|love|best wishes|sincerely)\b[,!.]?/i;
+
+/**
+ * One block per platform with at least MEASURED_CONTEXT_MINIMUM pieces
+ * (contexts.md). Built from that platform's own pieces only. Private channels
+ * get patterns, never quotes.
+ */
+function channelBlocks(
+  byChannel: Map<string, number[]>,
+  per: PieceMetrics[],
+  usable: MeasurableSample[],
+  overall: SentenceStats,
+): Record<string, Partial<VoiceContext>> {
+  const out: Record<string, Partial<VoiceContext>> = {};
+  for (const [ch, idx] of byChannel) {
+    if (ch === "unknown" || idx.length < MEASURED_CONTEXT_MINIMUM) continue;
+    const ps = idx.map((i) => per[i]);
+    const isPrivate = idx.every((i) => usable[i].private);
+    const st = sentenceStatsOf(ps.flatMap((p) => p.sentenceLengths));
+    const wc = ps.map((p) => p.wordCount).sort((a, b) => a - b);
+    const typical = median(wc);
+    const contr = ps.reduce((a, p) => a + p.contractionsUsed, 0) / (ps.reduce((a, p) => a + p.contractionOpportunities, 0) || 1);
+    const single = pct(ps.reduce((a, p) => a + p.singleSentenceParagraphs, 0), ps.reduce((a, p) => a + p.paragraphCount, 0));
+    const q = pct(ps.filter((p) => p.endsWithQuestion).length, ps.length);
+    const tags = mean(ps.map((p) => p.hashtags.length));
+    const emoji = mean(ps.map((p) => p.emojis.length));
+
+    const firstPatterns = topOf(ps.map((p) => openerPattern(p.firstLine)));
+    const lastPatterns = topOf(ps.map((p) => closerPattern(p.lastLine)));
+    const greeting = topOf(ps.map((p) => p.firstLine.match(GREETING)?.[0]?.toLowerCase()).filter(Boolean) as string[]);
+    const signOff = topOf(ps.map((p) => {
+      const hit = p.closingLines.map((l) => l.match(SIGNOFF)?.[0]).find(Boolean);
+      return hit?.replace(/[,!.]$/, "").toLowerCase();
+    }).filter(Boolean) as string[]);
+    const quote = (k: number, line: (p: PieceMetrics) => string) => {
+      if (isPrivate) return "";
+      const i = idx.find((j) => line(per[j]));
+      return i === undefined ? "" : ` (e.g. "${line(per[i]).slice(0, 120)}")`;
+    };
+
+    const shorter = st.mean && overall.mean ? st.mean - overall.mean : 0;
+    out[ch] = {
+      register: [
+        `Sentences average ${st.mean} words`,
+        contr >= 0.6 ? "contracts almost everything" : contr <= 0.2 ? "rarely contracts" : `contracts about ${Math.round(contr * 100)}% of the time`,
+      ].join("; "),
+      length: `Typically ${typical} words (range ${wc[Math.floor(wc.length * 0.1)]}–${wc[Math.min(wc.length - 1, Math.floor(wc.length * 0.9))]})`,
+      structure: single >= 60 ? `Mostly one-sentence paragraphs (${single}%), lots of white space` : `Paragraphs of a few sentences (${single}% are single lines)`,
+      firstLine: greeting
+        ? `Opens with "${capitalise(greeting)} [name],"`
+        : firstPatterns ? `${firstPatterns}${quote(0, (p) => p.firstLine)}` : undefined,
+      opener: firstPatterns,
+      closer: [
+        signOff ? `Signs off "${capitalise(signOff)},"` : lastPatterns ? `${lastPatterns}${quote(0, (p) => p.lastLine)}` : "",
+        q >= 30 ? `${q}% end on a question` : "",
+      ].filter(Boolean).join("; "),
+      notes: [
+        tags >= 0.5 ? `About ${round(tags, 1)} hashtags a piece` : "",
+        emoji >= 0.3 ? `About ${round(emoji, 1)} emoji a piece` : "",
+      ].filter(Boolean).join("; ") || undefined,
+      differsBy: Math.abs(shorter) >= 3
+        ? `${shorter < 0 ? "Shorter" : "Longer"} sentences than their default (${st.mean} vs ${overall.mean} words)`
+        : undefined,
+    };
+  }
+  return out;
+}
+
+function topOf(xs: string[]): string | undefined {
+  const c = new Map<string, number>();
+  xs.forEach((x) => c.set(x, (c.get(x) ?? 0) + 1));
+  const best = [...c.entries()].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= Math.max(2, Math.ceil(xs.length * 0.3)) ? best[0] : undefined;
+}
+
+const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * Turn the measurements into voice.json — the deterministic check index.

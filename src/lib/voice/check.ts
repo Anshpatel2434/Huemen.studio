@@ -72,6 +72,100 @@ export interface CheckOptions {
    */
   corpusPieces?: number;
   corpusUses?: Record<string, number>;
+  /** Their own public writing, to catch a draft that copies it word for word. */
+  corpusTexts?: string[];
+}
+
+/** Eight words in a row matching their writing is a copy, not a rhythm. */
+const COPY_RUN = 8;
+
+/** The first run of COPY_RUN+ words the draft shares with any corpus text, or null. */
+export function copiedRun(draft: string, corpus: string[]): string | null {
+  if (!corpus.length) return null;
+  const norm = (s: string) => words(s.toLowerCase());
+  const grams = new Set<string>();
+  for (const body of corpus) {
+    const w = norm(body);
+    for (let i = 0; i + COPY_RUN <= w.length; i++) grams.add(w.slice(i, i + COPY_RUN).join(" "));
+  }
+  const d = norm(draft);
+  for (let i = 0; i + COPY_RUN <= d.length; i++) {
+    if (grams.has(d.slice(i, i + COPY_RUN).join(" "))) return words(draft).slice(i, i + COPY_RUN + 4).join(" ");
+  }
+  return null;
+}
+
+/**
+ * What spec 07's last column says the check tests, per platform. Hard limits
+ * are errors; norms are notes.
+ */
+function platformIssues(text: string, m: ReturnType<typeof measurePiece>, channel?: string): VoiceIssue[] {
+  const rule = platformRule(channel);
+  if (!rule) return [];
+  const out: VoiceIssue[] = [];
+  const lines = text.split("\n");
+  const nonEmpty = lines.filter((l) => l.trim());
+
+  // X threads: each numbered part has its own limit.
+  const threadParts = rule.key === "x" ? text.split(/\n(?=\s*\d+\/)/).filter((p) => p.trim()) : [];
+  if (threadParts.length > 1) {
+    threadParts.forEach((p, i) => {
+      if (rule.maxChars != null && p.trim().length > rule.maxChars)
+        out.push({ code: "platform_limit", severity: "error", message: `Part ${i + 1} of the thread is ${p.trim().length} characters. X stops at ${rule.maxChars}.` });
+    });
+  } else if (rule.maxChars != null && text.length > rule.maxChars) {
+    out.push({ code: "platform_limit", severity: "error", message: `${text.length} characters. ${rule.label} stops at ${rule.maxChars}.` });
+  }
+
+  if (rule.maxHashtags != null && m.hashtags.length > rule.maxHashtags) {
+    out.push({
+      code: "platform_hashtags",
+      severity: "warning",
+      message: rule.maxHashtags === 0 ? `${rule.label} doesn't use hashtags.` : `${m.hashtags.length} hashtags. ${rule.label} takes ${rule.maxHashtags}.`,
+    });
+  }
+
+  // The hook has to land before "see more": inside the visible characters AND lines.
+  if (rule.visibleChars != null && text.length > rule.visibleChars) {
+    const byLines = rule.visibleLines ? nonEmpty.slice(0, rule.visibleLines).join("\n") : text;
+    const hook = (byLines.length < rule.visibleChars ? byLines : text.slice(0, rule.visibleChars));
+    if (!/[.!?:]/.test(hook) && !(rule.visibleLines && nonEmpty.length > 1 && nonEmpty[0].length <= rule.visibleChars)) {
+      out.push({ code: "weak_hook", severity: "note", message: `Nothing lands before the "see more" cut.`, excerpt: hook });
+    }
+  }
+
+  switch (rule.key) {
+    case "linkedin":
+      if (text.length > 500 && m.paragraphCount <= 1)
+        out.push({ code: "platform_breaks", severity: "note", message: "One block of text. LinkedIn reads in short paragraphs with white space." });
+      break;
+    case "newsletter":
+      if (m.wordCount > 400 && !lines.some((l) => /^#{1,3}\s|^\*\*.+\*\*$/.test(l.trim())))
+        out.push({ code: "platform_structure", severity: "note", message: "No subheads. A longer piece reads better in scannable sections." });
+      break;
+    case "email": {
+      const subject = (nonEmpty[0] ?? "").replace(/^subject:\s*/i, "");
+      const [lo, hi] = rule.subjectChars ?? [40, 60];
+      if (subject && (subject.length > hi || subject.length < Math.min(lo, 12)))
+        out.push({ code: "email_subject", severity: "note", message: `The subject is ${subject.length} characters. Inboxes show about ${lo}–${hi}.`, excerpt: subject });
+      const asks = (text.match(/\?/g) ?? []).length + (text.match(/\b(could you|can you|would you|please)\b/gi) ?? []).length;
+      if (asks > 2) out.push({ code: "email_asks", severity: "note", message: "Several asks in one email. One clear next step works best." });
+      break;
+    }
+    case "whatsapp":
+      if (/^#{1,6}\s/m.test(text) || /\*\*[^*]+\*\*/.test(text) || /\[[^\]]+\]\([^)]+\)/.test(text))
+        out.push({ code: "platform_format", severity: "warning", message: "WhatsApp only understands *bold*, _italic_ and ~strike~. Headers, **double stars** and links in brackets show as raw symbols." });
+      break;
+    case "slack":
+      if (/^#{1,6}\s/m.test(text) || /\*\*[^*]+\*\*/.test(text))
+        out.push({ code: "platform_format", severity: "warning", message: "Slack shows markdown headers and **double stars** as raw symbols. Use *bold*." });
+      break;
+    case "spoken":
+      if (/[()[\]{}]|\s\/\s|^\s*[-*•]\s/m.test(text))
+        out.push({ code: "spoken_visual", severity: "warning", message: "Brackets, slashes and bullets don't read aloud. Say it the way you'd say it." });
+      break;
+  }
+  return out;
 }
 
 const COST: Record<IssueSeverity, number> = { error: 20, warning: 10, note: 4 };
@@ -177,46 +271,40 @@ export function checkDraft(
       issues.push({ code: "too_long", severity: "note", message: `${m.wordCount} words. Yours usually run ${lo}–${hi}.` });
   }
 
-  const rule = platformRule(opts.channel);
-  if (rule) {
-    if (rule.maxChars != null && text.length > rule.maxChars) {
-      issues.push({
-        code: "platform_limit",
-        severity: "error",
-        message: `${text.length} characters. ${rule.label} stops at ${rule.maxChars}.`,
-      });
-    }
-    if (rule.maxHashtags != null && m.hashtags.length > rule.maxHashtags) {
-      issues.push({
-        code: "platform_hashtags",
-        severity: "warning",
-        message: `${m.hashtags.length} hashtags. ${rule.label} takes ${rule.maxHashtags}.`,
-      });
-    }
-    if (rule.visibleChars != null && text.length > rule.visibleChars) {
-      const hook = text.slice(0, rule.visibleChars);
-      if (!/[.!?]/.test(hook)) {
-        issues.push({
-          code: "weak_hook",
-          severity: "note",
-          message: `Nothing lands before the "see more" cut at ${rule.visibleChars} characters.`,
-          excerpt: hook,
-        });
-      }
-    }
-  }
+  issues.push(...platformIssues(text, m, opts.channel));
 
-  // 5. Sentence rhythm. Their distribution, not a general readability score.
+  // 5. Sentence rhythm. Their distribution, not a general readability score:
+  // the average, and how many very short and very long sentences they use.
   const target = index.sentenceLength;
-  if (target?.mean && m.sentenceLengths.length >= 3) {
-    const avg = m.sentenceLengths.reduce((a, b) => a + b, 0) / m.sentenceLengths.length;
+  const lens = m.sentenceLengths;
+  if (target?.mean && lens.length >= 3) {
+    const avg = lens.reduce((a, b) => a + b, 0) / lens.length;
     if (Math.abs(avg - target.mean) > Math.max(5, target.mean * 0.5)) {
       issues.push({
         code: "rhythm",
         severity: "warning",
         message: `Sentences average ${Math.round(avg)} words. Yours average ${target.mean}.`,
       });
+    } else if (lens.length >= 6) {
+      const shortPct = (lens.filter((l) => l <= 4).length / lens.length) * 100;
+      const longPct = (lens.filter((l) => l > 18).length / lens.length) * 100;
+      if (target.shortPct != null && target.shortPct >= 10 && shortPct === 0)
+        issues.push({ code: "rhythm_short", severity: "note", message: `No short sentences. About ${Math.round(target.shortPct)}% of yours are four words or fewer.` });
+      if (target.longPct != null && longPct > target.longPct + 25)
+        issues.push({ code: "rhythm_long", severity: "note", message: `${Math.round(longPct)}% of sentences run past eighteen words. Yours: about ${Math.round(target.longPct)}%.` });
     }
+  }
+
+  // 5b. Never a sentence lifted from their own writing (spec 06 §5): samples
+  // teach rhythm, not text.
+  const copied = copiedRun(text, opts.corpusTexts ?? []);
+  if (copied) {
+    issues.push({
+      code: "copied",
+      severity: "warning",
+      message: "This line is word for word from something you've already written.",
+      excerpt: copied,
+    });
   }
 
   // 6. Signature phrases are rationed: one per piece, or they stop being yours.

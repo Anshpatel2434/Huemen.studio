@@ -82,7 +82,7 @@ export const CAPABILITIES: Record<CapabilityKey, Capability> = {
     key: "gmail",
     provider: "google",
     label: "Sent email",
-    reads: "Every email you sent in the last two years (up to 2,000), read once, your own words only. Quoted replies and signatures are removed before anything is kept. When the read is done we withdraw our access.",
+    reads: "A sample of about 200 emails you sent, from a range you choose (6, 12 or 24 months), read once, your own words only. Quoted replies, signatures, footers and auto-replies are removed before anything is kept. When the read is done we withdraw our access.",
     never: "We never read your inbox, never send email, and never quote your email in a draft.",
     scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
     visibility: "private",

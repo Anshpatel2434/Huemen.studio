@@ -123,7 +123,7 @@ export async function coWrite(
 ): Promise<string> {
   const fmt = formatByKey(input.format);
   const outline = await runTask(scope, coWriteOutline, {
-    context: await loadBrandContext(scope, "en", fmt.platform),
+    context: await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write"),
     taskInput: [`Format: ${fmt.label}`, `Topic: ${input.topic}`, input.angle ? `Angle: ${input.angle}` : ""].filter(Boolean).join("\n"),
   });
   const id = await createContentItem(scope, {

@@ -15,7 +15,7 @@ import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "@/lib/data/projects";
 import { fewShotSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { packToContextInput } from "@/lib/voice/context";
-import { buildBrandContext, type BrandContext, type PlatformInput, type VoicePackInput } from "./context-builder";
+import { buildBrandContext, type BrandContext, type ContextTask, type PlatformInput, type VoicePackInput } from "./context-builder";
 import { platformLines, platformRule } from "@/lib/voice/platforms";
 
 export async function loadBrandContext(
@@ -23,12 +23,15 @@ export async function loadBrandContext(
   language = "en",
   /** The platform being written for, so the right context block is loaded. */
   channel?: string,
+  /** What the context is for: decides which parts of the voice load (spec 01 §3). */
+  task: ContextTask = "write",
 ): Promise<BrandContext> {
   // Loaded outside the query below so the pack's own access rules run once.
   const pack = await loadPackForWorkspace(scope);
   let voicePack: VoicePackInput | null = null;
   if (pack) {
-    const samples = await fewShotSamples(scope, pack.id, channel);
+    // A check and a short reply don't load samples (01 §3), so don't fetch them.
+    const samples = task === "write" || task === "rewrite" ? await fewShotSamples(scope, pack.id, channel) : [];
     voicePack = packToContextInput(pack, samples, channel);
   }
 
@@ -43,7 +46,7 @@ export async function loadBrandContext(
       )
     ).rows[0];
 
-    if (!bp) return buildBrandContext({ language, voicePack, platform });
+    if (!bp) return buildBrandContext({ language, voicePack, platform, task });
 
     const vg = (
       await c.query(`SELECT * FROM voice_guides WHERE brand_profile_id = $1 LIMIT 1`, [bp.id])
@@ -56,6 +59,7 @@ export async function loadBrandContext(
       language,
       voicePack,
       platform,
+      task,
       brandProfile: {
         storyArc: bp.story_arc ?? [],
         positioningStatement: bp.positioning_statement,

@@ -34,6 +34,12 @@ export async function checkText(
   scope: WorkspaceScope,
   text: string,
   platform?: string | null,
+  /**
+   * Check that a DRAFT doesn't copy their writing word for word. Off for their
+   * own writing (the Check page, a piece from their corpus), which would
+   * otherwise "copy" itself.
+   */
+  opts: { copyCheck?: boolean } = {},
 ): Promise<CheckOutcome> {
   const pack = await loadPackForWorkspace(scope);
   const samples = pack ? await listSamples(scope, pack.id) : [];
@@ -47,6 +53,9 @@ export async function checkText(
     channel: platform ?? undefined,
     corpusPieces: samples.length,
     corpusUses,
+    // Only public writing can be quoted back to them in a finding.
+    corpusTexts: opts.copyCheck ? samples.filter((s) => s.visibility === "public").map((s) => s.body) : [],
+    recentOpeners: pack?.index.lastOpeners,
   });
   return { ...result, corpusPieces: samples.length, platform: platform ?? null };
 }
@@ -66,7 +75,7 @@ export async function scoreContentItem(scope: ProjectScope, itemId: string): Pro
   ).rows[0];
   if (!row) return null;
   const text = [row.hook, row.body, row.cta].filter(Boolean).join("\n\n");
-  const result = await checkText(scope, text, formatByKey(row.format).platform);
+  const result = await checkText(scope, text, formatByKey(row.format).platform, { copyCheck: true });
   await withTenantSession(scope, (c) =>
     c.query(
       `UPDATE content_items SET voice_score = $1, voice_band = $2, voice_checked_at = now() WHERE id = $3`,
@@ -105,7 +114,7 @@ function judgeInput(text: string, neverWords: string[], platform?: string | null
 export async function judgeText(scope: WorkspaceScope, text: string, platform?: string | null): Promise<JudgeResult["findings"]> {
   const pack = await loadPackForWorkspace(scope);
   const { findings } = await runTask(scope, voiceJudge, {
-    context: await loadBrandContext(scope, "en", platform ?? undefined),
+    context: await loadBrandContext(scope, "en", platform ?? undefined, "check"),
     taskInput: judgeInput(text, pack?.index.neverWords ?? [], platform),
   });
   // Keep only findings that quote the draft: a line the model invented can't
@@ -118,7 +127,7 @@ export async function judgeText(scope: WorkspaceScope, text: string, platform?: 
 export async function rewriteText(scope: WorkspaceScope, text: string, platform?: string | null): Promise<string> {
   const pack = await loadPackForWorkspace(scope);
   const { text: out } = await runTask(scope, rewriteInVoice, {
-    context: await loadBrandContext(scope, "en", platform ?? undefined),
+    context: await loadBrandContext(scope, "en", platform ?? undefined, "rewrite"),
     taskInput: judgeInput(text, pack?.index.neverWords ?? [], platform),
   });
   return out;

@@ -257,7 +257,7 @@ describe("the one context builder", () => {
     }, "voice set");
 
     const ctx = await loadBrandContext(A, "en", "linkedin");
-    expect(ctx.version).toBe(3);
+    expect(ctx.version).toBe(4);
     expect(ctx.serialized).toContain("Finds the big idea in a small moment.");
     expect(ctx.serialized).toContain("Never call herself a thought leader.");
     expect(ctx.serialized).toContain("Why: If people think it");
@@ -279,7 +279,7 @@ describe("platform-aware context (build step 2)", () => {
     const s = ctx.serialized;
     expect(s).toContain("Platform: LinkedIn post");
     expect(s).toContain("At most 3000 characters");
-    expect(s).toContain("first 210 characters show");
+    expect(s).toContain("first 210 characters (about 3 lines) show");
     // Spec load order (file 01 §3, file 07): mechanics, platform rules, then samples.
     expect(s.indexOf("Platform: LinkedIn post")).toBeLessThan(s.indexOf("Their real writing"));
   });

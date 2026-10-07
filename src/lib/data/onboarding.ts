@@ -23,7 +23,7 @@ import { loadFoundation, saveFoundation } from "./foundation";
 import { applyAnswer, applyDials, type Answer } from "@/lib/voice/answers";
 import { confirmCards, estimateDials } from "@/lib/voice/derive";
 import type { IngestedPiece } from "@/lib/voice/ingest";
-import { tagged } from "@/lib/voice/types";
+import { tagged, withUserEdits } from "@/lib/voice/types";
 import {
   MEASURED_CONTEXT_MINIMUM,
   type DialKey,
@@ -32,6 +32,11 @@ import {
   type VoicePack,
   type WorkMode,
 } from "@/lib/voice/types";
+
+const MARK_NAMES: Record<string, string> = {
+  emDash: "Em dash", ellipsis: "Ellipsis", exclamation: "Exclamation mark", semicolon: "Semicolon",
+  emoji: "Emoji", parentheses: "Parentheses", question: "Question mark",
+};
 
 export async function requirePack(scope: WorkspaceScope): Promise<VoicePack> {
   const pack = await loadPackForWorkspace(scope);
@@ -171,9 +176,11 @@ export async function setNeverWords(scope: WorkspaceScope, actor: Actor, pack: V
 export async function dropOpener(scope: WorkspaceScope, actor: Actor, pack: VoicePack, example: string): Promise<void> {
   const openers = pack.mechanics.openers;
   if (!openers) return;
+  // Recorded as a hand edit too, so the next re-scan doesn't bring it back.
+  const mechanics = withUserEdits(pack.mechanics, { droppedPatterns: [example] });
   await writePack(
     scope, actor, pack,
-    { mechanics: { ...pack.mechanics, openers: { ...openers, value: openers.value.filter((o) => o.example !== example) } } },
+    { mechanics: { ...mechanics, openers: { ...openers, value: openers.value.filter((o) => o.example !== example) } } },
     "Dropped an opener.",
   );
 }
@@ -252,13 +259,31 @@ export async function resolveCard(
     const rule = pack.index.punctuation[mark];
     if (option === "drop") {
       await writePack(scope, actor, pack, { index: { ...pack.index, punctuation: { ...pack.index.punctuation, [mark]: { ...rule, allowed: false } } } }, `Dropped the ${mark} habit.`);
-    } else if (mark === "ellipsis" || mark === "emDash") {
-      // Kept: a proven habit beats the universal watch-list for this person.
-      await writePack(scope, actor, pack, { index: { ...pack.index, punctuation: { ...pack.index.punctuation, [mark]: { ...rule, allowed: true } } } }, `Kept the ${mark} habit.`);
+    } else {
+      // Kept: a proven habit beats the universal watch-list for this person,
+      // recorded as a red-pen exception with the evidence (red-pen.md).
+      const rate = pack.mechanics.punctuation?.value?.[mark as keyof NonNullable<VoicePack["mechanics"]["punctuation"]>["value"]];
+      const item = `${MARK_NAMES[mark] ?? mark} allowed`;
+      const exceptions = [
+        ...(pack.redPen.exceptions?.value ?? []).filter((e) => e.item !== item),
+        { item, evidence: rate != null ? `about ${rate} a piece in their own writing` : "a habit in their own writing" },
+      ];
+      await writePack(
+        scope, actor, pack,
+        {
+          index: { ...pack.index, punctuation: { ...pack.index.punctuation, [mark]: { ...rule, allowed: true } } },
+          redPen: { ...pack.redPen, exceptions: tagged(exceptions, "scan", "measured") },
+        },
+        `Kept the ${mark} habit.`,
+      );
     }
   } else if (card.kind === "H4" && dropItems.length) {
     const drop = new Set(dropItems.flatMap((d) => d.split(",")));
-    const mech = pack.mechanics;
+    const dropped = [
+      ...(pack.mechanics.openers?.value ?? []).filter((_, i) => drop.has(`o${i}`)),
+      ...(pack.mechanics.closers?.value ?? []).filter((_, i) => drop.has(`c${i}`)),
+    ].map((x) => x.example);
+    const mech = withUserEdits(pack.mechanics, { droppedPatterns: dropped });
     const openers = (mech.openers?.value ?? []).filter((_, i) => !drop.has(`o${i}`));
     const closers = (mech.closers?.value ?? []).filter((_, i) => !drop.has(`c${i}`));
     await writePack(

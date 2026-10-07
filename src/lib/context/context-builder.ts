@@ -25,7 +25,17 @@
  * the voices they admire and avoid, how they mix languages, and their
  * "this or that" picks as paired examples.
  */
-export const CONTEXT_VERSION = 3;
+/*
+ * v4 — Voice Pack v2 in full. Everything onboarding asks now reaches the
+ * prompt (the party answers, dials, persona, roots, feelings, sign-offs, tone
+ * shifts), plus the red pen (exceptions, self-check), benchmark notes and the
+ * anti-sample. And the voice is loaded per TASK in the spec's order (01 §3):
+ * write, rewrite, check and short reply each load only what they need.
+ */
+export const CONTEXT_VERSION = 4;
+
+/** What the context is for (spec 01 §3 load order). Undefined reads as "write". */
+export type ContextTask = "write" | "rewrite" | "check" | "reply";
 
 // ---- Input shapes (all fields optional: the foundation may be thin) ---------
 
@@ -83,13 +93,41 @@ export interface VoicePackInput {
   mechanicsLines?: string[];
   /** The block for the platform being written for, if there is one. */
   context?: { channel: string; tag: "measured" | "inferred"; lines: string[] } | null;
-  samples?: { channel: string; body: string }[];
+  samples?: { channel: string; body: string; note?: string }[];
   stories?: { title: string; body: string; lesson?: string }[];
   proofs?: { claim: string; source?: string }[];
   influences?: { admire: string[]; avoid: string[] } | null;
   languages?: { primary: string; also: string[]; when?: string } | null;
   preferences?: { chosen: string; over: string }[];
   corpusPieces?: number;
+  /** A1: what they do, in their own words. */
+  whatTheyDo?: string | null;
+  /** A3 / B4: who they are to the reader. */
+  personaRoles?: string[];
+  quadrant?: string | null;
+  /** C4, rendered as "Fun–Serious 3 (leans fun)". */
+  dials?: { left: string; right: string; value: number }[];
+  /** H1: they chose how they want to sound over how they wrote. */
+  dialsAspiration?: boolean;
+  /** C1 / C2: the voice lives between these two. */
+  guarded?: string | null;
+  unguarded?: string | null;
+  feelings?: { skim?: string; read?: string; talk?: string } | null;
+  /** B1: why they sound this way. */
+  roots?: string | null;
+  /** C10 as answered in the question bank. */
+  languageNote?: string | null;
+  /** A5, A6, B2, B4, labelled. */
+  notes?: { label: string; text: string }[];
+  /** F3: how the tone shifts by moment. */
+  situations?: { moment: string; how: string }[];
+  /** F5: exact sign-offs by place. */
+  signOffs?: { place: string; text: string }[];
+  /** red-pen.md */
+  exceptions?: string[];
+  selfCheck?: string[];
+  /** samples.md: a draft that is almost them but wrong, with what's off (G4). */
+  antiSample?: { text: string; off: string; fixed?: string } | null;
 }
 
 /**
@@ -114,6 +152,8 @@ export interface BrandContextInput {
   visualIdentity?: VisualIdentityInput | null;
   /** Structured so language is a parameter for later i18n (§09). Default 'en'. */
   language?: string;
+  /** What the context is for; decides which voice parts load, in what order. */
+  task?: ContextTask;
 }
 
 // ---- Output shape (stable) --------------------------------------------------
@@ -216,31 +256,27 @@ function scoreCompleteness(input: BrandContextInput): {
 function serializePlatform(p: PlatformInput): string[] {
   const lines = p.lines.filter(nonEmpty);
   if (!lines.length) return [];
-  return [`Platform: ${p.label}. Hard limits beat everything except the guardrails above:`, ...lines.map((l) => `  - ${l}`)];
+  // Spec 07 precedence: hard limits > guardrails > their platform habits > platform norms.
+  return [`Platform: ${p.label}. Its hard limits beat every other instruction, the guardrails included:`, ...lines.map((l) => `  - ${l}`)];
 }
 
-function serializeVoicePack(vp: VoicePackInput, platform?: PlatformInput | null): string[] {
+// ---- the voice, one part per file of the Voice Pack ---------------------------
+
+/** VOICE.md: always loaded first, whatever the task. */
+function voiceCore(vp: VoicePackInput): string[] {
   const out: string[] = ["## VOICE"];
   if (nonEmpty(vp.voiceLine)) out.push(`In one line: ${vp.voiceLine!.trim()}`);
-
   const rules = (vp.hardRules ?? []).filter(nonEmpty);
   if (rules.length) {
     out.push("Hard rules — these override every other instruction:");
     rules.forEach((r, i) => out.push(`  ${i + 1}. ${r.trim()}`));
   }
+  return out;
+}
 
-  if ((vp.toneDescriptors ?? []).length) out.push(`Tone: ${vp.toneDescriptors!.join(", ")}`);
-  const pw = (vp.personalityWords ?? []).filter((w) => nonEmpty(w?.word));
-  if (pw.length)
-    out.push(
-      `Personality: ${pw.map((w) => (nonEmpty(w.meaning) ? `${w.word} (${w.meaning})` : w.word)).join(" · ")}`,
-    );
-  if (nonEmpty(vp.reader)) out.push(`Writing to: ${vp.reader!.trim()}`);
-  if (nonEmpty(vp.carries)) out.push(`Every piece quietly carries: ${vp.carries!.trim()}`);
-  if (nonEmpty(vp.humour)) out.push(`Humour: ${vp.humour!.trim()}`);
-  if (nonEmpty(vp.readingLevel)) out.push(`Reading level: ${vp.readingLevel}`);
-
-  // A guardrail without its reason cannot generalise past the case it names.
+/** guardrails.md. A guardrail without its reason cannot generalise past the case it names. */
+function voiceGuardrails(vp: VoicePackInput): string[] {
+  const out: string[] = [];
   const guards = (vp.guardrails ?? []).filter((g) => nonEmpty(g?.rule));
   if (guards.length) {
     out.push("Guardrails (breaking one makes the output wrong, however well written):");
@@ -250,33 +286,113 @@ function serializeVoicePack(vp: VoicePackInput, platform?: PlatformInput | null)
       out.push(`  - ${g.rule.trim()}${why}${instead}`);
     });
   }
-  if ((vp.neverWords ?? []).length) out.push(`Never use: ${vp.neverWords!.join(", ")}`);
+  if (vp.influences?.avoid.length) out.push(`Must never sound like: ${vp.influences.avoid.join("; ")}`);
+  return out;
+}
+
+/** mechanics.md: the measured fingerprint. */
+function voiceMechanics(vp: VoicePackInput): string[] {
+  const mech = (vp.mechanicsLines ?? []).filter(nonEmpty);
+  return mech.length ? ["Measured fingerprint (hit these, they come from their own writing):", ...mech.map((l) => `  - ${l}`)] : [];
+}
+
+/** contexts.md for the platform being written for, under the platform's own rules (07). */
+function voiceContext(vp: VoicePackInput, platform?: PlatformInput | null): string[] {
+  const out: string[] = [];
+  if (platform) out.push(...serializePlatform(platform));
+  if (vp.context) {
+    const { channel, tag, lines: ctxLines } = vp.context;
+    out.push(`How they write on ${channel} (${tag}):`);
+    ctxLines.filter(nonEmpty).forEach((l) => out.push(`  - ${l}`));
+    if (tag === "inferred") out.push("  - No real writing from this platform yet, so keep close to the general voice.");
+  }
+  return out;
+}
+
+/** samples.md: their picks, their writing (platform first), and the edge of the voice. */
+function voiceSamples(vp: VoicePackInput): string[] {
+  const out: string[] = [];
+  const prefs = (vp.preferences ?? []).filter((p) => nonEmpty(p?.chosen));
+  if (prefs.length) {
+    out.push("Lines they picked as more like them, over a near-identical twin:");
+    prefs.forEach((p) => out.push(`  + "${p.chosen.trim()}"  rather than  "${p.over.trim()}"`));
+  }
+  const samples = (vp.samples ?? []).filter((s) => nonEmpty(s?.body));
+  if (samples.length) {
+    out.push("Their real writing. Match the rhythm and word choice. Never copy a sentence:");
+    samples.forEach((s, i) => {
+      out.push(`  [${i + 1}] (${s.channel}) ${s.body.trim()}`);
+      if (nonEmpty(s.note)) out.push(`      Why this is them: ${s.note!.trim()}`);
+    });
+  } else {
+    out.push("No real writing on file yet — this voice is provisional. Do not invent a style.");
+  }
+  if (vp.antiSample && nonEmpty(vp.antiSample.text)) {
+    out.push(`Almost them, but wrong: "${vp.antiSample.text.trim()}"`);
+    if (nonEmpty(vp.antiSample.off)) out.push(`  What's off: ${vp.antiSample.off.trim()}`);
+    if (nonEmpty(vp.antiSample.fixed)) out.push(`  Fixed: "${vp.antiSample.fixed!.trim()}"`);
+  }
+  return out;
+}
+
+const DIAL_LEAN = (d: { left: string; right: string; value: number }) =>
+  d.value <= 3 ? `leans ${d.left.toLowerCase()}` : d.value >= 8 ? `leans ${d.right.toLowerCase()}` : "in between";
+
+/** identity.md: who is speaking. Loaded last for writing, per the spec. */
+function voiceIdentity(vp: VoicePackInput): string[] {
+  const out: string[] = [];
+  if (nonEmpty(vp.whatTheyDo)) out.push(`What they do, in their words: ${vp.whatTheyDo!.trim()}`);
+  if ((vp.personaRoles ?? []).length) out.push(`To their reader they are: ${vp.personaRoles!.join("; ")}`);
+  if (nonEmpty(vp.quadrant)) out.push(`Personality quadrant: ${vp.quadrant}`);
+  if ((vp.toneDescriptors ?? []).length) out.push(`Tone: ${vp.toneDescriptors!.join(", ")}`);
+  const pw = (vp.personalityWords ?? []).filter((w) => nonEmpty(w?.word));
+  if (pw.length)
+    out.push(`Personality: ${pw.map((w) => (nonEmpty(w.meaning) ? `${w.word} (${w.meaning})` : w.word)).join(" · ")}`);
+  const dials = (vp.dials ?? []).filter((d) => d.value >= 1 && d.value <= 10);
+  if (dials.length) {
+    out.push(
+      `Dials, 1 to 10: ${dials.map((d) => `${d.left}–${d.right} ${d.value} (${DIAL_LEAN(d)})`).join(" · ")}`,
+    );
+    if (vp.dialsAspiration)
+      out.push("  These are where they want to sound, not where their old writing sits. Aim here.");
+  }
+  if (nonEmpty(vp.reader)) out.push(`Writing to: ${vp.reader!.trim()}`);
+  if (nonEmpty(vp.carries)) out.push(`Every piece quietly carries: ${vp.carries!.trim()}`);
+  if (nonEmpty(vp.guarded) || nonEmpty(vp.unguarded)) {
+    out.push("Guarded and unguarded (the real voice lives between the two; never looser than the second):");
+    if (nonEmpty(vp.guarded)) out.push(`  - In public, sober: ${vp.guarded!.trim()}`);
+    if (nonEmpty(vp.unguarded)) out.push(`  - Guard down: ${vp.unguarded!.trim()}`);
+  }
+  const f = vp.feelings;
+  if (f && (nonEmpty(f.skim) || nonEmpty(f.read) || nonEmpty(f.talk))) {
+    out.push("What a reader should feel:");
+    if (nonEmpty(f.skim)) out.push(`  - After a 30-second skim: ${f.skim!.trim()}`);
+    if (nonEmpty(f.read)) out.push(`  - After a 5-minute read: ${f.read!.trim()}`);
+    if (nonEmpty(f.talk)) out.push(`  - After a 20-minute conversation: ${f.talk!.trim()}`);
+  }
+  if (nonEmpty(vp.roots)) out.push(`Where the voice comes from: ${vp.roots!.trim()}`);
+  if (nonEmpty(vp.humour)) out.push(`Humour: ${vp.humour!.trim()}`);
+  if (nonEmpty(vp.readingLevel)) out.push(`Reading level: ${vp.readingLevel}`);
   if (vp.languages) {
     const also = vp.languages.also.length ? `, mixing in ${vp.languages.also.join(", ")}` : "";
     out.push(`Language: ${vp.languages.primary}${also}${nonEmpty(vp.languages.when) ? ` (${vp.languages.when!.trim()})` : ""}.`);
+  } else if (nonEmpty(vp.languageNote)) out.push(`Language: ${vp.languageNote!.trim()}`);
+  if (vp.influences?.admire.length)
+    out.push(`Admires how these write (borrow the qualities, never the words): ${vp.influences.admire.join("; ")}`);
+  (vp.notes ?? []).filter((n) => nonEmpty(n.text)).forEach((n) => out.push(`${n.label}: ${n.text.trim()}`));
+  const sit = (vp.situations ?? []).filter((s) => nonEmpty(s.how));
+  if (sit.length) {
+    out.push("How their tone shifts:");
+    sit.forEach((s) => out.push(`  - ${s.moment}: ${s.how.trim()}`));
   }
-  if (vp.influences && (vp.influences.admire.length || vp.influences.avoid.length)) {
-    if (vp.influences.admire.length) out.push(`Admires how these write (borrow the qualities, never the words): ${vp.influences.admire.join("; ")}`);
-    if (vp.influences.avoid.length) out.push(`Must never sound like: ${vp.influences.avoid.join("; ")}`);
-  }
-  if ((vp.mustHaves ?? []).length) out.push(`Every piece has: ${vp.mustHaves!.join(", ")}`);
+  const so = (vp.signOffs ?? []).filter((s) => nonEmpty(s.text));
+  if (so.length) out.push(`Sign-offs, exactly: ${so.map((s) => `${s.place}: "${s.text.trim()}"`).join(" · ")}`);
+  return out;
+}
 
-  const mech = (vp.mechanicsLines ?? []).filter(nonEmpty);
-  if (mech.length) {
-    out.push("Measured fingerprint (hit these, they come from their own writing):");
-    mech.forEach((l) => out.push(`  - ${l}`));
-  }
-
-  if (platform) out.push(...serializePlatform(platform));
-
-  if (vp.context) {
-    const { channel, tag, lines: ctxLines } = vp.context;
-    out.push(`On ${channel} (${tag}):`);
-    ctxLines.filter(nonEmpty).forEach((l) => out.push(`  - ${l}`));
-    if (tag === "inferred")
-      out.push("  - No real writing from this platform yet, so keep close to the general voice.");
-  }
-
+/** Their material: what a draft may use and can't invent. */
+function voiceMaterial(vp: VoicePackInput): string[] {
+  const out: string[] = [];
   const stories = (vp.stories ?? []).filter((s) => nonEmpty(s?.body));
   if (stories.length) {
     out.push("Stories they tell. Use one when it fits; keep its facts exactly as told:");
@@ -287,20 +403,47 @@ function serializeVoicePack(vp: VoicePackInput, platform?: PlatformInput | null)
     out.push("Facts they can stand behind. These are the ONLY numbers, results and client details a draft may use:");
     proofs.forEach((p) => out.push(`  - ${p.claim.trim()}${nonEmpty(p.source) ? ` [${p.source!.trim()}]` : ""}`));
   }
-  const prefs = (vp.preferences ?? []).filter((p) => nonEmpty(p?.chosen));
-  if (prefs.length) {
-    out.push("Lines they picked as more like them, over a near-identical twin:");
-    prefs.forEach((p) => out.push(`  + "${p.chosen.trim()}"  rather than  "${p.over.trim()}"`));
-  }
+  return out;
+}
 
-  const samples = (vp.samples ?? []).filter((s) => nonEmpty(s?.body));
-  if (samples.length) {
-    out.push("Their real writing. Match the rhythm and word choice. Never copy a sentence:");
-    samples.forEach((s, i) => out.push(`  [${i + 1}] (${s.channel}) ${s.body.trim()}`));
-  } else {
-    out.push("No real writing on file yet — this voice is provisional. Do not invent a style.");
+/** red-pen.md: the personal edit pass. */
+function voiceRedPen(vp: VoicePackInput): string[] {
+  const out: string[] = [];
+  if ((vp.neverWords ?? []).length) out.push(`Never use: ${vp.neverWords!.join(", ")}`);
+  if ((vp.exceptions ?? []).length)
+    out.push(`Their own habits that beat the usual anti-AI rules: ${vp.exceptions!.join("; ")}`);
+  if ((vp.mustHaves ?? []).length) out.push(`Every piece has: ${vp.mustHaves!.join(", ")}`);
+  const sc = (vp.selfCheck ?? []).filter(nonEmpty);
+  if (sc.length) {
+    out.push("Before you finish, check (rewrite any line that fails):");
+    sc.forEach((q, i) => out.push(`  ${i + 1}. ${q.trim()}`));
   }
   return out;
+}
+
+/**
+ * The VOICE section, loaded per task in the spec's order (01 §3, 07):
+ *   write    VOICE → guardrails → mechanics → platform → contexts → samples → identity
+ *   rewrite  VOICE → mechanics → red pen → samples
+ *   check    VOICE → guardrails → mechanics → red pen
+ *   reply    VOICE → contexts → red pen
+ * A writer also gets the red pen beside the guardrails (never-words are rules,
+ * not style) and their material (stories, facts) after who they are.
+ */
+function serializeVoicePack(vp: VoicePackInput, platform: PlatformInput | null | undefined, task: ContextTask): string[] {
+  switch (task) {
+    case "rewrite":
+      return [...voiceCore(vp), ...voiceMechanics(vp), ...voiceRedPen(vp), ...voiceSamples(vp)];
+    case "check":
+      return [...voiceCore(vp), ...voiceGuardrails(vp), ...voiceMechanics(vp), ...voiceRedPen(vp)];
+    case "reply":
+      return [...voiceCore(vp), ...voiceContext(vp, platform), ...voiceRedPen(vp)];
+    default:
+      return [
+        ...voiceCore(vp), ...voiceGuardrails(vp), ...voiceRedPen(vp), ...voiceMechanics(vp),
+        ...voiceContext(vp, platform), ...voiceSamples(vp), ...voiceIdentity(vp), ...voiceMaterial(vp),
+      ];
+  }
 }
 
 function serialize(input: BrandContextInput): string {
@@ -324,7 +467,7 @@ function serialize(input: BrandContextInput): string {
   if (chapters.length) lines.push("Story arc:", ...chapters);
   if (nonEmpty(bp.offersSummary)) lines.push(`Offers: ${bp.offersSummary!.trim()}`);
 
-  if (input.voicePack) lines.push("", ...serializeVoicePack(input.voicePack, input.platform));
+  if (input.voicePack) lines.push("", ...serializeVoicePack(input.voicePack, input.platform, input.task ?? "write"));
   else {
     lines.push("", "## VOICE");
     if ((vg.toneDescriptors ?? []).length)

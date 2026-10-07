@@ -97,9 +97,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   const contexts = Object.values(pack.contexts);
   const signatures = pack.mechanics.signaturePhrases?.value ?? [];
   const Hidden = () => <input type="hidden" name="tenantId" value={id} />;
-  // Across sources: what they say everywhere, and (for them only) what they
-  // explain privately but never post.
-  const noticed = await patternsFor(scope, pack, samples, { includePrivate: owner });
+  // Across sources: phrases they use in more than one place, said publicly at least once.
+  const noticed = await patternsFor(scope, pack, samples);
 
   // §15.1 brand core card — the coloured summary of the measured voice.
   const coreAttrs = (pack.identity.toneDescriptors?.value ?? []).slice(0, 5);
@@ -219,56 +218,32 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             </div>
           </Card>
         )}
-        {(noticed.everywhere.length > 0 || noticed.privateOnly.length > 0) && (
+        {noticed.everywhere.length > 0 && (
           <div id="noticed">
             <Card label="What we noticed">
               <p className="text-[0.82rem] text-ink-muted mb-3">
-                Found by comparing your sources with each other. Keep what&apos;s really you; anything you say no to won&apos;t come back.
+                Phrases you use across your writing, in more than one place. Keep what&apos;s really you; anything you say no to won&apos;t come back.
               </p>
-              <div className="flex flex-col gap-5">
-                {noticed.everywhere.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    <p className="label-mono text-ink-faint">You say this everywhere</p>
-                    {noticed.everywhere.map((e) => (
-                      <div key={e.phrase} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
-                        <span className="flex-1 min-w-0 text-[0.88rem]">
-                          &ldquo;{e.phrase}&rdquo;{" "}
-                          <span className="text-ink-faint">· {e.pieces} pieces across {e.channels.map((c) => PLATFORM_RULES[c]?.label ?? c).join(", ")}</span>
-                        </span>
-                        {owner && (
-                          <>
-                            <form action={decidePatternAction}><Hidden /><input type="hidden" name="kind" value="everywhere" /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="1" />
-                              <SubmitButton pendingLabel="…" size="sm">Keep it</SubmitButton>
-                            </form>
-                            <form action={decidePatternAction}><Hidden /><input type="hidden" name="kind" value="everywhere" /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="0" />
-                              <SubmitButton pendingLabel="…" size="sm" variant="ghost">Not me</SubmitButton>
-                            </form>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                    <p className="text-[0.75rem] text-ink-faint">Kept phrases become signature phrases: drafts use one now and then, never in every piece.</p>
-                  </div>
-                )}
-                {noticed.privateOnly.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    <p className="label-mono text-ink-faint">You explain this in email, but haven&apos;t posted about it</p>
-                    {noticed.privateOnly.map((t) => (
-                      <div key={t.term} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
-                        <span className="flex-1 min-w-0 text-[0.88rem]">
-                          {t.term} <span className="text-ink-faint">· in {t.pieces} of your emails</span>
-                        </span>
-                        <form action={decidePatternAction}><Hidden /><input type="hidden" name="kind" value="private" /><input type="hidden" name="value" value={t.term} /><input type="hidden" name="keep" value="1" />
-                          <SubmitButton pendingLabel="…" size="sm">Make it an idea</SubmitButton>
+              <div className="flex flex-col gap-2">
+                {noticed.everywhere.map((e) => (
+                  <div key={e.phrase} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
+                    <span className="flex-1 min-w-0 text-[0.88rem]">
+                      &ldquo;{e.phrase}&rdquo;{" "}
+                      <span className="text-ink-faint">· {e.pieces} pieces across {e.channels.map((c) => PLATFORM_RULES[c]?.label ?? c).join(", ")}</span>
+                    </span>
+                    {owner && (
+                      <>
+                        <form action={decidePatternAction}><Hidden /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="1" />
+                          <SubmitButton pendingLabel="…" size="sm">Keep it</SubmitButton>
                         </form>
-                        <form action={decidePatternAction}><Hidden /><input type="hidden" name="kind" value="private" /><input type="hidden" name="value" value={t.term} /><input type="hidden" name="keep" value="0" />
+                        <form action={decidePatternAction}><Hidden /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="0" />
                           <SubmitButton pendingLabel="…" size="sm" variant="ghost">Not me</SubmitButton>
                         </form>
-                      </div>
-                    ))}
-                    <p className="text-[0.75rem] text-ink-faint">Only you see this list. It names topics, never what you wrote, and nothing from your email is ever quoted.</p>
+                      </>
+                    )}
                   </div>
-                )}
+                ))}
+                <p className="text-[0.75rem] text-ink-faint">Only phrases you&apos;ve also said publicly are shown. Kept phrases become signature phrases: drafts use one now and then, never in every piece.</p>
               </div>
             </Card>
           </div>
@@ -303,7 +278,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               name="text"
               rows={5}
               required
-              placeholder={"Paste your writing. Separate each piece with a blank line.\n\nA post keeps its own line breaks — only a blank line starts a new piece."}
+              placeholder={"Paste your writing. Put a line with --- between pieces.\n\nA post keeps its own paragraphs: a single blank line never splits it."}
               className="field font-[inherit] leading-relaxed"
             />
             <div className="flex items-center gap-2 flex-wrap">

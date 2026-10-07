@@ -62,16 +62,33 @@ export function messageText(payload: GmailPart): string {
 export const MIN_EMAIL_WORDS = 25;
 
 /**
- * The whole-mailbox read: every sent email from the last two years, up to this
- * many. Enough to see what someone says over and over; past it, older mail
- * adds little and the read takes long.
+ * How far back the person lets us read (spec 06 §1: "the user picks the scope,
+ * default to the last 12 months").
+ */
+export const GMAIL_RANGES = [6, 12, 24] as const;
+export type GmailRange = (typeof GMAIL_RANGES)[number];
+export const GMAIL_DEFAULT_RANGE: GmailRange = 12;
+
+/**
+ * Read the whole range, keep a sample (spec 06 §1: "sample, don't hoard, e.g.
+ * 200 sent emails"). We read up to GMAIL_IMPORT_MAX so the sample is spread
+ * evenly across the range, and keep about GMAIL_KEEP of them.
  */
 export const GMAIL_IMPORT_MAX = 2000;
+export const GMAIL_KEEP = 200;
 /** Messages per page: one server call reads one page, so each call stays well inside a request. */
 export const GMAIL_PAGE_SIZE = 100;
 
-const sentQuery = (since?: string) =>
-  `in:sent newer_than:2y${since ? ` after:${Math.floor(new Date(since).getTime() / 1000)}` : ""}`;
+const sentQuery = (months: number, since?: string) =>
+  `in:sent newer_than:${months}m${since ? ` after:${Math.floor(new Date(since).getTime() / 1000)}` : ""}`;
+
+/**
+ * Which messages to read so the kept sample spreads evenly across the range:
+ * every Nth, by position in the newest-first list. Positions are global, so the
+ * choice is the same however the pages fall.
+ */
+export const sampleEvery = (estimate: number, keep = GMAIL_KEEP) =>
+  Math.max(1, Math.ceil(Math.min(estimate, GMAIL_IMPORT_MAX) / keep));
 
 /**
  * One page of sent mail: list up to `size` ids, then read them. The browser
@@ -80,11 +97,17 @@ const sentQuery = (since?: string) =>
  */
 export async function sentMailPage(
   token: string,
-  opts: { pageToken?: string; size?: number; since?: string } = {},
+  opts: {
+    pageToken?: string; size?: number; since?: string;
+    /** How far back, in months. */
+    months?: number;
+    /** Read only every Nth message, counting from `offset` (the global position of this page's first). */
+    every?: number; offset?: number;
+  } = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<{ pieces: ImportedPiece[]; scanned: number; nextPageToken: string | null; estimate: number }> {
   const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-  url.searchParams.set("q", sentQuery(opts.since));
+  url.searchParams.set("q", sentQuery(opts.months ?? 24, opts.since));
   url.searchParams.set("maxResults", String(Math.min(opts.size ?? GMAIL_PAGE_SIZE, 100)));
   if (opts.pageToken) url.searchParams.set("pageToken", opts.pageToken);
   const page = (await (await call(fetchImpl, url.toString(), auth(token))).json()) as {
@@ -93,12 +116,24 @@ export async function sentMailPage(
     resultSizeEstimate?: number;
   };
   const ids = (page.messages ?? []).map((m) => m.id);
+  const every = Math.max(1, opts.every ?? 1);
+  const offset = opts.offset ?? 0;
+  const picked = ids.filter((_, i) => (offset + i) % every === 0);
   return {
-    pieces: await readSent(token, ids, fetchImpl),
+    pieces: await readSent(token, picked, fetchImpl),
     scanned: ids.length,
     nextPageToken: page.nextPageToken ?? null,
     estimate: page.resultSizeEstimate ?? ids.length,
   };
+}
+
+/** Gmail's estimate of how many sent emails the range holds: one cheap list call, read nothing. */
+export async function sentMailEstimate(token: string, months: number, fetchImpl: FetchLike = fetch): Promise<number> {
+  const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+  url.searchParams.set("q", sentQuery(months));
+  url.searchParams.set("maxResults", "1");
+  const page = (await (await call(fetchImpl, url.toString(), auth(token))).json()) as { resultSizeEstimate?: number };
+  return page.resultSizeEstimate ?? 0;
 }
 
 /** Sent email in one go, for small reads (and tests). The whole-mailbox read pages through `sentMailPage`. */

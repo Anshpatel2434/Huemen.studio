@@ -5,7 +5,9 @@
 export interface FormatDef {
   key: string;
   label: string;
-  channel: "linkedin" | "instagram" | "newsletter" | "email" | "talk";
+  channel: "linkedin" | "instagram" | "newsletter" | "email" | "talk" | "x" | "threads" | "chat" | "bio";
+  /** A short reply or message: loads the reply context (spec 01 §3), not the full writing context. */
+  reply?: boolean;
   templateKey: string;
   /**
    * The platform whose rules and whose voice block apply (lib/voice/platforms,
@@ -26,6 +28,12 @@ export const FORMATS: FormatDef[] = [
   { key: "newsletter_section", label: "Newsletter section", channel: "newsletter", platform: "newsletter", templateKey: "newsletter_section", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
   { key: "pitch_email", label: "Pitch email", channel: "email", platform: "email", templateKey: "pitch_email", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
   { key: "talk_abstract", label: "Talk abstract", channel: "talk", platform: "spoken", templateKey: "talk_abstract", frame: { w: 1920, h: 1080, label: "16:9 · 1920×1080" } },
+  { key: "x_post", label: "X post", channel: "x", platform: "x", templateKey: "x_post", frame: { w: 1600, h: 900, label: "16:9 · 1600×900" } },
+  { key: "threads_post", label: "Threads post", channel: "threads", platform: "threads", templateKey: "threads_post", frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
+  { key: "linkedin_comment", label: "LinkedIn comment", channel: "linkedin", platform: "linkedin_comment", templateKey: "linkedin_comment", reply: true, frame: { w: 1080, h: 1080, label: "1:1 · 1080×1080" } },
+  { key: "whatsapp_message", label: "WhatsApp message", channel: "chat", platform: "whatsapp", templateKey: "whatsapp_message", reply: true, frame: { w: 1080, h: 1080, label: "1:1 · 1080×1080" } },
+  { key: "slack_message", label: "Slack or Teams message", channel: "chat", platform: "slack", templateKey: "slack_message", reply: true, frame: { w: 1080, h: 1080, label: "1:1 · 1080×1080" } },
+  { key: "bio", label: "Bio or About", channel: "bio", platform: "bio", templateKey: "bio", frame: { w: 1584, h: 396, label: "Banner · 1584×396" } },
 ];
 
 export const formatByKey = (k: string): FormatDef => FORMATS.find((f) => f.key === k) ?? FORMATS[0];

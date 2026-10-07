@@ -56,7 +56,7 @@ function loadPicker(): Promise<GooglePicker> {
 
 const CHANNELS = ["newsletter", "linkedin", "bio", "spoken", "email"];
 
-export function CapabilityRun({ tenantId, cap, autoStart = false }: { tenantId: string; cap: CapabilityKey; autoStart?: boolean }) {
+export function CapabilityRun({ tenantId, cap, prompted = false }: { tenantId: string; cap: CapabilityKey; prompted?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -134,7 +134,7 @@ export function CapabilityRun({ tenantId, cap, autoStart = false }: { tenantId: 
 
   return (
     <div className="flex flex-col gap-3">
-      {cap === "gmail" && <GmailImport tenantId={tenantId} autoStart={autoStart} />}
+      {cap === "gmail" && <GmailImport tenantId={tenantId} prompted={prompted} />}
 
       {cap === "docs" && (
         <>
