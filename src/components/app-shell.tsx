@@ -228,9 +228,9 @@ function Sidebar({ nav }: { nav: ShellNav }) {
         className="mt-3 shrink-0"
         onSubmit={(e) => { e.preventDefault(); router.push(`${home}?view=all${q ? `&q=${encodeURIComponent(q)}` : ""}`); }}
       >
-        <label className="flex items-stretch gap-2 h-11 px-3 rounded-sm bg-hover border border-transparent focus-within:border-line text-ink-faint">
+        <label className="flex items-stretch gap-2 h-11 px-3 rounded-sm bg-hover border border-transparent text-ink-faint focus-within:bg-paper focus-within:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--focus)] focus-within:outline">
           <Search size={15} aria-hidden="true" className="self-center shrink-0" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects" aria-label="Search projects" className="bg-transparent outline-none text-sm text-ink flex-1 min-w-0 self-stretch -my-px placeholder:text-ink-faint" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects" aria-label="Search projects" className="bg-transparent outline-none text-sm text-ink flex-1 min-w-0 self-stretch -my-px !outline-none placeholder:text-ink-faint" />
         </label>
       </form>
 
