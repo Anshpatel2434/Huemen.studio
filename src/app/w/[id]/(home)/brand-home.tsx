@@ -137,7 +137,7 @@ export function BrandHome(props: BrandHomeProps) {
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {recent.map((p) => (
                     <li key={p.id} className="min-w-0">
-                      <Link href={`${base}/p/${p.id}`} className="group h-full flex flex-col bg-paper border border-hairline rounded-md overflow-hidden hover:border-line-strong transition-colors">
+                      <Link href={`${base}/p/${p.id}`} className="hu-lift group h-full flex flex-col bg-paper border border-hairline rounded-md overflow-hidden">
                         <span aria-hidden="true" className="h-1 shrink-0" style={{ background: hueFor(p.id) }} />
                         <span className="flex-1 flex flex-col gap-3 p-5">
                           <span className="flex items-center gap-2">

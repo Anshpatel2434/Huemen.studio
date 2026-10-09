@@ -39,7 +39,7 @@ export async function Proposals({ tenantId, format, limit }: { tenantId: string;
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       {topics.slice(0, limit).map((t) => (
         <Start key={t.title} tenantId={tenantId} topic={t.title} pillar={t.pillar} format={format} className="flex">
-          <button type="submit" className="flex-1 text-left bg-paper border border-hairline hover:border-ink rounded-md p-4 flex flex-col gap-2 min-h-11 transition-colors">
+          <button type="submit" className="hu-lift flex-1 text-left bg-paper border border-hairline rounded-md p-4 flex flex-col gap-2 min-h-11">
             {t.pillar && <span className="label-mono text-ink-faint line-clamp-1" title={t.pillar}>{t.pillar}</span>}
             <span className="text-base font-medium leading-snug">{t.title}</span>
             <span className="text-sm text-ink-muted flex-1">{t.why}</span>
@@ -51,6 +51,19 @@ export async function Proposals({ tenantId, format, limit }: { tenantId: string;
   );
 }
 
-export const ProposalsLoading = () => (
-  <p className="text-sm text-ink-muted flex items-center gap-2"><AgentDots /> Finding topics in your pillars</p>
+/** Holds the cards' place while the topics are found, so nothing jumps when they land. */
+export const ProposalsLoading = ({ count = 3 }: { count?: number }) => (
+  <div role="status" className="flex flex-col gap-3">
+    <p className="text-sm text-ink-muted flex items-center gap-2"><AgentDots /> Finding topics in your pillars</p>
+    <div aria-hidden="true" className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <span key={i} className="bg-paper border border-hairline rounded-md p-4 flex flex-col gap-3 min-h-[150px]">
+          <span className="hu-skel block h-3 w-20" />
+          <span className="hu-skel block h-4 w-full" />
+          <span className="hu-skel block h-4 w-4/5" />
+          <span className="hu-skel block h-3 w-3/5 mt-auto" />
+        </span>
+      ))}
+    </div>
+  </div>
 );

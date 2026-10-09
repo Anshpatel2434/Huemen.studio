@@ -42,7 +42,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
 
   return (
     <>
-      <div className="absolute inset-0 right-[280px]">
+      <div className="absolute inset-0 min-[900px]:right-[280px]">
         {items.length === 0 ? (
           <WritePiece
             tenantId={id}

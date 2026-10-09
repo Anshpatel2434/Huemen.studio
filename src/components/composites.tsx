@@ -114,7 +114,7 @@ export function ScoreMeter({
         <Badge tone={t.tone}>{word ?? t.word}</Badge>
       </div>
       <div className="mt-3 h-2 rounded-full bg-field overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: t.fill }} />
+        <div className="hu-meter-fill h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: t.fill }} />
       </div>
       <div className="mt-1.5 flex justify-between label-mono text-ink-faint">
         {scale.map((s) => <span key={s}>{s}</span>)}
@@ -197,7 +197,7 @@ export function UsageMeter({ rows, resets, footer }: {
             </div>
             {r.cap ? (
               <div className="mt-2 h-1.5 rounded-full bg-active overflow-hidden" role="progressbar" aria-label={r.label} aria-valuemin={0} aria-valuemax={r.cap} aria-valuenow={r.used}>
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: near ? "var(--warn-line)" : "var(--accent)" }} />
+                <div className="hu-meter-fill h-full rounded-full" style={{ width: `${pct}%`, background: near ? "var(--warn-line)" : "var(--accent)" }} />
               </div>
             ) : null}
           </div>

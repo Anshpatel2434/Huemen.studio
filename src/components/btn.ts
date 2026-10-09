@@ -32,8 +32,9 @@ const SIZES: Record<Size, string> = {
 export function btnClass(variant: Variant = "primary", size: Size = "md") {
   return [
     "inline-flex items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap leading-none",
-    "transition-[background-color,border-color,color,opacity] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)]",
-    "active:translate-y-[0.5px]",
+    "transition-[background-color,border-color,color,opacity,transform] duration-[120ms] ease-[cubic-bezier(.2,0,0,1)]",
+    // Press feedback (§06): a 2% give, never a bounce; off under reduced motion.
+    "motion-safe:active:scale-[0.98]",
     "disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none aria-busy:pointer-events-none",
     SIZES[size],
     VARIANTS[variant],

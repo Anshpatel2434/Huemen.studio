@@ -469,3 +469,32 @@
   .hu-spinner { animation: none; border-right-color: currentColor; opacity: 0.5; }
   .hu-skel::after { animation: none; }
 }
+
+/* Pressed states (§08, §06): every control answers the press, not just the
+   hover, so a tap on a phone (which has no hover) still feels received. */
+@layer components {
+  .hu-iconbtn:active,
+  .hu-navitem:active,
+  .hu-menu__item:active,
+  .hu-tab:active,
+  .hu-seg__item:active { background: var(--active); }
+
+  /* A clickable card lifts a hair on hover; it never moves under reduced motion. */
+  .hu-lift {
+    transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard);
+  }
+  .hu-lift:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
+  @media (prefers-reduced-motion: no-preference) {
+    .hu-lift:hover { transform: translateY(-2px); }
+  }
+
+  /* Meters fill from empty when they appear, so the number reads as measured. */
+  .hu-meter-fill { transform-origin: left center; animation: hu-meter-grow 700ms var(--ease-enter) both; }
+}
+@keyframes hu-meter-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Choice cards and drop zones hide their real input (sr-only) and style the
+   label instead; when that input has keyboard focus, the label shows the ring. */
+@layer components {
+  label:has(input.sr-only:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+}

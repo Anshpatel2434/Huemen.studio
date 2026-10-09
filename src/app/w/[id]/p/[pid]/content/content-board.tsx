@@ -249,7 +249,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
     run(status, () => saveContentAction(tenantId, projectId, item.id, { hook, body, cta, pillarId: pillarId || null, status }), status === "approved" ? "Approved" : "Saved");
 
   return (
-    <aside className="absolute top-0 right-0 bottom-0 z-30 w-[360px] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
+    <aside className="absolute top-0 right-0 bottom-0 z-30 w-[min(360px,100%)] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
       <div className="min-h-14 shrink-0 flex items-center gap-2 pl-4 pr-2 border-b border-hairline">
         <span className="text-sm font-semibold flex-1 truncate">{formatByKey(item.format).label}</span>
         <Segmented

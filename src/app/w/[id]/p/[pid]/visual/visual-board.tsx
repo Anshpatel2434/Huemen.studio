@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
-import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle } from "lucide-react";
-import { SubmitButton } from "@/components/ui";
+import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X } from "lucide-react";
+import { IconButton, SubmitButton } from "@/components/ui";
 import { generateVisualsAction } from "../pipeline-actions";
 import { Canvas, Artboard } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory } from "@/components/canvas-edit";
@@ -104,6 +104,8 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
   const designed = items.filter((i) => i.scheme !== null);
   const undesigned = items.length - designed.length;
   const [open, setOpen] = useState<string | null>("type");
+  // Phones: the style guide opens over the canvas from a button (as StepPanel does).
+  const [details, setDetails] = useState(false);
   const s = schemes[scheme] ?? schemes[0];
   const display = fonts[0] ? `"${fonts[0]}", var(--font-sans)` : "var(--font-sans)";
   const accentFont = fonts[1] ? `"${fonts[1]}", var(--font-serif)` : "var(--font-serif)";
@@ -111,10 +113,19 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
 
   return (
     <div className="absolute inset-0 flex flex-row-reverse">
+      <button
+        type="button"
+        onClick={() => setDetails(true)}
+        aria-expanded={details}
+        className="min-[900px]:hidden absolute top-[4.25rem] right-3 z-20 inline-flex items-center gap-2 min-h-11 px-4 rounded-full bg-paper border border-hairline shadow-[var(--shadow)] text-sm font-medium"
+      >
+        <SlidersHorizontal size={15} aria-hidden="true" /> Style guide
+      </button>
       {(
-        <aside className="w-[280px] shrink-0 border-l border-hairline bg-paper flex flex-col min-h-0 z-10">
-          <div className="h-10 shrink-0 flex items-center px-3 border-b border-hairline">
+        <aside aria-label="Style guide" className={`${details ? "flex" : "hidden"} min-[900px]:flex absolute min-[900px]:static inset-y-0 right-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[280px] shadow-[var(--shadow-overlay)] min-[900px]:shadow-none shrink-0 border-l border-hairline bg-paper flex-col min-h-0`}>
+          <div className="min-h-10 shrink-0 flex items-center pl-3 pr-1 border-b border-hairline">
             <span className="label-mono text-ink-faint flex-1">Step 4 · Visual · Style guide</span>
+            <span className="min-[900px]:hidden"><IconButton label="Close style guide" onClick={() => setDetails(false)}><X size={17} /></IconButton></span>
           </div>
           <div className="flex-1 overflow-y-auto">
             {!palette.length && (

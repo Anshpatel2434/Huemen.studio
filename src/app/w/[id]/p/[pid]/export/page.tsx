@@ -35,10 +35,10 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
               ))}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
-              <a href={`/w/${id}/p/${pid}/export/markdown?scope=approved`} className={btnClass("primary")}><FileDown size={15} /> Markdown · approved only</a>
-              <a href={`/w/${id}/p/${pid}/export/markdown`} className={btnClass("secondary")}><FileText size={15} /> Markdown · everything</a>
-              <a href={`/w/${id}/p/${pid}/export/pdf?scope=approved`} className={btnClass("secondary")}><FileDown size={15} /> PDF · approved only</a>
-              <a href={`/w/${id}/p/${pid}/export/pdf`} className={btnClass("secondary")}><FileText size={15} /> PDF · everything</a>
+              <a href={`/w/${id}/p/${pid}/export/markdown?scope=approved`} className={`${btnClass("primary")} max-w-full !whitespace-normal`}><FileDown size={15} /> Markdown · approved only</a>
+              <a href={`/w/${id}/p/${pid}/export/markdown`} className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileText size={15} /> Markdown · everything</a>
+              <a href={`/w/${id}/p/${pid}/export/pdf?scope=approved`} className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileDown size={15} /> PDF · approved only</a>
+              <a href={`/w/${id}/p/${pid}/export/pdf`} className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileText size={15} /> PDF · everything</a>
             </div>
           </div>
 

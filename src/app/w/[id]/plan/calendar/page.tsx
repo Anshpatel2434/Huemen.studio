@@ -49,7 +49,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
       accent={String(y)}
       width={1120}
       action={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button disabled title="The 90-day generator runs as a queued batch job, which is next on the build plan (TASKS P3-1)." className={btnClass("secondary", "sm")}><Sparkles size={14} /> Generate 90 days</button>
           <Link href={`?m=${prev}`} className="hu-iconbtn border border-line" aria-label="Previous month"><ChevronLeft size={15} /></Link>
           <Link href="?" className={btnClass("ghost", "sm")}>Today</Link>
@@ -57,7 +57,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
         </div>
       }
     >
-      <form action={addCalendarEntryAction} className="bg-paper border border-hairline rounded-md p-3 grid grid-cols-2 md:grid-cols-[150px_1fr_160px_130px_auto] gap-2 items-center shadow-[var(--shadow-sm)]">
+      <form action={addCalendarEntryAction} className="bg-paper border border-hairline rounded-md p-3 grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-[150px_1fr_160px_130px_auto] gap-2 items-center shadow-[var(--shadow-sm)]">
         <input type="hidden" name="tenantId" value={id} />
         <input type="date" name="date" required defaultValue={today} className="field" aria-label="Date" />
         <input name="topic" required placeholder="Topic" aria-label="Topic" className="field" />

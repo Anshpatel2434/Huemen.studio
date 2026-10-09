@@ -101,9 +101,9 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
             </Alert>
           )}
 
-          <div className="flex items-start justify-between gap-4 mt-10">
+          <div className="flex flex-wrap items-start justify-between gap-4 mt-10">
             <h1 className="text-3xl leading-tight">{ws?.name ?? "Your brand"}</h1>
-            <div className="flex gap-2 shrink-0">
+            <div className="flex flex-wrap gap-2">
               <Link href={`${base}/intake`} className={btnClass("ghost", "sm")}>Paste notes</Link>
               <Link href={edit} className={btnClass("secondary", "sm")}><Pencil size={13} /> Edit brief</Link>
             </div>

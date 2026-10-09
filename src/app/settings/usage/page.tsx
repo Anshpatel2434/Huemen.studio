@@ -40,7 +40,7 @@ export default async function AiUsagePage() {
             return (
               <div key={r.id} className="flex items-center gap-3 h-12">
                 <span className="w-6 h-6 rounded-sm bg-ink text-on-ink text-[0.65rem] flex items-center justify-center uppercase">{r.name.slice(0, 1)}</span>
-                <Link href={`/w/${r.id}/usage`} className="w-40 truncate text-sm text-accent-ink hover:underline">{r.name}</Link>
+                <Link href={`/w/${r.id}/usage`} className="w-40 min-h-11 inline-flex items-center min-w-0 text-sm text-accent-ink hover:underline"><span className="truncate">{r.name}</span></Link>
                 <div className="flex-1"><Meter value={total ? (n / total) * 100 : 0} /></div>
                 <span className="w-12 text-right text-sm tabular-nums">{n}</span>
               </div>

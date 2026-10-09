@@ -33,7 +33,7 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
 
   return (
     <>
-      <div className="absolute inset-0 right-[280px]">
+      <div className="absolute inset-0 min-[900px]:right-[280px]">
         <PillarMap tenantId={id} brandName={(ws?.name ?? "Your brand")} completeness={ctx.completeness} briefRows={briefRows} pillars={pillars} selectedId={typeof sp.pillar === "string" ? sp.pillar : null} />
       </div>
       <StepPanel step={3} title="Pillars">

@@ -62,7 +62,16 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
   const base = `/w/${workspace.id}/p/${project.id}`;
   const seg = pathname.slice(base.length + 1).split("/")[0] || "brief";
   const [leftTab, setLeftTab] = useState<"layers" | "add" | "agent" | null>("layers");
-  const pick = (t: "layers" | "add" | "agent") => setLeftTab((cur) => (cur === t ? null : t));
+  // Below 900px the panel is an overlay that would cover the canvas, so it
+  // stays shut until asked for, and shuts again after a page change.
+  const [asked, setAsked] = useState(false);
+  const [panelPath, setPanelPath] = useState(pathname);
+  if (panelPath !== pathname) { setPanelPath(pathname); setAsked(false); }
+  const pick = (t: "layers" | "add" | "agent") => {
+    const shown = asked || window.matchMedia("(min-width: 900px)").matches;
+    setLeftTab((cur) => (cur === t && shown ? null : t));
+    setAsked(true);
+  };
   const [share, setShare] = useState(false);
   const unlocked = stageIndex(project.stage);
 
@@ -70,8 +79,8 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
 
   return (
     <div className="h-screen flex flex-col">
-      <header className="min-h-14 shrink-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-2 border-b border-hairline bg-paper">
-        <div className="flex items-center gap-2 min-w-0">
+      <header className="min-h-14 shrink-0 flex flex-wrap items-center gap-x-3 px-2 border-b border-hairline bg-paper">
+        <div className="flex-1 flex items-center gap-2 min-w-0 min-h-14">
           <FileMenu workspace={workspace} project={project} />
           <nav aria-label="Breadcrumb" className="min-w-0">
             <ol className="hu-crumbs">
@@ -80,16 +89,16 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
               <li className="min-w-0 flex"><span aria-current="page">{project.name}</span></li>
             </ol>
           </nav>
-          {aiMock && <span className="ml-1 shrink-0"><Badge tone="warn">Mock AI</Badge></span>}
+          {aiMock && <span className="ml-1 shrink-0 hidden sm:inline-flex"><Badge tone="warn">Mock AI</Badge></span>}
         </div>
 
-        <nav className="flex items-center" aria-label="Steps">
+        <nav className="flex items-center justify-center order-last w-full border-t border-hairline py-1 sm:order-none sm:w-auto sm:border-0 sm:py-0" aria-label="Steps">
           {STAGES.map((s, i) => {
             const Icon = STAGE_ICON[s];
             const open = i <= unlocked;
             const on = seg === s;
             const done = i < unlocked;
-            const cls = `flex items-center gap-1.5 min-h-11 px-4 rounded-full text-sm font-medium transition-colors ${on ? "bg-ink text-on-ink" : open ? "text-ink hover:bg-hover" : "text-ink-faint cursor-not-allowed"}`;
+            const cls = `flex items-center gap-1.5 min-h-11 px-3 sm:px-4 rounded-full text-sm font-medium transition-colors ${on ? "bg-ink text-on-ink" : open ? "text-ink hover:bg-hover" : "text-ink-faint cursor-not-allowed"}`;
             // No step numbers and no padlocks: the step icon carries it, a
             // finished step gets a tick, and a locked one is simply dimmed.
             const inner = (
@@ -100,37 +109,37 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
             );
             return (
               <div key={s} className="flex items-center">
-                {i > 0 && <ChevronRight size={15} className="text-ink-faint mx-0.5" aria-hidden="true" />}
+                {i > 0 && <ChevronRight size={15} className="text-ink-faint mx-0.5 hidden sm:block" aria-hidden="true" />}
                 {open ? <Link href={`${base}/${s}`} aria-current={on ? "page" : undefined} className={cls}>{inner}</Link> : <span className={cls} aria-disabled="true" title={`Finish ${STAGE_LABEL[STAGES[i - 1]]} first`}>{inner}</span>}
               </div>
             );
           })}
         </nav>
 
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="sm:flex-1 flex items-center justify-end gap-1.5">
           <div className="hidden lg:flex -space-x-1.5 mr-1">
             {members.slice(0, 3).map((m) => (
               <Avatar key={m.email} seed={m.email} label={m.email} size="sm" className="!w-6 !h-6 text-[0.55rem] ring-2 ring-paper" />
 
             ))}
           </div>
-          <button onClick={() => setShare(true)} className={btnClass("secondary", "sm")}><Share2 size={15} aria-hidden="true" /> Share</button>
-          <Link href={`${base}/export`} className={btnClass("primary", "sm")}><Download size={15} aria-hidden="true" /> Export</Link>
+          <button onClick={() => setShare(true)} className={`${btnClass("secondary", "sm")} max-sm:!px-3`}><Share2 size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Share</span></button>
+          <Link href={`${base}/export`} className={`${btnClass("primary", "sm")} max-sm:!px-3`}><Download size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Export</span></Link>
         </div>
       </header>
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative">
         {/* Tool rail (Relume/Figma): each icon opens its panel; click again to close. */}
         <nav className="w-14 shrink-0 border-r border-hairline bg-paper flex flex-col items-center py-2 gap-2" aria-label="Tools">
-          <RailBtn on={leftTab === "layers"} onClick={() => pick("layers")} label="Layers"><Layers size={18} /></RailBtn>
-          <RailBtn on={leftTab === "add"} onClick={() => pick("add")} label="Add"><Plus size={19} /></RailBtn>
-          <RailBtn on={leftTab === "agent"} onClick={() => pick("agent")} label="Agent"><WandSparkles size={18} /></RailBtn>
+          <RailBtn on={leftTab === "layers"} shown={asked} onClick={() => pick("layers")} label="Layers"><Layers size={18} /></RailBtn>
+          <RailBtn on={leftTab === "add"} shown={asked} onClick={() => pick("add")} label="Add"><Plus size={19} /></RailBtn>
+          <RailBtn on={leftTab === "agent"} shown={asked} onClick={() => pick("agent")} label="Agent"><WandSparkles size={18} /></RailBtn>
           <span className="flex-1" />
           <ThemeToggle />
           <Link href="/settings" className="hu-iconbtn" title="Settings" aria-label="Settings"><Settings size={18} aria-hidden="true" /></Link>
         </nav>
         {leftTab && (
-          <aside className="w-[260px] shrink-0 border-r border-hairline bg-paper flex flex-col min-h-0">
+          <aside className={`${asked ? "flex" : "hidden min-[900px]:flex"} absolute inset-y-0 left-14 z-30 w-[min(300px,calc(100%-3.5rem))] shadow-[var(--shadow-overlay)] min-[900px]:static min-[900px]:z-auto min-[900px]:w-[260px] min-[900px]:shadow-none shrink-0 border-r border-hairline bg-paper flex-col min-h-0`}>
             <div className="min-h-12 shrink-0 flex items-center pl-4 pr-1.5 border-b border-hairline">
               <span className="text-sm font-semibold flex-1">{leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"}</span>
               <IconButton label="Close panel" onClick={() => setLeftTab(null)}><X size={17} /></IconButton>
@@ -154,9 +163,11 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
   );
 }
 
-function RailBtn({ children, on, onClick, label }: { children: ReactNode; on: boolean; onClick: () => void; label: string }) {
+function RailBtn({ children, on, shown, onClick, label }: { children: ReactNode; on: boolean; shown: boolean; onClick: () => void; label: string }) {
+  // On a phone the panel is hidden until asked for, so only look pressed then.
+  const pressed = on ? (shown ? "!bg-accent-soft !text-accent-ink" : "min-[900px]:!bg-accent-soft min-[900px]:!text-accent-ink") : "";
   return (
-    <button onClick={onClick} title={label} aria-label={label} aria-pressed={on} className={`hu-iconbtn !w-10 !h-10 !rounded-sm ${on ? "!bg-accent-soft !text-accent-ink" : ""}`}>{children}</button>
+    <button onClick={onClick} title={label} aria-label={label} aria-pressed={on} className={`hu-iconbtn !w-10 !h-10 !rounded-sm ${pressed}`}>{children}</button>
   );
 }
 
