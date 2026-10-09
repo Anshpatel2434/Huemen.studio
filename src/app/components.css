@@ -1,0 +1,439 @@
+/* ==========================================================================
+ * Components (design system §09–§14), built on the tokens in globals.css.
+ *
+ * In the components layer, so a utility on the element can still adjust
+ * spacing or width; the look itself comes from here, once. Class names follow
+ * the system's own (`hu-*`), so a component here can be read against its spec.
+ * ========================================================================== */
+
+@layer base {
+  /* Native choices are the system's choice (§10): a real input at 20px, in
+     the accent. Consistent everywhere, without a wrapper. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  input[type="checkbox"]:disabled,
+  input[type="radio"]:disabled { cursor: not-allowed; }
+
+  /* Every select: the native control (keyboard, screen readers and mobile
+     pickers all work), with the platform arrow replaced by the system's
+     chevron (§10 .hu-select). */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: var(--chevron);
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 12px 12px;
+    padding-right: 40px !important;
+    cursor: pointer;
+  }
+  select:not(.field) {
+    min-height: var(--tap-min);
+    padding-left: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background-color: var(--paper);
+    color: var(--ink);
+    font-size: 14px;
+    transition: border-color var(--motion-fast) var(--ease-standard);
+  }
+  select:hover:not(:disabled) { border-color: var(--line-strong); }
+}
+
+@layer components {
+  /* ---- Field (§10): label, control, hint or error ---------------------- */
+  .hu-field { display: flex; flex-direction: column; gap: var(--space-2); }
+  .hu-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hu-label .req { color: var(--danger); }
+  .hu-hint { font-size: 14px; line-height: 1.45; color: var(--ink-faint); display: flex; gap: 6px; align-items: flex-start; }
+  .hu-hint--error { color: var(--danger); font-weight: 500; }
+
+  /* ---- Choice and switch (§10) ------------------------------------------ */
+  .hu-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    min-height: var(--tap-min);
+    padding: 10px 0;
+    cursor: pointer;
+    max-width: 100%;
+  }
+  .hu-choice input { margin-top: 2px; }
+  .hu-choice__text { font-size: 16px; line-height: 1.45; color: var(--ink); }
+  .hu-choice__text small { display: block; font-size: 14px; color: var(--ink-faint); margin-top: 2px; }
+  .hu-choice input:disabled + .hu-choice__text { color: var(--ink-faint); }
+  /* Boxed: the whole row is the target, the chosen row firms up. */
+  .hu-choice--box {
+    padding: 12px 14px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
+  }
+  .hu-choice--box:hover { border-color: var(--line); }
+  .hu-choice--box:has(input:checked) { border-color: var(--line-strong); background: var(--hover); }
+
+  .hu-switch { display: inline-flex; align-items: center; gap: var(--space-3); min-height: var(--tap-min); cursor: pointer; }
+  .hu-switch__wrap { position: relative; display: inline-flex; }
+  .hu-switch input { position: absolute; opacity: 0; width: 44px; height: 26px; margin: 0; cursor: pointer; }
+  .hu-switch__track {
+    flex: none;
+    width: 44px;
+    height: 26px;
+    border-radius: 999px;
+    background: var(--line);
+    position: relative;
+    transition: background var(--motion-base) var(--ease-standard);
+  }
+  .hu-switch__track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--motion-base) var(--ease-standard);
+  }
+  .hu-switch input:checked + .hu-switch__track { background: var(--accent); }
+  .hu-switch input:checked + .hu-switch__track::after { transform: translateX(18px); }
+  .hu-switch input:focus-visible + .hu-switch__track { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* ---- Tag (§11): what something is; removable --------------------------- */
+  .hu-tag {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hu-tag--neutral { background: var(--hover); color: var(--ink-muted); }
+  .hu-tag--danger { background: var(--danger-soft); color: var(--danger); }
+  .hu-tag--upper { text-transform: uppercase; letter-spacing: 0.05em; }
+  .hu-tag__remove {
+    position: relative;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    width: 24px;
+    height: 24px;
+    margin: -6px -6px -6px 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+  }
+  .hu-tag__remove:hover { background: rgba(128, 128, 128, 0.2); }
+  .hu-tag__remove::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    transform: translate(-50%, -50%);
+  }
+
+  /* ---- Card (§11) ---------------------------------------------------------- */
+  .hu-card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    background: var(--paper);
+    transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
+  }
+  .hu-card--interactive { cursor: pointer; }
+  .hu-card--interactive:hover { border-color: var(--line); box-shadow: var(--shadow); }
+
+  /* ---- Alert (§12): persistent, in the flow -------------------------------- */
+  .hu-alert {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid;
+    align-items: start;
+    width: 100%;
+  }
+  .hu-alert__icon { margin-top: 2px; }
+  .hu-alert__title { font-weight: 600; font-size: 16px; line-height: 1.4; margin: 0 0 2px; color: var(--ink); }
+  .hu-alert__text { font-size: 14px; line-height: 1.5; margin: 0; color: var(--ink-muted); }
+  .hu-alert__text a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .hu-alert--info { background: var(--accent-soft); border-color: var(--accent); }
+  .hu-alert--info .hu-alert__icon { color: var(--accent-ink); }
+  .hu-alert--success { background: var(--ok-soft); border-color: var(--ok-line); }
+  .hu-alert--success .hu-alert__icon { color: var(--ok); }
+  .hu-alert--warning { background: var(--warn-soft); border-color: var(--warn-line); }
+  .hu-alert--warning .hu-alert__icon { color: var(--warn); }
+  .hu-alert--danger { background: var(--danger-soft); border-color: var(--danger-line); }
+  .hu-alert--danger .hu-alert__icon { color: var(--danger); }
+
+  /* ---- Toast (§12): transient, out of the flow, above everything ------------ */
+  .hu-toast {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: var(--space-3);
+    align-items: start;
+    padding: 14px var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--inverse);
+    color: var(--on-inverse);
+    box-shadow: var(--shadow-lg);
+    max-width: 400px;
+    font-size: 14px;
+    line-height: 1.45;
+    border: 1px solid transparent;
+  }
+
+  /* ---- Spinner, skeleton (§12) ---------------------------------------------- */
+  .hu-spinner {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: hu-spin 700ms linear infinite;
+    display: inline-block;
+    flex: none;
+  }
+  .hu-spinner--sm { width: 14px; height: 14px; border-width: 1.5px; }
+  .hu-skel { background: var(--active); border-radius: var(--radius-xs); position: relative; overflow: hidden; }
+  .hu-skel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(140, 140, 140, 0.22), transparent);
+    animation: hu-shimmer 1.4s infinite;
+  }
+
+  /* ---- Empty state (§12): names the next action ----------------------------- */
+  .hu-empty {
+    text-align: center;
+    padding: var(--space-9) var(--space-5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-md);
+  }
+  .hu-empty__art {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-md);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    display: grid;
+    place-items: center;
+  }
+  .hu-empty__title { font-size: 20px; line-height: 1.3; font-weight: 700; letter-spacing: -0.01em; margin: 0; color: var(--ink); }
+  .hu-empty__text { font-size: 14px; color: var(--ink-faint); margin: 0; max-width: 42ch; }
+  .hu-empty__actions { display: flex; gap: var(--space-3); flex-wrap: wrap; justify-content: center; margin-top: var(--space-2); }
+
+  /* ---- Menu (§13) ------------------------------------------------------------ */
+  .hu-menu {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    background: var(--panel);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-2);
+    min-width: 216px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    z-index: var(--z-dropdown);
+  }
+  .hu-menu__item {
+    display: flex;
+    flex: none;               /* a menu column never squeezes an item below 44 */
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: var(--tap-min);
+    padding: 0 var(--space-3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    color: var(--ink);
+    text-align: left;
+    text-decoration: none;
+  }
+  .hu-menu__item:hover,
+  .hu-menu__item:focus-visible { background: var(--hover); }
+  .hu-menu__item[aria-checked="true"],
+  .hu-menu__item[aria-current="true"] { font-weight: 600; }
+  .hu-menu__item--danger { color: var(--danger); }
+  .hu-menu__sep { height: 1px; background: var(--hairline); margin: var(--space-2) 0; }
+
+  /* ---- Modal (§13) ------------------------------------------------------------ */
+  .hu-modal {
+    background: var(--panel);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-overlay);
+    width: 100%;
+    border: 1px solid var(--hairline);
+    overflow: hidden;
+  }
+  .hu-modal__head {
+    padding: var(--space-5) var(--space-5) var(--space-3);
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    align-items: start;
+  }
+  .hu-modal__title { font-size: 20px; line-height: 1.3; font-weight: 700; margin: 0; letter-spacing: -0.015em; color: var(--ink); }
+  .hu-modal__body { padding: 0 var(--space-5) var(--space-5); font-size: 15px; color: var(--ink-muted); }
+  .hu-modal__foot {
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--hairline);
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    background: var(--ground);
+    flex-wrap: wrap;
+  }
+
+  /* ---- Tabs (§14): an underline, never a fill --------------------------------- */
+  .hu-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+  .hu-tab {
+    min-height: var(--tap-min);
+    padding: 0 var(--space-4);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink-faint);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+  }
+  .hu-tab:hover { color: var(--ink); }
+  .hu-tab[aria-selected="true"],
+  .hu-tab[aria-current="page"] { color: var(--ink); border-bottom-color: var(--line-strong); }
+
+  /* ---- Segmented control: two to four exclusive views ------------------------- */
+  .hu-seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--hover); }
+  .hu-seg__item {
+    position: relative;
+    min-height: 38px;
+    min-width: 38px;
+    padding: 0 14px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+  }
+  /* Looks 38, targets 44 (§02). */
+  .hu-seg__item::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .hu-seg__item:hover { color: var(--ink); }
+  .hu-seg__item[aria-checked="true"],
+  .hu-seg__item[aria-pressed="true"],
+  .hu-seg__item[aria-current="page"] { background: var(--paper); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+  /* ---- Icon button: looks compact, targets 44 (§02) ---------------------------- */
+  .hu-iconbtn {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+  }
+  .hu-iconbtn::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .hu-iconbtn:hover { background: var(--hover); color: var(--ink); }
+  .hu-iconbtn[aria-pressed="true"] { background: var(--active); color: var(--ink); }
+  .hu-iconbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ---- Links (§09) ------------------------------------------------------------- */
+  .hu-link { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  .hu-link:hover { text-decoration-thickness: 2px; }
+  .hu-link-cta {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-ink);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--tap-min);
+    padding: 0 2px;
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--motion-fast) var(--ease-standard);
+  }
+  .hu-link-cta:hover { border-bottom-color: currentColor; }
+}
+
+@keyframes hu-spin { to { transform: rotate(360deg); } }
+@keyframes hu-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .hu-spinner { animation: none; border-right-color: currentColor; opacity: 0.5; }
+  .hu-skel::after { animation: none; }
+}

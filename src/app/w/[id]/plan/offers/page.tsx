@@ -31,7 +31,7 @@ export default async function OffersPage({ params }: PageProps<"/w/[id]/plan/off
                   <form action={deleteOfferAction}>
                     <input type="hidden" name="tenantId" value={id} />
                     <input type="hidden" name="id" value={o.id} />
-                    <button className="w-8 h-8 rounded-sm flex items-center justify-center text-ink-faint hover:bg-accent-soft hover:text-accent-ink" aria-label="Delete offer"><Trash2 size={14} /></button>
+                    <button className="hu-iconbtn hover:!text-danger" aria-label="Delete offer"><Trash2 size={14} /></button>
                   </form>
                 </div>
                 {o.promise && <p className="mt-3 text-base serif-accent text-lg leading-snug">“{o.promise}”</p>}

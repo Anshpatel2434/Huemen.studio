@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./components.css";
 
 /*
  * Huemen.studio — app chrome, built on the client's hueman design system
@@ -92,10 +93,18 @@
 
   --hairline: #e8e8e8;          /* border-subtle */
   --line: #8c8c8c;              /* border-default */
+  --line-strong: #0a0a0a;       /* border-strong: hover, selected tab */
+  --hover: #f5f5f5;             /* bg-hover */
+  --active: #e8e8e8;            /* bg-active: pressed, selected fill, skeleton */
+  --inverse: #0a0a0a;           /* bg-inverse: toasts, tooltips */
+  --on-inverse: #ffffff;
 
   --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.06);
   --shadow: 0 6px 20px rgba(10, 10, 10, 0.08);
   --shadow-lg: 0 20px 48px rgba(10, 10, 10, 0.12);
+  --shadow-overlay: 0 24px 64px rgba(10, 10, 10, 0.18);
+  /* The select chevron, drawn in border-default. */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%233a3a3a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 /* Dark — Figma-like greys. Default theme; "system" follows the OS. */
@@ -134,10 +143,17 @@
 
   --hairline: #262626;          /* border-subtle */
   --line: #6b6b6b;              /* border-default */
+  --line-strong: #c4c4c4;
+  --hover: #1e1e1e;
+  --active: #262626;
+  --inverse: #f5f5f5;
+  --on-inverse: #0a0a0a;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
   --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
+  --shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.7);
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23c4c4c4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
@@ -175,10 +191,17 @@
 
     --hairline: #262626;          /* border-subtle */
     --line: #6b6b6b;              /* border-default */
+    --line-strong: #c4c4c4;
+    --hover: #1e1e1e;
+    --active: #262626;
+    --inverse: #f5f5f5;
+    --on-inverse: #0a0a0a;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
     --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
+    --shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.7);
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23c4c4c4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 }
 /* .theme-light must win over an ancestor's dark tokens. */
@@ -205,6 +228,11 @@
   --color-menu-fg: var(--menu-fg);
   --color-hairline: var(--hairline);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-inverse: var(--inverse);
+  --color-on-inverse: var(--on-inverse);
   /* The eight-hue spectrum (§04) — expressive fills + signal marks, so it can be
      used as bg-hue-* / text-sig-* etc., not only via inline vars. */
   --color-hue-coral: var(--hue-coral);

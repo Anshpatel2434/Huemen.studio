@@ -38,7 +38,7 @@ export function AddPanel({ tenantId, projectId, base, canDraft, pillars }: {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="p-2.5 border-b border-hairline">
-        <label className="flex items-center gap-2 h-8 px-2.5 rounded-sm bg-field text-ink-faint">
+        <label className="flex items-center gap-2 min-h-11 px-3 rounded-sm bg-hover border border-hairline text-ink-faint">
           <Search size={13} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search formats" className="bg-transparent outline-none text-xs text-ink flex-1 min-w-0 placeholder:text-ink-faint" />
         </label>

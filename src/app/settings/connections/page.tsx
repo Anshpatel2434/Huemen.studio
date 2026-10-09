@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Lock, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Lock, ShieldCheck } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { resolveScope } from "@/lib/auth/scope";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { ownsVoice } from "@/lib/data/training";
 import { clientFor, listConnections, unavailableReason } from "@/lib/data/connections";
 import { capabilitiesOf, PROVIDERS, type Capability, type ProviderKey } from "@/lib/integrations/providers";
-import { Badge, SubmitButton } from "@/components/ui";
+import { Badge, SubmitButton, Alert } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { CapabilityRun } from "./capability-run";
 import { disconnectAction } from "./actions";
@@ -48,20 +48,15 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
       </p>
       <div className="flex flex-col gap-4 mt-8">
         {pack && !pack.onboarding.completedAt && (
-          <p className="text-sm bg-accent-soft rounded-md px-4 py-3 flex flex-wrap items-center gap-3">
-            <span className="flex-1 min-w-0">Setting up your voice? Come back to it when you&apos;re done here.</span>
-            <Link href={`/w/${id}/onboarding?step=1`} className={btnClass("secondary", "sm")}>Back to setup</Link>
-          </p>
+          <Alert tone="info" action={<Link href={`/w/${id}/onboarding?step=1`} className={btnClass("secondary", "sm")}>Back to setup</Link>}>
+            Setting up your voice? Come back to it when you&apos;re done here.
+          </Alert>
         )}
         {typeof sp.connected === "string" && (
-          <p role="status" className="text-sm bg-ok-soft text-ok rounded-md px-4 py-3 flex items-center gap-2">
-            <CheckCircle2 size={15} aria-hidden="true" /> {PROVIDERS[sp.connected as ProviderKey]?.label ?? "Account"} connected.
-          </p>
+          <Alert tone="success" title={`${PROVIDERS[sp.connected as ProviderKey]?.label ?? "Account"} connected`} />
         )}
         {typeof sp.error === "string" && (
-          <p role="alert" className="text-sm bg-danger-soft text-danger rounded-md px-4 py-3 flex items-start gap-2">
-            <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" /> {sp.error}
-          </p>
+          <Alert tone="danger">{sp.error}</Alert>
         )}
         {!owner && (
           <p className="text-sm bg-field rounded-md px-4 py-3">

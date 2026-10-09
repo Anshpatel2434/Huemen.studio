@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Sparkles, X } from "lucide-react";
 import { dismissWhatsNewAction } from "../project-actions";
+import { btnClass } from "@/components/btn";
 
 /** One-time announcement, Relume-style: copy on the left, product collage on the right. */
 export function WhatsNew({ onStart }: { onStart: () => void }) {
@@ -18,14 +19,14 @@ export function WhatsNew({ onStart }: { onStart: () => void }) {
           <p className="text-sm text-ink-muted mt-4 leading-relaxed">Your brief, pillars and voice are set up once, in onboarding, and every piece reads them. Nothing to re-brief.</p>
           <p className="text-sm text-ink-muted mt-3 leading-relaxed">Each LinkedIn post or Instagram carousel becomes its own project: Ideate, then Content, then Visual. Check scores anything you paste against your voice.</p>
           <div className="mt-auto pt-7 flex flex-col gap-2">
-            <button onClick={() => { close(); onStart(); }} className="h-10 rounded-md bg-ink text-on-ink text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90"><Sparkles size={14} /> Start a project</button>
-            <button onClick={close} className="h-10 rounded-md border border-line text-sm hover:border-ink">Later</button>
+            <button onClick={() => { close(); onStart(); }} className={`w-full ${btnClass("primary")}`}><Sparkles size={14} /> Start a project</button>
+            <button onClick={close} className={`w-full ${btnClass("secondary")}`}>Later</button>
           </div>
         </div>
         <div
           className="relative hidden md:block min-h-[380px] bg-field border-l border-hairline"
         >
-          <button onClick={close} className="absolute top-3 right-3 z-10 w-8 h-8 rounded-sm bg-white/80 flex items-center justify-center text-[#0b0b0b] hover:bg-white" aria-label="Close"><X size={15} /></button>
+          <button onClick={close} className="hu-hit absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/85 flex items-center justify-center text-[#0b0b0b] hover:bg-white" aria-label="Close"><X size={15} /></button>
           <div className="theme-light absolute inset-0">
             <span className="absolute left-1/2 top-0 bottom-0 w-px bg-line" />
             <span className="absolute top-1/2 left-0 right-0 h-px bg-line" />

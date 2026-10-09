@@ -8,7 +8,7 @@ import { corpusLevel, CORPUS_MINIMUM_PIECES, DIAL_LABELS, DIAL_KEYS } from "@/li
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import { DocPage } from "@/components/doc-page";
 import { btnClass } from "@/components/btn";
-import { EmptyState, SubmitButton } from "@/components/ui";
+import { EmptyState, SubmitButton, Alert } from "@/components/ui";
 import Link from "next/link";
 import { BrandCoreCard } from "@/components/composites";
 import { confidence } from "@/lib/voice/derive";
@@ -126,10 +126,9 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
       <div className="mb-6 flex flex-col gap-3"><BrandCoreCard {...coreCard} /><CoreWatcher state={state} pieces={pack.corpusStats.pieces} /></div>
       <div className="flex flex-col gap-5">
         {due.due && !preview && (
-          <div role="status" className="text-sm bg-accent-soft rounded-md px-4 py-3 flex flex-wrap items-center gap-3">
-            <span className="flex-1 min-w-0">It&apos;s been {due.days} days since we measured your writing, and you&apos;ve approved {sinceScan} new {sinceScan === 1 ? "piece" : "pieces"} since. Worth a fresh look?</span>
-            <form action={previewRescanAction}><Hidden /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>
-          </div>
+          <Alert tone="info" action={<form action={previewRescanAction}><Hidden /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>}>
+            It&apos;s been {due.days} days since we measured your writing, and you&apos;ve approved {sinceScan} new {sinceScan === 1 ? "piece" : "pieces"} since. Worth a fresh look?
+          </Alert>
         )}
         {preview && (
           <div id="remeasure" role="status" className="text-sm bg-field rounded-md px-4 py-3 flex flex-col gap-2">
@@ -155,13 +154,10 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         )}
 
         {conf.score < 70 && (
-          <p className="flex items-start gap-2 text-sm text-warn bg-warn-soft rounded-md px-4 py-3">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            <span>
-              {conf.score}% confident, so still learning. {conf.missing.slice(0, 2).map((m) => `${m}.`).join(" ")}{" "}
-              {!pack.onboarding.completedAt && <Link href={`/w/${id}/onboarding`} className="underline underline-offset-2">Carry on setting up</Link>}
-            </span>
-          </p>
+          <Alert tone="warning" title={`${conf.score}% confident, so still learning`}>
+            {conf.missing.slice(0, 2).map((m) => `${m}.`).join(" ")}{" "}
+            {!pack.onboarding.completedAt && <Link href={`/w/${id}/onboarding`}>Carry on setting up</Link>}
+          </Alert>
         )}
 
         {(proposals.length > 0 || learned.length > 0) && (
@@ -248,11 +244,11 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               className="field font-[inherit] leading-relaxed"
             />
             <div className="flex items-center gap-2 flex-wrap">
-              <select name="channel" className="h-8 rounded-sm bg-field px-2 text-xs">
+              <select name="channel" aria-label="Channel">
                 {Object.values(PLATFORM_RULES).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                 <option value="unknown">Not sure</option>
               </select>
-              <select name="visibility" className="h-8 rounded-sm bg-field px-2 text-xs" defaultValue="public">
+              <select name="visibility" aria-label="Who can see it" defaultValue="public">
                 <option value="public">Public writing</option>
                 <option value="private">Private (email, chat)</option>
               </select>
@@ -448,7 +444,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                     <ul className="pl-6 text-ink-muted flex flex-col gap-0.5">{changed.slice(0, 6).map((c) => <li key={c}>{c}</li>)}</ul>
                   )}
                   <details className="pl-6">
-                    <summary className="cursor-pointer min-h-9 flex items-center text-ink-faint">Restore v{v.version}</summary>
+                    <summary className="cursor-pointer min-h-11 flex items-center text-ink-faint">Restore v{v.version}</summary>
                     <div className="flex flex-col gap-2 pt-1">
                       {back.length ? (
                         <>

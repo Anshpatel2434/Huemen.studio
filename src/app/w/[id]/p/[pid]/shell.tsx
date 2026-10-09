@@ -191,7 +191,7 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
               await deleteProjectAction(workspace.id, project.id);
               router.push(`/w/${workspace.id}`);
             } catch {
-              toast("Couldn't delete the project. Try again.");
+              toast("Couldn't delete the project. Try again.", "danger");
             }
           })}
           onArchive={() => start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); })}
@@ -344,7 +344,7 @@ function AgentPanel({ workspaceId, projectId, degraded, completeness }: { worksp
 function ShareModal({ open, onClose, members, questionnaireUrl, isAdmin }: { open: boolean; onClose: () => void; members: { email: string; role: string; status: string }[]; questionnaireUrl: string | null; isAdmin: boolean }) {
   const toast = useToast();
   const copy = async (text: string) => {
-    try { await navigator.clipboard.writeText(text); toast("Link copied"); } catch { toast("Copy failed. Select and copy it manually."); }
+    try { await navigator.clipboard.writeText(text); toast("Link copied"); } catch { toast("Copy failed. Select and copy it manually.", "danger"); }
   };
   return (
     <Modal open={open} onClose={onClose} title="Share" width={480}>

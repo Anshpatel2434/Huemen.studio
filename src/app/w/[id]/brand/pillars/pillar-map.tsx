@@ -6,7 +6,7 @@ import { useCallback, useState, useTransition } from "react";
 import { FileText, Network, MoreHorizontal, Plus, Sparkles, Check, Circle, Lightbulb, CalendarDays, PenLine, Trash2, Pencil, GripVertical, ArrowLeft, ArrowRight } from "lucide-react";
 import { Canvas } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
-import { useToast } from "@/components/ui";
+import { IconButton, Menu, MenuItem, MenuSeparator, useToast } from "@/components/ui";
 import { formatByKey } from "@/lib/content/formats";
 import type { PillarView } from "@/lib/data/planning";
 import { createPillarAction, deletePillarAction, reorderPillarsAction, startFromPillarAction, updatePillarAction } from "./actions";
@@ -67,7 +67,7 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
     if (next.join() === prev.join()) return;
     setLocalOrder(next);
     const save = (ids: string[]) => { setLocalOrder(ids); return reorderPillarsAction(tenantId, ids); };
-    save(next).catch(() => { setLocalOrder(null); toast("Couldn't save the new order."); });
+    save(next).catch(() => { setLocalOrder(null); toast("Couldn't save the new order.", "danger"); });
     history.push({ label, undo: () => save(prev), redo: () => save(next) });
   };
   const move = (id: string, by: number) => {
@@ -92,7 +92,7 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
       const id = await createPillarAction(tenantId, "Untitled pillar", "");
       if (id) { setSel(id); setEditName(id); }
     } catch {
-      toast("Couldn't add a pillar. Try again.");
+      toast("Couldn't add a pillar. Try again.", "danger");
     }
     setAdding(false);
   };
@@ -104,7 +104,7 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
       setSel(null);
       toast("Pillar deleted");
     } catch {
-      toast("Couldn't delete that pillar.");
+      toast("Couldn't delete that pillar.", "danger");
     }
   }, [tenantId, toast]);
 
@@ -147,7 +147,7 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
             </div>
             <div className="p-2 flex flex-col gap-1">
               {briefRows.map((r) => (
-                <Link key={r.label} href={`${base}/brand/edit`} className="flex items-center gap-2 h-8 px-2.5 rounded-sm border border-hairline bg-paper text-sm hover:border-line">
+                <Link key={r.label} href={`${base}/brand/edit`} className="flex items-center gap-2 min-h-11 px-3 rounded-sm border border-hairline bg-paper text-sm hover:border-line">
                   {r.ok ? <Check size={13} className="text-ok" /> : <Circle size={11} className="text-accent" />}
                   <span className={r.ok ? "" : "text-ink-muted"}>{r.label}</span>
                 </Link>
@@ -213,14 +213,13 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const [menu, setMenu] = useState(false);
-  const item = "w-full flex items-center gap-2 h-8 px-2 rounded-sm hover:bg-white/10 text-sm disabled:opacity-40 disabled:hover:bg-transparent";
   return (
     <div
       onClick={onSelect}
       className={`group bg-paper rounded-md shadow-[var(--shadow-sm)] transition-[box-shadow,opacity] ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"} ${dragging ? "opacity-40" : ""}`}
       style={{ width: CARD_W }}
     >
-      <div className="flex items-center gap-1.5 h-10 pl-1.5 pr-3 border-b border-hairline relative">
+      <div className="flex items-center gap-1.5 min-h-12 pl-1.5 pr-1 border-b border-hairline relative">
         <span
           draggable
           onDragStart={onDragStart}
@@ -235,16 +234,18 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
         <div className="text-sm font-medium flex-1 min-w-0" title={p.name}>
           <EditableText value={p.name} required label="Pillar name" className="truncate" editing={editingName} onEditingChange={onEditingName} onCommit={(name) => onEdit({ name })} />
         </div>
-        <button onClick={(e) => { e.stopPropagation(); setMenu((m) => !m); }} className="w-6 h-6 rounded-sm flex items-center justify-center text-ink-faint hover:bg-field shrink-0" aria-label="Pillar menu"><MoreHorizontal size={15} /></button>
+        <span onClick={(e) => e.stopPropagation()} className="inline-flex"><IconButton label={`Actions for ${p.name}`} pressed={menu} onClick={() => setMenu((m) => !m)}><MoreHorizontal size={17} /></IconButton></span>
         {menu && (
           <>
-            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenu(false); }} />
-            <div className="absolute right-2 top-9 z-20 w-44 bg-menu text-menu-fg rounded-md shadow-[var(--shadow-lg)] p-1 pop" onClick={(e) => e.stopPropagation()}>
-              <button onClick={() => { setMenu(false); onEditingName(true); }} className={item}><Pencil size={13} /> Rename</button>
-              <button disabled={!canMove.left} onClick={() => { setMenu(false); onMove(-1); }} className={item}><ArrowLeft size={13} /> Move left</button>
-              <button disabled={!canMove.right} onClick={() => { setMenu(false); onMove(1); }} className={item}><ArrowRight size={13} /> Move right</button>
-              <div className="h-px bg-white/10 my-1" />
-              <button onClick={() => { setMenu(false); onDelete(); }} className={item}><Trash2 size={13} /> Delete <span className="ml-auto text-menu-fg/50 text-xs">Del</span></button>
+            <div className="fixed inset-0" style={{ zIndex: "var(--z-dropdown)" }} onClick={(e) => { e.stopPropagation(); setMenu(false); }} />
+            <div className="absolute right-1 top-12" style={{ zIndex: "var(--z-dropdown)" }} onClick={(e) => e.stopPropagation()}>
+              <Menu label={`Actions for ${p.name}`} className="w-52 pop">
+                <MenuItem icon={<Pencil size={15} aria-hidden="true" />} onClick={() => { setMenu(false); onEditingName(true); }}>Rename</MenuItem>
+                {canMove.left && <MenuItem icon={<ArrowLeft size={15} aria-hidden="true" />} onClick={() => { setMenu(false); onMove(-1); }}>Move left</MenuItem>}
+                {canMove.right && <MenuItem icon={<ArrowRight size={15} aria-hidden="true" />} onClick={() => { setMenu(false); onMove(1); }}>Move right</MenuItem>}
+                <MenuSeparator />
+                <MenuItem danger icon={<Trash2 size={15} aria-hidden="true" />} onClick={() => { setMenu(false); onDelete(); }}>Delete</MenuItem>
+              </Menu>
             </div>
           </>
         )}
@@ -255,7 +256,7 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
         </div>
         {p.formats.length > 0 ? (
           p.formats.map((f) => (
-            <Link key={f} href={base} className="flex items-center gap-2 h-8 px-2.5 rounded-sm border border-hairline text-sm hover:border-line">
+            <Link key={f} href={base} className="flex items-center gap-2 min-h-11 px-3 rounded-sm border border-hairline text-sm hover:border-line">
               <PenLine size={12} className="text-ink-faint" /> {formatByKey(f).label}
             </Link>
           ))
@@ -263,11 +264,11 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
           <p className="text-xs text-ink-faint px-2.5 py-1.5">No content yet</p>
         )}
         <div className="flex gap-1">
-          <Link href={`${base}/plan/ideas`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-panel text-xs text-ink-muted hover:text-ink"><Lightbulb size={12} /> {p.ideaCount} ideas</Link>
-          <Link href={`${base}/plan/calendar`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-panel text-xs text-ink-muted hover:text-ink"><CalendarDays size={12} /> {p.calendarCount} slots</Link>
+          <Link href={`${base}/plan/ideas`} className="flex-1 flex items-center gap-1.5 min-h-11 px-3 rounded-sm bg-hover text-sm text-ink-muted hover:text-ink"><Lightbulb size={12} /> {p.ideaCount} ideas</Link>
+          <Link href={`${base}/plan/calendar`} className="flex-1 flex items-center gap-1.5 min-h-11 px-3 rounded-sm bg-hover text-sm text-ink-muted hover:text-ink"><CalendarDays size={12} /> {p.calendarCount} slots</Link>
         </div>
-        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-sm border border-dashed border-line text-sm text-ink-muted hover:border-ink hover:text-ink"><Plus size={13} /> Draft content</button>
-        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-sm text-sm text-ink-muted hover:bg-field"><Sparkles size={13} /> Ask AI</button>
+        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 min-h-11 rounded-full border border-dashed border-line text-sm text-ink-muted hover:border-line-strong hover:text-ink"><Plus size={14} aria-hidden="true" /> Draft content</button>
+        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 min-h-11 rounded-full text-sm text-ink-muted hover:bg-hover hover:text-ink"><Sparkles size={14} aria-hidden="true" /> Ask AI</button>
       </div>
       <div className="px-3 h-8 border-t border-hairline flex items-center text-xs text-ink-faint">{p.contentCount} piece{p.contentCount === 1 ? "" : "s"}</div>
     </div>

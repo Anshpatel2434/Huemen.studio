@@ -74,7 +74,7 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
                 value={HEX.test(c) ? c : "#000000"}
                 onChange={(e) => set(i, e.target.value)}
                 aria-label={`Colour ${i + 1}`}
-                className="w-9 h-9 rounded-sm border border-hairline cursor-pointer bg-transparent"
+                className="w-11 h-11 rounded-sm border border-hairline cursor-pointer bg-transparent"
               />
               <div className="flex flex-col">
                 <span className="label-mono text-ink-faint">{ROLE[i] ?? `Colour ${i + 1}`}</span>
@@ -83,7 +83,7 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
                   onChange={(e) => set(i, e.target.value)}
                   aria-label={`Hex for colour ${i + 1}`}
                   aria-invalid={!HEX.test(c)}
-                  className="w-[5.5rem] font-mono text-sm bg-transparent outline-none"
+                  className="w-[6rem] min-h-11 -my-2 font-mono text-sm bg-transparent outline-none"
                 />
               </div>
               {palette.length > 1 && (
@@ -119,13 +119,13 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
       </fieldset>
 
       <label className="block max-w-md">
-        <span className="block text-sm font-medium mb-1">Fonts</span>
+        <span className="hu-label !flex mb-2">Fonts</span>
         <input value={fonts} onChange={(e) => { setSaved(false); setFonts(e.target.value); }} placeholder="Heading font, body font" className="field" />
         <span className="block text-xs text-ink-faint mt-1">Comma-separated. Headings first.</span>
       </label>
 
       <label className="block">
-        <span className="block text-sm font-medium mb-1">Image notes</span>
+        <span className="hu-label !flex mb-2">Image notes</span>
         <textarea rows={3} value={notes} onChange={(e) => { setSaved(false); setNotes(e.target.value); }} placeholder="Real photos over stock. Lots of white space. No gradients." className="field" />
       </label>
 

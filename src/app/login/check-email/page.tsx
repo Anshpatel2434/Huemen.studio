@@ -5,6 +5,7 @@ import { getEnv } from "@/lib/env";
 import { SubmitButton } from "@/components/ui";
 import { AuthFoot, AuthIcon, AuthShell, AuthTitle } from "@/components/auth-shell";
 import { signInWithEmail } from "../actions";
+import { btnClass } from "@/components/btn";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Check your email" };
@@ -28,7 +29,7 @@ export default async function CheckEmailPage({ searchParams }: PageProps<"/login
         <div className="mt-6 rounded-md border border-dashed border-line p-3.5">
           <p className="label-mono text-ink-faint">Dev inbox</p>
           <p className="text-xs text-ink-muted mt-1 leading-relaxed">No mail is sent locally. This is the link the email would contain (also printed in the server log).</p>
-          <Link href={devHref} className="mt-3 h-9 rounded-sm bg-ink text-on-ink text-sm font-medium flex items-center justify-center gap-1.5 hover:opacity-90">
+          <Link href={devHref} className={`mt-3 w-full ${btnClass("primary")}`}>
             Open sign-in link <ArrowUpRight size={14} />
           </Link>
         </div>
@@ -40,7 +41,7 @@ export default async function CheckEmailPage({ searchParams }: PageProps<"/login
           {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
           <SubmitButton variant="secondary" pendingLabel="Sending…" className="w-full">Resend the link</SubmitButton>
         </form>
-        <Link href={`/login${next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : ""}`} className="h-9 rounded-sm text-sm text-ink-muted hover:text-ink hover:bg-field flex items-center justify-center">Use a different email</Link>
+        <Link href={`/login${next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : ""}`} className={`w-full ${btnClass("ghost")}`}>Use a different email</Link>
       </div>
 
       <AuthFoot>Can&apos;t find it? Check spam or promotions, and make sure it&apos;s the address you were invited with.</AuthFoot>

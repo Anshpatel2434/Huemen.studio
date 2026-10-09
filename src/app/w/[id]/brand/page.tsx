@@ -7,7 +7,7 @@ import { listPillars } from "@/lib/data/planning";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { listAssets } from "@/lib/data/assets";
 import { listOffers } from "@/lib/data/planning";
-import { Meter } from "@/components/ui";
+import { Meter, Alert } from "@/components/ui";
 import { HueStrip } from "@/components/composites";
 import { btnClass } from "@/components/btn";
 import { BriefToc } from "./toc";
@@ -96,13 +96,9 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
           )}
 
           {ctx.degraded && (
-            <div className="mt-4 bg-warn-soft rounded-md px-4 py-3.5 flex gap-3">
-              <AlertTriangle size={16} className="text-warn shrink-0 mt-0.5" />
-              <div className="text-sm">
-                <p className="font-medium text-warn">This brief is too thin for on-brand output.</p>
-                <p className="text-ink-muted mt-0.5">The studio will still draft, but it will say so. Missing: {ctx.warnings.slice(0, 3).join(" ")}</p>
-              </div>
-            </div>
+            <Alert tone="warning" className="mt-4" title="This brief is too thin for on-brand output.">
+              The studio will still draft, but it will say so. Missing: {ctx.warnings.slice(0, 3).join(" ")}
+            </Alert>
           )}
 
           <div className="flex items-start justify-between gap-4 mt-10">
@@ -150,7 +146,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
               <h2 className="text-2xl flex-1">Voice</h2>
               {/* The voice belongs to the person, so it is edited once for the
                   workspace rather than per piece. */}
-              <Link href={`/w/${id}/brand/voice`} className="label-mono text-accent hover:underline underline-offset-2">
+              <Link href={`/w/${id}/brand/voice`} className="hu-link-cta">
                 Open the voice pack ↗
               </Link>
             </div>

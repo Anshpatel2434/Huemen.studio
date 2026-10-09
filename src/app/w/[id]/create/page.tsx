@@ -8,7 +8,7 @@ import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { FORMATS } from "@/lib/content/formats";
 import { userMessage } from "@/lib/ai/errors";
 import { btnClass } from "@/components/btn";
-import { AgentDots } from "@/components/ui";
+import { AgentDots, Alert } from "@/components/ui";
 import { startPieceAction } from "./actions";
 import { SuggestOthers } from "./suggest-others";
 
@@ -37,7 +37,7 @@ async function Proposals({ tenantId, format }: { tenantId: string; format: strin
   try {
     topics = await proposeTopics(scope);
   } catch (e) {
-    return <p role="alert" className="text-sm text-danger bg-danger-soft rounded-sm px-3 py-2.5">{userMessage(e)}</p>;
+    return <Alert tone="danger">{userMessage(e)}</Alert>;
   }
   if (!topics.length) {
     return <p className="text-sm text-ink-muted">Set your pillars and we'll suggest topics from them. <Link href={`/w/${tenantId}/brand/pillars`} className="text-accent underline underline-offset-2">Pillars</Link></p>;
@@ -105,11 +105,11 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
           <form action={startPieceAction} className="bg-paper border border-hairline rounded-md p-4 flex flex-col sm:flex-row gap-3 sm:items-end">
             <input type="hidden" name="tenantId" value={id} />
             <label className="flex-1 min-w-0">
-              <span className="block text-sm font-medium mb-1">Topic</span>
+              <span className="hu-label !flex mb-2">Topic</span>
               <input name="topic" required placeholder="What's it about?" className="field" />
             </label>
             <label>
-              <span className="block text-sm font-medium mb-1">Format</span>
+              <span className="hu-label !flex mb-2">Format</span>
               <select name="format" defaultValue={format ?? ""} className="field min-h-11">
                 {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
               </select>

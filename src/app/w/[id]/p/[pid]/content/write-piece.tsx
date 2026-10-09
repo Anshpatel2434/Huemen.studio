@@ -12,9 +12,9 @@
  */
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { PenLine, ListTree, ScanText, AlertTriangle } from "lucide-react";
+import { PenLine, ListTree, ScanText } from "lucide-react";
 import { btnClass } from "@/components/btn";
-import { AgentDots } from "@/components/ui";
+import { AgentDots, Alert } from "@/components/ui";
 import { FORMATS } from "@/lib/content/formats";
 import type { WorkMode } from "@/lib/voice/types";
 import { coWriteAction, ghostwriteAction, ownDraftAction } from "./actions";
@@ -62,10 +62,7 @@ export function WritePiece({ tenantId, projectId, topic, format: initialFormat, 
         </div>
 
         {confidence && confidence.score < 70 && (
-          <p className="text-sm text-warn bg-warn-soft rounded-sm px-3 py-2 flex items-start gap-2">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-            Your core is {confidence.score}% confident, so this will be closer to you once it has more of your writing.
-          </p>
+          <Alert tone="warning">Your core is {confidence.score}% confident, so this will be closer to you once it has more of your writing.</Alert>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="How to write this piece">
@@ -86,7 +83,7 @@ export function WritePiece({ tenantId, projectId, topic, format: initialFormat, 
         </div>
 
         <label className="block">
-          <span className="block text-sm font-medium mb-1">Format</span>
+          <span className="hu-label !flex mb-2">Format</span>
           <select value={format} onChange={(e) => setFormat(e.target.value)} className="field min-h-11">
             {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
@@ -99,7 +96,7 @@ export function WritePiece({ tenantId, projectId, topic, format: initialFormat, 
           </label>
         )}
 
-        {error && <p role="alert" className="text-sm text-danger bg-danger-soft rounded-sm px-3 py-2.5">{error}</p>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         <button type="button" disabled={pending || (mode === "check" && !text.trim())} onClick={go} className={`${btnClass("primary")} self-start`}>
           {pending ? <><AgentDots /> {mode === "check" ? "Checking" : "Writing in your voice"}</> : mode === "ghostwrite" ? "Draft it" : mode === "cowrite" ? "Give me the outline" : "Save and check"}

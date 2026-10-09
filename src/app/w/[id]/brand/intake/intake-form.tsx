@@ -59,7 +59,7 @@ Tone: story-led, energetic, grounded`,
 function Submit({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={disabled || pending} className="w-9 h-9 rounded-md bg-ink text-on-ink flex items-center justify-center disabled:bg-field disabled:text-ink-faint transition-colors" aria-label="Build brief">
+    <button type="submit" disabled={disabled || pending} className="w-11 h-11 rounded-full bg-ink text-on-ink flex items-center justify-center disabled:bg-active disabled:text-ink-faint transition-colors" aria-label="Build brief">
       {pending ? <AgentDots /> : <ArrowUp size={16} />}
     </button>
   );
@@ -117,7 +117,7 @@ export function IntakeForm({ tenantId }: { tenantId: string }) {
             {EXAMPLES.map((e) => {
               const Icon = e.icon;
               return (
-                <button key={e.label} type="button" onClick={() => setText(e.text)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line bg-paper text-sm hover:border-ink transition-colors">
+                <button key={e.label} type="button" onClick={() => setText(e.text)} className="inline-flex items-center gap-1.5 min-h-11 px-4 rounded-full border border-line bg-paper text-sm hover:border-line-strong hover:bg-hover transition-colors">
                   <Icon size={14} /> {e.label}
                 </button>
               );

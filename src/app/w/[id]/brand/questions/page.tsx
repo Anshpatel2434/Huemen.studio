@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, AlertTriangle, CheckCircle2, FileText, Network, Info } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileText, Network, Info } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { getWorkspace } from "@/lib/data/workspaces";
 import { loadBriefAnswers } from "@/lib/data/foundation";
@@ -7,8 +7,9 @@ import { loadFoundation } from "@/lib/data/foundation";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { listPillars } from "@/lib/data/planning";
 import { buildQuestions, MIN_SEEDS } from "@/lib/brief/questions";
-import { SubmitButton } from "@/components/ui";
+import { SubmitButton, Alert } from "@/components/ui";
 import { answerQuestionsAction } from "../actions";
+import { btnClass } from "@/components/btn";
 
 export const metadata = { title: "Brief questions" };
 
@@ -54,10 +55,9 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
           )}
           {sp.saved && <p className="mt-5 flex items-center gap-2 text-sm text-ok"><CheckCircle2 size={15} /> Answers saved.</p>}
           {sp.blocked && (
-            <div className="mt-5 bg-accent-soft rounded-md px-4 py-3 text-sm flex gap-2.5">
-              <AlertTriangle size={15} className="text-accent-ink shrink-0 mt-0.5" />
-              <span>Not enough to build pillars yet. Get the brief past 50% ({ctx.completeness}% now) and answer at least {MIN_SEEDS} strategy questions.</span>
-            </div>
+            <Alert tone="info" className="mt-5" title="Not enough to build pillars yet">
+              Get the brief past 50% ({ctx.completeness}% now) and answer at least {MIN_SEEDS} strategy questions.
+            </Alert>
           )}
 
           <form action={answerQuestionsAction} className="mt-6 flex flex-col gap-3 pb-24">
@@ -73,7 +73,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
             {strategy.map((q, i) => <Q key={q.key} q={q} n={gaps.length + i + 1} />)}
 
             <div className="sticky bottom-0 -mx-8 px-8 py-3 mt-2 bg-ground/90 backdrop-blur border-t border-hairline flex items-center justify-end gap-2">
-              <button name="intent" value="save" className="h-9 px-4 rounded-sm text-sm font-medium text-ink-muted hover:bg-field">Save answers</button>
+              <button name="intent" value="save" className={btnClass("ghost", "sm")}>Save answers</button>
               <SubmitButton variant="primary" name="intent" value="generate" pendingLabel="Generating pillars…">
                 {pillarsDone ? "Add more pillars →" : "Generate pillars →"}
               </SubmitButton>

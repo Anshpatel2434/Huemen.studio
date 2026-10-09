@@ -105,7 +105,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
               {pillars.map((p) => (
                 <label
                   key={p.id}
-                  className="border border-hairline rounded-full px-3 h-8 flex items-center gap-1.5 cursor-pointer text-sm hover:bg-field has-[:checked]:bg-ink has-[:checked]:text-on-ink has-[:checked]:border-ink"
+                  className="border border-line rounded-full px-4 min-h-11 flex items-center gap-1.5 cursor-pointer text-sm hover:border-line-strong has-[:checked]:bg-ink has-[:checked]:text-on-ink has-[:checked]:border-ink"
                 >
                   <input type="radio" name="pillarId" value={p.id} defaultChecked={project.pillarId === p.id} className="sr-only" />
                   {p.name}
@@ -121,7 +121,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
             {ANGLES.map((a) => (
               <label
                 key={a}
-                className="border border-hairline rounded-md px-3 h-10 flex items-center gap-2 cursor-pointer text-sm hover:bg-field has-[:checked]:border-ink has-[:checked]:bg-field"
+                className="border border-hairline rounded-sm px-3.5 min-h-12 flex items-center gap-2.5 cursor-pointer text-sm hover:border-line has-[:checked]:border-line-strong has-[:checked]:bg-hover"
               >
                 <input type="radio" name="angle" value={a} defaultChecked={project.angle === a} className="sr-only" />
                 {project.angle === a && <Check size={13} />}

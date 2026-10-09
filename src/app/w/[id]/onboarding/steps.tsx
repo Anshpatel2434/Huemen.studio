@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { ArrowLeft, Check, FileUp, Lock, Mic, AlertTriangle, CheckCircle2, Circle, History, X } from "lucide-react";
 import { btnClass } from "@/components/btn";
-import { AgentDots, Badge } from "@/components/ui";
+import { AgentDots, Badge, Alert } from "@/components/ui";
 import { ScoreMeter } from "@/components/composites";
 import {
   SOURCE_GROUPS, ingestLinkedIn, ingestText, ingestWhatsApp, stripEmail, type IngestedPiece,
@@ -68,9 +68,9 @@ const Section = ({ title, sub, children }: { title: string; sub?: ReactNode; chi
 
 /** A row-sized target: the whole label is the control (design system §10). */
 const Choice = ({ on, onToggle, children, radio }: { on: boolean; onToggle: () => void; children: ReactNode; radio?: boolean }) => (
-  <label className={`flex items-start gap-2.5 min-h-11 px-3 py-2.5 rounded-sm border cursor-pointer text-sm ${on ? "border-ink bg-field" : "border-hairline hover:border-line"}`}>
-    <input type={radio ? "radio" : "checkbox"} checked={on} onChange={onToggle} className="mt-0.5 accent-[var(--ink)]" />
-    <span className="flex-1">{children}</span>
+  <label className="hu-choice hu-choice--box">
+    <input type={radio ? "radio" : "checkbox"} checked={on} onChange={onToggle} />
+    <span className="hu-choice__text flex-1 !text-sm">{children}</span>
   </label>
 );
 
@@ -579,7 +579,7 @@ function Dials({ tenantId, dials, estimated }: { tenantId: string; dials: Partia
                 <span className="font-mono text-ink">{v[k]}{estimated[k] != null && <span className="text-ink-faint"> · from your writing: {estimated[k]}</span>}</span>
                 <span>{r}</span>
               </span>
-              <input type="range" min={1} max={10} step={1} value={v[k]} onChange={(e) => setV({ ...v, [k]: Number(e.target.value) })} className="w-full accent-[var(--ink)] min-h-11" aria-label={`${l} to ${r}`} />
+              <input type="range" min={1} max={10} step={1} value={v[k]} onChange={(e) => setV({ ...v, [k]: Number(e.target.value) })} className="w-full accent-[var(--accent)] min-h-11" aria-label={`${l} to ${r}`} />
             </label>
           );
         })}
@@ -852,13 +852,9 @@ export function PayoffStep(props: {
       </div>
 
       {props.confidence < 70 && (
-        <div role="alert" className="flex items-start gap-3 bg-warn-soft text-warn rounded-md px-4 py-3">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <div className="text-sm">
-            <p className="font-medium">Your core is {props.confidence}% confident, so it's still learning.</p>
-            <p className="mt-0.5">{props.missing[0] ?? "Add more of your writing"} and drafts will hold your voice more closely. <Link href={`/w/${tenantId}/onboarding?step=1`} className="underline underline-offset-2">Add writing</Link></p>
-          </div>
-        </div>
+        <Alert tone="warning" title={`Your core is ${props.confidence}% confident, so it's still learning`}>
+          {props.missing[0] ?? "Add more of your writing"} and drafts will hold your voice more closely. <Link href={`/w/${tenantId}/onboarding?step=1`}>Add writing</Link>
+        </Alert>
       )}
 
       <div className="min-w-0">{props.core}</div>
@@ -1032,7 +1028,7 @@ function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameter
             return (
               <label key={k} className="block">
                 <span className="flex justify-between text-xs text-ink-muted"><span>{l}</span><span className="font-mono text-ink">{dials[k]}</span><span>{r}</span></span>
-                <input type="range" min={1} max={10} value={dials[k]} onChange={(e) => setDials({ ...dials, [k]: Number(e.target.value) })} className="w-full accent-[var(--ink)] min-h-11" aria-label={`${l} to ${r}`} />
+                <input type="range" min={1} max={10} value={dials[k]} onChange={(e) => setDials({ ...dials, [k]: Number(e.target.value) })} className="w-full accent-[var(--accent)] min-h-11" aria-label={`${l} to ${r}`} />
               </label>
             );
           })}

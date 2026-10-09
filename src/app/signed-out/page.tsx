@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { AuthFoot, AuthIcon, AuthShell, AuthTitle } from "@/components/auth-shell";
 import { ClearAccountDrafts } from "@/components/persist";
+import { btnClass } from "@/components/btn";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Signed out" };
@@ -18,7 +19,7 @@ export default async function SignedOutPage() {
       <AuthTitle sub="Your session on this device has ended. Your brief and content are saved.">
         You&apos;re signed <span className="serif-accent">out</span>
       </AuthTitle>
-      <Link href="/login" className="mt-6 h-10 rounded-sm bg-ink text-on-ink text-sm font-medium flex items-center justify-center hover:opacity-90">Sign in again</Link>
+      <Link href="/login" className={`mt-6 w-full ${btnClass("primary")}`}>Sign in again</Link>
       <AuthFoot>On a shared computer? Close this browser window too.</AuthFoot>
     </AuthShell>
   );

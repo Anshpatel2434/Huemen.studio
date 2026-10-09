@@ -51,7 +51,7 @@ export function CanvasHistory({ children }: { children: ReactNode }) {
         to.current = [...to.current, step];
         toast(`${redo ? "Redo" : "Undo"}: ${step.label}`);
       } catch {
-        toast("Couldn't do that. Try again.");
+        toast("Couldn't do that. Try again.", "danger");
       }
       busy.current = false;
     };
@@ -127,7 +127,7 @@ export function EditableText({
     setPending({ from: value, to: next });
     onCommit(next, prev).catch(() => {
       setPending(null);
-      toast("Couldn't save that edit. It was put back.");
+      toast("Couldn't save that edit. It was put back.", "danger");
     });
   };
 

@@ -82,13 +82,13 @@ export function VoicePreview({ tenantId, version }: { tenantId: string; version:
       )}
       {prev && text && prev !== text && (
         <details className="text-xs">
-          <summary className="cursor-pointer text-ink-faint min-h-9 flex items-center">Before your last answer</summary>
+          <summary className="cursor-pointer text-ink-faint min-h-11 flex items-center">Before your last answer</summary>
           <p className="text-ink-muted leading-relaxed">{prev}</p>
         </details>
       )}
       {source && (
         <details className="text-xs">
-          <summary className="cursor-pointer text-ink-faint min-h-9 flex items-center">The plain version it started from</summary>
+          <summary className="cursor-pointer text-ink-faint min-h-11 flex items-center">The plain version it started from</summary>
           <p className="text-ink-muted leading-relaxed">{source}</p>
         </details>
       )}

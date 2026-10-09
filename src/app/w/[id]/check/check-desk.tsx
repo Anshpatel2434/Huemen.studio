@@ -10,9 +10,9 @@
  */
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { AlertTriangle, Check as CheckIcon, Copy, Wand2 } from "lucide-react";
+import { Check as CheckIcon, Copy, Wand2 } from "lucide-react";
 import { btnClass } from "@/components/btn";
-import { AgentDots } from "@/components/ui";
+import { AgentDots, Alert } from "@/components/ui";
 import { ScoreMeter, Findings, type Finding } from "@/components/composites";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import type { CheckOutcome } from "@/lib/data/check";
@@ -110,10 +110,9 @@ export function CheckDesk({ tenantId, platforms, confidence }: {
   return (
     <div className="flex flex-col gap-5">
       {confidence && confidence.score < 70 && (
-        <p className="text-sm text-warn bg-warn-soft rounded-sm px-3 py-2.5 flex items-start gap-2">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>Your core is {confidence.score}% confident, so this check is still learning you.{confidence.missing[0] ? ` ${confidence.missing[0]}.` : ""} <Link href={`/w/${tenantId}/onboarding?step=1`} className="underline underline-offset-2">Add writing</Link></span>
-        </p>
+        <Alert tone="warning" title={`Your core is ${confidence.score}% confident`}>
+          This check is still learning you.{confidence.missing[0] ? ` ${confidence.missing[0]}.` : ""} <Link href={`/w/${tenantId}/onboarding?step=1`}>Add writing</Link>
+        </Alert>
       )}
 
       <div className="flex flex-col gap-2">
@@ -158,7 +157,7 @@ export function CheckDesk({ tenantId, platforms, confidence }: {
         </div>
       </div>
 
-      {error && <p role="alert" className="text-sm text-danger bg-danger-soft rounded-sm px-3 py-2.5">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {result && band && (
         <section aria-live="polite" className={`bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4 ${stale ? "opacity-60" : ""}`}>

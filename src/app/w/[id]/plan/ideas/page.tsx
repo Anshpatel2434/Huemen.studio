@@ -38,7 +38,7 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
                 <form action={setIdeaPillarAction} className="flex items-center gap-2">
                   <input type="hidden" name="tenantId" value={id} />
                   <input type="hidden" name="id" value={i.id} />
-                  <select name="pillarId" defaultValue={i.pillarId ?? ""} className="h-8 rounded-sm bg-field px-2 text-xs flex-1">
+                  <select name="pillarId" aria-label="Pillar" defaultValue={i.pillarId ?? ""} className="flex-1 min-w-0">
                     <option value="">Untagged</option>
                     {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
@@ -48,12 +48,12 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
                   <form action={archiveIdeaAction}>
                     <input type="hidden" name="tenantId" value={id} />
                     <input type="hidden" name="id" value={i.id} />
-                    <button className="w-8 h-8 rounded-sm flex items-center justify-center text-ink-faint hover:bg-field hover:text-ink" title="Archive"><Archive size={14} /></button>
+                    <button className="hu-iconbtn" title="Archive" aria-label="Archive idea"><Archive size={14} /></button>
                   </form>
                   <form action={convertIdeaAction} className="flex items-center gap-2 flex-1 justify-end">
                     <input type="hidden" name="tenantId" value={id} />
                     <input type="hidden" name="id" value={i.id} />
-                    <select name="format" className="h-8 rounded-sm bg-field px-2 text-xs">
+                    <select name="format" aria-label="Format">
                       {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
                     </select>
                     <SubmitButton size="sm" pendingLabel="Starting…">Start a piece <ArrowRight size={13} /></SubmitButton>

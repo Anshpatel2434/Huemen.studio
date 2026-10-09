@@ -9,10 +9,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
-  Plus, FileText, Network, PenLine, Palette, FolderOpen, X, ArrowRight, Copy, ClipboardPaste, Sparkles,
+  Plus, FileText, PenLine, Palette, FolderOpen, X, ArrowRight, Copy, ClipboardPaste, Sparkles,
   LayoutGrid, List, ChevronDown, MoreHorizontal, Star, Pencil, Archive, RotateCcw, ExternalLink, Trash2, Lightbulb, CheckCircle2,
 } from "lucide-react";
-import { Modal, SubmitButton, EmptyState, AgentDots, useToast, hueFor } from "@/components/ui";
+import {
+  Modal, SubmitButton, EmptyState, AgentDots, useToast, hueFor, IconButton, Tabs, Segmented, Field, Menu, MenuItem, MenuSeparator,
+} from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
 import { STAGES, STAGE_LABEL, stageIndex, type Stage } from "@/lib/projects/stages";
@@ -78,7 +80,6 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
   /** Arrived straight from the last onboarding step. */
   justFinished?: boolean;
 }) {
-  const router = useRouter();
   const q = initialQuery;
   const [stage, setStage] = useState<Stage | "all">("all");
   const [platform, setPlatform] = useState<string>("all");
@@ -116,11 +117,11 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
     <div className="absolute inset-0 flex flex-col">
       {showWhatsNew && !justFinished && <WhatsNew onStart={() => setCreating("blank")} />}
       {/* Top bar */}
-      <header className="h-12 shrink-0 flex items-center gap-2 px-5 border-b border-hairline bg-paper">
-        <h1 className="text-sm font-medium flex-1">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
-        <button onClick={() => setCreating("blank")} className="flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line text-sm hover:border-ink"><span className="w-4 h-4 rounded-xs bg-ink text-on-ink flex items-center justify-center"><FileText size={10} /></span> New project</button>
-        <button onClick={() => setCreating("copy")} disabled={projects.length === 0} className="flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line text-sm hover:border-ink disabled:opacity-40"><span className="w-4 h-4 rounded-xs bg-accent text-on-ink flex items-center justify-center"><Copy size={10} /></span> From a brief</button>
-        <button onClick={() => setHero(true)} className="flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line text-sm hover:border-ink"><span className="w-4 h-4 rounded-xs bg-field flex items-center justify-center"><ClipboardPaste size={10} /></span> Paste notes</button>
+      <header className="min-h-16 shrink-0 flex flex-wrap items-center gap-2 px-5 py-2 border-b border-hairline bg-paper">
+        <h1 className="text-base font-semibold flex-1">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
+        <button onClick={() => setHero(true)} className={btnClass("ghost", "sm")}><ClipboardPaste size={15} aria-hidden="true" /> Paste notes</button>
+        <button onClick={() => setCreating("copy")} disabled={projects.length === 0} className={btnClass("secondary", "sm")}><Copy size={15} aria-hidden="true" /> From a brief</button>
+        <button onClick={() => setCreating("blank")} className={btnClass("primary", "sm")}><Plus size={15} aria-hidden="true" /> New project</button>
       </header>
 
       <div className="flex-1 overflow-y-auto">
@@ -171,28 +172,31 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={prompt.split("\n").length > 1 ? 4 : 1}
                   placeholder={EXAMPLES[0]}
-                  className="flex-1 resize-none bg-transparent outline-none text-sm px-2 py-1.5 placeholder:text-ink-faint"
+                  className="flex-1 resize-none bg-transparent outline-none text-base px-2 py-2.5 min-h-11 placeholder:text-ink-faint"
                 />
                 <PromptSubmit disabled={!prompt.trim()} />
               </form>
-              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-ink-faint mr-1">Try</span>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-ink-faint mr-1">Try</span>
                 {EXAMPLES.map((e) => (
-                  <button key={e} onClick={() => setPrompt(e)} className="h-6 px-2 rounded-sm bg-paper/70 border border-hairline text-xs text-ink-muted hover:text-ink truncate max-w-[280px]">{e}</button>
+                  <button key={e} onClick={() => setPrompt(e)} className={`${btnClass("secondary", "sm")} !px-4 max-w-[300px] !block truncate`}>{e}</button>
                 ))}
-                <span className="text-xs text-ink-faint ml-auto">Paste workshop notes with labels (Niche:, Audience:) for more detail.</span>
               </div>
+              <p className="text-sm text-ink-faint mt-2">Paste workshop notes with labels (Niche:, Audience:) for more detail.</p>
             </div>
-            <button onClick={() => { setHero(false); dismissHeroAction(tenantId); }} className="absolute top-3 right-4 w-7 h-7 rounded-sm flex items-center justify-center text-ink-muted hover:bg-paper" aria-label="Dismiss"><X size={15} /></button>
+            <IconButton label="Dismiss" onClick={() => { setHero(false); dismissHeroAction(tenantId); }} className="!absolute top-3 right-4"><X size={16} /></IconButton>
           </section>
         )}
 
         <div className="max-w-[1180px] mx-auto px-5 py-5">
           {/* Tabs + filters */}
-          <div className="flex items-center gap-1 flex-wrap">
-            {tabs.map((t) => (
-              <button key={t.v} onClick={() => router.push(t.v === "recents" ? `/w/${tenantId}` : `/w/${tenantId}?view=${t.v}`)} className={`h-8 px-3 rounded-sm text-sm ${view === t.v ? "bg-field font-medium" : "text-ink-muted hover:text-ink"}`}>{t.label}</button>
-            ))}
+          <div className="flex items-end gap-1 flex-wrap border-b border-hairline">
+            <Tabs
+              label="Projects"
+              className="!border-b-0"
+              value={view}
+              items={tabs.map((t) => ({ value: t.v, label: t.label, href: t.v === "recents" ? `/w/${tenantId}` : `/w/${tenantId}?view=${t.v}` }))}
+            />
             <span className="flex-1" />
             <Dropdown label={stage === "all" ? "All steps" : `${stageIndex(stage) + 1}. ${STAGE_LABEL[stage]}`} options={[["all", "All steps"], ...STAGES.map((s) => [s, `${stageIndex(s) + 1}. ${STAGE_LABEL[s]}`] as [string, string])]} onPick={(v) => setStage(v as Stage | "all")} />
             {platforms.length > 1 && (
@@ -201,10 +205,16 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
             <Dropdown label={status === "all" ? "Any status" : STATUS_LABEL[status]} options={[["all", "Any status"], ...Object.entries(STATUS_LABEL)]} onPick={setStatus} />
             <Dropdown label={band === "all" ? "Any band" : BAND_LABEL[band]} options={[["all", "Any band"], ...Object.entries(BAND_LABEL)]} onPick={setBand} />
             <Dropdown label={sort === "edited" ? "Last edited" : sort === "name" ? "Alphabetical" : "Date created"} options={[["edited", "Last edited"], ["name", "Alphabetical"], ["created", "Date created"]]} onPick={(v) => setSort(v as Sort)} />
-            <div className="flex items-center ml-1">
-              <button onClick={() => setLayout("grid")} className={`w-8 h-8 rounded-sm flex items-center justify-center ${layout === "grid" ? "bg-field" : "text-ink-muted hover:text-ink"}`} aria-label="Grid"><LayoutGrid size={14} /></button>
-              <button onClick={() => setLayout("list")} className={`w-8 h-8 rounded-sm flex items-center justify-center ${layout === "list" ? "bg-field" : "text-ink-muted hover:text-ink"}`} aria-label="List"><List size={14} /></button>
-            </div>
+            <Segmented
+              label="Layout"
+              className="ml-2 mb-1.5"
+              value={layout}
+              onChange={setLayout}
+              items={[
+                { value: "grid", title: "Grid", label: <LayoutGrid size={15} aria-hidden="true" /> },
+                { value: "list", title: "List", label: <List size={15} aria-hidden="true" /> },
+              ]}
+            />
           </div>
 
           {shown.length === 0 ? (
@@ -248,24 +258,21 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
       </div>
 
       <Modal open={creating !== null} onClose={() => setCreating(null)} title={creating === "copy" ? "New project from a brief" : "New project"} width={460}>
-        <form action={createProjectAction} className="flex flex-col gap-4">
+        <form action={createProjectAction} className="flex flex-col gap-5">
           <input type="hidden" name="tenantId" value={tenantId} />
-          <label className="block">
-            <span className="text-sm font-medium mb-1.5 block">Project name</span>
-            <input name="name" className="field" placeholder="e.g. Q4 thought-leadership push" required autoFocus />
-          </label>
+          <Field label="Project name" required>
+            <input name="name" className="field" placeholder="e.g. Q4 thought-leadership push" autoFocus />
+          </Field>
           {creating === "copy" ? (
-            <label className="block">
-              <span className="text-sm font-medium mb-1.5 block">Copy the brief from</span>
-              <select name="fromProject" className="field" defaultValue={projects[0]?.id} required>
+            <Field label="Copy the brief from" hint="Story, voice and visual identity are copied; pillars and content start fresh." required>
+              <select name="fromProject" className="field" defaultValue={projects[0]?.id}>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <span className="block text-xs text-ink-faint mt-1">Story, voice and visual identity are copied; pillars and content start fresh.</span>
-            </label>
+            </Field>
           ) : (
-            <p className="text-xs text-ink-muted">You&apos;ll start at the intake. Four steps follow: Brief → Pillars → Content → Visual, each unlocking the next.</p>
+            <p className="text-sm text-ink-muted">It starts at Ideate. Content and Visual follow, each unlocking the next.</p>
           )}
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={() => setCreating(null)} className={btnClass("ghost")}>Cancel</button>
             <SubmitButton pendingLabel="Creating…">Create project</SubmitButton>
           </div>
@@ -286,16 +293,18 @@ function PromptSubmit({ disabled }: { disabled: boolean }) {
 function Dropdown({ label, options, onPick }: { label: string; options: [string, string][]; onPick: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="h-8 px-2.5 rounded-sm text-xs flex items-center gap-1 hover:bg-field">{label} <ChevronDown size={13} className="text-ink-faint" /></button>
+    <div className="relative mb-0.5">
+      <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} className="min-h-11 px-3 rounded-full text-sm text-ink-muted flex items-center gap-1.5 hover:bg-hover hover:text-ink transition-colors">
+        {label} <ChevronDown size={14} className="text-ink-faint" aria-hidden="true" />
+      </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-40 w-44 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-1 pop">
+          <div className="fixed inset-0" style={{ zIndex: "var(--z-dropdown)" }} onClick={() => setOpen(false)} />
+          <Menu label={label} className="absolute right-0 top-12 w-52 pop">
             {options.map(([v, l]) => (
-              <button key={v} onClick={() => { onPick(v); setOpen(false); }} className={`w-full text-left h-8 px-2.5 rounded-sm text-sm hover:bg-field ${l === label ? "font-medium" : ""}`}>{l}</button>
+              <MenuItem key={v} checked={l === label} onClick={() => { onPick(v); setOpen(false); }}>{l}</MenuItem>
             ))}
-          </div>
+          </Menu>
         </>
       )}
     </div>
@@ -311,38 +320,41 @@ function CardMenu({ p, tenantId, archived, floating }: { p: Project; tenantId: s
   const [name, setName] = useState(p.name);
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<unknown>, msg: string) =>
-    start(async () => { setOpen(false); try { await fn(); toast(msg); router.refresh(); } catch { toast("That didn't work. Try again."); } });
+    start(async () => { setOpen(false); try { await fn(); toast(msg); router.refresh(); } catch { toast("That didn't work. Try again.", "danger"); } });
 
   return (
     <div className={`relative ${floating ? "" : "justify-self-end"}`}>
-      <button
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}
-        className={`w-7 h-7 rounded-sm flex items-center justify-center ${floating ? "bg-paper/95 shadow-[var(--shadow-sm)] opacity-0 group-hover:opacity-100 focus:opacity-100" : "hover:bg-field"} ${open ? "opacity-100" : ""} text-ink-muted hover:text-ink`}
-        aria-label="Project menu"
+      <span
+        className={floating ? `inline-flex rounded-full bg-paper/95 shadow-[var(--shadow-sm)] opacity-0 group-hover:opacity-100 focus-within:opacity-100 ${open ? "opacity-100" : ""}` : "inline-flex"}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
       >
-        {pending ? <AgentDots /> : <MoreHorizontal size={15} />}
-      </button>
+        <IconButton label={`Actions for ${p.name}`} onClick={() => setOpen((o) => !o)} pressed={open}>
+          {pending ? <AgentDots /> : <MoreHorizontal size={17} />}
+        </IconButton>
+      </span>
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); }} />
-          <div className="absolute right-0 top-8 z-40 w-60 bg-menu text-menu-fg rounded-md shadow-[var(--shadow-lg)] p-1.5 pop text-sm" onClick={(e) => e.stopPropagation()}>
-            {archived ? (
-              <>
-                <button onClick={() => run(() => restoreProjectAction(tenantId, p.id), "Restored")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><RotateCcw size={14} /> Restore</button>
-                <div className="h-px bg-white/10 my-1" />
-                <button onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Trash2 size={14} /> Delete permanently</button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => { setOpen(false); router.push(`/w/${tenantId}/p/${p.id}`); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><ExternalLink size={14} /> Open</button>
-                <button onClick={() => run(() => starProjectAction(tenantId, p.id, !p.starred), p.starred ? "Removed from starred" : "Starred")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Star size={14} /> {p.starred ? "Unstar" : "Add to starred"}</button>
-                <button onClick={() => { setOpen(false); setRenaming(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Pencil size={14} /> Rename</button>
-                <button onClick={() => start(async () => { setOpen(false); const id = await duplicateProjectAction(tenantId, p.id); router.push(`/w/${tenantId}/p/${id}/brief/questions`); })} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Copy size={14} className="shrink-0" /> <span className="whitespace-nowrap">New project from this brief</span></button>
-                <div className="h-px bg-white/10 my-1" />
-                <button onClick={() => run(() => archiveProjectAction(tenantId, p.id), "Archived")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10 text-menu-fg/70"><Archive size={14} /> Archive</button>
-                <button onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Trash2 size={14} /> Delete</button>
-              </>
-            )}
+          <div className="fixed inset-0" style={{ zIndex: "var(--z-dropdown)" }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); }} />
+          <div className="absolute right-0 top-11" style={{ zIndex: "var(--z-dropdown)" }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+            <Menu label={`Actions for ${p.name}`} className="w-64 pop">
+              {archived ? (
+                <>
+                  <MenuItem icon={<RotateCcw size={15} aria-hidden="true" />} onClick={() => run(() => restoreProjectAction(tenantId, p.id), "Restored")}>Restore</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem danger icon={<Trash2 size={15} aria-hidden="true" />} onClick={() => { setOpen(false); setDeleting(true); }}>Delete permanently</MenuItem>
+                </>
+              ) : (
+                <>
+                  <MenuItem icon={<ExternalLink size={15} aria-hidden="true" />} onClick={() => { setOpen(false); router.push(`/w/${tenantId}/p/${p.id}`); }}>Open</MenuItem>
+                  <MenuItem icon={<Star size={15} aria-hidden="true" />} onClick={() => run(() => starProjectAction(tenantId, p.id, !p.starred), p.starred ? "Removed from starred" : "Starred")}>{p.starred ? "Unstar" : "Add to starred"}</MenuItem>
+                  <MenuItem icon={<Pencil size={15} aria-hidden="true" />} onClick={() => { setOpen(false); setRenaming(true); }}>Rename</MenuItem>
+                  <MenuItem icon={<Copy size={15} aria-hidden="true" />} onClick={() => start(async () => { setOpen(false); const id = await duplicateProjectAction(tenantId, p.id); router.push(`/w/${tenantId}/p/${id}/brief/questions`); })}>New project from this brief</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem icon={<Archive size={15} aria-hidden="true" />} onClick={() => run(() => archiveProjectAction(tenantId, p.id), "Archived")}>Archive</MenuItem>
+                  <MenuItem danger icon={<Trash2 size={15} aria-hidden="true" />} onClick={() => { setOpen(false); setDeleting(true); }}>Delete</MenuItem>
+                </>
+              )}
+            </Menu>
           </div>
         </>
       )}

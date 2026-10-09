@@ -6,7 +6,7 @@ import { Plus, X, Flag, Trash2, History, Wand2, PenLine, AlertTriangle, Globe, T
 import { Canvas, Artboard, type Device } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
 import { DraftModal } from "@/components/draft-modal";
-import { AgentDots, Badge, EmptyState, Avatar, useToast } from "@/components/ui";
+import { AgentDots, Badge, EmptyState, Avatar, IconButton, Segmented, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
 import type { ContentItemView } from "@/lib/data/content";
@@ -86,7 +86,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     const name = pillarId ? pillars.find((p) => p.id === pillarId)?.name : "No pillar";
     patchContentAction(tenantId, projectId, itemId, { pillarId }).then(
       () => toast(`Moved to ${name}`),
-      () => { setMoves((m) => { const n = { ...m }; delete n[itemId]; return n; }); toast("Couldn't move that piece."); },
+      () => { setMoves((m) => { const n = { ...m }; delete n[itemId]; return n; }); toast("Couldn't move that piece.", "danger"); },
     );
     history.push({
       label: "move piece",
@@ -99,7 +99,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     if (!confirm("Delete this piece and its history?")) return;
     deleteContentAction(tenantId, projectId, item.id).then(
       () => { toast("Deleted"); select(null); },
-      () => toast("Couldn't delete that piece."),
+      () => toast("Couldn't delete that piece.", "danger"),
     );
   }, [tenantId, projectId, toast, select]);
   useDeleteKey(selected ? () => remove(selected) : null);
@@ -168,7 +168,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       {items.length > 0 && (
         <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
           <button onClick={() => setDrafting(true)} className={`${btnClass("primary", "sm")} shadow-[var(--shadow)]`}><Plus size={14} /> Draft</button>
-          <select value={pillarFilter} onChange={(e) => setPillarFilter(e.target.value)} className="h-8 rounded-sm bg-paper border border-hairline px-2 text-sm shadow-[var(--shadow-sm)]">
+          <select value={pillarFilter} onChange={(e) => setPillarFilter(e.target.value)} aria-label="Pillar" className="shadow-[var(--shadow-sm)]">
             <option value="all">All pillars</option>
             {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             <option value="none">No pillar</option>
@@ -241,7 +241,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
   const run = (label: string, fn: () => Promise<void>, done: string) =>
     start(async () => {
       setBusy(label);
-      try { await fn(); toast(done); router.refresh(); } catch { toast("That failed and was logged. Try again."); }
+      try { await fn(); toast(done); router.refresh(); } catch { toast("That failed and was logged. Try again.", "danger"); }
       setBusy(null);
     });
 
@@ -250,14 +250,15 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
 
   return (
     <aside className="absolute top-0 right-0 bottom-0 z-30 w-[360px] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
-      <div className="h-11 shrink-0 flex items-center gap-2 px-3 border-b border-hairline">
-        <span className="text-sm font-medium flex-1 truncate">{formatByKey(item.format).label}</span>
-        <div className="flex bg-field rounded-sm p-[2px]">
-          {(["edit", "history"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`h-7 px-2.5 rounded-sm text-xs capitalize ${tab === t ? "bg-paper shadow-[var(--shadow-sm)] font-medium" : "text-ink-muted"}`}>{t === "history" ? `History · ${item.history.length}` : t}</button>
-          ))}
-        </div>
-        <button onClick={onClose} className="w-7 h-7 rounded-sm flex items-center justify-center text-ink-muted hover:bg-field" aria-label="Close"><X size={15} /></button>
+      <div className="min-h-14 shrink-0 flex items-center gap-2 pl-4 pr-2 border-b border-hairline">
+        <span className="text-sm font-semibold flex-1 truncate">{formatByKey(item.format).label}</span>
+        <Segmented
+          label="Panel view"
+          value={tab}
+          onChange={setTab}
+          items={[{ value: "edit", label: "Edit" }, { value: "history", label: `History · ${item.history.length}` }]}
+        />
+        <IconButton label="Close" onClick={onClose}><X size={17} /></IconButton>
       </div>
 
       {tab === "edit" ? (
@@ -268,11 +269,11 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
               <p className="text-ink-muted mt-0.5">{liveViolations.join(", ")}. Flagged, not removed: your call.</p>
             </div>
           )}
-          <label className="block"><span className="text-xs font-medium mb-1 block">Hook</span><textarea value={hook} onChange={(e) => setHook(e.target.value)} rows={2} className="field" /></label>
-          <label className="block"><span className="text-xs font-medium mb-1 block">Body</span><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="field" /></label>
-          <label className="block"><span className="text-xs font-medium mb-1 block">Call to action</span><input value={cta} onChange={(e) => setCta(e.target.value)} className="field" placeholder="Missing: add one" /></label>
+          <label className="block"><span className="hu-label !flex mb-2">Hook</span><textarea value={hook} onChange={(e) => setHook(e.target.value)} rows={2} className="field" /></label>
+          <label className="block"><span className="hu-label !flex mb-2">Body</span><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="field" /></label>
+          <label className="block"><span className="hu-label !flex mb-2">Call to action</span><input value={cta} onChange={(e) => setCta(e.target.value)} className="field" placeholder="Missing: add one" /></label>
           <label className="block">
-            <span className="text-xs font-medium mb-1 block">Pillar</span>
+            <span className="hu-label !flex mb-2">Pillar</span>
             <select value={pillarId} onChange={(e) => setPillarId(e.target.value)} className="field">
               <option value="">No pillar</option>
               {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -282,7 +283,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
             <p className="text-xs font-medium mb-1.5 flex items-center gap-1.5"><Wand2 size={12} /> Regenerate with a steer</p>
             <div className="flex flex-wrap gap-1.5">
               {STEERS.map((s) => (
-                <button key={s} disabled={pending} onClick={() => run(s, () => steerAction(tenantId, projectId, item.id, s), "New version added to history")} className="h-7 px-2.5 rounded-sm border border-line text-xs hover:border-ink disabled:opacity-50 flex items-center gap-1">
+                <button key={s} disabled={pending} onClick={() => run(s, () => steerAction(tenantId, projectId, item.id, s), "New version added to history")} className="min-h-11 px-3.5 rounded-full border border-line text-sm hover:border-line-strong hover:bg-hover disabled:opacity-50 flex items-center gap-1.5">
                   {busy === s && <AgentDots />} {s}
                 </button>
               ))}

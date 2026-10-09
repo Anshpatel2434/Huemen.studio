@@ -6,6 +6,7 @@ import { getAccount } from "@/lib/data/auth";
 import { SubmitButton } from "@/components/ui";
 import { AuthFoot, AuthIcon, AuthNotice, AuthShell, AuthTitle } from "@/components/auth-shell";
 import { acceptInviteAction } from "./actions";
+import { btnClass } from "@/components/btn";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Accept your invite" };
@@ -35,7 +36,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         <AuthTitle sub={expired ? "Invites are valid for 7 days. Ask the person who invited you to send a new one." : "This invite link isn't valid. It may have been cut off when it was copied. Ask for a fresh one."}>
           {expired ? "This invite has expired" : "Invite not found"}
         </AuthTitle>
-        <Link href="/login" className="mt-6 h-9 rounded-sm border border-line text-sm font-medium flex items-center justify-center hover:border-ink">Already joined? Sign in</Link>
+        <Link href="/login" className={`mt-6 w-full ${btnClass("secondary")}`}>Already joined? Sign in</Link>
       </AuthShell>
     );
   }
@@ -46,7 +47,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         <AuthTitle sub={<>{a.email} has already joined <span className="font-medium text-ink">{a.tenantName}</span>. Sign in to pick up where you left off.</>}>
           You&apos;re already <span className="serif-accent">in</span>
         </AuthTitle>
-        <Link href={`/login?${new URLSearchParams({ email: a.email })}`} className="mt-6 h-10 rounded-sm bg-ink text-on-ink text-sm font-medium flex items-center justify-center gap-1.5 hover:opacity-90">Sign in <ArrowRight size={14} /></Link>
+        <Link href={`/login?${new URLSearchParams({ email: a.email })}`} className={`mt-6 w-full ${btnClass("primary")}`}>Sign in <ArrowRight size={14} /></Link>
       </AuthShell>
     );
   }
@@ -55,7 +56,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
       <AuthShell>
         <AuthIcon><MailWarning size={19} /></AuthIcon>
         <AuthTitle sub="This invite was withdrawn, or the workspace is no longer active. Ask your coach or admin if you think that's a mistake.">Invite withdrawn</AuthTitle>
-        <Link href="/login" className="mt-6 h-9 rounded-sm border border-line text-sm font-medium flex items-center justify-center hover:border-ink">Back to sign in</Link>
+        <Link href="/login" className={`mt-6 w-full ${btnClass("secondary")}`}>Back to sign in</Link>
       </AuthShell>
     );
   }

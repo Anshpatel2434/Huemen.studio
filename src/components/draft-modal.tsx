@@ -42,7 +42,7 @@ export function DraftModal({
           <p className="text-sm font-medium mb-2">Format</p>
           <div className="flex flex-wrap gap-1.5">
             {FORMATS.map((f) => (
-              <button key={f.key} type="button" onClick={() => setFormat(f.key)} className={`h-8 px-3 rounded-sm text-sm border transition-colors ${format === f.key ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>{f.label}</button>
+              <button key={f.key} type="button" onClick={() => setFormat(f.key)} aria-pressed={format === f.key} className={`min-h-11 px-4 rounded-full text-sm border transition-colors ${format === f.key ? "bg-ink text-on-ink border-ink" : "border-line hover:border-line-strong hover:bg-hover"}`}>{f.label}</button>
             ))}
           </div>
         </div>
@@ -52,7 +52,7 @@ export function DraftModal({
         </label>
         {pillars.length > 0 && (
           <label className="block">
-            <span className="text-sm font-medium mb-1.5 block">Pillar</span>
+            <span className="hu-label !flex mb-2">Pillar</span>
             <select value={pillar} onChange={(e) => setPillar(e.target.value)} className="field">
               <option value="">No pillar</option>
               {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

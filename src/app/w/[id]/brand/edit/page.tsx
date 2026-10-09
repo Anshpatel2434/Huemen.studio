@@ -43,7 +43,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-[760px] mx-auto px-8 py-8">
-        <Link href={`/w/${id}/brand`} className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink"><ArrowLeft size={14} /> Brief</Link>
+        <Link href={`/w/${id}/brand`} className="inline-flex items-center gap-1.5 min-h-11 text-sm text-ink-muted hover:text-ink"><ArrowLeft size={15} aria-hidden="true" /> Brief</Link>
         <h1 className="text-3xl mt-3">Edit the brief. <span className="serif-accent">Once.</span></h1>
         <p className="text-ink-muted mt-2 text-sm">This is the context every post and image is generated from. The studio degrades on purpose when it&apos;s thin.</p>
 
@@ -99,7 +99,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
           <p className="text-sm text-ink-muted mt-0.5 mb-4">Logos, fonts and reference images. PNG, JPG, WebP, SVG or font files, max 5 MB.</p>
           <form action={uploadAssetAction} className="flex flex-wrap items-center gap-2">
             <input type="hidden" name="tenantId" value={id} />
-            <input type="file" name="file" required className="text-sm file:mr-3 file:rounded-sm file:border-0 file:bg-field file:px-3 file:py-1.5 file:text-sm" />
+            <input type="file" name="file" required className="text-sm file:mr-3 file:min-h-11 file:rounded-full file:border file:border-line file:bg-transparent file:px-5 file:text-sm file:font-medium file:cursor-pointer hover:file:border-line-strong" />
             <select name="kind" defaultValue="logo" className="field !w-auto">
               <option value="logo">Logo</option>
               <option value="reference_image">Reference image</option>
