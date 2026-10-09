@@ -63,23 +63,24 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       onClick={() => setTheme(next)}
       title={`Switch to ${next} view`}
       aria-label={`Switch to ${next} view`}
-      className={`w-8 h-8 rounded-sm flex items-center justify-center text-ink-muted hover:bg-field hover:text-ink transition-colors ${className}`}
+      className={`hu-iconbtn ${className}`}
     >
-      <Icon size={16} />
+      <Icon size={17} aria-hidden="true" />
     </button>
   );
 }
 
-/** Two-segment Light | Dark control (sidebar, menus). "System" shows neither as pressed. */
+/** Light | Dark | Auto control (sidebar, menus). Auto follows the device, the default. */
 export function ThemeSwitch({ className = "" }: { className?: string }) {
   const { pref, setTheme } = useTheme();
-  const opts: { v: Theme; label: string; icon: typeof Sun }[] = [
-    { v: "light", label: "Light", icon: Sun },
-    { v: "dark", label: "Dark", icon: Moon },
+  const opts: { v: ThemePref; label: string; icon: typeof Sun; title: string }[] = [
+    { v: "light", label: "Light", icon: Sun, title: "Light view" },
+    { v: "dark", label: "Dark", icon: Moon, title: "Dark view" },
+    { v: "system", label: "Auto", icon: Monitor, title: "Follow this device" },
   ];
   return (
-    <div role="radiogroup" aria-label="Appearance" className={`grid grid-cols-2 gap-0.5 p-0.5 rounded-md bg-field ${className}`}>
-      {opts.map(({ v, label, icon: Icon }) => {
+    <div role="radiogroup" aria-label="Appearance" className={`hu-seg !grid grid-cols-3 w-full ${className}`}>
+      {opts.map(({ v, label, icon: Icon, title }) => {
         const on = pref === v;
         return (
           <button
@@ -87,10 +88,11 @@ export function ThemeSwitch({ className = "" }: { className?: string }) {
             type="button"
             role="radio"
             aria-checked={on}
+            title={title}
             onClick={() => setTheme(v)}
-            className={`h-7 rounded-sm flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${on ? "bg-paper text-ink shadow-[var(--shadow-sm)]" : "text-ink-muted hover:text-ink"}`}
+            className="hu-seg__item !px-2"
           >
-            <Icon size={13} /> {label}
+            <Icon size={14} aria-hidden="true" /> {label}
           </button>
         );
       })}

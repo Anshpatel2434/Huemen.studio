@@ -4,12 +4,13 @@ import type { ReactNode } from "react";
 import { ThemeToggle } from "@/components/theme";
 import { PageTransition } from "@/components/page-transition";
 import { SectionTabs } from "./section-tabs";
-import { ToastProvider } from "./ui";
+import { LogoMark, ToastProvider } from "./ui";
 
 /**
- * The chrome for a workspace-level section: Brand core, Plan, Create, Check,
- * Onboarding. These sit above any one piece, so they get a plain header with a
- * way back to the library and the section's own tabs, not the piece editor.
+ * The focused frame: a top bar and nothing else. Used where the app shell's
+ * sidebar would be a way out that shouldn't be there, which today is
+ * onboarding while it is still the way into someone's own studio. Every other
+ * workspace page uses the app shell (components/app-shell).
  *
  * DocPage positions itself absolutely; `main` is the positioned, full-height
  * container it expects.
@@ -37,19 +38,19 @@ export function SectionChrome({
     <ToastProvider>
     <div className="h-dvh flex flex-col bg-ground">
       <header className="shrink-0 border-b border-hairline bg-paper">
-        <div className="h-12 flex items-center gap-3 px-4">
+        <div className="min-h-14 flex items-center gap-3 px-3 min-[900px]:px-5">
           {back ? (
-            <Link
-              href={`/w/${tenantId}`}
-              className="hu-hit flex items-center gap-1.5 h-8 px-2.5 rounded-sm text-sm hover:bg-field"
-            >
-              <ArrowLeft size={14} aria-hidden="true" /> {workspaceName}
+            <Link href={`/w/${tenantId}`} className="inline-flex items-center gap-2 min-h-11 px-3 -ml-2 rounded-full text-sm text-ink-muted hover:bg-hover hover:text-ink">
+              <ArrowLeft size={16} aria-hidden="true" /> {workspaceName}
             </Link>
           ) : (
-            <span className="h-8 px-2.5 flex items-center text-sm text-ink-muted">{workspaceName}</span>
+            <span className="inline-flex items-center gap-2.5 min-h-11">
+              <LogoMark size={26} />
+              <span className="text-sm text-ink-muted hidden sm:inline">{workspaceName}</span>
+            </span>
           )}
-          <span className="text-ink-faint" aria-hidden="true">/</span>
-          <span className="text-sm font-medium">{section}</span>
+          <span className="text-ink-faint font-mono" aria-hidden="true">/</span>
+          <span className="text-sm font-semibold truncate">{section}</span>
           <span className="flex-1" />
           {actions}
           <ThemeToggle />

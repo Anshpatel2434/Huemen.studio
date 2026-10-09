@@ -129,28 +129,28 @@ export function Canvas({
       </div>
 
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-paper border border-hairline rounded-md p-1 shadow-[var(--shadow)]" onPointerDown={(e) => e.stopPropagation()}>
-        <ToolBtn on={tool === "select"} onClick={() => setTool("select")} title="Select (V)"><MousePointer2 size={16} /></ToolBtn>
-        <ToolBtn on={tool === "hand"} onClick={() => setTool("hand")} title="Hand (H, or hold Space)"><Hand size={16} /></ToolBtn>
-        <span className="w-px h-5 bg-hairline mx-0.5" />
+        <ToolBtn on={tool === "select"} onClick={() => setTool("select")} title="Select (V)"><MousePointer2 size={18} /></ToolBtn>
+        <ToolBtn on={tool === "hand"} onClick={() => setTool("hand")} title="Hand (H, or hold Space)"><Hand size={18} /></ToolBtn>
+        <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
         <div className="relative">
-          <button onClick={() => setMenu((m) => !m)} className="h-8 px-2.5 rounded-sm flex items-center gap-1 text-sm tabular-nums hover:bg-field">
-            {Math.round(zoom * 100)}% <ChevronDown size={13} className="text-ink-faint" />
+          <button onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} aria-label={`Zoom, ${Math.round(zoom * 100)}%`} className="min-h-11 px-3 rounded-sm flex items-center gap-1 text-sm font-mono tabular-nums hover:bg-hover">
+            {Math.round(zoom * 100)}% <ChevronDown size={15} className="text-ink-faint" aria-hidden="true" />
           </button>
           {menu && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-40 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-1 pop">
-              <button onClick={() => { fit(); setMenu(false); }} className="w-full text-left h-8 px-2.5 rounded-sm hover:bg-field text-sm flex justify-between">Zoom to fit <span className="text-ink-faint">⇧1</span></button>
+            <div role="menu" aria-label="Zoom" className="hu-menu absolute bottom-14 left-1/2 -translate-x-1/2 !min-w-44 pop">
+              <button type="button" role="menuitem" onClick={() => { fit(); setMenu(false); }} className="hu-menu__item"><span className="flex-1">Zoom to fit</span> <span className="text-ink-faint font-mono text-xs">⇧1</span></button>
               {ZOOMS.map((z) => (
-                <button key={z} onClick={() => zoomTo(z)} className="w-full text-left h-8 px-2.5 rounded-sm hover:bg-field text-sm">{z}%</button>
+                <button key={z} type="button" role="menuitemradio" aria-checked={Math.round(zoom * 100) === z} onClick={() => zoomTo(z)} className="hu-menu__item font-mono tabular-nums">{z}%</button>
               ))}
             </div>
           )}
         </div>
         {onDevice && (
           <>
-            <span className="w-px h-5 bg-hairline mx-0.5" />
-            <ToolBtn on={device === "desktop"} onClick={() => onDevice("desktop")} title="Desktop"><Monitor size={15} /></ToolBtn>
-            <ToolBtn on={device === "tablet"} onClick={() => onDevice("tablet")} title="Tablet"><Tablet size={15} /></ToolBtn>
-            <ToolBtn on={device === "mobile"} onClick={() => onDevice("mobile")} title="Mobile"><Smartphone size={15} /></ToolBtn>
+            <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
+            <ToolBtn on={device === "desktop"} onClick={() => onDevice("desktop")} title="Desktop"><Monitor size={17} /></ToolBtn>
+            <ToolBtn on={device === "tablet"} onClick={() => onDevice("tablet")} title="Tablet"><Tablet size={17} /></ToolBtn>
+            <ToolBtn on={device === "mobile"} onClick={() => onDevice("mobile")} title="Mobile"><Smartphone size={17} /></ToolBtn>
           </>
         )}
         {toolbarExtra}
@@ -161,7 +161,7 @@ export function Canvas({
 
 export function ToolBtn({ children, on, onClick, title }: { children: ReactNode; on?: boolean; onClick: () => void; title: string }) {
   return (
-    <button onClick={onClick} title={title} aria-pressed={on} className={`w-8 h-8 rounded-sm flex items-center justify-center transition-colors ${on ? "bg-accent-soft text-accent-ink" : "text-ink-muted hover:bg-field"}`}>
+    <button type="button" onClick={onClick} title={title} aria-label={title} aria-pressed={on} className={`hu-iconbtn !rounded-sm ${on ? "!bg-accent-soft !text-accent-ink" : ""}`}>
       {children}
     </button>
   );

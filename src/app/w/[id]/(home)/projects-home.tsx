@@ -117,8 +117,8 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
     <div className="absolute inset-0 flex flex-col">
       {showWhatsNew && !justFinished && <WhatsNew onStart={() => setCreating("blank")} />}
       {/* Top bar */}
-      <header className="min-h-16 shrink-0 flex flex-wrap items-center gap-2 px-5 py-2 border-b border-hairline bg-paper">
-        <h1 className="text-base font-semibold flex-1">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
+      <header className="shrink-0 flex flex-wrap items-center gap-2 px-5 min-[900px]:px-8 pt-6 pb-4 bg-ground">
+        <h1 className="text-2xl flex-1 min-w-[10ch]">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
         <button onClick={() => setHero(true)} className={btnClass("ghost", "sm")}><ClipboardPaste size={15} aria-hidden="true" /> Paste notes</button>
         <button onClick={() => setCreating("copy")} disabled={projects.length === 0} className={btnClass("secondary", "sm")}><Copy size={15} aria-hidden="true" /> From a brief</button>
         <button onClick={() => setCreating("blank")} className={btnClass("primary", "sm")}><Plus size={15} aria-hidden="true" /> New project</button>
