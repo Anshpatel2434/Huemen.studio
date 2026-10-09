@@ -26,10 +26,10 @@ const VARIANTS: Record<Variant, string> = {
 export function btnClass(variant: Variant = "primary", size: "sm" | "md" | "lg" = "md") {
   const s =
     size === "sm"
-      ? "min-h-11 px-5 py-2 text-[0.875rem]"
+      ? "min-h-11 px-5 py-2 text-sm"
       : size === "lg"
-        ? "min-h-14 px-10 py-3 text-[1.06rem]"
-        : "min-h-11 px-7 py-2 text-[0.95rem]";
+        ? "min-h-14 px-10 py-3 text-base"
+        : "min-h-11 px-7 py-2 text-base";
   return [
     "inline-flex items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap",
     "transition-colors duration-150 active:translate-y-[0.5px]",

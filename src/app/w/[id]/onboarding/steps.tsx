@@ -50,17 +50,17 @@ export function BackStep({ tenantId, to, label }: { tenantId: string; to: number
 function RestoredNote({ on }: { on: boolean }) {
   if (!on) return null;
   return (
-    <p role="status" className="text-[0.82rem] text-ink-muted flex items-center gap-1.5">
+    <p role="status" className="text-sm text-ink-muted flex items-center gap-1.5">
       <History size={13} aria-hidden="true" /> We kept what you hadn&apos;t saved yet.
     </p>
   );
 }
 
 const Section = ({ title, sub, children }: { title: string; sub?: ReactNode; children: ReactNode }) => (
-  <section className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
+  <section className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4">
     <div>
-      <h2 className="text-[1.05rem]">{title}</h2>
-      {sub && <p className="text-[0.88rem] text-ink-muted mt-1">{sub}</p>}
+      <h2 className="text-base">{title}</h2>
+      {sub && <p className="text-sm text-ink-muted mt-1">{sub}</p>}
     </div>
     {children}
   </section>
@@ -68,7 +68,7 @@ const Section = ({ title, sub, children }: { title: string; sub?: ReactNode; chi
 
 /** A row-sized target: the whole label is the control (design system §10). */
 const Choice = ({ on, onToggle, children, radio }: { on: boolean; onToggle: () => void; children: ReactNode; radio?: boolean }) => (
-  <label className={`flex items-start gap-2.5 min-h-11 px-3 py-2.5 rounded-[8px] border cursor-pointer text-[0.88rem] ${on ? "border-ink bg-field" : "border-hairline hover:border-line"}`}>
+  <label className={`flex items-start gap-2.5 min-h-11 px-3 py-2.5 rounded-sm border cursor-pointer text-sm ${on ? "border-ink bg-field" : "border-hairline hover:border-line"}`}>
     <input type={radio ? "radio" : "checkbox"} checked={on} onChange={onToggle} className="mt-0.5 accent-[var(--ink)]" />
     <span className="flex-1">{children}</span>
   </label>
@@ -96,7 +96,7 @@ export function AboutStep({ tenantId, saved, returning }: { tenantId: string; sa
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[1.9rem]">{returning ? <>Welcome <span className="serif-accent">back.</span></> : <>Let&apos;s set up your <span className="serif-accent">brand.</span></>}</h1>
+        <h1 className="text-3xl">{returning ? <>Welcome <span className="serif-accent">back.</span></> : <>Let&apos;s set up your <span className="serif-accent">brand.</span></>}</h1>
         <p className="text-ink-muted mt-2 max-w-[62ch]">
           Five short steps, about fifteen minutes. You tell us who you are, we read some of your writing, and you leave with a first piece in your own voice.
           Everything saves as you go: leave at any point and you&apos;ll come back to the same place.
@@ -107,7 +107,7 @@ export function AboutStep({ tenantId, saved, returning }: { tenantId: string; sa
         <RestoredNote on={draft.restored} />
         {ABOUT_FIELDS.map((f) => (
           <label key={f.key} className="block">
-            <span className="block text-[0.88rem] font-medium mb-1.5">{f.label}</span>
+            <span className="block text-sm font-medium mb-1.5">{f.label}</span>
             {f.rows ? (
               <textarea rows={f.rows} value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder={f.hint} className="field" />
             ) : (
@@ -127,7 +127,7 @@ export function AboutStep({ tenantId, saved, returning }: { tenantId: string; sa
         >
           {pending ? <><AgentDots /> Saving</> : "Continue to add your writing"}
         </button>
-        {missing.length > 0 && <span className="text-[0.82rem] text-ink-faint">Add {missing.map((m) => (m.key === "name" ? "your name" : "what you do")).join(" and ")} to carry on.</span>}
+        {missing.length > 0 && <span className="text-sm text-ink-faint">Add {missing.map((m) => (m.key === "name" ? "your name" : "what you do")).join(" and ")} to carry on.</span>}
       </div>
     </div>
   );
@@ -263,12 +263,12 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[1.9rem]">Add your <span className="serif-accent">writing.</span></h1>
+        <h1 className="text-3xl">Add your <span className="serif-accent">writing.</span></h1>
         <p className="text-ink-muted mt-2 max-w-[62ch]">Real writing is most of what makes a draft sound like you. Pick where you write, then add some of it. Uploads and pastes only for now: nothing is read from an account.</p>
       </div>
 
       {resuming && (
-        <p role="status" className="text-[0.88rem] bg-field rounded-[10px] px-4 py-3 flex items-center gap-2">
+        <p role="status" className="text-sm bg-field rounded-md px-4 py-3 flex items-center gap-2">
           <AgentDots /> Picking up where you left off: measuring the writing that arrived before the page reloaded.
         </p>
       )}
@@ -286,12 +286,12 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
           ))}
         </div>
         {picked.some((k) => ["email", "linkedin", "documents", "newsletter"].includes(k)) && (
-          <p className="text-[0.85rem] bg-accent-soft rounded-[8px] px-3 py-2.5">
+          <p className="text-sm bg-accent-soft rounded-sm px-3 py-2.5">
             Rather connect than export? Gmail, Google Docs and LinkedIn can be connected directly, reading only what you allow.{" "}
             <Link href="/settings/connections" className="text-accent underline underline-offset-2">Connect accounts in Settings</Link>
           </p>
         )}
-        <p className="text-[0.8rem] text-ink-muted flex items-start gap-2 bg-field rounded-[8px] px-3 py-2.5">
+        <p className="text-sm text-ink-muted flex items-start gap-2 bg-field rounded-sm px-3 py-2.5">
           <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
           We'll read only what you pick, to learn how you sound. We never train shared models on your writing, and you can remove any source any time. From email and chat we keep only what you wrote; other people's words are removed before anything is stored, and your private writing is measured but never quoted in a draft.
         </p>
@@ -305,7 +305,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
               type="button"
               aria-pressed={platforms.includes(p)}
               onClick={() => setPlatforms(toggle(platforms, p))}
-              className={`min-h-11 px-4 rounded-full border text-[0.85rem] ${platforms.includes(p) ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}
+              className={`min-h-11 px-4 rounded-full border text-sm ${platforms.includes(p) ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}
             >
               {PLATFORM_RULES[p]?.label ?? p}
             </button>
@@ -313,7 +313,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
         </div>
         <div className="flex items-center gap-3">
           <button type="button" onClick={save} disabled={pending} className={btnClass("primary", "sm")}>{pending && !progress ? <AgentDots /> : null} Save choices</button>
-          {saved && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
+          {saved && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
         </div>
       </Section>
 
@@ -322,15 +322,15 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
           <div className="flex flex-col gap-5">
             {chosen.map((s) => (
               <div key={s.key} className="flex flex-col gap-2 border-t border-hairline pt-4 first:border-0 first:pt-0">
-                <p className="text-[0.92rem] font-medium flex items-center gap-2">{s.label} {s.private && <Badge>private</Badge>}</p>
-                <p className="text-[0.8rem] text-ink-muted">{s.how}</p>
+                <p className="text-base font-medium flex items-center gap-2">{s.label} {s.private && <Badge>private</Badge>}</p>
+                <p className="text-sm text-ink-muted">{s.how}</p>
                 {s.key === "whatsapp" && (
                   <label className="block max-w-sm">
-                    <span className="block text-[0.8rem] font-medium mb-1">Your name exactly as the chat shows it</span>
+                    <span className="block text-sm font-medium mb-1">Your name exactly as the chat shows it</span>
                     <input value={waName} onChange={(e) => setWaName(e.target.value)} className="field" />
                   </label>
                 )}
-                <label className="flex items-center gap-2 min-h-11 w-fit px-3 rounded-[8px] border border-dashed border-line hover:border-ink cursor-pointer text-[0.85rem]">
+                <label className="flex items-center gap-2 min-h-11 w-fit px-3 rounded-sm border border-dashed border-line hover:border-ink cursor-pointer text-sm">
                   <FileUp size={15} aria-hidden="true" /> Choose files
                   <input
                     type="file"
@@ -345,10 +345,10 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
                   />
                 </label>
                 {(files[s.key] ?? []).length > 0 && (
-                  <ul className="text-[0.8rem] text-ink-muted">{files[s.key].map((f) => <li key={f.name}>{f.name} · {(f.size / 1024).toFixed(0)} KB</li>)}</ul>
+                  <ul className="text-sm text-ink-muted">{files[s.key].map((f) => <li key={f.name}>{f.name} · {(f.size / 1024).toFixed(0)} KB</li>)}</ul>
                 )}
                 {!(files[s.key] ?? []).length && (fileNames[s.key] ?? []).length > 0 && (
-                  <p className="text-[0.8rem] text-warn flex items-start gap-1.5">
+                  <p className="text-sm text-warn flex items-start gap-1.5">
                     <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
                     Before the page reloaded you&apos;d chosen {fileNames[s.key].join(", ")}. Files can&apos;t be kept by the browser, so choose them again.
                   </p>
@@ -359,7 +359,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
                     value={pastes[s.key] ?? ""}
                     onChange={(e) => setPastes({ ...pastes, [s.key]: e.target.value })}
                     placeholder={s.key === "email" ? "Paste sent emails. Separate each with a line of ---" : "Or paste. A blank line starts a new piece."}
-                    className="field text-[0.88rem]"
+                    className="field text-sm"
                     aria-label={`Paste ${s.label}`}
                   />
                 )}
@@ -368,8 +368,8 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
           </div>
 
           {progress && (
-            <div role="status" aria-live="polite" className="flex flex-col gap-2 bg-field rounded-[8px] p-3">
-              <p className="text-[0.85rem] font-medium flex items-center gap-2">
+            <div role="status" aria-live="polite" className="flex flex-col gap-2 bg-field rounded-sm p-3">
+              <p className="text-sm font-medium flex items-center gap-2">
                 {progress.phase === "ingesting" && <>Reading your writing · {progress.done} of {progress.total}</>}
                 {progress.phase === "learning" && <><AgentDots /> Building your core</>}
                 {progress.phase === "done" && <><CheckCircle2 size={15} className="text-ok" aria-hidden="true" /> Core updated</>}
@@ -377,7 +377,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
               <div className="h-1.5 rounded-full bg-paper overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.phase === "learning" ? undefined : progress.done}>
                 <div className={`h-full bg-ink transition-all duration-300 ${progress.phase === "learning" ? "w-full animate-pulse" : ""}`} style={progress.phase === "learning" ? undefined : { width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
               </div>
-              <ul className="text-[0.78rem] text-ink-muted flex flex-col gap-0.5">{progress.log.map((l, i) => <li key={i}>{l}</li>)}</ul>
+              <ul className="text-xs text-ink-muted flex flex-col gap-0.5">{progress.log.map((l, i) => <li key={i}>{l}</li>)}</ul>
             </div>
           )}
 
@@ -396,7 +396,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
         >
           {["What you do, and why you do it.", "A story from your work that you tell often.", "Something most people in your field believe that you disagree with."].map((q, i) => (
             <label key={q} className="block">
-              <span className="block text-[0.88rem] font-medium mb-1.5 flex items-center gap-1.5"><Mic size={14} aria-hidden="true" /> {q}</span>
+              <span className="block text-sm font-medium mb-1.5 flex items-center gap-1.5"><Mic size={14} aria-hidden="true" /> {q}</span>
               <textarea rows={4} value={notes[i]} onChange={(e) => setNotes(notes.map((n, j) => (j === i ? e.target.value : n)))} className="field" />
               <span className="block mt-2">
                 <VoiceRecorder tenantId={tenantId} enabled={canRecord} onText={(t) => setNotes((ns) => ns.map((n, j) => (j === i ? (n.trim() ? `${n.trim()}\n\n${t}` : t) : n)))} />
@@ -421,7 +421,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
         <button type="button" onClick={next} disabled={pieces === 0 || pending} aria-busy={pending && !progress} className={btnClass("primary")}>
           {pending && !progress ? <AgentDots /> : null} Continue to confirm your voice
         </button>
-        {pieces === 0 && <span className="text-[0.82rem] text-ink-faint">Add at least one piece first.</span>}
+        {pieces === 0 && <span className="text-sm text-ink-faint">Add at least one piece first.</span>}
       </div>
     </div>
   );
@@ -468,7 +468,7 @@ export function ConfirmStep(props: {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[1.9rem]">Confirm your <span className="serif-accent">voice.</span></h1>
+        <h1 className="text-3xl">Confirm your <span className="serif-accent">voice.</span></h1>
         <p className="text-ink-muted mt-2 max-w-[62ch]">Some of this we measured; some only you can tell us. Every answer saves on its own, so do as much as you like and come back for the rest.</p>
       </div>
 
@@ -518,7 +518,7 @@ export function ConfirmStep(props: {
         </button>
       </div>
       {unsaved != null && unsaved > 0 && (
-        <p role="alert" className="text-[0.85rem] text-warn flex items-start gap-1.5 -mt-3">
+        <p role="alert" className="text-sm text-warn flex items-start gap-1.5 -mt-3">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
           {unsaved === 1
             ? "One answer above isn't saved yet. It'll wait for you here, but nothing is written from it until you press its Save."
@@ -532,11 +532,11 @@ export function ConfirmStep(props: {
 function CardView({ tenantId, card }: { tenantId: string; card: ConfirmCard }) {
   const { pending, done, run } = useSaver();
   const [drop, setDrop] = useState<string[]>([]);
-  if (done.length) return <p className="text-[0.85rem] text-ok flex items-center gap-2"><Check size={14} aria-hidden="true" /> Saved.</p>;
+  if (done.length) return <p className="text-sm text-ok flex items-center gap-2"><Check size={14} aria-hidden="true" /> Saved.</p>;
   return (
-    <div className="border border-hairline rounded-[10px] p-4 flex flex-col gap-3">
-      <p className="text-[0.92rem] font-medium">{card.title}</p>
-      <p className="text-[0.85rem] text-ink-muted">{card.body}</p>
+    <div className="border border-hairline rounded-md p-4 flex flex-col gap-3">
+      <p className="text-base font-medium">{card.title}</p>
+      <p className="text-sm text-ink-muted">{card.body}</p>
       {card.items && card.kind === "H4" && (
         <div className="flex flex-col gap-1.5">
           {card.items.map((it) => (
@@ -547,7 +547,7 @@ function CardView({ tenantId, card }: { tenantId: string; card: ConfirmCard }) {
         </div>
       )}
       {card.items && card.kind === "H3" && (
-        <ul className="text-[0.82rem] text-ink-muted flex flex-col gap-1">{card.items.map((it) => <li key={it.id} className="italic">“{it.text}”</li>)}</ul>
+        <ul className="text-sm text-ink-muted flex flex-col gap-1">{card.items.map((it) => <li key={it.id} className="italic">“{it.text}”</li>)}</ul>
       )}
       <div className="flex flex-wrap gap-2">
         {card.options.map((o, i) => (
@@ -574,7 +574,7 @@ function Dials({ tenantId, dials, estimated }: { tenantId: string; dials: Partia
           const [l, r] = DIAL_LABELS[k];
           return (
             <label key={k} className="block">
-              <span className="flex justify-between text-[0.8rem] text-ink-muted mb-1.5">
+              <span className="flex justify-between text-sm text-ink-muted mb-1.5">
                 <span>{l}</span>
                 <span className="font-mono text-ink">{v[k]}{estimated[k] != null && <span className="text-ink-faint"> · from your writing: {estimated[k]}</span>}</span>
                 <span>{r}</span>
@@ -586,7 +586,7 @@ function Dials({ tenantId, dials, estimated }: { tenantId: string; dials: Partia
       </div>
       <div className="flex items-center gap-3">
         <button type="button" disabled={pending} onClick={() => run("dials", () => dialsAction(tenantId, v))} className={btnClass("secondary", "sm")}>Save dials</button>
-        {done.includes("dials") && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
+        {done.includes("dials") && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
       </div>
     </Section>
   );
@@ -607,7 +607,7 @@ function Words({ tenantId, longlist, fourWords }: { tenantId: string; longlist: 
           return (
             <button key={w} type="button" aria-pressed={on} disabled={!on && picks.length >= MAX_PICKS}
               onClick={() => setPicks(on ? picks.filter((p) => p !== w) : [...picks, w])}
-              className={`min-h-11 px-3.5 rounded-full border text-[0.82rem] disabled:opacity-45 ${on ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>
+              className={`min-h-11 px-3.5 rounded-full border text-sm disabled:opacity-45 ${on ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>
               {w}
             </button>
           );
@@ -615,12 +615,12 @@ function Words({ tenantId, longlist, fourWords }: { tenantId: string; longlist: 
       </div>
       <div className="flex items-center gap-3">
         <button type="button" disabled={pending || !enough} onClick={() => run("C5", () => answerAction(tenantId, "C5", picks))} className={btnClass("secondary", "sm")}>Save {picks.length} words</button>
-        <span className="text-[0.8rem] text-ink-faint tabular-nums">{picks.length} picked</span>
+        <span className="text-sm text-ink-faint tabular-nums">{picks.length} picked</span>
       </div>
 
       {groups.length > 0 && (
         <div className="border-t border-hairline pt-4 flex flex-col gap-4">
-          <p className="text-[0.92rem] font-medium">Keep the one strongest word from each family</p>
+          <p className="text-base font-medium">Keep the one strongest word from each family</p>
           {groups.map((g) => (
             <fieldset key={g.family} className="flex flex-col gap-1.5">
               <legend className="label-mono text-ink-faint mb-1">{g.label}</legend>
@@ -638,7 +638,7 @@ function Words({ tenantId, longlist, fourWords }: { tenantId: string; longlist: 
                 setKeep({}); // saved: the radios now read the four words from the server
               })}
               className={btnClass("secondary", "sm")}>Save my four words</button>
-            {(done.includes("C6") || fourWords.length > 0) && <span className="text-[0.85rem] text-ink-muted">Current: {fourWords.join(", ") || "none yet"}</span>}
+            {(done.includes("C6") || fourWords.length > 0) && <span className="text-sm text-ink-muted">Current: {fourWords.join(", ") || "none yet"}</span>}
           </div>
         </div>
       )}
@@ -685,13 +685,13 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
     const kept = done.includes(q.id) || answered;
     return (
       <div className="flex flex-col gap-2 border-t border-hairline pt-4 first:border-0 first:pt-0">
-        <p className="text-[0.92rem] font-medium flex gap-2 items-baseline">
-          <span className="font-mono text-[0.72rem] text-accent">{q.id}</span> {q.ask}
+        <p className="text-base font-medium flex gap-2 items-baseline">
+          <span className="font-mono text-xs text-accent">{q.id}</span> {q.ask}
         </p>
-        <p className="text-[0.88rem] bg-field rounded-[8px] px-3 py-2.5">
+        <p className="text-sm bg-field rounded-sm px-3 py-2.5">
           {!kept && prefill && <span className="block label-mono text-ink-faint mb-1">From {prefill.from}</span>}
           {asText(shown)}
-          {!kept && prefill?.evidence && <span className="block text-[0.75rem] text-ink-faint mt-1.5">Why: {prefill.evidence}</span>}
+          {!kept && prefill?.evidence && <span className="block text-xs text-ink-faint mt-1.5">Why: {prefill.evidence}</span>}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {!kept && prefill && (
@@ -700,7 +700,7 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
             </button>
           )}
           <button type="button" onClick={() => setEditing(true)} className={btnClass("ghost", "sm")}>Change</button>
-          {kept && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
+          {kept && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
         </div>
       </div>
     );
@@ -716,10 +716,10 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
 
   return (
     <div className="flex flex-col gap-2 border-t border-hairline pt-4 first:border-0 first:pt-0">
-      <label id={`q-${q.id}-label`} htmlFor={`q-${q.id}`} className="text-[0.92rem] font-medium flex gap-2 items-baseline">
-        <span className="font-mono text-[0.72rem] text-accent">{q.id}</span> {q.ask}
+      <label id={`q-${q.id}-label`} htmlFor={`q-${q.id}`} className="text-base font-medium flex gap-2 items-baseline">
+        <span className="font-mono text-xs text-accent">{q.id}</span> {q.ask}
       </label>
-      {q.example && <p className="text-[0.8rem] text-ink-faint italic">e.g. {q.example}</p>}
+      {q.example && <p className="text-sm text-ink-faint italic">e.g. {q.example}</p>}
       <RestoredNote on={restored && !done.includes(q.id)} />
       {q.format === "mcq" && q.options && (
         <div className="flex flex-col gap-1.5" role="radiogroup" aria-labelledby={`q-${q.id}-label`}>
@@ -735,7 +735,7 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
         <div className="flex flex-col gap-2">
           {(shortKeys.length ? shortKeys : ["_"]).map((k) => (
             <label key={k} className="block">
-              {k !== "_" && <span className="block text-[0.8rem] text-ink-muted mb-1">{k}</span>}
+              {k !== "_" && <span className="block text-sm text-ink-muted mb-1">{k}</span>}
               <input value={shorts[k] ?? ""} onChange={(e) => setShorts({ ...shorts, [k]: e.target.value })} className="field" />
             </label>
           ))}
@@ -746,7 +746,7 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
           <div className="flex flex-wrap gap-1.5">
             {[...new Set([...(q.options ?? []), ...chips])].map((o) => (
               <button key={o} type="button" aria-pressed={chips.includes(o)} onClick={() => setChips(chips.includes(o) ? chips.filter((c) => c !== o) : [...chips, o])}
-                className={`min-h-11 px-3.5 rounded-full border text-[0.82rem] ${chips.includes(o) ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>{o}</button>
+                className={`min-h-11 px-3.5 rounded-full border text-sm ${chips.includes(o) ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>{o}</button>
             ))}
           </div>
           <input id={`q-${q.id}`} placeholder="Add your own and press Enter" className="field max-w-sm"
@@ -760,12 +760,12 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
         <VoiceRecorder tenantId={tenantId} enabled={canRecord} onText={(t) => setValue((v) => (v.trim() ? `${v.trim()}\n\n${t}` : t))} />
       )}
       {followed && !done.includes(q.id) && (
-        <p className="text-[0.82rem] text-warn flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {q.followUp ?? DEFAULT_FOLLOW_UP} Save again to keep it as it is.</p>
+        <p className="text-sm text-warn flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {q.followUp ?? DEFAULT_FOLLOW_UP} Save again to keep it as it is.</p>
       )}
       <div className="flex items-center gap-3">
         <button type="button" disabled={pending || empty} onClick={submit} className={btnClass("secondary", "sm")}>Save</button>
-        {saved && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
-        {q.spoken && <span className="text-[0.75rem] text-ink-faint">A long answer is also kept as a spoken sample.</span>}
+        {saved && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
+        {q.spoken && <span className="text-xs text-ink-faint">A long answer is also kept as a spoken sample.</span>}
       </div>
     </div>
   );
@@ -786,8 +786,8 @@ function Benchmarks({ tenantId, candidates, initial }: { tenantId: string; candi
       </div>
       <div className="flex items-center gap-3">
         <button type="button" disabled={pending || picks.length !== 3} onClick={() => run("G2", () => benchmarksAction(tenantId, picks))} className={btnClass("secondary", "sm")}>Save my three</button>
-        <span className="text-[0.8rem] text-ink-faint tabular-nums">{picks.length} of 3</span>
-        {done.includes("G2") && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
+        <span className="text-sm text-ink-faint tabular-nums">{picks.length} of 3</span>
+        {done.includes("G2") && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
       </div>
     </Section>
   );
@@ -847,14 +847,14 @@ export function PayoffStep(props: {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[1.9rem]">Here's how you <span className="serif-accent">sound.</span></h1>
+        <h1 className="text-3xl">Here's how you <span className="serif-accent">sound.</span></h1>
         <p className="text-ink-muted mt-2 max-w-[62ch]">Your voice mirror, a first piece written in it, and a check on something you've already written. Edit anything that's wrong; every change trains the core.</p>
       </div>
 
       {props.confidence < 70 && (
-        <div role="alert" className="flex items-start gap-3 bg-warn-soft text-warn rounded-[10px] px-4 py-3">
+        <div role="alert" className="flex items-start gap-3 bg-warn-soft text-warn rounded-md px-4 py-3">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <div className="text-[0.88rem]">
+          <div className="text-sm">
             <p className="font-medium">Your core is {props.confidence}% confident, so it's still learning.</p>
             <p className="mt-0.5">{props.missing[0] ?? "Add more of your writing"} and drafts will hold your voice more closely. <Link href={`/w/${tenantId}/onboarding?step=1`} className="underline underline-offset-2">Add writing</Link></p>
           </div>
@@ -869,7 +869,7 @@ export function PayoffStep(props: {
           {WORK_MODES.map((m) => (
             <Choice key={m.key} radio on={mode === m.key} onToggle={() => { setMode(m.key); start(async () => { await workModeAction(tenantId, m.key); router.refresh(); }); }}>
               <span className="font-medium block">{m.label}</span>
-              <span className="text-[0.8rem] text-ink-muted">{m.sub}</span>
+              <span className="text-sm text-ink-muted">{m.sub}</span>
             </Choice>
           ))}
         </div>
@@ -877,11 +877,11 @@ export function PayoffStep(props: {
 
       <Section title="Your first piece" sub="On a topic from your own pillars, for the first place you said you write. It becomes your first project.">
         {writing ? (
-          <p role="status" className="text-[0.9rem] flex items-center gap-2"><AgentDots /> Writing it in your voice. This page will show it when it&apos;s ready.</p>
+          <p role="status" className="text-sm flex items-center gap-2"><AgentDots /> Writing it in your voice. This page will show it when it&apos;s ready.</p>
         ) : !props.first || ((props.firstState === "failed" || writeError) && !props.first.hook && props.mode !== "check") ? (
           <div className="flex flex-col gap-2 items-start">
             {(props.firstState === "failed" || writeError) && (
-              <p role="alert" className="text-[0.85rem] text-warn flex items-center gap-1.5"><AlertTriangle size={14} aria-hidden="true" /> That didn&apos;t finish. Nothing was lost; try again.</p>
+              <p role="alert" className="text-sm text-warn flex items-center gap-1.5"><AlertTriangle size={14} aria-hidden="true" /> That didn&apos;t finish. Nothing was lost; try again.</p>
             )}
             <button type="button" disabled={pending} aria-busy={pending} onClick={writeFirst} className={btnClass("primary")}>
               {pending ? <><AgentDots /> Writing it in your voice</> : props.first ? "Try again" : mode === "check" ? "Set up my first piece" : "Write my first piece"}
@@ -889,17 +889,17 @@ export function PayoffStep(props: {
           </div>
         ) : props.first.hook ? (
           <div className="flex flex-col gap-3">
-            <div className="border border-hairline rounded-[10px] p-4 text-[0.92rem] leading-relaxed whitespace-pre-wrap">
+            <div className="border border-hairline rounded-md p-4 text-base leading-relaxed whitespace-pre-wrap">
               <p className="font-medium">{props.first.hook}</p>
               {props.first.body && <p className="mt-3">{props.first.body}</p>}
               {props.first.cta && <p className="mt-3 text-ink-muted">{props.first.cta}</p>}
             </div>
             {props.first.score != null && <ScoreMeter score={props.first.score} band={band(props.first.band)} />}
-            <p className="text-[0.82rem] text-ink-muted">Not quite you? <Link href={`/w/${tenantId}/p/${props.first.id}/content`} className="text-accent underline underline-offset-2">Edit it</Link>. Edits you repeat become rules you approve.</p>
+            <p className="text-sm text-ink-muted">Not quite you? <Link href={`/w/${tenantId}/p/${props.first.id}/content`} className="text-accent underline underline-offset-2">Edit it</Link>. Edits you repeat become rules you approve.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <label htmlFor="own-first" className="text-[0.88rem]">You chose to write it yourself. Write or paste it here and we'll check it against your voice.</label>
+            <label htmlFor="own-first" className="text-sm">You chose to write it yourself. Write or paste it here and we'll check it against your voice.</label>
             <textarea id="own-first" rows={6} value={own} onChange={(e) => setOwn(e.target.value)} className="field" />
             <button type="button" disabled={pending || !own.trim()} onClick={() => start(async () => { await ownDraftForFirstPieceAction(tenantId, own); setOwn(""); router.refresh(); })} className={`${btnClass("primary", "sm")} self-start`}>Check it</button>
           </div>
@@ -910,9 +910,9 @@ export function PayoffStep(props: {
         <Section title="A check on something you already wrote" sub={<span className="italic">“{props.ownCheck.excerpt}”</span>}>
           <ScoreMeter score={props.ownCheck.score} band={band(props.ownCheck.band)} />
           {props.ownCheck.issues.length ? (
-            <ul className="flex flex-col gap-1.5 text-[0.88rem]">{props.ownCheck.issues.map((i) => <li key={i} className="flex gap-2"><Circle size={8} className="mt-2 shrink-0 fill-current" aria-hidden="true" /> {i}</li>)}</ul>
+            <ul className="flex flex-col gap-1.5 text-sm">{props.ownCheck.issues.map((i) => <li key={i} className="flex gap-2"><Circle size={8} className="mt-2 shrink-0 fill-current" aria-hidden="true" /> {i}</li>)}</ul>
           ) : (
-            <p className="text-[0.88rem] text-ink-muted">Nothing to flag. That's what your voice looks like to the check.</p>
+            <p className="text-sm text-ink-muted">Nothing to flag. That's what your voice looks like to the check.</p>
           )}
         </Section>
       )}
@@ -926,7 +926,7 @@ export function PayoffStep(props: {
           <input type="hidden" name="tenantId" value={tenantId} />
           <button type="submit" disabled={!props.first || writing} className={btnClass("primary", "lg")}>Yes, that&apos;s me. Open my studio</button>
         </form>
-        {(!props.first || writing) && <span className="text-[0.82rem] text-ink-faint">{writing ? "One moment: your first piece is still being written." : "Make your first piece above to finish."}</span>}
+        {(!props.first || writing) && <span className="text-sm text-ink-faint">{writing ? "One moment: your first piece is still being written." : "Make your first piece above to finish."}</span>}
       </div>
     </div>
   );
@@ -964,7 +964,7 @@ function ChipEditor({ name, items, max, tone, onSave, placeholder }: {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
         {list.map((w) => (
-          <span key={w} className={`inline-flex items-center gap-1 pl-3 pr-1 min-h-9 rounded-full text-[0.82rem] ${tone === "danger" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>
+          <span key={w} className={`inline-flex items-center gap-1 pl-3 pr-1 min-h-9 rounded-full text-sm ${tone === "danger" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>
             {w}
             <button type="button" onClick={() => setList(list.filter((x) => x !== w))} className="hu-hit w-6 h-6 rounded-full flex items-center justify-center hover:bg-paper/60" aria-label={`Remove ${w}`}>
               <X size={12} aria-hidden="true" />
@@ -986,7 +986,7 @@ function ChipEditor({ name, items, max, tone, onSave, placeholder }: {
       {(dirty || done.length > 0) && (
         <div className="flex items-center gap-3">
           {dirty && <button type="button" disabled={pending} onClick={() => run("save", () => onSave(list))} className={btnClass("secondary", "sm")}>Save</button>}
-          {!dirty && done.length > 0 && <span className="text-[0.82rem] text-ok flex items-center gap-1.5"><Check size={13} aria-hidden="true" /> Saved</span>}
+          {!dirty && done.length > 0 && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={13} aria-hidden="true" /> Saved</span>}
         </div>
       )}
     </div>
@@ -1012,7 +1012,7 @@ function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameter
         {mirror.openers.length ? (
           <ul className="flex flex-col gap-1.5">
             {mirror.openers.map((o) => (
-              <li key={o} className="flex items-start gap-2 text-[0.88rem]">
+              <li key={o} className="flex items-start gap-2 text-sm">
                 <span className="flex-1 italic">“{o}”</span>
                 <button type="button" disabled={saver.pending} onClick={() => saver.run(`o:${o}`, () => dropOpenerAction(tenantId, o))} className={btnClass("ghost", "sm")}>
                   Tired of it
@@ -1021,7 +1021,7 @@ function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameter
             ))}
           </ul>
         ) : (
-          <p className="text-[0.85rem] text-ink-faint">Add writing to see how you open.</p>
+          <p className="text-sm text-ink-faint">Add writing to see how you open.</p>
         )}
       </MirrorRow>
 
@@ -1031,7 +1031,7 @@ function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameter
             const [l, r] = DIAL_LABELS[k];
             return (
               <label key={k} className="block">
-                <span className="flex justify-between text-[0.75rem] text-ink-muted"><span>{l}</span><span className="font-mono text-ink">{dials[k]}</span><span>{r}</span></span>
+                <span className="flex justify-between text-xs text-ink-muted"><span>{l}</span><span className="font-mono text-ink">{dials[k]}</span><span>{r}</span></span>
                 <input type="range" min={1} max={10} value={dials[k]} onChange={(e) => setDials({ ...dials, [k]: Number(e.target.value) })} className="w-full accent-[var(--ink)] min-h-11" aria-label={`${l} to ${r}`} />
               </label>
             );
@@ -1060,7 +1060,7 @@ function VoiceMirror({ tenantId, mirror }: { tenantId: string; mirror: Parameter
         )}
       </MirrorRow>
 
-      {saver.done.length > 0 && <p className="text-[0.82rem] text-ok flex items-center gap-1.5"><Check size={13} aria-hidden="true" /> Saved. Your core now reads it.</p>}
+      {saver.done.length > 0 && <p className="text-sm text-ok flex items-center gap-1.5"><Check size={13} aria-hidden="true" /> Saved. Your core now reads it.</p>}
     </Section>
   );
 }

@@ -17,7 +17,7 @@ export default async function CheckPage({ params }: PageProps<"/w/[id]/check">) 
       <div className="max-w-[880px] mx-auto px-5 sm:px-8 py-8 flex flex-col gap-6">
         <div>
           <p className="label-mono eyebrow">Check</p>
-          <h1 className="text-[1.9rem] mt-2">Does this sound like <span className="serif-accent">you?</span></h1>
+          <h1 className="text-3xl mt-2">Does this sound like <span className="serif-accent">you?</span></h1>
           <p className="text-ink-muted mt-2 max-w-[62ch]">
             Paste anything: a draft from here, one you wrote yourself, or one someone wrote for you. You'll see how close it is to your voice and what to change. It never stops you publishing.
           </p>

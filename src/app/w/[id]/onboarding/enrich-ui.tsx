@@ -27,17 +27,17 @@ import {
 import { useStepDraft } from "./draft";
 
 const Box = ({ title, sub, children }: { title: string; sub?: ReactNode; children: ReactNode }) => (
-  <section className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
+  <section className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4">
     <div>
-      <h2 className="text-[1.05rem]">{title}</h2>
-      {sub && <p className="text-[0.88rem] text-ink-muted mt-1">{sub}</p>}
+      <h2 className="text-base">{title}</h2>
+      {sub && <p className="text-sm text-ink-muted mt-1">{sub}</p>}
     </div>
     {children}
   </section>
 );
 
 const Saved = ({ on }: { on: boolean }) =>
-  on ? <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span> : null;
+  on ? <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span> : null;
 
 // ---- the live preview ------------------------------------------------------------------
 
@@ -67,32 +67,32 @@ export function VoicePreview({ tenantId, version }: { tenantId: string; version:
   }, [tenantId, version]);
 
   return (
-    <aside aria-live="polite" className="bg-paper border border-hairline rounded-[12px] p-4 flex flex-col gap-3">
+    <aside aria-live="polite" className="bg-paper border border-hairline rounded-md p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <Sparkles size={14} className="text-accent" aria-hidden="true" />
         <p className="label-mono text-ink-faint flex-1">Your voice so far</p>
         {pending && <AgentDots />}
       </div>
       {error ? (
-        <p className="text-[0.82rem] text-ink-muted">{error}</p>
+        <p className="text-sm text-ink-muted">{error}</p>
       ) : text ? (
-        <p className="text-[0.92rem] leading-relaxed">{text}</p>
+        <p className="text-base leading-relaxed">{text}</p>
       ) : (
-        <p className="text-[0.85rem] text-ink-faint">Writing a paragraph the way you would…</p>
+        <p className="text-sm text-ink-faint">Writing a paragraph the way you would…</p>
       )}
       {prev && text && prev !== text && (
-        <details className="text-[0.78rem]">
+        <details className="text-xs">
           <summary className="cursor-pointer text-ink-faint min-h-9 flex items-center">Before your last answer</summary>
           <p className="text-ink-muted leading-relaxed">{prev}</p>
         </details>
       )}
       {source && (
-        <details className="text-[0.78rem]">
+        <details className="text-xs">
           <summary className="cursor-pointer text-ink-faint min-h-9 flex items-center">The plain version it started from</summary>
           <p className="text-ink-muted leading-relaxed">{source}</p>
         </details>
       )}
-      <p className="text-[0.72rem] text-ink-faint">It changes as you answer. Nothing here is saved as your writing.</p>
+      <p className="text-xs text-ink-faint">It changes as you answer. Nothing here is saved as your writing.</p>
     </aside>
   );
 }
@@ -121,7 +121,7 @@ export function Suggestions({ tenantId, needed, at }: { tenantId: string; needed
   });
 
   return (
-    <div role="status" className="flex flex-wrap items-center gap-3 bg-accent-soft rounded-[10px] px-4 py-3 text-[0.85rem]">
+    <div role="status" className="flex flex-wrap items-center gap-3 bg-accent-soft rounded-md px-4 py-3 text-sm">
       <Sparkles size={15} className="text-accent shrink-0" aria-hidden="true" />
       <span className="flex-1 min-w-0">
         {pending
@@ -203,10 +203,10 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
           <button type="button" disabled={pending} onClick={() => begin(false)} className={btnClass(done || picks.length > 0 ? "secondary" : "primary", "sm")}>
             {pending && !picks.length ? <><AgentDots /> Writing the pairs</> : picks.length > 0 ? "Start over" : done ? "Play again" : "Start"}
           </button>
-          {done && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Your dials are set</span>}
+          {done && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Your dials are set</span>}
         </div>
       )}
-      {error && <p role="alert" className="text-[0.85rem] text-danger">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
       {pair && finished == null && (
         <div className="flex flex-col gap-3">
@@ -214,7 +214,7 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
             <div className="flex-1 h-1.5 rounded-full bg-field overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={pairs!.length} aria-valuenow={i}>
               <div className="h-full bg-ink transition-all duration-300" style={{ width: `${(i / pairs!.length) * 100}%` }} />
             </div>
-            <span className="text-[0.78rem] text-ink-faint tabular-nums">{i + 1} of {pairs!.length}</span>
+            <span className="text-xs text-ink-faint tabular-nums">{i + 1} of {pairs!.length}</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {options.map(([side, line]) => (
@@ -223,7 +223,7 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
                 type="button"
                 disabled={pending}
                 onClick={() => choose(side)}
-                className="text-left border border-hairline hover:border-ink rounded-[12px] p-4 min-h-24 text-[0.95rem] leading-relaxed transition-colors"
+                className="text-left border border-hairline hover:border-ink rounded-md p-4 min-h-24 text-base leading-relaxed transition-colors"
               >
                 “{line}”
               </button>
@@ -240,7 +240,7 @@ export function ThisOrThat({ tenantId, done, children }: { tenantId: string; don
       )}
 
       {finished != null && (
-        <p role="status" className="text-[0.88rem] text-ok flex items-center gap-2"><Check size={15} aria-hidden="true" /> Dials set from your {finished} picks.</p>
+        <p role="status" className="text-sm text-ok flex items-center gap-2"><Check size={15} aria-hidden="true" /> Dials set from your {finished} picks.</p>
       )}
 
       <button type="button" onClick={() => setSliders(!sliders)} className={`${btnClass("ghost", "sm")} self-start`}>
@@ -285,10 +285,10 @@ export function UrlImport({ tenantId }: { tenantId: string }) {
   return (
     <Box title="From a link" sub="Your website, blog, Substack, Medium, or a podcast feed with transcripts. We read the posts there, up to 30 per link.">
       <label className="block">
-        <span className="block text-[0.85rem] font-medium mb-1"><Link2 size={13} className="inline mr-1" aria-hidden="true" />Links, one per line</span>
-        <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={"https://yourname.substack.com\nhttps://medium.com/@yourname\nhttps://yoursite.com/blog"} className="field font-mono text-[0.82rem]" />
+        <span className="block text-sm font-medium mb-1"><Link2 size={13} className="inline mr-1" aria-hidden="true" />Links, one per line</span>
+        <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={"https://yourname.substack.com\nhttps://medium.com/@yourname\nhttps://yoursite.com/blog"} className="field font-mono text-sm" />
       </label>
-      <label className="flex items-start gap-2 min-h-11 text-[0.85rem] cursor-pointer">
+      <label className="flex items-start gap-2 min-h-11 text-sm cursor-pointer">
         <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="mt-1" />
         <span>This is my own writing, or a podcast I host. We only learn your voice from your own words.</span>
       </label>
@@ -296,7 +296,7 @@ export function UrlImport({ tenantId }: { tenantId: string }) {
         {pending ? <><AgentDots /> {busy === "measuring" ? "Building your core" : "Reading"}</> : `Read ${urls.length || ""} ${urls.length === 1 ? "link" : "links"}`}
       </button>
       {log.length > 0 && (
-        <ul className="flex flex-col gap-1 text-[0.8rem]">
+        <ul className="flex flex-col gap-1 text-sm">
           {log.map((l) => (
             <li key={l.url} className={l.ok ? "text-ink-muted" : "text-danger"}>
               <span className="font-mono text-ink-faint break-all">{l.url}</span>: {l.text}
@@ -314,9 +314,9 @@ function RowList<T>({ rows, blank, render, onChange }: { rows: T[]; blank: T; re
   return (
     <div className="flex flex-col gap-3">
       {rows.map((r, i) => (
-        <div key={i} className="relative border border-hairline rounded-[10px] p-3 pr-10 flex flex-col gap-2">
+        <div key={i} className="relative border border-hairline rounded-md p-3 pr-10 flex flex-col gap-2">
           {render(r, (next) => onChange(rows.map((x, j) => (j === i ? next : x))), i)}
-          <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="hu-hit absolute top-2 right-2 w-7 h-7 rounded-[6px] flex items-center justify-center text-ink-faint hover:text-ink hover:bg-field" aria-label="Remove">
+          <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="hu-hit absolute top-2 right-2 w-7 h-7 rounded-sm flex items-center justify-center text-ink-faint hover:text-ink hover:bg-field" aria-label="Remove">
             <X size={13} aria-hidden="true" />
           </button>
         </div>
@@ -353,7 +353,7 @@ export function StoriesEditor({ tenantId, initial }: { tenantId: string; initial
         <Saved on={saved && !half.length} />
       </div>
       {half.length > 0 && (
-        <p role={saved ? "alert" : undefined} className="text-[0.82rem] text-warn">
+        <p role={saved ? "alert" : undefined} className="text-sm text-warn">
           {half.map((s) => (s.title.trim() ? `“${s.title.trim()}” needs what happened` : "A story needs a short name")).join("; ")}
           {saved ? ". It isn't saved until it has both." : " before it can be saved."}
         </p>
@@ -387,7 +387,7 @@ export function ProofsEditor({ tenantId, initial }: { tenantId: string; initial:
         <Saved on={saved && !orphan.length} />
       </div>
       {orphan.length > 0 && (
-        <p role={saved ? "alert" : undefined} className="text-[0.82rem] text-warn">
+        <p role={saved ? "alert" : undefined} className="text-sm text-warn">
           {orphan.length === 1 ? "A source has" : `${orphan.length} sources have`} no fact beside it{saved ? ", so it isn't saved." : " yet."}
         </p>
       )}
@@ -402,10 +402,10 @@ function Chips({ label, items, onChange, placeholder }: { label: string; items: 
   const add = () => { const v = draft.trim(); if (v && !items.includes(v)) onChange([...items, v]); setDraft(""); };
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[0.85rem] font-medium">{label}</p>
+      <p className="text-sm font-medium">{label}</p>
       <div className="flex flex-wrap gap-1.5">
         {items.map((w) => (
-          <span key={w} className="inline-flex items-center gap-1 pl-3 pr-1 min-h-9 rounded-full text-[0.82rem] bg-field">
+          <span key={w} className="inline-flex items-center gap-1 pl-3 pr-1 min-h-9 rounded-full text-sm bg-field">
             {w}
             <button type="button" onClick={() => onChange(items.filter((x) => x !== w))} className="hu-hit w-6 h-6 rounded-full flex items-center justify-center hover:bg-paper" aria-label={`Remove ${w}`}><X size={12} aria-hidden="true" /></button>
           </span>
@@ -443,25 +443,25 @@ export function LanguagesEditor({ tenantId, initial }: { tenantId: string; initi
   return (
     <Box title="The languages you write in" sub="Drafts follow your mix, script and all.">
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="text-[0.85rem] font-medium mb-1">Mostly in</legend>
+        <legend className="text-sm font-medium mb-1">Mostly in</legend>
         {LANGUAGES.map((l) => (
-          <label key={l.key} className="flex items-center gap-2 min-h-11 text-[0.88rem] cursor-pointer">
+          <label key={l.key} className="flex items-center gap-2 min-h-11 text-sm cursor-pointer">
             <input type="radio" name="primary-language" checked={primary === l.key} onChange={() => { setSaved(false); setPrimary(l.key); setAlso(also.filter((a) => a !== l.key)); }} />
             {l.label}
           </label>
         ))}
       </fieldset>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="text-[0.85rem] font-medium mb-1">Also mix in</legend>
+        <legend className="text-sm font-medium mb-1">Also mix in</legend>
         {LANGUAGES.filter((l) => l.key !== primary).map((l) => (
-          <label key={l.key} className="flex items-center gap-2 min-h-11 text-[0.88rem] cursor-pointer">
+          <label key={l.key} className="flex items-center gap-2 min-h-11 text-sm cursor-pointer">
             <input type="checkbox" checked={also.includes(l.key)} onChange={() => { setSaved(false); setAlso(also.includes(l.key) ? also.filter((a) => a !== l.key) : [...also, l.key]); }} />
             {l.label}
           </label>
         ))}
       </fieldset>
       <label className="block">
-        <span className="block text-[0.85rem] font-medium mb-1">When do you switch? (optional)</span>
+        <span className="block text-sm font-medium mb-1">When do you switch? (optional)</span>
         <input value={when} onChange={(e) => { setSaved(false); setWhen(e.target.value); }} placeholder="Hinglish on Instagram, English on LinkedIn" className="field" />
       </label>
       <div className="flex items-center gap-3">
@@ -497,14 +497,14 @@ export function BrandImages({ tenantId, logo, headshot }: { tenantId: string; lo
   };
 
   const slot = (kind: "logo" | "headshot", label: string, url: string | null, accept: string) => (
-    <label className="flex flex-col items-center gap-2 border border-dashed border-line hover:border-ink rounded-[12px] p-4 cursor-pointer text-center min-h-40 justify-center">
+    <label className="flex flex-col items-center gap-2 border border-dashed border-line hover:border-ink rounded-md p-4 cursor-pointer text-center min-h-40 justify-center">
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt={label} className={`max-h-24 max-w-full object-contain ${kind === "headshot" ? "rounded-full aspect-square object-cover" : ""}`} />
       ) : (
         <ImagePlus size={22} className="text-ink-faint" aria-hidden="true" />
       )}
-      <span className="text-[0.85rem] font-medium">{url ? `Replace ${label.toLowerCase()}` : `Add your ${label.toLowerCase()}`}</span>
+      <span className="text-sm font-medium">{url ? `Replace ${label.toLowerCase()}` : `Add your ${label.toLowerCase()}`}</span>
       <input type="file" accept={accept} className="sr-only" onChange={(e) => upload(kind, e.target.files?.[0])} />
     </label>
   );
@@ -515,9 +515,9 @@ export function BrandImages({ tenantId, logo, headshot }: { tenantId: string; lo
         {slot("logo", "Logo", logo, "image/png,image/jpeg,image/webp,image/svg+xml")}
         {slot("headshot", "Headshot", headshot, "image/png,image/jpeg,image/webp")}
       </div>
-      {pending && <p className="text-[0.8rem] text-ink-muted flex items-center gap-2"><AgentDots /> Uploading</p>}
-      {error && <p role="alert" className="text-[0.8rem] text-danger">{error}</p>}
-      <p className="text-[0.75rem] text-ink-faint flex items-center gap-1">Visuals use them. Your headshot is only used in your own visuals. <ArrowRight size={11} aria-hidden="true" /> Colours can come from your logo below.</p>
+      {pending && <p className="text-sm text-ink-muted flex items-center gap-2"><AgentDots /> Uploading</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      <p className="text-xs text-ink-faint flex items-center gap-1">Visuals use them. Your headshot is only used in your own visuals. <ArrowRight size={11} aria-hidden="true" /> Colours can come from your logo below.</p>
     </div>
   );
 }

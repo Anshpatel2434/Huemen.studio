@@ -26,21 +26,21 @@ export default async function WorkspacesAdminPage() {
 
   return (
     <>
-      <h1 className="text-[2rem]">Workspaces &amp; access</h1>
-      <p className="text-ink-muted text-[0.9rem] mt-2">Every change here is written to the audit log.</p>
+      <h1 className="text-3xl">Workspaces &amp; access</h1>
+      <p className="text-ink-muted text-sm mt-2">Every change here is written to the audit log.</p>
 
-      <form action={createWorkspaceAction} className="mt-8 bg-paper border border-hairline rounded-[14px] p-5 flex gap-2">
+      <form action={createWorkspaceAction} className="mt-8 bg-paper border border-hairline rounded-md p-5 flex gap-2">
         <input name="name" placeholder="New workspace name" className="field flex-1 min-w-0" required />
         <SubmitButton pendingLabel="Creating…">Create</SubmitButton>
       </form>
 
       <div className="mt-4 flex flex-col gap-4 pb-12">
         {workspaces.map((w) => (
-          <section key={w.id} className="bg-paper border border-hairline rounded-[14px] p-5">
+          <section key={w.id} className="bg-paper border border-hairline rounded-md p-5">
             <div className="flex items-center gap-2">
               <Link href={`/w/${w.id}`} className="font-medium hover:underline flex items-center gap-1">{w.name} <ArrowUpRight size={13} className="text-ink-faint" /></Link>
               <Badge tone={w.status === "active" ? "ok" : "warn"}>{w.status}</Badge>
-              <span className="text-[0.78rem] text-ink-faint">{w.user_count} user{w.user_count === 1 ? "" : "s"}</span>
+              <span className="text-xs text-ink-faint">{w.user_count} user{w.user_count === 1 ? "" : "s"}</span>
               <form action={setStatusAction} className="ml-auto">
                 <input type="hidden" name="tenantId" value={w.id} />
                 <input type="hidden" name="status" value={w.status === "active" ? "archived" : "active"} />
@@ -70,19 +70,19 @@ export default async function WorkspacesAdminPage() {
               )}
               {members.some((m) => m.tenantId === w.id) && (
                 <div>
-                  <p className="text-[0.75rem] text-ink-muted mb-1">People</p>
-                  <ul className="rounded-[10px] border border-hairline divide-y divide-[var(--hairline)]">
+                  <p className="text-xs text-ink-muted mb-1">People</p>
+                  <ul className="rounded-md border border-hairline divide-y divide-[var(--hairline)]">
                     {members.filter((m) => m.tenantId === w.id).map((m) => (
                       <li key={m.id} className="px-3 py-2 flex flex-col gap-1.5 min-w-0">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[0.8rem] truncate flex-1 min-w-0">{m.email}</span>
-                          <span className="text-[0.72rem] text-ink-faint shrink-0">{ROLE[m.role]}</span>
+                          <span className="text-sm truncate flex-1 min-w-0">{m.email}</span>
+                          <span className="text-xs text-ink-faint shrink-0">{ROLE[m.role]}</span>
                           <Badge tone={m.status === "active" ? "ok" : m.status === "invited" ? "accent" : "warn"}>{m.status === "invited" ? "invite pending" : m.status}</Badge>
                         </div>
                         {m.status === "invited" && (
                           <div className="min-w-0">
                             <CopyField value={`${appUrl}/invite/${signLink("invite", m.id, "invited")}`} />
-                            <p className="text-[0.68rem] text-ink-faint mt-1">Invite link, valid 7 days. Send it to {m.email}; opening it lets them accept and join.</p>
+                            <p className="text-xs text-ink-faint mt-1">Invite link, valid 7 days. Send it to {m.email}; opening it lets them accept and join.</p>
                           </div>
                         )}
                       </li>
@@ -91,7 +91,7 @@ export default async function WorkspacesAdminPage() {
                 </div>
               )}
               <div>
-                <p className="text-[0.75rem] text-ink-muted mb-1">Questionnaire link</p>
+                <p className="text-xs text-ink-muted mb-1">Questionnaire link</p>
                 <CopyField value={`${appUrl}/q/${signQuestionnaireToken(w.id)}`} />
               </div>
             </div>

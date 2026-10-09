@@ -41,15 +41,15 @@ export function SectionChrome({
           {back ? (
             <Link
               href={`/w/${tenantId}`}
-              className="hu-hit flex items-center gap-1.5 h-8 px-2.5 rounded-[8px] text-[0.82rem] hover:bg-field"
+              className="hu-hit flex items-center gap-1.5 h-8 px-2.5 rounded-sm text-sm hover:bg-field"
             >
               <ArrowLeft size={14} aria-hidden="true" /> {workspaceName}
             </Link>
           ) : (
-            <span className="h-8 px-2.5 flex items-center text-[0.82rem] text-ink-muted">{workspaceName}</span>
+            <span className="h-8 px-2.5 flex items-center text-sm text-ink-muted">{workspaceName}</span>
           )}
           <span className="text-ink-faint" aria-hidden="true">/</span>
-          <span className="text-[0.82rem] font-medium">{section}</span>
+          <span className="text-sm font-medium">{section}</span>
           <span className="flex-1" />
           {actions}
           <ThemeToggle />

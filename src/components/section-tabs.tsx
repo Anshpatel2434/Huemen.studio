@@ -18,7 +18,7 @@ export function SectionTabs({ tabs }: { tabs: { href: string; label: string; exa
             key={t.href}
             href={t.href}
             aria-current={on ? "page" : undefined}
-            className={`shrink-0 min-h-11 px-3 flex items-center text-[0.85rem] border-b-2 -mb-px transition-colors ${
+            className={`shrink-0 min-h-11 px-3 flex items-center text-sm border-b-2 -mb-px transition-colors ${
               on ? "border-ink text-ink font-medium" : "border-transparent text-ink-muted hover:text-ink"
             }`}
           >

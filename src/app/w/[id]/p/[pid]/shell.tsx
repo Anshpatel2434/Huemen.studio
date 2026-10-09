@@ -69,9 +69,9 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
       <header className="h-12 shrink-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-2 border-b border-hairline bg-paper">
         <div className="flex items-center gap-1 min-w-0">
           <FileMenu workspace={workspace} project={project} />
-          <Link href={`/w/${workspace.id}`} className="text-[0.8rem] text-ink-faint hover:text-ink truncate hidden md:block">{workspace.name}</Link>
+          <Link href={`/w/${workspace.id}`} className="text-sm text-ink-faint hover:text-ink truncate hidden md:block">{workspace.name}</Link>
           <span className="text-ink-faint hidden md:block">/</span>
-          <span className="text-[0.82rem] font-medium truncate">{project.name}</span>
+          <span className="text-sm font-medium truncate">{project.name}</span>
           {aiMock && <span className="ml-1"><Badge tone="warn">Mock AI</Badge></span>}
         </div>
 
@@ -81,7 +81,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
             const open = i <= unlocked;
             const on = seg === s;
             const done = i < unlocked;
-            const cls = `flex items-center gap-1.5 h-8 px-2.5 rounded-[8px] text-[0.8rem] transition-colors ${on ? "bg-ink text-on-ink" : open ? "text-ink hover:bg-field" : "text-ink-faint cursor-not-allowed"}`;
+            const cls = `flex items-center gap-1.5 h-8 px-2.5 rounded-sm text-sm transition-colors ${on ? "bg-ink text-on-ink" : open ? "text-ink hover:bg-field" : "text-ink-faint cursor-not-allowed"}`;
             // No step numbers and no padlocks: the step icon carries it, a
             // finished step gets a tick, and a locked one is simply dimmed.
             const inner = (
@@ -119,13 +119,13 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
           <RailBtn on={leftTab === "agent"} onClick={() => pick("agent")} label="Agent"><WandSparkles size={16} /></RailBtn>
           <span className="flex-1" />
           <ThemeToggle />
-          <Link href="/settings" className="w-8 h-8 rounded-[8px] flex items-center justify-center text-ink-muted hover:bg-field" title="Settings"><HelpCircle size={16} /></Link>
+          <Link href="/settings" className="w-8 h-8 rounded-sm flex items-center justify-center text-ink-muted hover:bg-field" title="Settings"><HelpCircle size={16} /></Link>
         </nav>
         {leftTab && (
           <aside className="w-[260px] shrink-0 border-r border-hairline bg-paper flex flex-col min-h-0">
             <div className="h-10 shrink-0 flex items-center px-3 border-b border-hairline">
-              <span className="text-[0.82rem] font-medium flex-1">{leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"}</span>
-              <button onClick={() => setLeftTab(null)} className="w-6 h-6 rounded-[6px] flex items-center justify-center text-ink-faint hover:bg-field hover:text-ink" aria-label="Close panel"><X size={14} /></button>
+              <span className="text-sm font-medium flex-1">{leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"}</span>
+              <button onClick={() => setLeftTab(null)} className="w-6 h-6 rounded-sm flex items-center justify-center text-ink-faint hover:bg-field hover:text-ink" aria-label="Close panel"><X size={14} /></button>
             </div>
             {leftTab === "layers" ? (
               <LayersPanel base={base} seg={seg} unlocked={unlocked} layers={layers} brief={brief} />
@@ -148,7 +148,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
 
 function RailBtn({ children, on, onClick, label }: { children: ReactNode; on: boolean; onClick: () => void; label: string }) {
   return (
-    <button onClick={onClick} title={label} aria-label={label} aria-pressed={on} className={`w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors ${on ? "bg-accent-soft text-accent-ink ring-1 ring-accent/40" : "text-ink-muted hover:bg-field hover:text-ink"}`}>{children}</button>
+    <button onClick={onClick} title={label} aria-label={label} aria-pressed={on} className={`w-8 h-8 rounded-sm flex items-center justify-center transition-colors ${on ? "bg-accent-soft text-accent-ink ring-1 ring-accent/40" : "text-ink-muted hover:bg-field hover:text-ink"}`}>{children}</button>
   );
 }
 
@@ -162,22 +162,22 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
   const toast = useToast();
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-0.5 p-1 rounded-[8px] hover:bg-field" aria-label="File menu">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-0.5 p-1 rounded-sm hover:bg-field" aria-label="File menu">
         <LogoMark size={24} /> <ChevronDown size={13} className="text-ink-faint" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-10 z-40 w-60 bg-menu text-menu-fg rounded-[10px] shadow-[var(--shadow-lg)] p-1.5 pop text-[0.8rem]">
-            <Link href={`/w/${workspace.id}`} className="flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><ArrowLeft size={14} /> Back to files</Link>
+          <div className="absolute left-0 top-10 z-40 w-60 bg-menu text-menu-fg rounded-md shadow-[var(--shadow-lg)] p-1.5 pop text-sm">
+            <Link href={`/w/${workspace.id}`} className="flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><ArrowLeft size={14} /> Back to files</Link>
             <div className="h-px bg-white/10 my-1" />
-            <button onClick={() => { setOpen(false); setRenaming(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Pencil size={14} /> Rename</button>
-            <Link href={`/w/${workspace.id}/create`} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Files size={14} /> New piece</Link>
-            <Link href={`/w/${workspace.id}/brand`} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><FileText size={14} /> Brand core</Link>
-            <Link href={`/w/${workspace.id}/usage`} className="flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><BarChart3 size={14} /> Workspace usage</Link>
+            <button onClick={() => { setOpen(false); setRenaming(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Pencil size={14} /> Rename</button>
+            <Link href={`/w/${workspace.id}/create`} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Files size={14} /> New piece</Link>
+            <Link href={`/w/${workspace.id}/brand`} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><FileText size={14} /> Brand core</Link>
+            <Link href={`/w/${workspace.id}/usage`} className="flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><BarChart3 size={14} /> Workspace usage</Link>
             <div className="h-px bg-white/10 my-1" />
-            <button disabled={pending} onClick={() => { if (confirm(`Archive “${project.name}”? It disappears from the workspace.`)) start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); }); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10 text-menu-fg/70"><Archive size={14} /> Archive project</button>
-            <button disabled={pending} onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10 text-menu-fg/70"><Trash2 size={14} /> Delete project</button>
+            <button disabled={pending} onClick={() => { if (confirm(`Archive “${project.name}”? It disappears from the workspace.`)) start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); }); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10 text-menu-fg/70"><Archive size={14} /> Archive project</button>
+            <button disabled={pending} onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10 text-menu-fg/70"><Trash2 size={14} /> Delete project</button>
           </div>
         </>
       )}
@@ -220,7 +220,7 @@ function LayersPanel({ base, seg, unlocked, layers, brief }: { base: string; seg
           const Icon = STAGE_ICON[s];
           const open = i <= unlocked;
           const on = seg === s;
-          const row = `flex items-center gap-2 h-8 px-2 rounded-[7px] text-[0.8rem] ${on ? "bg-accent-soft text-ink font-medium" : open ? "hover:bg-field" : "text-ink-faint"}`;
+          const row = `flex items-center gap-2 h-8 px-2 rounded-sm text-sm ${on ? "bg-accent-soft text-ink font-medium" : open ? "hover:bg-field" : "text-ink-faint"}`;
           const inner = (
             <>
               <Icon size={13} /> <span className="flex-1">{STAGE_LABEL[s]}</span>
@@ -234,7 +234,7 @@ function LayersPanel({ base, seg, unlocked, layers, brief }: { base: string; seg
           const Icon = p.icon;
           // Planning belongs to the workspace (build step 3), not this piece.
           return (
-            <Link key={p.seg} href={`${base.replace(/\/p\/[^/]+$/, "")}/plan/${p.seg}`} className={`flex items-center gap-2 h-8 px-2 rounded-[7px] text-[0.8rem] ${seg === p.seg ? "bg-accent-soft font-medium" : "text-ink-muted hover:bg-field"}`}>
+            <Link key={p.seg} href={`${base.replace(/\/p\/[^/]+$/, "")}/plan/${p.seg}`} className={`flex items-center gap-2 h-8 px-2 rounded-sm text-sm ${seg === p.seg ? "bg-accent-soft font-medium" : "text-ink-muted hover:bg-field"}`}>
               <Icon size={13} /> {p.label}
             </Link>
           );
@@ -244,16 +244,16 @@ function LayersPanel({ base, seg, unlocked, layers, brief }: { base: string; seg
       <p className="label-mono text-ink-faint px-3 pt-4 pb-1.5 border-t border-hairline mt-3">Layers</p>
       <div className="px-1.5 pb-3">
         {items.length === 0 ? (
-          <p className="text-[0.75rem] text-ink-faint px-2 py-1">{seg === "brief" ? "The brief is a document: sections are on the right." : "Nothing on this page yet."}</p>
+          <p className="text-xs text-ink-faint px-2 py-1">{seg === "brief" ? "The brief is a document: sections are on the right." : "Nothing on this page yet."}</p>
         ) : (
           items.map((it) => {
             const Icon = it.icon;
             return (
-              <Link key={it.id} href={it.href} className="flex items-center gap-2 h-7 px-2 rounded-[6px] text-[0.76rem] hover:bg-field group">
+              <Link key={it.id} href={it.href} className="flex items-center gap-2 h-7 px-2 rounded-sm text-xs hover:bg-field group">
                 <Icon size={12} className="text-ink-faint shrink-0" />
                 <span className="flex-1 truncate">{it.label}</span>
                 {it.flagged && <Flag size={11} className="text-accent shrink-0" />}
-                <span className="text-[0.66rem] text-ink-faint">{it.meta}</span>
+                <span className="text-xs text-ink-faint">{it.meta}</span>
               </Link>
             );
           })
@@ -297,18 +297,18 @@ function AgentPanel({ workspaceId, projectId, degraded, completeness }: { worksp
       <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3" role="log" aria-live="polite" aria-label="Assistant conversation">
         {msgs.map((m, i) =>
           m.role === "me" ? (
-            <div key={i} className="self-end max-w-[90%] bg-field rounded-[10px] px-2.5 py-1.5 text-[0.8rem] fade-up">{m.text}</div>
+            <div key={i} className="self-end max-w-[90%] bg-field rounded-md px-2.5 py-1.5 text-sm fade-up">{m.text}</div>
           ) : (
-            <div key={i} className="text-[0.8rem] leading-relaxed fade-up">
+            <div key={i} className="text-sm leading-relaxed fade-up">
               <p>{m.text}</p>
               {m.tasks && m.tasks.length > 0 && (
                 <div className="mt-2 flex flex-col gap-1.5">
-                  <p className="text-[0.7rem] text-ink-faint">Carried out {m.tasks.length} task{m.tasks.length > 1 ? "s" : ""}</p>
+                  <p className="text-xs text-ink-faint">Carried out {m.tasks.length} task{m.tasks.length > 1 ? "s" : ""}</p>
                   {m.tasks.map((t, j) => {
                     const card = (
-                      <span className="flex items-center gap-2 border border-hairline rounded-[9px] px-2 py-1.5 hover:border-line">
-                        <span className="w-6 h-6 rounded-[6px] bg-field flex items-center justify-center shrink-0"><Check size={12} /></span>
-                        <span className="min-w-0"><span className="block text-[0.76rem] font-medium truncate">{t.label}</span>{t.detail && <span className="block text-[0.68rem] text-ink-faint truncate">{t.detail}</span>}</span>
+                      <span className="flex items-center gap-2 border border-hairline rounded-md px-2 py-1.5 hover:border-line">
+                        <span className="w-6 h-6 rounded-sm bg-field flex items-center justify-center shrink-0"><Check size={12} /></span>
+                        <span className="min-w-0"><span className="block text-xs font-medium truncate">{t.label}</span>{t.detail && <span className="block text-xs text-ink-faint truncate">{t.detail}</span>}</span>
                       </span>
                     );
                     return t.href ? <Link key={j} href={t.href}>{card}</Link> : <div key={j}>{card}</div>;
@@ -318,24 +318,24 @@ function AgentPanel({ workspaceId, projectId, degraded, completeness }: { worksp
             </div>
           ),
         )}
-        {pending && <div role="status" className="flex items-center gap-2 bg-accent-soft text-accent-ink rounded-[9px] px-2.5 py-2 text-[0.78rem] font-medium fade-in"><AgentDots /> Working from your brief…</div>}
+        {pending && <div role="status" className="flex items-center gap-2 bg-accent-soft text-accent-ink rounded-md px-2.5 py-2 text-xs font-medium fade-in"><AgentDots /> Working from your brief…</div>}
         <div ref={endRef} />
       </div>
       <div className="p-2.5 border-t border-hairline">
-        <div className="bg-panel border border-hairline rounded-[10px] focus-within:border-ink">
+        <div className="bg-panel border border-hairline rounded-md focus-within:border-ink">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             rows={3}
             placeholder="Ask Huemen…"
-            className="w-full resize-none bg-transparent px-2.5 pt-2 text-[0.8rem] outline-none placeholder:text-ink-faint"
+            className="w-full resize-none bg-transparent px-2.5 pt-2 text-sm outline-none placeholder:text-ink-faint"
           />
           <div className="flex justify-end px-1.5 pb-1.5">
-            <button onClick={send} disabled={!draft.trim() || pending} className="w-7 h-7 rounded-[7px] bg-ink text-on-ink flex items-center justify-center disabled:bg-field disabled:text-ink-faint" aria-label="Send"><ArrowUp size={14} /></button>
+            <button onClick={send} disabled={!draft.trim() || pending} className="w-7 h-7 rounded-sm bg-ink text-on-ink flex items-center justify-center disabled:bg-field disabled:text-ink-faint" aria-label="Send"><ArrowUp size={14} /></button>
           </div>
         </div>
-        <p className="text-[0.66rem] text-ink-faint text-center mt-1.5">Powered by this project&apos;s brief</p>
+        <p className="text-xs text-ink-faint text-center mt-1.5">Powered by this project&apos;s brief</p>
       </div>
     </div>
   );
@@ -351,29 +351,29 @@ function ShareModal({ open, onClose, members, questionnaireUrl, isAdmin }: { ope
       <div className="flex flex-col gap-5">
         {questionnaireUrl && (
           <div>
-            <p className="text-[0.8rem] font-medium mb-1.5">Pre-workshop questionnaire</p>
-            <div className="flex items-center gap-2 bg-field rounded-[8px] pl-3 pr-1 h-9">
-              <span className="text-[0.78rem] text-accent-ink truncate flex-1">{questionnaireUrl}</span>
-              <button onClick={() => copy(questionnaireUrl)} className="w-7 h-7 rounded-[6px] flex items-center justify-center hover:bg-paper" title="Copy"><Copy size={13} /></button>
+            <p className="text-sm font-medium mb-1.5">Pre-workshop questionnaire</p>
+            <div className="flex items-center gap-2 bg-field rounded-sm pl-3 pr-1 h-9">
+              <span className="text-xs text-accent-ink truncate flex-1">{questionnaireUrl}</span>
+              <button onClick={() => copy(questionnaireUrl)} className="w-7 h-7 rounded-sm flex items-center justify-center hover:bg-paper" title="Copy"><Copy size={13} /></button>
             </div>
           </div>
         )}
         <div>
-          <p className="text-[0.8rem] font-medium mb-2">Everyone in this workspace can open this project</p>
-          <div className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-[10px]">
-            {members.length === 0 && <p className="text-[0.8rem] text-ink-faint p-3">No one invited yet.</p>}
+          <p className="text-sm font-medium mb-2">Everyone in this workspace can open this project</p>
+          <div className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md">
+            {members.length === 0 && <p className="text-sm text-ink-faint p-3">No one invited yet.</p>}
             {members.map((m) => (
               <div key={m.email} className="flex items-center gap-2.5 px-3 h-11">
                 <span className="w-7 h-7 rounded-full bg-field flex items-center justify-center text-[0.62rem] uppercase font-medium">{m.email.slice(0, 2)}</span>
-                <span className="text-[0.8rem] flex-1 truncate">{m.email}</span>
+                <span className="text-sm flex-1 truncate">{m.email}</span>
                 {m.status === "invited" && <Badge tone="warn">Invited</Badge>}
-                <span className="text-[0.75rem] text-ink-muted capitalize">{m.role.replace("owner_admin", "admin")}</span>
+                <span className="text-xs text-ink-muted capitalize">{m.role.replace("owner_admin", "admin")}</span>
               </div>
             ))}
           </div>
-          <p className="text-[0.72rem] text-ink-faint mt-1.5">Other workspaces never see it.</p>
+          <p className="text-xs text-ink-faint mt-1.5">Other workspaces never see it.</p>
         </div>
-        {isAdmin ? <Link href="/settings/workspaces" className={`${btnClass("primary")} self-start`}>Invite people</Link> : <p className="text-[0.8rem] text-ink-muted">Invites are managed by your admin.</p>}
+        {isAdmin ? <Link href="/settings/workspaces" className={`${btnClass("primary")} self-start`}>Invite people</Link> : <p className="text-sm text-ink-muted">Invites are managed by your admin.</p>}
       </div>
     </Modal>
   );

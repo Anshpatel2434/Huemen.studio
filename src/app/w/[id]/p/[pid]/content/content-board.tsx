@@ -108,7 +108,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     <>
       {items.length === 0 ? (
         <div className="absolute inset-0 canvas-dots flex items-center justify-center p-6">
-          <div className="bg-paper border border-hairline rounded-[14px] max-w-md w-full shadow-[var(--shadow)]">
+          <div className="bg-paper border border-hairline rounded-md max-w-md w-full shadow-[var(--shadow)]">
             <EmptyState
               icon={<PenLine size={18} />}
               title="Nothing drafted yet"
@@ -127,12 +127,12 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                 onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (over !== g.key) setOver(g.key); } }}
                 onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === g.key ? null : o)); }}
                 onDrop={(e) => { e.preventDefault(); if (dragId) moveTo(dragId, g.pillarId); setDragId(null); setOver(null); }}
-                className={`rounded-[10px] -m-3 p-3 transition-colors ${dragId && over === g.key ? "bg-accent-soft ring-2 ring-ink/60" : ""}`}
+                className={`rounded-md -m-3 p-3 transition-colors ${dragId && over === g.key ? "bg-accent-soft ring-2 ring-ink/60" : ""}`}
               >
                 <p className="label-mono text-ink-faint mb-4 truncate" style={{ maxWidth: WIDTH[device] }}>{g.name} · {g.items.length}</p>
                 <div className="flex flex-col gap-10 items-start" data-canvas-bg="1">
                   {g.items.length === 0 && (
-                    <div data-canvas-bg="1" className="rounded-[6px] border-2 border-dashed border-line text-ink-faint text-[0.8rem] flex items-center justify-center text-center px-6" style={{ width: WIDTH[device], height: 160 }}>
+                    <div data-canvas-bg="1" className="rounded-sm border-2 border-dashed border-line text-ink-faint text-sm flex items-center justify-center text-center px-6" style={{ width: WIDTH[device], height: 160 }}>
                       {dragId ? "Drop here to move it to this pillar" : "No pieces yet. Drag one here."}
                     </div>
                   )}
@@ -168,12 +168,12 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       {items.length > 0 && (
         <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
           <button onClick={() => setDrafting(true)} className={`${btnClass("primary", "sm")} shadow-[var(--shadow)]`}><Plus size={14} /> Draft</button>
-          <select value={pillarFilter} onChange={(e) => setPillarFilter(e.target.value)} className="h-8 rounded-[8px] bg-paper border border-hairline px-2 text-[0.8rem] shadow-[var(--shadow-sm)]">
+          <select value={pillarFilter} onChange={(e) => setPillarFilter(e.target.value)} className="h-8 rounded-sm bg-paper border border-hairline px-2 text-sm shadow-[var(--shadow-sm)]">
             <option value="all">All pillars</option>
             {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             <option value="none">No pillar</option>
           </select>
-          {degraded && <span className="flex items-center gap-1.5 h-8 px-2.5 rounded-[8px] bg-accent-soft text-accent-ink text-[0.78rem]"><AlertTriangle size={13} /> Thin brief: drafts will read generic</span>}
+          {degraded && <span className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-accent-soft text-accent-ink text-xs"><AlertTriangle size={13} /> Thin brief: drafts will read generic</span>}
         </div>
       )}
 
@@ -219,7 +219,7 @@ function Marked({ text, words }: { text: string; words: string[] }) {
   const ws = words.map((w) => w.trim()).filter(Boolean);
   if (!ws.length || !text) return <>{text}</>;
   const re = new RegExp(`(${ws.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
-  return <>{text.split(re).map((part, i) => (ws.some((w) => w.toLowerCase() === part.toLowerCase()) ? <mark key={i} className="bg-accent-soft text-accent-ink rounded-[3px] px-0.5">{part}</mark> : <span key={i}>{part}</span>))}</>;
+  return <>{text.split(re).map((part, i) => (ws.some((w) => w.toLowerCase() === part.toLowerCase()) ? <mark key={i} className="bg-accent-soft text-accent-ink rounded-xs px-0.5">{part}</mark> : <span key={i}>{part}</span>))}</>;
 }
 
 function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
@@ -251,57 +251,57 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
   return (
     <aside className="absolute top-0 right-0 bottom-0 z-30 w-[360px] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
       <div className="h-11 shrink-0 flex items-center gap-2 px-3 border-b border-hairline">
-        <span className="text-[0.85rem] font-medium flex-1 truncate">{formatByKey(item.format).label}</span>
-        <div className="flex bg-field rounded-[8px] p-[2px]">
+        <span className="text-sm font-medium flex-1 truncate">{formatByKey(item.format).label}</span>
+        <div className="flex bg-field rounded-sm p-[2px]">
           {(["edit", "history"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`h-7 px-2.5 rounded-[6px] text-[0.75rem] capitalize ${tab === t ? "bg-paper shadow-[var(--shadow-sm)] font-medium" : "text-ink-muted"}`}>{t === "history" ? `History · ${item.history.length}` : t}</button>
+            <button key={t} onClick={() => setTab(t)} className={`h-7 px-2.5 rounded-sm text-xs capitalize ${tab === t ? "bg-paper shadow-[var(--shadow-sm)] font-medium" : "text-ink-muted"}`}>{t === "history" ? `History · ${item.history.length}` : t}</button>
           ))}
         </div>
-        <button onClick={onClose} className="w-7 h-7 rounded-[7px] flex items-center justify-center text-ink-muted hover:bg-field" aria-label="Close"><X size={15} /></button>
+        <button onClick={onClose} className="w-7 h-7 rounded-sm flex items-center justify-center text-ink-muted hover:bg-field" aria-label="Close"><X size={15} /></button>
       </div>
 
       {tab === "edit" ? (
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
           {liveViolations.length > 0 && (
-            <div className="bg-accent-soft rounded-[10px] px-3 py-2.5 text-[0.8rem]">
+            <div className="bg-accent-soft rounded-md px-3 py-2.5 text-sm">
               <p className="font-medium text-accent-ink flex items-center gap-1.5"><Flag size={13} /> Don&apos;t-words found</p>
               <p className="text-ink-muted mt-0.5">{liveViolations.join(", ")}. Flagged, not removed: your call.</p>
             </div>
           )}
-          <label className="block"><span className="text-[0.75rem] font-medium mb-1 block">Hook</span><textarea value={hook} onChange={(e) => setHook(e.target.value)} rows={2} className="field" /></label>
-          <label className="block"><span className="text-[0.75rem] font-medium mb-1 block">Body</span><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="field" /></label>
-          <label className="block"><span className="text-[0.75rem] font-medium mb-1 block">Call to action</span><input value={cta} onChange={(e) => setCta(e.target.value)} className="field" placeholder="Missing: add one" /></label>
+          <label className="block"><span className="text-xs font-medium mb-1 block">Hook</span><textarea value={hook} onChange={(e) => setHook(e.target.value)} rows={2} className="field" /></label>
+          <label className="block"><span className="text-xs font-medium mb-1 block">Body</span><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="field" /></label>
+          <label className="block"><span className="text-xs font-medium mb-1 block">Call to action</span><input value={cta} onChange={(e) => setCta(e.target.value)} className="field" placeholder="Missing: add one" /></label>
           <label className="block">
-            <span className="text-[0.75rem] font-medium mb-1 block">Pillar</span>
+            <span className="text-xs font-medium mb-1 block">Pillar</span>
             <select value={pillarId} onChange={(e) => setPillarId(e.target.value)} className="field">
               <option value="">No pillar</option>
               {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
           <div>
-            <p className="text-[0.75rem] font-medium mb-1.5 flex items-center gap-1.5"><Wand2 size={12} /> Regenerate with a steer</p>
+            <p className="text-xs font-medium mb-1.5 flex items-center gap-1.5"><Wand2 size={12} /> Regenerate with a steer</p>
             <div className="flex flex-wrap gap-1.5">
               {STEERS.map((s) => (
-                <button key={s} disabled={pending} onClick={() => run(s, () => steerAction(tenantId, projectId, item.id, s), "New version added to history")} className="h-7 px-2.5 rounded-[7px] border border-line text-[0.75rem] hover:border-ink disabled:opacity-50 flex items-center gap-1">
+                <button key={s} disabled={pending} onClick={() => run(s, () => steerAction(tenantId, projectId, item.id, s), "New version added to history")} className="h-7 px-2.5 rounded-sm border border-line text-xs hover:border-ink disabled:opacity-50 flex items-center gap-1">
                   {busy === s && <AgentDots />} {s}
                 </button>
               ))}
             </div>
-            <p className="text-[0.7rem] text-ink-faint mt-1.5">The previous version stays in History.</p>
+            <p className="text-xs text-ink-faint mt-1.5">The previous version stays in History.</p>
           </div>
-          <p className="text-[0.7rem] text-ink-faint" suppressHydrationWarning>Template v{item.promptVersion ?? "–"} · {new Date(item.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+          <p className="text-xs text-ink-faint" suppressHydrationWarning>Template v{item.promptVersion ?? "–"} · {new Date(item.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5">
           {item.history.slice().reverse().map((g) => (
-            <div key={g.id} className="border border-hairline rounded-[10px] p-3">
+            <div key={g.id} className="border border-hairline rounded-md p-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <History size={12} className="text-ink-faint" />
-                <span className="text-[0.72rem] text-ink-muted flex-1">{g.steer ? `Steer: ${g.steer}` : `Variant ${g.variantIndex + 1}`} · {g.model}</span>
-                <button disabled={pending} onClick={() => run("v" + g.id, () => applyVariantAction(tenantId, projectId, item.id, g.id), "Variant applied")} className="text-[0.72rem] font-medium hover:text-accent-ink">Use</button>
+                <span className="text-xs text-ink-muted flex-1">{g.steer ? `Steer: ${g.steer}` : `Variant ${g.variantIndex + 1}`} · {g.model}</span>
+                <button disabled={pending} onClick={() => run("v" + g.id, () => applyVariantAction(tenantId, projectId, item.id, g.id), "Variant applied")} className="text-xs font-medium hover:text-accent-ink">Use</button>
               </div>
-              <p className="text-[0.8rem] font-medium">{g.hook}</p>
-              <p className="text-[0.75rem] text-ink-muted line-clamp-3 whitespace-pre-wrap mt-0.5">{g.body}</p>
+              <p className="text-sm font-medium">{g.hook}</p>
+              <p className="text-xs text-ink-muted line-clamp-3 whitespace-pre-wrap mt-0.5">{g.body}</p>
             </div>
           ))}
         </div>

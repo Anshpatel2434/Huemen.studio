@@ -38,47 +38,47 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
       </div>
       <StepPanel step={3} title="Pillars">
         {sp.generated && (
-          <p className="flex items-start gap-2 text-[0.78rem] text-ok bg-ok-soft rounded-[8px] px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> Pillars generated from your brief and answers. Rename, remove or add any before drafting.</p>
+          <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> Pillars generated from your brief and answers. Rename, remove or add any before drafting.</p>
         )}
         {sp.added && (
-          <p className="flex items-start gap-2 text-[0.78rem] text-ok bg-ok-soft rounded-[8px] px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> {sp.added === "0" ? "No new pillars: those already exist." : `${String(sp.added)} pillar${sp.added === "1" ? "" : "s"} added.`}</p>
+          <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> {sp.added === "0" ? "No new pillars: those already exist." : `${String(sp.added)} pillar${sp.added === "1" ? "" : "s"} added.`}</p>
         )}
         <form action={regeneratePillarsAction} className="flex flex-col gap-3">
           <input type="hidden" name="tenantId" value={id} />
           <div className="flex items-baseline justify-between">
-            <p className="text-[0.75rem] font-medium">Generate pillars</p>
-            <span className="text-[0.7rem] text-ink-faint">{pillars.length} on the map</span>
+            <p className="text-xs font-medium">Generate pillars</p>
+            <span className="text-xs text-ink-faint">{pillars.length} on the map</span>
           </div>
           <label className="block">
-            <span className="text-[0.72rem] text-ink-muted mb-1 block">Focus <span className="text-ink-faint">(optional)</span></span>
-            <textarea name="focus" rows={3} className="field text-[0.8rem]" placeholder="e.g. Hiring your first team" />
+            <span className="text-xs text-ink-muted mb-1 block">Focus <span className="text-ink-faint">(optional)</span></span>
+            <textarea name="focus" rows={3} className="field text-sm" placeholder="e.g. Hiring your first team" />
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="text-[0.72rem] text-ink-muted mb-1 block">Number</span>
-              <select name="count" className="field !py-1.5 text-[0.8rem]" defaultValue="3"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+              <span className="text-xs text-ink-muted mb-1 block">Number</span>
+              <select name="count" className="field !py-1.5 text-sm" defaultValue="3"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
             </label>
             <label className="block" title="v1 is English-only (brief section 09); language is already a parameter for later.">
-              <span className="text-[0.72rem] text-ink-muted mb-1 block">Language</span>
-              <select name="language" className="field !py-1.5 text-[0.8rem]" defaultValue="en" disabled><option value="en">English</option></select>
+              <span className="text-xs text-ink-muted mb-1 block">Language</span>
+              <select name="language" className="field !py-1.5 text-sm" defaultValue="en" disabled><option value="en">English</option></select>
             </label>
           </div>
           <SubmitButton variant="primary" size="sm" pendingLabel="Generating…" className="w-full">Generate pillars</SubmitButton>
-          <p className="text-[0.68rem] text-ink-faint">Adds pillars from the brief and your answers. Existing pillars and their content are kept.</p>
+          <p className="text-xs text-ink-faint">Adds pillars from the brief and your answers. Existing pillars and their content are kept.</p>
         </form>
         <form action={draftFromPillarsAction} className="flex flex-col gap-3 border-t border-hairline pt-4">
           <input type="hidden" name="tenantId" value={id} />
-          <p className="text-[0.75rem] font-medium">Draft a piece from every pillar</p>
+          <p className="text-xs font-medium">Draft a piece from every pillar</p>
           <label className="block">
-            <span className="text-[0.72rem] text-ink-muted mb-1 block">Format</span>
-            <select name="format" className="field !py-1.5 text-[0.8rem]" defaultValue="linkedin_post">
+            <span className="text-xs text-ink-muted mb-1 block">Format</span>
+            <select name="format" className="field !py-1.5 text-sm" defaultValue="linkedin_post">
               {FORMATS.map((fm) => <option key={fm.key} value={fm.key}>{fm.label}</option>)}
             </select>
           </label>
           <SubmitButton variant="primary" size="sm" pendingLabel={`Drafting ${pillars.length} pieces…`} className="w-full">
             Draft {pillars.length} {pillars.length === 1 ? "piece" : "pieces"}
           </SubmitButton>
-          <p className="text-[0.68rem] text-ink-faint">Each piece becomes its own project in your library, drafted in your voice. Every call is logged.</p>
+          <p className="text-xs text-ink-faint">Each piece becomes its own project in your library, drafted in your voice. Every call is logged.</p>
         </form>
       </StepPanel>
     </>

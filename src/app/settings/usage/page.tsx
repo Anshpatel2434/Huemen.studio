@@ -21,28 +21,28 @@ export default async function AiUsagePage() {
 
   return (
     <>
-      <h1 className="text-[2rem]">AI usage</h1>
-      <section className="mt-8 bg-paper border border-hairline rounded-[14px] p-6">
+      <h1 className="text-3xl">AI usage</h1>
+      <section className="mt-8 bg-paper border border-hairline rounded-md p-6">
         <div className="flex items-start justify-between">
           <div>
             <p className="font-medium">Monthly usage</p>
-            <p className="text-[0.8rem] text-ink-muted mt-0.5">Resets in {days} day{days === 1 ? "" : "s"}</p>
+            <p className="text-sm text-ink-muted mt-0.5">Resets in {days} day{days === 1 ? "" : "s"}</p>
           </div>
-          <span className="h-7 px-2.5 rounded-[7px] bg-field text-[0.78rem] flex items-center">
+          <span className="h-7 px-2.5 rounded-sm bg-field text-xs flex items-center">
             {new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – {end.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
           </span>
         </div>
-        <p className="text-[2rem] mt-4 tabular-nums">{total} <span className="text-[0.9rem] text-ink-muted">generations</span></p>
-        <p className="text-[0.8rem] text-ink-muted mt-5 mb-2">Usage by workspace</p>
+        <p className="text-3xl mt-4 tabular-nums">{total} <span className="text-sm text-ink-muted">generations</span></p>
+        <p className="text-sm text-ink-muted mt-5 mb-2">Usage by workspace</p>
         <div className="flex flex-col divide-y divide-[var(--hairline)] border-t border-hairline">
           {rows.map((r) => {
             const n = r.u.textThisMonth + r.u.imagesThisMonth;
             return (
               <div key={r.id} className="flex items-center gap-3 h-12">
-                <span className="w-6 h-6 rounded-[6px] bg-ink text-on-ink text-[0.65rem] flex items-center justify-center uppercase">{r.name.slice(0, 1)}</span>
-                <Link href={`/w/${r.id}/usage`} className="w-40 truncate text-[0.85rem] text-accent-ink hover:underline">{r.name}</Link>
+                <span className="w-6 h-6 rounded-sm bg-ink text-on-ink text-[0.65rem] flex items-center justify-center uppercase">{r.name.slice(0, 1)}</span>
+                <Link href={`/w/${r.id}/usage`} className="w-40 truncate text-sm text-accent-ink hover:underline">{r.name}</Link>
                 <div className="flex-1"><Meter value={total ? (n / total) * 100 : 0} /></div>
-                <span className="w-12 text-right text-[0.82rem] tabular-nums">{n}</span>
+                <span className="w-12 text-right text-sm tabular-nums">{n}</span>
               </div>
             );
           })}

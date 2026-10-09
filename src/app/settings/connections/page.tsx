@@ -42,34 +42,34 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
 
   return (
     <>
-      <h1 className="text-[2rem]">Connections</h1>
-      <p className="text-[0.88rem] text-ink-muted mt-2 max-w-[60ch]">
+      <h1 className="text-3xl">Connections</h1>
+      <p className="text-sm text-ink-muted mt-2 max-w-[60ch]">
         Connect the places you already write, and we&apos;ll read what you allow, to learn how you sound. Pick exactly what each one may read. Disconnect any time, and take what it brought in with it.
       </p>
       <div className="flex flex-col gap-4 mt-8">
         {pack && !pack.onboarding.completedAt && (
-          <p className="text-[0.85rem] bg-accent-soft rounded-[10px] px-4 py-3 flex flex-wrap items-center gap-3">
+          <p className="text-sm bg-accent-soft rounded-md px-4 py-3 flex flex-wrap items-center gap-3">
             <span className="flex-1 min-w-0">Setting up your voice? Come back to it when you&apos;re done here.</span>
             <Link href={`/w/${id}/onboarding?step=1`} className={btnClass("secondary", "sm")}>Back to setup</Link>
           </p>
         )}
         {typeof sp.connected === "string" && (
-          <p role="status" className="text-[0.88rem] bg-ok-soft text-ok rounded-[10px] px-4 py-3 flex items-center gap-2">
+          <p role="status" className="text-sm bg-ok-soft text-ok rounded-md px-4 py-3 flex items-center gap-2">
             <CheckCircle2 size={15} aria-hidden="true" /> {PROVIDERS[sp.connected as ProviderKey]?.label ?? "Account"} connected.
           </p>
         )}
         {typeof sp.error === "string" && (
-          <p role="alert" className="text-[0.88rem] bg-danger-soft text-danger rounded-[10px] px-4 py-3 flex items-start gap-2">
+          <p role="alert" className="text-sm bg-danger-soft text-danger rounded-md px-4 py-3 flex items-start gap-2">
             <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" /> {sp.error}
           </p>
         )}
         {!owner && (
-          <p className="text-[0.88rem] bg-field rounded-[10px] px-4 py-3">
+          <p className="text-sm bg-field rounded-md px-4 py-3">
             Connections feed your own voice, and there isn&apos;t one for this account yet. Coaches don&apos;t connect accounts on a client&apos;s behalf.
           </p>
         )}
 
-        <p className="text-[0.82rem] text-ink-muted flex items-start gap-2 bg-field rounded-[10px] px-4 py-3">
+        <p className="text-sm text-ink-muted flex items-start gap-2 bg-field rounded-md px-4 py-3">
           <Lock size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
           We never train shared models on your writing. Email is measured but never quoted in a draft. Access keys are stored encrypted, and disconnecting withdraws them at Google or LinkedIn too.
         </p>
@@ -79,9 +79,9 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
           const c = connections.find((x) => x.provider === key);
           const configured = !!clientFor(key);
           return (
-            <section key={key} className="bg-paper border border-hairline rounded-[14px] p-5 flex flex-col gap-4">
+            <section key={key} className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4">
               <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-[1.1rem] flex-1">{p.label}</h2>
+                <h2 className="text-lg flex-1">{p.label}</h2>
                 {c ? (
                   <Badge tone={c.status === "connected" ? "ok" : "warn"}>{c.status === "connected" ? "Connected" : "Reconnect"}</Badge>
                 ) : (
@@ -89,13 +89,13 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
                 )}
               </div>
               {c && (
-                <p className="text-[0.85rem] text-ink-muted">
+                <p className="text-sm text-ink-muted">
                   {c.accountName ?? ""}{c.accountEmail ? ` · ${c.accountEmail}` : ""} · {c.importedPieces} {c.importedPieces === 1 ? "piece" : "pieces"} brought in
                 </p>
               )}
-              {c?.lastError && <p className="text-[0.82rem] text-warn">{c.lastError}</p>}
+              {c?.lastError && <p className="text-sm text-warn">{c.lastError}</p>}
               {!configured && (
-                <p className="text-[0.82rem] text-ink-faint">Your admin adds the {p.label} app details to switch this on. Until then, upload exports when you add writing.</p>
+                <p className="text-sm text-ink-faint">Your admin adds the {p.label} app details to switch this on. Until then, upload exports when you add writing.</p>
               )}
 
               <ul className="flex flex-col divide-y divide-[var(--hairline)] border-t border-hairline">
@@ -107,19 +107,19 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
                   return (
                     <li key={cap.key} className="py-4 flex flex-col gap-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[0.95rem] font-medium flex-1 min-w-0">{cap.label}</span>
+                        <span className="text-base font-medium flex-1 min-w-0">{cap.label}</span>
                         {review && <span className="label-mono text-ink-faint flex items-center gap-1"><ShieldCheck size={11} aria-hidden="true" /> {review}</span>}
                       </div>
-                      <p className="text-[0.85rem] text-ink-muted">{cap.reads}</p>
-                      <p className="text-[0.8rem] text-ink-faint">{cap.never}</p>
+                      <p className="text-sm text-ink-muted">{cap.reads}</p>
+                      <p className="text-sm text-ink-faint">{cap.never}</p>
                       {sync && (
-                        <p className="text-[0.78rem] text-ink-faint">
+                        <p className="text-xs text-ink-faint">
                           Last run {ago(sync.at)}{sync.error ? ` · ${sync.error}` : cap.visibility !== "none" ? ` · ${sync.count} new ${sync.count === 1 ? "piece" : "pieces"}` : ""}
                         </p>
                       )}
                       <div>
                         {reason ? (
-                          <p className="text-[0.8rem] text-ink-faint">{reason}</p>
+                          <p className="text-sm text-ink-faint">{reason}</p>
                         ) : !owner ? null : !granted || c?.status !== "connected" ? (
                           cap.key === "profile" && c ? null : (
                             <a href={`/settings/connections/${key}/start${cap.scopes.length ? `?cap=${cap.key}` : ""}`} className={btnClass("secondary", "sm")}>
@@ -127,7 +127,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
                             </a>
                           )
                         ) : cap.key === "profile" ? (
-                          <span className="text-[0.82rem] text-ok flex items-center gap-1.5"><CheckCircle2 size={13} aria-hidden="true" /> Confirmed</span>
+                          <span className="text-sm text-ok flex items-center gap-1.5"><CheckCircle2 size={13} aria-hidden="true" /> Confirmed</span>
                         ) : (
                           <CapabilityRun tenantId={id} cap={cap.key} />
                         )}
@@ -139,9 +139,9 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
 
               {c && owner && (
                 <details className="border-t border-hairline pt-3">
-                  <summary className="cursor-pointer min-h-11 flex items-center text-[0.85rem] text-ink-muted">Disconnect {p.label}</summary>
+                  <summary className="cursor-pointer min-h-11 flex items-center text-sm text-ink-muted">Disconnect {p.label}</summary>
                   <div className="flex flex-col gap-2 pt-2">
-                    <p className="text-[0.82rem] text-ink-muted">We&apos;ll withdraw our access at {p.label}. You choose what happens to the {c.importedPieces} {c.importedPieces === 1 ? "piece" : "pieces"} it brought in.</p>
+                    <p className="text-sm text-ink-muted">We&apos;ll withdraw our access at {p.label}. You choose what happens to the {c.importedPieces} {c.importedPieces === 1 ? "piece" : "pieces"} it brought in.</p>
                     <div className="flex flex-wrap gap-2">
                       <form action={disconnectAction}>
                         <input type="hidden" name="tenantId" value={id} />
@@ -163,7 +163,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
           );
         })}
 
-        <p className="text-[0.82rem] text-ink-muted">
+        <p className="text-sm text-ink-muted">
           Rather not connect? Every source also works as an upload or a paste. <Link href={`/w/${id}/onboarding?step=1`} className="text-accent underline underline-offset-2">Add writing</Link>
         </p>
       </div>

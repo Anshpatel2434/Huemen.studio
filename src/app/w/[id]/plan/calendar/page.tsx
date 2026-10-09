@@ -51,13 +51,13 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
       action={
         <div className="flex items-center gap-2">
           <button disabled title="The 90-day generator runs as a queued batch job, which is next on the build plan (TASKS P3-1)." className={btnClass("secondary", "sm")}><Sparkles size={14} /> Generate 90 days</button>
-          <Link href={`?m=${prev}`} className="w-8 h-8 rounded-[8px] border border-line flex items-center justify-center hover:border-ink" aria-label="Previous month"><ChevronLeft size={15} /></Link>
+          <Link href={`?m=${prev}`} className="w-8 h-8 rounded-sm border border-line flex items-center justify-center hover:border-ink" aria-label="Previous month"><ChevronLeft size={15} /></Link>
           <Link href="?" className={btnClass("ghost", "sm")}>Today</Link>
-          <Link href={`?m=${next}`} className="w-8 h-8 rounded-[8px] border border-line flex items-center justify-center hover:border-ink" aria-label="Next month"><ChevronRight size={15} /></Link>
+          <Link href={`?m=${next}`} className="w-8 h-8 rounded-sm border border-line flex items-center justify-center hover:border-ink" aria-label="Next month"><ChevronRight size={15} /></Link>
         </div>
       }
     >
-      <form action={addCalendarEntryAction} className="bg-paper border border-hairline rounded-[14px] p-3 grid grid-cols-2 md:grid-cols-[150px_1fr_160px_130px_auto] gap-2 items-center shadow-[var(--shadow-sm)]">
+      <form action={addCalendarEntryAction} className="bg-paper border border-hairline rounded-md p-3 grid grid-cols-2 md:grid-cols-[150px_1fr_160px_130px_auto] gap-2 items-center shadow-[var(--shadow-sm)]">
         <input type="hidden" name="tenantId" value={id} />
         <input type="date" name="date" required defaultValue={today} className="field !h-9 !py-0" />
         <input name="topic" required placeholder="Topic" className="field !h-9 !py-0" />
@@ -73,17 +73,17 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
         <SubmitButton size="sm" pendingLabel="Adding…">Add slot</SubmitButton>
       </form>
 
-      <div className="mt-6 bg-paper border border-hairline rounded-[14px] overflow-hidden">
+      <div className="mt-6 bg-paper border border-hairline rounded-md overflow-hidden">
         <div className="grid grid-cols-7 border-b border-hairline">
           {DOW.map((d) => <p key={d} className="label-mono text-ink-faint px-3 py-2">{d}</p>)}
         </div>
         <div className="grid grid-cols-7">
           {cells.map((c, i) => (
             <div key={c.key} className={`min-h-[112px] p-2 border-hairline ${i % 7 ? "border-l" : ""} ${i >= 7 ? "border-t" : ""} ${c.inMonth ? "" : "bg-panel"}`}>
-              <p className={`text-[0.75rem] tabular-nums mb-1.5 ${c.key === today ? "inline-flex w-6 h-6 rounded-full bg-accent text-on-ink items-center justify-center font-medium" : c.inMonth ? "text-ink-muted" : "text-ink-faint"}`}>{c.d.getDate()}</p>
+              <p className={`text-xs tabular-nums mb-1.5 ${c.key === today ? "inline-flex w-6 h-6 rounded-full bg-accent text-on-ink items-center justify-center font-medium" : c.inMonth ? "text-ink-muted" : "text-ink-faint"}`}>{c.d.getDate()}</p>
               <div className="flex flex-col gap-1">
                 {(byDay.get(c.key) ?? []).map((e) => (
-                  <div key={e.id} className="group relative rounded-[6px] pl-2 pr-5 py-1 text-[0.72rem] leading-tight bg-panel border-l-[3px]" style={{ borderLeftColor: shade(e.pillarId) }}>
+                  <div key={e.id} className="group relative rounded-sm pl-2 pr-5 py-1 text-xs leading-tight bg-panel border-l-[3px]" style={{ borderLeftColor: shade(e.pillarId) }}>
                     <p className="font-medium truncate">{e.topic ?? "Untitled"}</p>
                     <p className="text-ink-faint truncate capitalize">{e.channel ?? ""}{e.pillarName ? ` · ${e.pillarName}` : ""}</p>
                     {!e.contentItemId && e.topic && (
@@ -92,7 +92,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
                         <input type="hidden" name="topic" value={e.topic} />
                         {e.pillarName && <input type="hidden" name="pillar" value={e.pillarName} />}
                         {formatFor(e.channel) && <input type="hidden" name="format" value={formatFor(e.channel)!} />}
-                        <button className="hu-hit inline-flex items-center gap-1 text-[0.7rem] font-medium text-accent hover:underline underline-offset-2">
+                        <button className="hu-hit inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline underline-offset-2">
                           Start <ArrowRight size={10} aria-hidden="true" />
                         </button>
                       </form>
@@ -109,7 +109,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
           ))}
         </div>
       </div>
-      <p className="text-[0.75rem] text-ink-faint mt-3 pb-10">{entries.length} slot{entries.length === 1 ? "" : "s"} this view. Export copies these out; direct publishing isn&apos;t part of v1.</p>
+      <p className="text-xs text-ink-faint mt-3 pb-10">{entries.length} slot{entries.length === 1 ? "" : "s"} this view. Export copies these out; direct publishing isn&apos;t part of v1.</p>
     </DocPage>
   );
 }

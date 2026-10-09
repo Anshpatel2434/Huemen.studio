@@ -52,7 +52,7 @@ function Stepper({ id, current, reached }: { id: string; current: number; reache
         const open = n <= reached;
         const dot = (
           <span
-            className={`w-7 h-7 rounded-full grid place-items-center text-[0.75rem] font-mono shrink-0 ${
+            className={`w-7 h-7 rounded-full grid place-items-center text-xs font-mono shrink-0 ${
               on ? "bg-ink text-on-ink" : done ? "bg-ok-soft text-ok" : "border border-line text-ink-faint"
             }`}
             aria-hidden="true"
@@ -61,7 +61,7 @@ function Stepper({ id, current, reached }: { id: string; current: number; reache
           </span>
         );
         const inner = (
-          <span className={`flex items-center gap-2 min-h-11 pr-3 text-[0.85rem] ${on ? "font-medium text-ink" : open ? "text-ink-muted" : "text-ink-faint"}`}>
+          <span className={`flex items-center gap-2 min-h-11 pr-3 text-sm ${on ? "font-medium text-ink" : open ? "text-ink-muted" : "text-ink-faint"}`}>
             {dot} {label}
           </span>
         );
@@ -85,7 +85,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
     return (
       <div className="absolute inset-0 overflow-y-auto">
         <div className="max-w-[760px] mx-auto px-6 py-12">
-          <h1 className="text-[1.9rem]">A voice belongs to a person.</h1>
+          <h1 className="text-3xl">A voice belongs to a person.</h1>
           <p className="text-ink-muted mt-2">Sign in as the person whose brand this is and their voice pack will be created for them.</p>
         </div>
       </div>
@@ -197,7 +197,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         )}
         </div>
 
-        <p className="text-[0.78rem] text-ink-faint border-t border-hairline pt-4">
+        <p className="text-xs text-ink-faint border-t border-hairline pt-4">
           {step > 0 && <>Your core is {conf.score}% confident{conf.trained ? "" : ", so it's still provisional"}. </>}
           You can leave at any step; everything saves as you go, and you&apos;ll come back to this step.
         </p>
@@ -221,17 +221,17 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
     return (
       <section className="flex flex-col gap-6">
         <div>
-          <h1 className="text-[1.9rem]">Set your <span className="serif-accent">hue.</span></h1>
+          <h1 className="text-3xl">Set your <span className="serif-accent">hue.</span></h1>
           <p className="text-ink-muted mt-2 max-w-[60ch]">Your colour and your positioning. Set once here; every piece you write reads it. Nothing in this step blocks you from moving on.</p>
         </div>
 
-        <div className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-3">
+        <div className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-[1.05rem] flex-1">Your brief</h2>
+            <h2 className="text-base flex-1">Your brief</h2>
             {/* Back to step 0 rather than out to the brief editor: the flow never leaves itself. */}
             <Link href={`/w/${id}/onboarding?step=0`} className={btnClass("secondary", "sm")}>Change in About you</Link>
           </div>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[0.88rem]">
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
             {briefRows.map((r) => (
               <li key={r.label} className="flex items-center gap-2">
                 {r.ok ? <CheckCircle2 size={15} className="text-ok" aria-hidden="true" /> : <span className="w-[15px] h-[15px] rounded-full border border-line" aria-hidden="true" />}
@@ -241,10 +241,10 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
           </ul>
         </div>
 
-        <div className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
+        <div className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4">
           <div>
-            <h2 className="text-[1.05rem]">Your look</h2>
-            <p className="text-[0.88rem] text-ink-muted mt-1">Your logo, your face, and your colours. Every visual is made from these; the first two colours are the ground and the accent.</p>
+            <h2 className="text-base">Your look</h2>
+            <p className="text-sm text-ink-muted mt-1">Your logo, your face, and your colours. Every visual is made from these; the first two colours are the ground and the accent.</p>
           </div>
           <BrandImages tenantId={id} logo={logo} headshot={headshot} />
           <VisualForm tenantId={id} initial={{ palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes }} logoUrl={logo} />
@@ -254,21 +254,21 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         <ProofsEditor tenantId={id} initial={pack!.identity.proofs?.value ?? []} />
 
         {/* Typed answers are kept in the browser until this form is submitted. */}
-        <PersistForm id="onb-hue" storageKey={`huemen:onb:${pack!.id}:hue`} action={hueAction} className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4">
+        <PersistForm id="onb-hue" storageKey={`huemen:onb:${pack!.id}:hue`} action={hueAction} className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4">
           <input type="hidden" name="tenantId" value={id} />
-          <h2 className="text-[1.05rem]">Your pillars</h2>
-          <p className="text-[0.88rem] text-ink-muted">Pillars come from your brief and two or three answers about what you stand for.</p>
+          <h2 className="text-base">Your pillars</h2>
+          <p className="text-sm text-ink-muted">Pillars come from your brief and two or three answers about what you stand for.</p>
           {[
             ["known_for", "Twelve months from now, what do you want to be known for?"],
             ["contrarian", "What do you believe that most people in your field would argue with?"],
             ["questions", "What do clients ask you over and over?"],
           ].map(([key, label]) => (
             <label key={key} className="block">
-              <span className="block text-[0.85rem] font-medium mb-1.5">{label}</span>
+              <span className="block text-sm font-medium mb-1.5">{label}</span>
               <textarea name={key} rows={2} defaultValue={saved[key] ?? ""} className="field" />
             </label>
           ))}
-          {justGenerated && <p className="text-[0.85rem] text-ok flex items-center gap-2"><CheckCircle2 size={15} aria-hidden="true" /> {pillars.length} pillars ready.</p>}
+          {justGenerated && <p className="text-sm text-ok flex items-center gap-2"><CheckCircle2 size={15} aria-hidden="true" /> {pillars.length} pillars ready.</p>}
           {pillars.length > 0 && (
             <ul className="flex flex-wrap gap-2">
               {pillars.map((p) => <li key={p.id}><Badge>{p.name}</Badge></li>)}
@@ -282,9 +282,9 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
           </div>
         </PersistForm>
 
-        <div className="bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-2">
-          <h2 className="text-[1.05rem]">The one idea <span className="text-ink-faint font-normal text-[0.85rem]">· optional</span></h2>
-          <p className="text-[0.88rem] text-ink-muted">Skip this if you don&apos;t know yet; nothing depends on it.</p>
+        <div className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-2">
+          <h2 className="text-base">The one idea <span className="text-ink-faint font-normal text-sm">· optional</span></h2>
+          <p className="text-sm text-ink-muted">Skip this if you don&apos;t know yet; nothing depends on it.</p>
           <QuestionField tenantId={id} q={questionById("A4")!} initial={carries} answered={!!carries} prefill={prefill("A4", carries, {}, pack!.onboarding.suggestions?.answers.A4) ?? undefined} />
         </div>
 

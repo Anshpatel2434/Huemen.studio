@@ -18,8 +18,8 @@ export default function AppError({ error, retry }: { error: Error & { digest?: s
         That didn&apos;t <span className="serif-accent">load</span>
       </AuthTitle>
       <div className="mt-6 flex flex-col gap-2">
-        <button onClick={() => retry()} className="h-10 rounded-[8px] bg-ink text-on-ink text-[0.85rem] font-medium hover:opacity-90">Try again</button>
-        <Link href="/dashboard" className="h-9 rounded-[8px] text-[0.82rem] text-ink-muted hover:text-ink hover:bg-field flex items-center justify-center">Go to your projects</Link>
+        <button onClick={() => retry()} className="h-10 rounded-sm bg-ink text-on-ink text-sm font-medium hover:opacity-90">Try again</button>
+        <Link href="/dashboard" className="h-9 rounded-sm text-sm text-ink-muted hover:text-ink hover:bg-field flex items-center justify-center">Go to your projects</Link>
       </div>
       {error.digest && <AuthFoot>Reference <span className="font-mono">{error.digest}</span>. Quote it if you contact support.</AuthFoot>}
     </AuthShell>

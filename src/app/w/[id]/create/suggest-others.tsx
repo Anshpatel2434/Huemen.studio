@@ -12,7 +12,7 @@ export function SuggestOthers({ tenantId }: { tenantId: string }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="flex items-center gap-3">
-      {error && <span role="alert" className="text-[0.8rem] text-danger">{error}</span>}
+      {error && <span role="alert" className="text-sm text-danger">{error}</span>}
       <button
         type="button"
         disabled={pending}

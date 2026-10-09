@@ -15,7 +15,7 @@ export default async function Home() {
       <header className="flex items-center justify-between px-5 h-14">
         <Link href="/" className="flex items-center gap-2">
           <LogoMark size={26} />
-          <span className="text-[0.95rem] font-medium tracking-tight">Huemen<span className="text-accent">.</span>studio</span>
+          <span className="text-base font-medium tracking-tight">Huemen<span className="text-accent">.</span>studio</span>
         </Link>
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
@@ -27,12 +27,12 @@ export default async function Home() {
         <div className="fade-up">
           <StageChips active="brief" />
         </div>
-        <h1 className="mt-8 text-[2.6rem] sm:text-[3.4rem] leading-[1.05] max-w-3xl fade-up">
+        <h1 className="mt-8 text-display leading-[1.05] max-w-3xl fade-up">
           Define your brand once.
           <br />
           <span className="serif-accent">Everything else follows.</span>
         </h1>
-        <p className="mt-5 text-[1rem] text-ink-muted max-w-xl leading-relaxed fade-up">
+        <p className="mt-5 text-base text-ink-muted max-w-xl leading-relaxed fade-up">
           Your story, voice and visual identity become one stored brief. Every post, carousel
           and quote card is generated from it, so you never re-brief an AI from scratch.
         </p>

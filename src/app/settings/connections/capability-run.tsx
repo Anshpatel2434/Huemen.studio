@@ -151,9 +151,9 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
             <FileText size={14} aria-hidden="true" /> Pick documents
           </button>
           {picked.length > 0 && (
-            <div className="flex flex-col gap-2 border border-hairline rounded-[10px] p-3">
+            <div className="flex flex-col gap-2 border border-hairline rounded-md p-3">
               {picked.map((f, i) => (
-                <div key={f.id} className="flex flex-wrap items-center gap-2 text-[0.85rem]">
+                <div key={f.id} className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="flex-1 min-w-0 truncate">{f.name}</span>
                   <select
                     value={f.channel}
@@ -163,13 +163,13 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
                   >
                     {CHANNELS.map((c) => <option key={c} value={c}>{PLATFORM_RULES[c]?.label ?? c}</option>)}
                   </select>
-                  <label className="flex items-center gap-1.5 min-h-11 text-[0.8rem]">
+                  <label className="flex items-center gap-1.5 min-h-11 text-sm">
                     <input type="checkbox" checked={f.published} onChange={(e) => setPicked(picked.map((x, j) => (j === i ? { ...x, published: e.target.checked } : x)))} />
                     Published
                   </label>
                 </div>
               ))}
-              <p className="text-[0.75rem] text-ink-faint">Unpublished documents are measured but never quoted in a draft.</p>
+              <p className="text-xs text-ink-faint">Unpublished documents are measured but never quoted in a draft.</p>
               <button type="button" disabled={pending} onClick={importDocs} className={`${btnClass("primary", "sm")} self-start`}>
                 {pending ? <><AgentDots /> Reading</> : `Import ${picked.length} ${picked.length === 1 ? "document" : "documents"}`}
               </button>
@@ -186,12 +186,12 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
             </button>
           )}
           {events && (
-            <div className="flex flex-col gap-1.5 border border-hairline rounded-[10px] p-3">
-              {events.length === 0 && <p className="text-[0.85rem] text-ink-muted">Nothing coming up that looks like content.</p>}
+            <div className="flex flex-col gap-1.5 border border-hairline rounded-md p-3">
+              {events.length === 0 && <p className="text-sm text-ink-muted">Nothing coming up that looks like content.</p>}
               {events.map((e) => (
-                <label key={e.id} className="flex items-start gap-2 min-h-11 text-[0.85rem] cursor-pointer">
+                <label key={e.id} className="flex items-start gap-2 min-h-11 text-sm cursor-pointer">
                   <input type="checkbox" className="mt-1" checked={chosen.includes(e.id)} onChange={() => setChosen(chosen.includes(e.id) ? chosen.filter((x) => x !== e.id) : [...chosen, e.id])} />
-                  <span><span className="font-mono text-[0.75rem] text-ink-faint tabular-nums">{e.date}</span> {e.title}</span>
+                  <span><span className="font-mono text-xs text-ink-faint tabular-nums">{e.date}</span> {e.title}</span>
                 </label>
               ))}
               <div className="flex gap-2 pt-1">
@@ -216,7 +216,7 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
       )}
 
       {msg && (
-        <p role={msg.ok ? "status" : "alert"} className={`text-[0.82rem] flex items-start gap-1.5 ${msg.ok ? "text-ok" : "text-danger"}`}>
+        <p role={msg.ok ? "status" : "alert"} className={`text-sm flex items-start gap-1.5 ${msg.ok ? "text-ok" : "text-danger"}`}>
           {msg.ok && <Check size={13} className="mt-0.5 shrink-0" aria-hidden="true" />} {msg.text}
         </p>
       )}

@@ -39,28 +39,28 @@ export function DraftModal({
     <Modal open={open} onClose={() => !pending && onClose()} title="Draft from your brief" width={520}>
       <div className="flex flex-col gap-4">
         <div>
-          <p className="text-[0.8rem] font-medium mb-2">Format</p>
+          <p className="text-sm font-medium mb-2">Format</p>
           <div className="flex flex-wrap gap-1.5">
             {FORMATS.map((f) => (
-              <button key={f.key} type="button" onClick={() => setFormat(f.key)} className={`h-8 px-3 rounded-[8px] text-[0.8rem] border transition-colors ${format === f.key ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>{f.label}</button>
+              <button key={f.key} type="button" onClick={() => setFormat(f.key)} className={`h-8 px-3 rounded-sm text-sm border transition-colors ${format === f.key ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>{f.label}</button>
             ))}
           </div>
         </div>
         <label className="block">
-          <span className="text-[0.8rem] font-medium mb-1.5 block">Topic or idea <span className="text-ink-faint font-normal">(optional)</span></span>
+          <span className="text-sm font-medium mb-1.5 block">Topic or idea <span className="text-ink-faint font-normal">(optional)</span></span>
           <input value={topic} onChange={(e) => setTopic(e.target.value)} className="field" placeholder="e.g. Why I stopped offering discounts" />
         </label>
         {pillars.length > 0 && (
           <label className="block">
-            <span className="text-[0.8rem] font-medium mb-1.5 block">Pillar</span>
+            <span className="text-sm font-medium mb-1.5 block">Pillar</span>
             <select value={pillar} onChange={(e) => setPillar(e.target.value)} className="field">
               <option value="">No pillar</option>
               {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
         )}
-        <p className="text-[0.78rem] text-ink-muted">No brand context to type: voice, story and guardrails come from the brief. You&apos;ll get two variants.</p>
-        {error && <p className="text-[0.8rem] text-accent-ink">{error}</p>}
+        <p className="text-xs text-ink-muted">No brand context to type: voice, story and guardrails come from the brief. You&apos;ll get two variants.</p>
+        {error && <p className="text-sm text-accent-ink">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} disabled={pending} className={btnClass("ghost")}>Cancel</button>
           <button onClick={submit} disabled={pending} className={btnClass("primary")}>

@@ -59,7 +59,7 @@ Tone: story-led, energetic, grounded`,
 function Submit({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={disabled || pending} className="w-9 h-9 rounded-[9px] bg-ink text-on-ink flex items-center justify-center disabled:bg-field disabled:text-ink-faint transition-colors" aria-label="Build brief">
+    <button type="submit" disabled={disabled || pending} className="w-9 h-9 rounded-md bg-ink text-on-ink flex items-center justify-center disabled:bg-field disabled:text-ink-faint transition-colors" aria-label="Build brief">
       {pending ? <AgentDots /> : <ArrowUp size={16} />}
     </button>
   );
@@ -75,7 +75,7 @@ export function IntakeForm({ tenantId }: { tenantId: string }) {
 
   return (
     <div className="w-full max-w-[720px] mt-9 fade-up">
-      <form action={submitIntakeAction} onSubmit={() => clearDraft(draftKey)} className="bg-paper border border-hairline rounded-[14px] shadow-[var(--shadow)] focus-within:border-line">
+      <form action={submitIntakeAction} onSubmit={() => clearDraft(draftKey)} className="bg-paper border border-hairline rounded-md shadow-[var(--shadow)] focus-within:border-line">
         <input type="hidden" name="tenantId" value={tenantId} />
         <textarea
           name="notes"
@@ -83,28 +83,28 @@ export function IntakeForm({ tenantId }: { tenantId: string }) {
           onChange={(e) => setText(e.target.value)}
           rows={8}
           placeholder="Drop in your notes, transcript or brief…"
-          className="w-full resize-none bg-transparent px-4 pt-4 text-[0.92rem] leading-relaxed outline-none placeholder:text-ink-faint"
+          className="w-full resize-none bg-transparent px-4 pt-4 text-base leading-relaxed outline-none placeholder:text-ink-faint"
         />
         <div className="flex items-center gap-2 px-3 pb-3">
-          <span className="text-[0.78rem] text-ink-faint flex-1">
+          <span className="text-xs text-ink-faint flex-1">
             {text.trim() ? `${placed.length} field${placed.length === 1 ? "" : "s"} recognised` : "Plain text · nothing is sent until you submit"}
           </span>
-          <Link href={`/w/${tenantId}/brand/edit`} className="text-[0.8rem] text-ink-muted hover:text-ink px-2">Skip to editor</Link>
+          <Link href={`/w/${tenantId}/brand/edit`} className="text-sm text-ink-muted hover:text-ink px-2">Skip to editor</Link>
           <Submit disabled={!text.trim()} />
         </div>
       </form>
 
       {text.trim() ? (
-        <div className="mt-4 bg-panel border border-hairline rounded-[12px] p-4 fade-in">
+        <div className="mt-4 bg-panel border border-hairline rounded-md p-4 fade-in">
           <p className="label-mono text-ink-faint mb-2.5">Preview · what lands in the brief</p>
           <div className="flex flex-wrap gap-1.5">
             {placed.map((k) => (
-              <span key={k} className="inline-flex items-center gap-1 h-7 px-2.5 rounded-[7px] bg-paper border border-hairline text-[0.78rem]"><Check size={12} className="text-ok" /> {FIELD_LABELS[k] ?? k}</span>
+              <span key={k} className="inline-flex items-center gap-1 h-7 px-2.5 rounded-sm bg-paper border border-hairline text-xs"><Check size={12} className="text-ok" /> {FIELD_LABELS[k] ?? k}</span>
             ))}
-            {placed.length === 0 && <span className="text-[0.8rem] text-ink-muted">No labelled fields yet. Start lines with a label like “Niche:” or “Audience:”.</span>}
+            {placed.length === 0 && <span className="text-sm text-ink-muted">No labelled fields yet. Start lines with a label like “Niche:” or “Audience:”.</span>}
           </div>
           {unplacedLines > 0 && (
-            <p className="mt-3 text-[0.8rem] text-warn flex items-start gap-1.5">
+            <p className="mt-3 text-sm text-warn flex items-start gap-1.5">
               <CircleDashed size={13} className="mt-0.5 shrink-0" />
               {unplacedLines} line{unplacedLines > 1 ? "s" : ""} can&apos;t be matched to a field and won&apos;t be saved. Add a label, or paste them into the editor afterwards.
             </p>
@@ -112,12 +112,12 @@ export function IntakeForm({ tenantId }: { tenantId: string }) {
         </div>
       ) : (
         <div className="mt-6 text-center">
-          <p className="text-[0.8rem] text-ink-faint">Try an example</p>
+          <p className="text-sm text-ink-faint">Try an example</p>
           <div className="mt-2.5 flex flex-wrap justify-center gap-2">
             {EXAMPLES.map((e) => {
               const Icon = e.icon;
               return (
-                <button key={e.label} type="button" onClick={() => setText(e.text)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[8px] border border-line bg-paper text-[0.82rem] hover:border-ink transition-colors">
+                <button key={e.label} type="button" onClick={() => setText(e.text)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line bg-paper text-sm hover:border-ink transition-colors">
                   <Icon size={14} /> {e.label}
                 </button>
               );

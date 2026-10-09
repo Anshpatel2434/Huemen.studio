@@ -128,19 +128,19 @@ export function Canvas({
         {children}
       </div>
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-paper border border-hairline rounded-[12px] p-1 shadow-[var(--shadow)]" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-paper border border-hairline rounded-md p-1 shadow-[var(--shadow)]" onPointerDown={(e) => e.stopPropagation()}>
         <ToolBtn on={tool === "select"} onClick={() => setTool("select")} title="Select (V)"><MousePointer2 size={16} /></ToolBtn>
         <ToolBtn on={tool === "hand"} onClick={() => setTool("hand")} title="Hand (H, or hold Space)"><Hand size={16} /></ToolBtn>
         <span className="w-px h-5 bg-hairline mx-0.5" />
         <div className="relative">
-          <button onClick={() => setMenu((m) => !m)} className="h-8 px-2.5 rounded-[8px] flex items-center gap-1 text-[0.82rem] tabular-nums hover:bg-field">
+          <button onClick={() => setMenu((m) => !m)} className="h-8 px-2.5 rounded-sm flex items-center gap-1 text-sm tabular-nums hover:bg-field">
             {Math.round(zoom * 100)}% <ChevronDown size={13} className="text-ink-faint" />
           </button>
           {menu && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-40 bg-paper border border-hairline rounded-[10px] shadow-[var(--shadow-lg)] p-1 pop">
-              <button onClick={() => { fit(); setMenu(false); }} className="w-full text-left h-8 px-2.5 rounded-[7px] hover:bg-field text-[0.82rem] flex justify-between">Zoom to fit <span className="text-ink-faint">⇧1</span></button>
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-40 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-1 pop">
+              <button onClick={() => { fit(); setMenu(false); }} className="w-full text-left h-8 px-2.5 rounded-sm hover:bg-field text-sm flex justify-between">Zoom to fit <span className="text-ink-faint">⇧1</span></button>
               {ZOOMS.map((z) => (
-                <button key={z} onClick={() => zoomTo(z)} className="w-full text-left h-8 px-2.5 rounded-[7px] hover:bg-field text-[0.82rem]">{z}%</button>
+                <button key={z} onClick={() => zoomTo(z)} className="w-full text-left h-8 px-2.5 rounded-sm hover:bg-field text-sm">{z}%</button>
               ))}
             </div>
           )}
@@ -161,7 +161,7 @@ export function Canvas({
 
 export function ToolBtn({ children, on, onClick, title }: { children: ReactNode; on?: boolean; onClick: () => void; title: string }) {
   return (
-    <button onClick={onClick} title={title} aria-pressed={on} className={`w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors ${on ? "bg-accent-soft text-accent-ink" : "text-ink-muted hover:bg-field"}`}>
+    <button onClick={onClick} title={title} aria-pressed={on} className={`w-8 h-8 rounded-sm flex items-center justify-center transition-colors ${on ? "bg-accent-soft text-accent-ink" : "text-ink-muted hover:bg-field"}`}>
       {children}
     </button>
   );
@@ -183,13 +183,13 @@ export function Artboard({ label, meta, width, children, selected, onSelect, act
         title={onDragStart ? "Drag to move" : undefined}
       >
         {onDragStart && <GripVertical size={13} className="-ml-1 text-ink-faint opacity-0 group-hover/board:opacity-100 shrink-0" />}
-        <span className={`text-[0.78rem] font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>
-        {meta && <span className="text-[0.72rem] text-ink-faint truncate">{meta}</span>}
+        <span className={`text-xs font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>
+        {meta && <span className="text-xs text-ink-faint truncate">{meta}</span>}
         <span className="ml-auto flex items-center gap-1">{actions}</span>
       </div>
       <div
         onClick={onSelect}
-        className={`theme-light bg-paper rounded-[4px] overflow-hidden transition-shadow ${onSelect ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"}`}
+        className={`theme-light bg-paper rounded-xs overflow-hidden transition-shadow ${onSelect ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"}`}
       >
         {children}
       </div>

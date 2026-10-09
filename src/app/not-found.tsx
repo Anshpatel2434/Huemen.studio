@@ -15,7 +15,7 @@ export default function NotFound() {
       <AuthTitle sub="This page doesn't exist, or it belongs to a workspace you don't have access to.">
         Nothing <span className="serif-accent">here</span>
       </AuthTitle>
-      <Link href="/dashboard" className="mt-6 h-10 rounded-[8px] bg-ink text-on-ink text-[0.85rem] font-medium flex items-center justify-center hover:opacity-90">Go to your projects</Link>
+      <Link href="/dashboard" className="mt-6 h-10 rounded-sm bg-ink text-on-ink text-sm font-medium flex items-center justify-center hover:opacity-90">Go to your projects</Link>
       <AuthFoot>Expected to see something? Check you&apos;re signed in with the email you were invited with.</AuthFoot>
     </AuthShell>
   );

@@ -34,12 +34,12 @@ export function CoreWatcher({ state, pieces }: { state: CoreState; pieces: numbe
 
   if (!running) return null;
   return (
-    <div role="status" aria-live="polite" className="flex flex-col gap-2 bg-field rounded-[10px] px-4 py-3">
-      <p className="text-[0.88rem] font-medium flex items-center gap-2"><AgentDots /> {CORE_STATE_LABEL[state]}</p>
+    <div role="status" aria-live="polite" className="flex flex-col gap-2 bg-field rounded-md px-4 py-3">
+      <p className="text-sm font-medium flex items-center gap-2"><AgentDots /> {CORE_STATE_LABEL[state]}</p>
       <div className="h-1.5 rounded-full bg-paper overflow-hidden" role="progressbar" aria-label={CORE_STATE_LABEL[state]}>
         <div className="h-full w-full bg-ink animate-pulse" />
       </div>
-      <p className="text-[0.78rem] text-ink-muted">You can leave this page. It keeps going, and it&apos;ll be here when you come back.</p>
+      <p className="text-xs text-ink-muted">You can leave this page. It keeps going, and it&apos;ll be here when you come back.</p>
     </div>
   );
 }

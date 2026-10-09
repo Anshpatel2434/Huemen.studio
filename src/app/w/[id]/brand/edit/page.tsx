@@ -13,22 +13,22 @@ export const metadata = { title: "Edit brief" };
 function Field({ name, label, defaultValue, placeholder, rows, hint }: { name: string; label: string; defaultValue?: string; placeholder?: string; rows?: number; hint?: string }) {
   return (
     <label className="block">
-      <span className="block text-[0.8rem] font-medium mb-1.5">{label}</span>
+      <span className="block text-sm font-medium mb-1.5">{label}</span>
       {rows ? (
         <textarea name={name} defaultValue={defaultValue} placeholder={placeholder} rows={rows} className="field" />
       ) : (
         <input name={name} defaultValue={defaultValue} placeholder={placeholder} className="field" />
       )}
-      {hint && <span className="block text-[0.75rem] text-ink-faint mt-1">{hint}</span>}
+      {hint && <span className="block text-xs text-ink-faint mt-1">{hint}</span>}
     </label>
   );
 }
 
 function Card({ id, title, sub, children }: { id: string; title: string; sub: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="bg-paper border border-hairline rounded-[14px] p-6 scroll-mt-6">
+    <section id={id} className="bg-paper border border-hairline rounded-md p-6 scroll-mt-6">
       <p className="font-medium">{title}</p>
-      <p className="text-[0.8rem] text-ink-muted mt-0.5 mb-5">{sub}</p>
+      <p className="text-sm text-ink-muted mt-0.5 mb-5">{sub}</p>
       <div className="flex flex-col gap-4">{children}</div>
     </section>
   );
@@ -43,12 +43,12 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-[760px] mx-auto px-8 py-8">
-        <Link href={`/w/${id}/brand`} className="inline-flex items-center gap-1.5 text-[0.82rem] text-ink-muted hover:text-ink"><ArrowLeft size={14} /> Brief</Link>
-        <h1 className="text-[1.9rem] mt-3">Edit the brief. <span className="serif-accent">Once.</span></h1>
-        <p className="text-ink-muted mt-2 text-[0.9rem]">This is the context every post and image is generated from. The studio degrades on purpose when it&apos;s thin.</p>
+        <Link href={`/w/${id}/brand`} className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink"><ArrowLeft size={14} /> Brief</Link>
+        <h1 className="text-3xl mt-3">Edit the brief. <span className="serif-accent">Once.</span></h1>
+        <p className="text-ink-muted mt-2 text-sm">This is the context every post and image is generated from. The studio degrades on purpose when it&apos;s thin.</p>
 
         {sp.placed && (
-          <div className="mt-5 bg-panel border border-hairline rounded-[12px] px-4 py-3 flex gap-2.5 text-[0.85rem]">
+          <div className="mt-5 bg-panel border border-hairline rounded-md px-4 py-3 flex gap-2.5 text-sm">
             <Info size={15} className="shrink-0 mt-0.5" />
             <span>
               Filled {sp.placed} field{sp.placed === "1" ? "" : "s"} from your notes. Review below and save.
@@ -94,12 +94,12 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
           </div>
         </PersistForm>
 
-        <section id="assets" className="mt-6 mb-16 bg-paper border border-hairline rounded-[14px] p-6 scroll-mt-6">
+        <section id="assets" className="mt-6 mb-16 bg-paper border border-hairline rounded-md p-6 scroll-mt-6">
           <p className="font-medium">Brand assets</p>
-          <p className="text-[0.8rem] text-ink-muted mt-0.5 mb-4">Logos, fonts and reference images. PNG, JPG, WebP, SVG or font files, max 5 MB.</p>
+          <p className="text-sm text-ink-muted mt-0.5 mb-4">Logos, fonts and reference images. PNG, JPG, WebP, SVG or font files, max 5 MB.</p>
           <form action={uploadAssetAction} className="flex flex-wrap items-center gap-2">
             <input type="hidden" name="tenantId" value={id} />
-            <input type="file" name="file" required className="text-[0.82rem] file:mr-3 file:rounded-[7px] file:border-0 file:bg-field file:px-3 file:py-1.5 file:text-[0.8rem]" />
+            <input type="file" name="file" required className="text-sm file:mr-3 file:rounded-sm file:border-0 file:bg-field file:px-3 file:py-1.5 file:text-sm" />
             <select name="kind" defaultValue="logo" className="field !w-auto">
               <option value="logo">Logo</option>
               <option value="reference_image">Reference image</option>
@@ -110,12 +110,12 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
           {assets.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-3">
               {assets.map((a) => (
-                <div key={a.id} className="w-28 bg-panel border border-hairline rounded-[10px] p-2">
+                <div key={a.id} className="w-28 bg-panel border border-hairline rounded-md p-2">
                   {a.mime.startsWith("image/") ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={a.url} alt={a.kind} className="w-full h-16 object-contain" />
                   ) : (
-                    <div className="h-16 flex items-center justify-center text-[0.72rem] text-ink-faint">{a.mime}</div>
+                    <div className="h-16 flex items-center justify-center text-xs text-ink-faint">{a.mime}</div>
                   )}
                   <p className="label-mono text-ink-faint mt-1 truncate">{a.kind.replace("_", " ")}</p>
                 </div>

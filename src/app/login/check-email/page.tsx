@@ -25,10 +25,10 @@ export default async function CheckEmailPage({ searchParams }: PageProps<"/login
       </AuthTitle>
 
       {devHref && (
-        <div className="mt-6 rounded-[10px] border border-dashed border-line p-3.5">
+        <div className="mt-6 rounded-md border border-dashed border-line p-3.5">
           <p className="label-mono text-ink-faint">Dev inbox</p>
-          <p className="text-[0.78rem] text-ink-muted mt-1 leading-relaxed">No mail is sent locally. This is the link the email would contain (also printed in the server log).</p>
-          <Link href={devHref} className="mt-3 h-9 rounded-[8px] bg-ink text-on-ink text-[0.82rem] font-medium flex items-center justify-center gap-1.5 hover:opacity-90">
+          <p className="text-xs text-ink-muted mt-1 leading-relaxed">No mail is sent locally. This is the link the email would contain (also printed in the server log).</p>
+          <Link href={devHref} className="mt-3 h-9 rounded-sm bg-ink text-on-ink text-sm font-medium flex items-center justify-center gap-1.5 hover:opacity-90">
             Open sign-in link <ArrowUpRight size={14} />
           </Link>
         </div>
@@ -40,7 +40,7 @@ export default async function CheckEmailPage({ searchParams }: PageProps<"/login
           {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
           <SubmitButton variant="secondary" pendingLabel="Sending…" className="w-full">Resend the link</SubmitButton>
         </form>
-        <Link href={`/login${next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : ""}`} className="h-9 rounded-[8px] text-[0.82rem] text-ink-muted hover:text-ink hover:bg-field flex items-center justify-center">Use a different email</Link>
+        <Link href={`/login${next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : ""}`} className="h-9 rounded-sm text-sm text-ink-muted hover:text-ink hover:bg-field flex items-center justify-center">Use a different email</Link>
       </div>
 
       <AuthFoot>Can&apos;t find it? Check spam or promotions, and make sure it&apos;s the address you were invited with.</AuthFoot>

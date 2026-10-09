@@ -88,21 +88,21 @@ export function CheckDesk({ tenantId, platforms, confidence }: {
   const findingList = (
     <div className="flex flex-col gap-3">
       {codeFindings.length > 0 && <Findings items={codeFindings} />}
-      {judging && <p className="text-[0.85rem] text-ink-muted flex items-center gap-2"><AgentDots /> Reading it line by line</p>}
+      {judging && <p className="text-sm text-ink-muted flex items-center gap-2"><AgentDots /> Reading it line by line</p>}
       {lineFindings.map((f) => (
-        <div key={f.line} className="border border-hairline rounded-[10px] p-3.5 flex flex-col gap-2">
-          <p className="text-[0.85rem] italic">“{f.line}”</p>
-          <p className="text-[0.8rem] text-ink-muted"><span className="font-medium text-ink">{f.attribute}.</span> {f.why}</p>
+        <div key={f.line} className="border border-hairline rounded-md p-3.5 flex flex-col gap-2">
+          <p className="text-sm italic">“{f.line}”</p>
+          <p className="text-sm text-ink-muted"><span className="font-medium text-ink">{f.attribute}.</span> {f.why}</p>
           {f.fix && (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[0.85rem] flex-1 min-w-0"><span className="text-ink-faint">In your voice: </span>{f.fix}</p>
+              <p className="text-sm flex-1 min-w-0"><span className="text-ink-faint">In your voice: </span>{f.fix}</p>
               <button type="button" onClick={() => applyFix(f.line, f.fix)} className={btnClass("secondary", "sm")}>Apply</button>
             </div>
           )}
         </div>
       ))}
       {!judging && findings && codeFindings.length === 0 && lineFindings.length === 0 && (
-        <p className="text-[0.85rem] text-ink-muted">Nothing to change.</p>
+        <p className="text-sm text-ink-muted">Nothing to change.</p>
       )}
     </div>
   );
@@ -110,7 +110,7 @@ export function CheckDesk({ tenantId, platforms, confidence }: {
   return (
     <div className="flex flex-col gap-5">
       {confidence && confidence.score < 70 && (
-        <p className="text-[0.85rem] text-warn bg-warn-soft rounded-[8px] px-3 py-2.5 flex items-start gap-2">
+        <p className="text-sm text-warn bg-warn-soft rounded-sm px-3 py-2.5 flex items-start gap-2">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>Your core is {confidence.score}% confident, so this check is still learning you.{confidence.missing[0] ? ` ${confidence.missing[0]}.` : ""} <Link href={`/w/${tenantId}/onboarding?step=1`} className="underline underline-offset-2">Add writing</Link></span>
         </p>
@@ -118,8 +118,8 @@ export function CheckDesk({ tenantId, platforms, confidence }: {
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <label htmlFor="check-text" className="text-[0.88rem] font-medium">Your draft</label>
-          <label className="flex items-center gap-2 text-[0.82rem] text-ink-muted">
+          <label htmlFor="check-text" className="text-sm font-medium">Your draft</label>
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
             For
             <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="field !w-auto min-h-11">
               {Object.values(PLATFORM_RULES).map((p) => (
@@ -128,8 +128,8 @@ export function CheckDesk({ tenantId, platforms, confidence }: {
             </select>
           </label>
         </div>
-        <textarea id="check-text" rows={12} value={text} onChange={(e) => setText(e.target.value)} className="field text-[0.95rem] leading-relaxed" placeholder="Paste a draft." />
-        <div className="flex flex-wrap items-center gap-3 text-[0.78rem] text-ink-faint tabular-nums">
+        <textarea id="check-text" rows={12} value={text} onChange={(e) => setText(e.target.value)} className="field text-base leading-relaxed" placeholder="Paste a draft." />
+        <div className="flex flex-wrap items-center gap-3 text-xs text-ink-faint tabular-nums">
           <span>{text.length.toLocaleString()} characters</span>
           {rule?.maxChars && <span>· limit {rule.maxChars.toLocaleString()}</span>}
           {rule?.visibleChars && <span>· {rule.visibleChars} show before “see more”</span>}
@@ -158,18 +158,18 @@ export function CheckDesk({ tenantId, platforms, confidence }: {
         </div>
       </div>
 
-      {error && <p role="alert" className="text-[0.85rem] text-danger bg-danger-soft rounded-[8px] px-3 py-2.5">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger bg-danger-soft rounded-sm px-3 py-2.5">{error}</p>}
 
       {result && band && (
-        <section aria-live="polite" className={`bg-paper border border-hairline rounded-[12px] p-5 flex flex-col gap-4 ${stale ? "opacity-60" : ""}`}>
+        <section aria-live="polite" className={`bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4 ${stale ? "opacity-60" : ""}`}>
           <ScoreMeter score={result.score} band={band} />
-          <p className="text-[0.8rem] text-ink-muted">
+          <p className="text-sm text-ink-muted">
             Measured against {result.corpusPieces} {result.corpusPieces === 1 ? "piece" : "pieces"} of your writing{rule ? `, for ${rule.label}` : ""}.
             {stale && " You've edited since. Check again for a fresh score."}
           </p>
           {band === "on" ? (
             <details>
-              <summary className="cursor-pointer min-h-11 flex items-center text-[0.85rem] text-ink-muted">Details</summary>
+              <summary className="cursor-pointer min-h-11 flex items-center text-sm text-ink-muted">Details</summary>
               {findingList}
             </details>
           ) : (

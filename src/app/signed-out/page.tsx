@@ -18,7 +18,7 @@ export default async function SignedOutPage() {
       <AuthTitle sub="Your session on this device has ended. Your brief and content are saved.">
         You&apos;re signed <span className="serif-accent">out</span>
       </AuthTitle>
-      <Link href="/login" className="mt-6 h-10 rounded-[8px] bg-ink text-on-ink text-[0.85rem] font-medium flex items-center justify-center hover:opacity-90">Sign in again</Link>
+      <Link href="/login" className="mt-6 h-10 rounded-sm bg-ink text-on-ink text-sm font-medium flex items-center justify-center hover:opacity-90">Sign in again</Link>
       <AuthFoot>On a shared computer? Close this browser window too.</AuthFoot>
     </AuthShell>
   );

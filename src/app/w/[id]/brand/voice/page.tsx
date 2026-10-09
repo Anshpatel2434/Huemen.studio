@@ -24,7 +24,7 @@ export const metadata = { title: "Voice" };
 export const dynamic = "force-dynamic";
 
 const Card = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <section className="bg-paper border border-hairline rounded-[14px] p-5">
+  <section className="bg-paper border border-hairline rounded-md p-5">
     <p className="label-mono text-ink-faint mb-3">{label}</p>
     {children}
   </section>
@@ -36,7 +36,7 @@ function Tag({ confidence, count }: { confidence?: string; count?: number }) {
   const measured = confidence === "measured";
   return (
     <span
-      className={`label-mono text-[0.6rem] px-1.5 h-5 inline-flex items-center rounded-[4px] ${
+      className={`label-mono px-1.5 h-5 inline-flex items-center rounded-xs ${
         measured ? "bg-ok-soft text-ok" : "bg-field text-ink-faint"
       }`}
       title={measured ? `Measured across ${count ?? 0} pieces of your writing` : "Not measured — you told us, or we inferred it"}
@@ -64,7 +64,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   if (!pack) {
     return (
       <DocPage eyebrow="Brand core · Voice" title="No voice yet." accent="Let's build one." sub="A Voice Pack belongs to a person. Sign in as the person whose brand this is and it will be created for them.">
-        <div className="bg-paper border border-hairline rounded-[14px]">
+        <div className="bg-paper border border-hairline rounded-md">
           <EmptyState icon={<Mic size={18} />} title="No pack on file" sub="Voice packs are created for the person whose writing they describe." />
         </div>
       </DocPage>
@@ -126,16 +126,16 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
       <div className="mb-6 flex flex-col gap-3"><BrandCoreCard {...coreCard} /><CoreWatcher state={state} pieces={pack.corpusStats.pieces} /></div>
       <div className="flex flex-col gap-5">
         {due.due && !preview && (
-          <div role="status" className="text-[0.85rem] bg-accent-soft rounded-[10px] px-4 py-3 flex flex-wrap items-center gap-3">
+          <div role="status" className="text-sm bg-accent-soft rounded-md px-4 py-3 flex flex-wrap items-center gap-3">
             <span className="flex-1 min-w-0">It&apos;s been {due.days} days since we measured your writing, and you&apos;ve approved {sinceScan} new {sinceScan === 1 ? "piece" : "pieces"} since. Worth a fresh look?</span>
             <form action={previewRescanAction}><Hidden /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>
           </div>
         )}
         {preview && (
-          <div id="remeasure" role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3 flex flex-col gap-2">
+          <div id="remeasure" role="status" className="text-sm bg-field rounded-md px-4 py-3 flex flex-col gap-2">
             <p className="font-medium">{preview.length ? "If we re-measure now:" : "Re-measuring now would change nothing."}</p>
             {preview.length > 0 && <ul className="flex flex-col gap-0.5 text-ink-muted">{preview.map((m) => <li key={m}>{m}</li>)}</ul>}
-            <p className="text-[0.78rem] text-ink-faint">Only what was measured changes. Anything you typed or decided stays yours.</p>
+            <p className="text-xs text-ink-faint">Only what was measured changes. Anything you typed or decided stays yours.</p>
             <div className="flex flex-wrap gap-2">
               {preview.length > 0 && (
                 <form action={rescanAction}><Hidden /><SubmitButton pendingLabel="Applying…" size="sm">Apply</SubmitButton></form>
@@ -145,17 +145,17 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           </div>
         )}
         {sp.proposed && (
-          <p role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3">Sent to {pack.displayName || "the owner"} to approve. It&apos;s their voice, so a coach&apos;s change waits for a yes.</p>
+          <p role="status" className="text-sm bg-field rounded-md px-4 py-3">Sent to {pack.displayName || "the owner"} to approve. It&apos;s their voice, so a coach&apos;s change waits for a yes.</p>
         )}
         {sp.scanned && (
-          <div role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3">
+          <div role="status" className="text-sm bg-field rounded-md px-4 py-3">
             <p className="font-medium">{moved.length ? "Re-measured. What moved:" : "Re-measured. Nothing moved."}</p>
             {moved.length > 0 && <ul className="mt-1.5 flex flex-col gap-0.5 text-ink-muted">{moved.map((m) => <li key={m}>{m}</li>)}</ul>}
           </div>
         )}
 
         {conf.score < 70 && (
-          <p className="flex items-start gap-2 text-[0.85rem] text-warn bg-warn-soft rounded-[10px] px-4 py-3">
+          <p className="flex items-start gap-2 text-sm text-warn bg-warn-soft rounded-md px-4 py-3">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <span>
               {conf.score}% confident, so still learning. {conf.missing.slice(0, 2).map((m) => `${m}.`).join(" ")}{" "}
@@ -168,8 +168,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           <Card label="Waiting for a decision">
             <div className="flex flex-col gap-2">
               {proposals.map((p) => (
-                <div key={p.id} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
-                  <span className="flex-1 min-w-0 text-[0.88rem]">
+                <div key={p.id} className="border border-hairline rounded-md px-3 py-2.5 flex flex-wrap items-center gap-2">
+                  <span className="flex-1 min-w-0 text-sm">
                     {p.note ?? "A change"} <span className="text-ink-faint">· from {p.proposedBy ?? "a coach"} · {p.fields.join(", ")}</span>
                   </span>
                   {owner ? (
@@ -187,8 +187,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                 </div>
               ))}
               {learned.map((l) => (
-                <div key={l.id} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
-                  <span className="flex-1 min-w-0 text-[0.88rem]">
+                <div key={l.id} className="border border-hairline rounded-md px-3 py-2.5 flex flex-wrap items-center gap-2">
+                  <span className="flex-1 min-w-0 text-sm">
                     You&apos;ve cut &ldquo;{l.value}&rdquo; from {l.count} drafts. Never use it?
                   </span>
                   <form action={decideEditAction}><Hidden /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="1" />
@@ -205,7 +205,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {deep.length > 0 && (
           <Card label="A few deeper questions">
-            <p className="text-[0.82rem] text-ink-muted mb-3">
+            <p className="text-sm text-ink-muted mb-3">
               You&apos;ve approved {approved} {approved === 1 ? "piece" : "pieces"}. These are the next few that sharpen your voice. Answer any, skip the rest.
             </p>
             <div className="flex flex-col gap-4">
@@ -217,8 +217,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         )}
         <Card label="01 · Your writing">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[1.6rem] font-medium tabular-nums">{pack.corpusStats.pieces}</span>
-            <span className="text-[0.85rem] text-ink-faint">
+            <span className="text-xl font-medium tabular-nums">{pack.corpusStats.pieces}</span>
+            <span className="text-sm text-ink-faint">
               {pack.corpusStats.pieces === 1 ? "piece" : "pieces"} · {pack.corpusStats.words.toLocaleString()} words
               {pack.corpusStats.channels.length > 0 && ` · ${pack.corpusStats.channels.join(", ")}`}
             </span>
@@ -230,7 +230,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           </div>
 
           {level !== "good" && (
-            <p className="mt-3 flex items-start gap-2 text-[0.82rem] text-ink-muted">
+            <p className="mt-3 flex items-start gap-2 text-sm text-ink-muted">
               <AlertTriangle size={14} className="text-warn mt-0.5 shrink-0" />
               {level === "empty" || level === "thin"
                 ? `Under ${CORPUS_MINIMUM_PIECES} pieces, so this voice is provisional. Paste more and the numbers below stop being guesses.`
@@ -248,16 +248,16 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               className="field font-[inherit] leading-relaxed"
             />
             <div className="flex items-center gap-2 flex-wrap">
-              <select name="channel" className="h-8 rounded-[7px] bg-field px-2 text-[0.78rem]">
+              <select name="channel" className="h-8 rounded-sm bg-field px-2 text-xs">
                 {Object.values(PLATFORM_RULES).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                 <option value="unknown">Not sure</option>
               </select>
-              <select name="visibility" className="h-8 rounded-[7px] bg-field px-2 text-[0.78rem]" defaultValue="public">
+              <select name="visibility" className="h-8 rounded-sm bg-field px-2 text-xs" defaultValue="public">
                 <option value="public">Public writing</option>
                 <option value="private">Private (email, chat)</option>
               </select>
               <SubmitButton pendingLabel="Measuring…" size="sm">Add and measure</SubmitButton>
-              <span className="text-[0.72rem] text-ink-faint flex items-center gap-1">
+              <span className="text-xs text-ink-faint flex items-center gap-1">
                 <Lock size={11} /> Private writing is measured but never quoted in a draft.
               </span>
             </div>
@@ -267,18 +267,18 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* ---- the measured fingerprint ---------------------------------- */}
         <Card label="02 · The fingerprint">
           {lines.length === 0 ? (
-            <p className="text-[0.85rem] text-ink-faint">Nothing measured yet. Add some writing above.</p>
+            <p className="text-sm text-ink-faint">Nothing measured yet. Add some writing above.</p>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-3">
                 <Tag confidence={pack.mechanics.sentences?.confidence} count={pack.mechanics.sentences?.count} />
                 {pack.scannedAt && (
-                  <span className="text-[0.72rem] text-ink-faint">
+                  <span className="text-xs text-ink-faint">
                     last measured {new Date(pack.scannedAt).toLocaleDateString()}
                   </span>
                 )}
               </div>
-              <ul className="flex flex-col gap-1.5 text-[0.88rem] leading-relaxed">
+              <ul className="flex flex-col gap-1.5 text-sm leading-relaxed">
                 {lines.map((l, i) => (
                   <li key={i} className={l.startsWith("  ·") ? "pl-4 text-ink-muted" : ""}>{l}</li>
                 ))}
@@ -287,7 +287,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                 <div className="mt-4 pt-4 border-t border-hairline">
                   <p className="label-mono text-ink-faint mb-2">Why we think so</p>
                   {(pack.mechanics.punctuation?.evidence ?? []).map((e, i) => (
-                    <p key={i} className="flex gap-2 text-[0.82rem] text-ink-muted italic">
+                    <p key={i} className="flex gap-2 text-sm text-ink-muted italic">
                       <Quote size={12} className="mt-1 shrink-0 text-ink-faint" />
                       {e.quote}
                     </p>
@@ -301,14 +301,14 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* ---- signature phrases: keep or drop --------------------------- */}
         {signatures.length > 0 && (
           <Card label="03 · Phrases you repeat">
-            <p className="text-[0.82rem] text-ink-muted mb-3">
+            <p className="text-sm text-ink-muted mb-3">
               A signature or a habit? Keeping one protects it from the anti-AI rules; dropping it adds it to your never-list.
             </p>
             <div className="flex flex-col gap-2">
               {signatures.slice(0, 6).map((s) => (
-                <div key={s.phrase} className="flex items-center gap-2 border border-hairline rounded-[10px] px-3 py-2">
-                  <span className="flex-1 text-[0.88rem]">&ldquo;{s.phrase}&rdquo;</span>
-                  <span className="text-[0.72rem] text-ink-faint tabular-nums">{s.count} pieces</span>
+                <div key={s.phrase} className="flex items-center gap-2 border border-hairline rounded-md px-3 py-2">
+                  <span className="flex-1 text-sm">&ldquo;{s.phrase}&rdquo;</span>
+                  <span className="text-xs text-ink-faint tabular-nums">{s.count} pieces</span>
                   <form action={resolveSignatureAction}><Hidden /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="1" />
                     <SubmitButton pendingLabel="…" size="sm" variant="ghost">Keep</SubmitButton>
                   </form>
@@ -354,19 +354,19 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* ---- per-platform, measured or inferred ------------------------ */}
         <Card label="05 · How you sound in each place">
           {contexts.length === 0 ? (
-            <p className="text-[0.85rem] text-ink-faint">Nothing yet. Add writing from a platform and its block appears here.</p>
+            <p className="text-sm text-ink-faint">Nothing yet. Add writing from a platform and its block appears here.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {contexts.map((c) => (
-                <div key={c.channel} className="border border-hairline rounded-[10px] px-3 py-2.5 flex items-center gap-2">
-                  <span className="flex-1 text-[0.88rem]">{PLATFORM_RULES[c.channel]?.label ?? c.channel}</span>
-                  <span className="text-[0.72rem] text-ink-faint tabular-nums">{c.pieceCount}</span>
+                <div key={c.channel} className="border border-hairline rounded-md px-3 py-2.5 flex items-center gap-2">
+                  <span className="flex-1 text-sm">{PLATFORM_RULES[c.channel]?.label ?? c.channel}</span>
+                  <span className="text-xs text-ink-faint tabular-nums">{c.pieceCount}</span>
                   <Tag confidence={c.tag === "measured" ? "measured" : "inferred"} count={c.pieceCount} />
                 </div>
               ))}
             </div>
           )}
-          <p className="text-[0.75rem] text-ink-faint mt-3">
+          <p className="text-xs text-ink-faint mt-3">
             A block is only &ldquo;measured&rdquo; with five real pieces from that platform. Below that we write from your general voice and say so.
           </p>
         </Card>
@@ -376,7 +376,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           <Card label="06 · Dials">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {DIAL_KEYS.filter((k) => pack.index.dials[k] != null).map((k) => (
-                <div key={k} className="flex items-center gap-3 text-[0.8rem]">
+                <div key={k} className="flex items-center gap-3 text-sm">
                   <span className="w-24 text-right text-ink-faint">{DIAL_LABELS[k][0]}</span>
                   <span className="flex-1 h-1 bg-field rounded-full relative">
                     <span className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-ink" style={{ left: `${((pack.index.dials[k]! - 1) / 9) * 100}%` }} />
@@ -391,19 +391,19 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* ---- the corpus itself ----------------------------------------- */}
         <Card label={`07 · On file · ${samples.length}`}>
           {samples.length === 0 ? (
-            <p className="text-[0.85rem] text-ink-faint">Nothing yet.</p>
+            <p className="text-sm text-ink-faint">Nothing yet.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {samples.map((s) => (
-                <div key={s.id} className={`border border-hairline rounded-[10px] p-3 ${s.excluded ? "opacity-45" : ""}`}>
+                <div key={s.id} className={`border border-hairline rounded-md p-3 ${s.excluded ? "opacity-45" : ""}`}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="label-mono text-ink-faint">{PLATFORM_RULES[s.channel]?.label ?? s.channel}</span>
                     {s.visibility === "private" && (
-                      <span className="label-mono text-[0.6rem] px-1.5 h-5 inline-flex items-center gap-1 rounded-[4px] bg-field text-ink-faint">
+                      <span className="label-mono px-1.5 h-5 inline-flex items-center gap-1 rounded-xs bg-field text-ink-faint">
                         <Lock size={9} /> private
                       </span>
                     )}
-                    <span className="text-[0.72rem] text-ink-faint tabular-nums">{s.wordCount} words</span>
+                    <span className="text-xs text-ink-faint tabular-nums">{s.wordCount} words</span>
                     <span className="flex-1" />
                     <form action={excludeSampleAction}>
                       <Hidden />
@@ -420,9 +420,9 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                     </form>
                   </div>
                   {s.visibility === "private" && !owner ? (
-                    <p className="text-[0.82rem] text-ink-faint italic">Private writing. Measured, but only its owner can read it.</p>
+                    <p className="text-sm text-ink-faint italic">Private writing. Measured, but only its owner can read it.</p>
                   ) : (
-                    <p className="text-[0.85rem] leading-relaxed whitespace-pre-wrap line-clamp-4">{s.body}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-4">{s.body}</p>
                   )}
                 </div>
               ))}
@@ -432,7 +432,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {/* ---- history: every save keeps what it replaced ----------------- */}
         <Card label="08 · History">
-          <ul className="flex flex-col gap-2 text-[0.82rem]">
+          <ul className="flex flex-col gap-2 text-sm">
             {versions.map((v, i) => {
               const changed = changedFrom(i);
               const back = diffPacks(pack, v.snapshot);

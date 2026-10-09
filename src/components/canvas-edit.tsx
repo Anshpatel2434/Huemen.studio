@@ -150,7 +150,7 @@ export function EditableText({
           if (e.key === "Escape") { e.preventDefault(); cancel(); }
           if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); }
         }}
-        className={`${className} block w-full resize-none bg-transparent select-text outline-none rounded-[3px] ring-2 ring-current/70 m-0 p-0 border-0`}
+        className={`${className} block w-full resize-none bg-transparent select-text outline-none rounded-xs ring-2 ring-current/70 m-0 p-0 border-0`}
         style={{ ...style, fieldSizing: "content", font: "inherit", color: "inherit", letterSpacing: "inherit", lineHeight: "inherit" } as CSSProperties}
       />
     );
@@ -165,7 +165,7 @@ export function EditableText({
       title="Double-click to edit"
       onDoubleClick={(e) => { e.stopPropagation(); begin(); }}
       onKeyDown={(e) => { if (e.key === "Enter" && e.currentTarget === e.target) { e.preventDefault(); e.stopPropagation(); begin(); } }}
-      className={`${className} block cursor-text rounded-[3px] outline-none hover:ring-1 hover:ring-current/25 focus-visible:ring-2 focus-visible:ring-current/60 ${multiline ? "whitespace-pre-wrap" : ""}`}
+      className={`${className} block cursor-text rounded-xs outline-none hover:ring-1 hover:ring-current/25 focus-visible:ring-2 focus-visible:ring-current/60 ${multiline ? "whitespace-pre-wrap" : ""}`}
       style={style}
     >
       {shown ? (display && shown === value ? display : shown) : <span className="opacity-45 italic">{placeholder}</span>}

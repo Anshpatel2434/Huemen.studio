@@ -15,7 +15,7 @@ export function StepPanel({ step, title, children }: { step: number; title: stri
 export function PanelSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <p className="text-[0.75rem] font-medium mb-2">{title}</p>
+      <p className="text-xs font-medium mb-2">{title}</p>
       {children}
     </section>
   );

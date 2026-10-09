@@ -35,14 +35,14 @@ export function BrandCoreCard({
     : trained ? { tone: "ok" as const, word: "Trained" }
     : { tone: "warn" as const, word: "Provisional" };
   return (
-    <div className="bg-paper border border-hairline rounded-[16px] overflow-hidden">
+    <div className="bg-paper border border-hairline rounded-md overflow-hidden">
       <HueStrip count={8} className="!rounded-none" />
       <div className="p-6">
         <div className="flex items-center gap-3.5">
           <Avatar seed={seed} label={name} size="lg" />
           <div className="min-w-0 flex-1">
-            <p className="text-[1.15rem] font-medium truncate">{name}</p>
-            <p className="text-[0.82rem] text-ink-muted truncate">{subtitle}</p>
+            <p className="text-lg font-medium truncate">{name}</p>
+            <p className="text-sm text-ink-muted truncate">{subtitle}</p>
           </div>
           <Badge tone={badge.tone}>{badge.word}</Badge>
         </div>
@@ -52,7 +52,7 @@ export function BrandCoreCard({
             <p className="label-mono text-ink-faint mb-2">Voice</p>
             <div className="flex flex-wrap gap-1.5">
               {attributes.map((a) => (
-                <span key={a} className="label-mono px-2.5 h-6 inline-flex items-center rounded-[7px] bg-accent-soft text-accent-ink">{a}</span>
+                <span key={a} className="label-mono px-2.5 h-6 inline-flex items-center rounded-sm bg-accent-soft text-accent-ink">{a}</span>
               ))}
             </div>
           </div>
@@ -60,12 +60,12 @@ export function BrandCoreCard({
 
         <div className="mt-5 pt-5 border-t border-hairline grid grid-cols-4 gap-3">
           <div>
-            <p className="text-[1.5rem] font-medium tabular-nums leading-none" style={{ color: trained ? "var(--ok)" : "var(--ink)" }}>{confidence}<span className="text-[0.85rem] text-ink-faint">%</span></p>
+            <p className="num text-xl font-medium leading-none" style={{ color: trained ? "var(--ok)" : "var(--ink)" }}>{confidence}<span className="text-sm text-ink-faint">%</span></p>
             <p className="label-mono text-ink-faint mt-1">Confidence</p>
           </div>
           {stats.map((s) => (
             <div key={s.label}>
-              <p className="text-[1.5rem] font-medium tabular-nums leading-none">{s.value}</p>
+              <p className="num text-xl font-medium leading-none">{s.value}</p>
               <p className="label-mono text-ink-faint mt-1">{s.label}</p>
             </div>
           ))}
@@ -108,7 +108,7 @@ export function ScoreMeter({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <span className="text-[1.9rem] font-medium tabular-nums leading-none">{score}<span className="text-[0.9rem] text-ink-faint">{out}</span></span>
+        <span className="num text-2xl font-medium leading-none">{score}<span className="text-sm text-ink-faint">{out}</span></span>
         <Badge tone={t.tone}>{word ?? t.word}</Badge>
       </div>
       <div className="mt-3 h-2 rounded-full bg-field overflow-hidden">
@@ -126,16 +126,16 @@ export type Finding = { verdict: Band; text: string; why?: ReactNode; fix?: stri
 export function Findings({ items }: { items: Finding[] }) {
   const label: Record<Band, string> = { on: "On", drift: "Drift", off: "Off" };
   return (
-    <div className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-[12px] overflow-hidden">
+    <div className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md overflow-hidden">
       {items.map((f, i) => {
         const t = BAND_TONE[f.verdict];
         return (
           <div key={i} className="flex gap-3 p-3.5" style={{ background: f.verdict === "on" ? undefined : `color-mix(in srgb, var(--${t.tone}-soft) 55%, transparent)` }}>
             <span className="label-mono h-5 px-2 rounded-full inline-flex items-center shrink-0" style={{ color: `var(--${t.tone})`, background: `var(--${t.tone}-soft)` }}>{label[f.verdict]}</span>
             <div className="min-w-0">
-              <p className="text-[0.85rem] leading-relaxed">{f.text}</p>
-              {f.why && <p className="text-[0.78rem] text-ink-muted mt-1">{f.why}</p>}
-              {f.fix && <p className="text-[0.78rem] mt-1"><span className="text-ink-faint">Suggested: </span>{f.fix}</p>}
+              <p className="text-sm leading-relaxed">{f.text}</p>
+              {f.why && <p className="text-xs text-ink-muted mt-1">{f.why}</p>}
+              {f.fix && <p className="text-xs mt-1"><span className="text-ink-faint">Suggested: </span>{f.fix}</p>}
             </div>
           </div>
         );

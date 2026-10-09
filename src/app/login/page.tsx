@@ -55,7 +55,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       <form action={signInWithEmail} className="mt-6 flex flex-col gap-3">
         {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
         <label className="block">
-          <span className="block text-[0.76rem] text-ink-muted mb-1.5">Email address</span>
+          <span className="block text-xs text-ink-muted mb-1.5">Email address</span>
           <input name="email" type="email" required autoComplete="email" defaultValue={email} placeholder="Enter your email address…" className="field" autoFocus={!!error} />
         </label>
         <SubmitButton variant="primary" pendingLabel="Sending your link…" className="w-full">Continue with email</SubmitButton>
@@ -69,17 +69,17 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
       {isDev && users.length > 0 && (
         <div className="mt-7">
-          <div className="flex items-center gap-3 text-[0.72rem] text-ink-faint"><span className="flex-1 h-px bg-hairline" /> dev accounts <span className="flex-1 h-px bg-hairline" /></div>
+          <div className="flex items-center gap-3 text-xs text-ink-faint"><span className="flex-1 h-px bg-hairline" /> dev accounts <span className="flex-1 h-px bg-hairline" /></div>
           <div className="mt-3 flex flex-col gap-1.5">
             {users.map((u) => (
               <form key={u.id} action={signInAs}>
                 <input type="hidden" name="userId" value={u.id} />
                 {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
-                <button type="submit" className="group w-full text-left rounded-[9px] border border-hairline hover:border-line bg-paper px-3 py-2 flex items-center gap-2.5 transition-colors">
+                <button type="submit" className="group w-full text-left rounded-md border border-hairline hover:border-line bg-paper px-3 py-2 flex items-center gap-2.5 transition-colors">
                   <Avatar seed={u.email} label={u.email} size="sm" />
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[0.8rem] font-medium truncate">{u.email}</span>
-                    <span className="block text-[0.7rem] text-ink-faint truncate">{ROLE_LABEL[u.role] ?? u.role} · {u.tenant}</span>
+                    <span className="block text-sm font-medium truncate">{u.email}</span>
+                    <span className="block text-xs text-ink-faint truncate">{ROLE_LABEL[u.role] ?? u.role} · {u.tenant}</span>
                   </span>
                   <ArrowRight size={14} className="text-ink-faint group-hover:text-ink" />
                 </button>
@@ -89,7 +89,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </div>
       )}
 
-      <p className="mt-7 text-center text-[0.72rem] text-ink-faint">
+      <p className="mt-7 text-center text-xs text-ink-faint">
         <Link href="/" className="hover:text-ink">About Huemen.studio</Link>
       </p>
     </AuthShell>

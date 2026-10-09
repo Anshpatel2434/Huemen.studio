@@ -118,41 +118,41 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
           </div>
           <div className="flex-1 overflow-y-auto">
             {!palette.length && (
-              <Link href={`/w/${tenantId}/p/${projectId}/brief/edit#visual`} className="m-3 flex gap-2 bg-accent-soft rounded-[10px] px-3 py-2.5 text-[0.78rem] text-accent-ink">
+              <Link href={`/w/${tenantId}/p/${projectId}/brief/edit#visual`} className="m-3 flex gap-2 bg-accent-soft rounded-md px-3 py-2.5 text-xs text-accent-ink">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" /> No brand palette yet, so these use the house colours. Add one in the brief →
               </Link>
             )}
             <div className="p-3 grid grid-cols-2 gap-2">
               {schemes.map((sc, i) => (
-                <button key={sc.name} onClick={() => setScheme(i)} className={`rounded-[10px] overflow-hidden border text-left transition-colors ${i === scheme ? "border-ink ring-1 ring-ink" : "border-hairline hover:border-line"}`}>
+                <button key={sc.name} onClick={() => setScheme(i)} className={`rounded-md overflow-hidden border text-left transition-colors ${i === scheme ? "border-ink ring-1 ring-ink" : "border-hairline hover:border-line"}`}>
                   <div className="h-16 flex items-center justify-between px-3" style={{ background: sc.bg }}>
                     <span className="text-[1.3rem] font-medium leading-none" style={{ color: sc.fg }}>Aa<span className="block h-[3px] w-6 mt-1 rounded-full" style={{ background: sc.accent }} /></span>
-                    <span className="w-7 h-7 rounded-[5px] border border-black/10" style={{ background: sc.accent }} />
+                    <span className="w-7 h-7 rounded-sm border border-black/10" style={{ background: sc.accent }} />
                   </div>
-                  <p className="text-[0.75rem] px-2.5 py-1.5 bg-paper">{sc.name}</p>
+                  <p className="text-xs px-2.5 py-1.5 bg-paper">{sc.name}</p>
                 </button>
               ))}
             </div>
-            <form action={generateVisualsAction} className="mx-3 mb-3 flex flex-col gap-2 border border-hairline rounded-[10px] p-3">
+            <form action={generateVisualsAction} className="mx-3 mb-3 flex flex-col gap-2 border border-hairline rounded-md p-3">
               <input type="hidden" name="tenantId" value={tenantId} />
               <input type="hidden" name="projectId" value={projectId} />
               <input type="hidden" name="scheme" value={scheme} />
-              <p className="text-[0.75rem] font-medium">{designed.length ? "Apply scheme & regenerate" : "Generate visuals"}</p>
-              <p className="text-[0.7rem] text-ink-muted">{designed.length} designed{undesigned ? ` · ${undesigned} piece${undesigned === 1 ? "" : "s"} not yet` : ""}</p>
-              <label className="flex items-center gap-2 text-[0.72rem]"><input type="checkbox" name="approvedOnly" /> Approved pieces only</label>
+              <p className="text-xs font-medium">{designed.length ? "Apply scheme & regenerate" : "Generate visuals"}</p>
+              <p className="text-xs text-ink-muted">{designed.length} designed{undesigned ? ` · ${undesigned} piece${undesigned === 1 ? "" : "s"} not yet` : ""}</p>
+              <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="approvedOnly" /> Approved pieces only</label>
               <SubmitButton variant="primary" size="sm" pendingLabel="Designing…" className="w-full">{designed.length ? `Regenerate with ${schemes[scheme]?.name ?? "scheme"}` : "Generate visuals"}</SubmitButton>
             </form>
             <Section id="type" icon={Type} title="Typography" open={open} setOpen={setOpen}>
               <p className="text-[1.4rem] leading-tight" style={{ fontFamily: display }}>{fonts[0] ?? "Inter (house)"}</p>
               <p className="text-[1.2rem] italic mt-1" style={{ fontFamily: accentFont }}>{fonts[1] ?? "Instrument Serif (house)"}</p>
-              <p className="text-[0.72rem] text-ink-faint mt-2">Brand fonts render only if installed; licence check for server rendering is an open decision (brief §09).</p>
+              <p className="text-xs text-ink-faint mt-2">Brand fonts render only if installed; licence check for server rendering is an open decision (brief §09).</p>
             </Section>
             <Section id="img" icon={ImageIcon} title="Image style" open={open} setOpen={setOpen}>
-              <p className="text-[0.8rem] text-ink-muted leading-relaxed">{imageStyle || "No image style notes. Generated backgrounds will look generic until you add them."}</p>
-              <p className="text-[0.72rem] text-ink-faint mt-2">Appended to every image prompt, with negative prompts against the generic AI look.</p>
+              <p className="text-sm text-ink-muted leading-relaxed">{imageStyle || "No image style notes. Generated backgrounds will look generic until you add them."}</p>
+              <p className="text-xs text-ink-faint mt-2">Appended to every image prompt, with negative prompts against the generic AI look.</p>
             </Section>
             <Section id="dims" icon={Ruler} title="Export sizes" open={open} setOpen={setOpen}>
-              <ul className="text-[0.78rem] flex flex-col gap-1">
+              <ul className="text-xs flex flex-col gap-1">
                 {Array.from(new Map(FORMATS.map((f) => [f.frame.label, f])).values()).map((f) => (
                   <li key={f.key} className="flex justify-between gap-2"><span className="text-ink-muted">{f.label}</span><span className="tabular-nums">{f.frame.label}</span></li>
                 ))}
@@ -161,7 +161,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
             <Section id="palette" icon={Palette} title="Palette" open={open} setOpen={setOpen}>
               <div className="flex flex-wrap gap-1.5">
                 {(palette.length ? palette : ["#0a0a0a", "#6b6b6b", "#ffffff"]).map((c) => (
-                  <span key={c} title={c} className="w-8 h-8 rounded-[6px] border border-hairline" style={{ background: c }} />
+                  <span key={c} title={c} className="w-8 h-8 rounded-sm border border-hairline" style={{ background: c }} />
                 ))}
               </div>
             </Section>
@@ -172,7 +172,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
       <div className="flex-1 relative min-w-0">
         {designed.length === 0 ? (
           <div className="absolute inset-0 canvas-dots flex items-center justify-center p-6">
-            <div className="bg-paper border border-hairline rounded-[14px] max-w-md w-full shadow-[var(--shadow)]">
+            <div className="bg-paper border border-hairline rounded-md max-w-md w-full shadow-[var(--shadow)]">
               <EmptyState icon={<ImageIcon size={18} />} title="No visuals generated yet" sub="Pick a scheme on the right and generate. Each piece gets a post image, quote card and carousel with real text over brand colours." action={<Link href={`/w/${tenantId}/p/${projectId}/content`} className={btnClass("secondary")}>Back to Content</Link>} />
             </div>
           </div>
@@ -183,7 +183,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                 const fmt = formatByKey(i.format);
                 const slides = slidesOf(i);
                 return (
-                  <section key={i.id} data-canvas-bg="1" className={selectedId === i.id ? "outline outline-2 outline-accent outline-offset-[12px] rounded-[4px]" : ""}>
+                  <section key={i.id} data-canvas-bg="1" className={selectedId === i.id ? "outline outline-2 outline-accent outline-offset-[12px] rounded-xs" : ""}>
                     <p className="label-mono text-ink-faint mb-4">{fmt.label} · {i.pillarName ?? "No pillar"} · {i.status}</p>
                     <div className="flex gap-8 items-start" data-canvas-bg="1">
                       <Artboard label="Post image" meta={fmt.frame.label} width={DISPLAY_W}>

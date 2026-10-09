@@ -65,16 +65,16 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
   return (
     <div className="flex flex-col gap-5">
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-[0.88rem] font-medium mb-1">Palette</legend>
+        <legend className="text-sm font-medium mb-1">Palette</legend>
         <div className="flex flex-wrap gap-3">
           {palette.map((c, i) => (
-            <div key={i} className="flex items-center gap-2 border border-hairline rounded-[10px] p-2 pr-1">
+            <div key={i} className="flex items-center gap-2 border border-hairline rounded-md p-2 pr-1">
               <input
                 type="color"
                 value={HEX.test(c) ? c : "#000000"}
                 onChange={(e) => set(i, e.target.value)}
                 aria-label={`Colour ${i + 1}`}
-                className="w-9 h-9 rounded-[6px] border border-hairline cursor-pointer bg-transparent"
+                className="w-9 h-9 rounded-sm border border-hairline cursor-pointer bg-transparent"
               />
               <div className="flex flex-col">
                 <span className="label-mono text-ink-faint">{ROLE[i] ?? `Colour ${i + 1}`}</span>
@@ -83,11 +83,11 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
                   onChange={(e) => set(i, e.target.value)}
                   aria-label={`Hex for colour ${i + 1}`}
                   aria-invalid={!HEX.test(c)}
-                  className="w-[5.5rem] font-mono text-[0.8rem] bg-transparent outline-none"
+                  className="w-[5.5rem] font-mono text-sm bg-transparent outline-none"
                 />
               </div>
               {palette.length > 1 && (
-                <button type="button" onClick={() => { setSaved(false); setPalette(palette.filter((_, j) => j !== i)); }} className="hu-hit w-7 h-7 rounded-[6px] flex items-center justify-center text-ink-faint hover:text-ink hover:bg-field" aria-label={`Remove colour ${i + 1}`}>
+                <button type="button" onClick={() => { setSaved(false); setPalette(palette.filter((_, j) => j !== i)); }} className="hu-hit w-7 h-7 rounded-sm flex items-center justify-center text-ink-faint hover:text-ink hover:bg-field" aria-label={`Remove colour ${i + 1}`}>
                   <X size={13} aria-hidden="true" />
                 </button>
               )}
@@ -99,17 +99,17 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
             </button>
           )}
         </div>
-        {bad && <p className="text-[0.78rem] text-danger">Use six-digit hex values, like #0A0A0A.</p>}
+        {bad && <p className="text-xs text-danger">Use six-digit hex values, like #0A0A0A.</p>}
         {logoUrl && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button type="button" disabled={readingLogo} onClick={fromLogo} className={btnClass("ghost", "sm")}>
               <Pipette size={14} aria-hidden="true" /> {readingLogo ? "Reading your logo" : "Suggest colours from my logo"}
             </button>
-            {suggested && suggested.length === 0 && <span className="text-[0.8rem] text-ink-muted">No clear colours in that logo. Pick them by hand.</span>}
+            {suggested && suggested.length === 0 && <span className="text-sm text-ink-muted">No clear colours in that logo. Pick them by hand.</span>}
             {suggested && suggested.length > 0 && (
               <>
                 <span className="flex gap-1" aria-label={`Suggested: ${suggested.join(", ")}`}>
-                  {suggested.map((c) => <span key={c} className="w-6 h-6 rounded-[5px] border border-hairline" style={{ background: c }} title={c} />)}
+                  {suggested.map((c) => <span key={c} className="w-6 h-6 rounded-sm border border-hairline" style={{ background: c }} title={c} />)}
                 </span>
                 <button type="button" onClick={() => { setPalette(suggested); setSuggested(null); setSaved(false); }} className={btnClass("secondary", "sm")}>Use these</button>
               </>
@@ -119,13 +119,13 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
       </fieldset>
 
       <label className="block max-w-md">
-        <span className="block text-[0.88rem] font-medium mb-1">Fonts</span>
+        <span className="block text-sm font-medium mb-1">Fonts</span>
         <input value={fonts} onChange={(e) => { setSaved(false); setFonts(e.target.value); }} placeholder="Heading font, body font" className="field" />
-        <span className="block text-[0.75rem] text-ink-faint mt-1">Comma-separated. Headings first.</span>
+        <span className="block text-xs text-ink-faint mt-1">Comma-separated. Headings first.</span>
       </label>
 
       <label className="block">
-        <span className="block text-[0.88rem] font-medium mb-1">Image notes</span>
+        <span className="block text-sm font-medium mb-1">Image notes</span>
         <textarea rows={3} value={notes} onChange={(e) => { setSaved(false); setNotes(e.target.value); }} placeholder="Real photos over stock. Lots of white space. No gradients." className="field" />
       </label>
 
@@ -142,7 +142,7 @@ export function VisualForm({ tenantId, initial, logoUrl }: { tenantId: string; i
         >
           Save your hue
         </button>
-        {saved && <span className="text-[0.85rem] text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
+        {saved && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
       </div>
     </div>
   );

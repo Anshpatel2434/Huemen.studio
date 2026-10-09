@@ -35,7 +35,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         <AuthTitle sub={expired ? "Invites are valid for 7 days. Ask the person who invited you to send a new one." : "This invite link isn't valid. It may have been cut off when it was copied. Ask for a fresh one."}>
           {expired ? "This invite has expired" : "Invite not found"}
         </AuthTitle>
-        <Link href="/login" className="mt-6 h-9 rounded-[8px] border border-line text-[0.82rem] font-medium flex items-center justify-center hover:border-ink">Already joined? Sign in</Link>
+        <Link href="/login" className="mt-6 h-9 rounded-sm border border-line text-sm font-medium flex items-center justify-center hover:border-ink">Already joined? Sign in</Link>
       </AuthShell>
     );
   }
@@ -46,7 +46,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         <AuthTitle sub={<>{a.email} has already joined <span className="font-medium text-ink">{a.tenantName}</span>. Sign in to pick up where you left off.</>}>
           You&apos;re already <span className="serif-accent">in</span>
         </AuthTitle>
-        <Link href={`/login?${new URLSearchParams({ email: a.email })}`} className="mt-6 h-10 rounded-[8px] bg-ink text-on-ink text-[0.85rem] font-medium flex items-center justify-center gap-1.5 hover:opacity-90">Sign in <ArrowRight size={14} /></Link>
+        <Link href={`/login?${new URLSearchParams({ email: a.email })}`} className="mt-6 h-10 rounded-sm bg-ink text-on-ink text-sm font-medium flex items-center justify-center gap-1.5 hover:opacity-90">Sign in <ArrowRight size={14} /></Link>
       </AuthShell>
     );
   }
@@ -55,7 +55,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
       <AuthShell>
         <AuthIcon><MailWarning size={19} /></AuthIcon>
         <AuthTitle sub="This invite was withdrawn, or the workspace is no longer active. Ask your coach or admin if you think that's a mistake.">Invite withdrawn</AuthTitle>
-        <Link href="/login" className="mt-6 h-9 rounded-[8px] border border-line text-[0.82rem] font-medium flex items-center justify-center hover:border-ink">Back to sign in</Link>
+        <Link href="/login" className="mt-6 h-9 rounded-sm border border-line text-sm font-medium flex items-center justify-center hover:border-ink">Back to sign in</Link>
       </AuthShell>
     );
   }
@@ -68,12 +68,12 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         Join <span className="serif-accent">{a.tenantName}</span>
       </AuthTitle>
 
-      <dl className="mt-6 rounded-[10px] border border-hairline divide-y divide-[var(--hairline)] text-[0.8rem]">
+      <dl className="mt-6 rounded-md border border-hairline divide-y divide-[var(--hairline)] text-sm">
         <div className="flex items-center justify-between gap-3 px-3.5 py-2.5"><dt className="text-ink-muted">Workspace</dt><dd className="font-medium truncate">{a.tenantName}</dd></div>
         <div className="flex items-center justify-between gap-3 px-3.5 py-2.5"><dt className="text-ink-muted">Your email</dt><dd className="font-medium truncate">{a.email}</dd></div>
         <div className="px-3.5 py-2.5">
           <div className="flex items-center justify-between gap-3"><dt className="text-ink-muted">Role</dt><dd className="font-medium">{role.label}</dd></div>
-          {role.can && <p className="text-[0.74rem] text-ink-faint mt-1 leading-snug">{role.can}</p>}
+          {role.can && <p className="text-xs text-ink-faint mt-1 leading-snug">{role.can}</p>}
         </div>
       </dl>
 

@@ -12,7 +12,7 @@ import { Check, X } from "lucide-react";
 export function LogoMark({ size = 28 }: { size?: number }) {
   return (
     <span
-      className="inline-flex items-center justify-center rounded-[8px] bg-ink text-on-ink shrink-0"
+      className="inline-flex items-center justify-center rounded-sm bg-ink text-on-ink shrink-0"
       style={{ width: size, height: size }}
       aria-label="Huemen.studio"
     >
@@ -48,7 +48,7 @@ export function SubmitButton({
 }
 
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`bg-paper border border-hairline rounded-[12px] ${className}`}>{children}</div>;
+  return <div className={`bg-paper border border-hairline rounded-md ${className}`}>{children}</div>;
 }
 
 /**
@@ -68,10 +68,10 @@ export function hueFor(seed: string, palette: string[] = AVATAR_HUES): string {
 export function Avatar({
   seed, label, size = "md", square = false, className = "",
 }: { seed: string; label?: string; size?: "sm" | "md" | "lg"; square?: boolean; className?: string }) {
-  const s = { sm: "w-7 h-7 text-[0.62rem]", md: "w-9 h-9 text-[0.8rem]", lg: "w-14 h-14 text-[1.1rem]" }[size];
+  const s = { sm: "w-7 h-7 text-[0.62rem]", md: "w-9 h-9 text-sm", lg: "w-14 h-14 text-lg" }[size];
   const initials = (label ?? seed).replace(/[^a-zA-Z0-9]/g, "").slice(0, 2).toUpperCase() || "—";
   return (
-    <span aria-hidden="true" className={`${s} ${square ? "rounded-[8px]" : "rounded-full"} inline-flex items-center justify-center font-semibold text-white shrink-0 ${className}`} style={{ background: hueFor(seed) }}>
+    <span aria-hidden="true" className={`${s} ${square ? "rounded-sm" : "rounded-full"} inline-flex items-center justify-center font-semibold text-white shrink-0 ${className}`} style={{ background: hueFor(seed) }}>
       {initials}
     </span>
   );
@@ -122,9 +122,9 @@ export function AgentDots({ className = "" }: { className?: string }) {
 export function EmptyState({ title, sub, action, icon }: { title: string; sub?: string; action?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="text-center py-14 px-6">
-      {icon && <div className="mx-auto mb-4 w-11 h-11 rounded-[10px] bg-field flex items-center justify-center text-ink-muted">{icon}</div>}
-      <p className="text-[0.95rem] font-medium">{title}</p>
-      {sub && <p className="text-[0.85rem] text-ink-muted mt-1.5 max-w-sm mx-auto leading-relaxed">{sub}</p>}
+      {icon && <div className="mx-auto mb-4 w-11 h-11 rounded-md bg-field flex items-center justify-center text-ink-muted">{icon}</div>}
+      <p className="text-base font-medium">{title}</p>
+      {sub && <p className="text-sm text-ink-muted mt-1.5 max-w-sm mx-auto leading-relaxed">{sub}</p>}
       {action && <div className="mt-5 flex justify-center">{action}</div>}
     </div>
   );
@@ -152,13 +152,13 @@ export function Modal({ open, onClose, title, children, width = 480 }: { open: b
         aria-labelledby={title ? titleId : undefined}
         aria-label={title ? undefined : "Dialog"}
         tabIndex={-1}
-        className="bg-paper rounded-[20px] shadow-[var(--shadow-lg)] w-full pop overflow-hidden outline-none"
+        className="bg-paper rounded-lg shadow-[var(--shadow-lg)] w-full pop overflow-hidden outline-none"
         style={{ maxWidth: width }}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
           <div className="flex items-center justify-between px-5 h-12 border-b border-hairline">
-            <h3 id={titleId} className="text-[0.9rem] font-medium">{title}</h3>
+            <h3 id={titleId} className="text-sm font-medium">{title}</h3>
             <button onClick={onClose} className="text-ink-faint hover:text-ink" aria-label="Close"><X size={16} /></button>
           </div>
         )}
@@ -183,7 +183,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 items-center pointer-events-none" role="region" aria-label="Notifications">
         {toasts.map((t) => (
-          <div key={t.id} role="alert" className="pop flex items-center gap-2 bg-menu text-menu-fg text-[0.82rem] pl-3 pr-4 h-9 rounded-[9px] shadow-[var(--shadow)]">
+          <div key={t.id} role="alert" className="pop flex items-center gap-2 bg-menu text-menu-fg text-sm pl-3 pr-4 h-9 rounded-md shadow-[var(--shadow)]">
             <Check size={14} className="text-menu-fg" aria-hidden="true" /> {t.msg}
           </div>
         ))}

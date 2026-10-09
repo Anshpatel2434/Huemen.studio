@@ -28,7 +28,7 @@ export function SettingsNav({ children, isAdmin, home }: { children: ReactNode; 
               const Icon = i.icon;
               const on = path === i.href;
               return (
-                <Link key={i.href} href={i.href} className={`flex items-center gap-2.5 h-9 px-2.5 rounded-[8px] text-[0.875rem] transition-colors ${on ? "bg-accent-soft text-ink font-medium" : "text-ink-muted hover:bg-field"}`}>
+                <Link key={i.href} href={i.href} className={`flex items-center gap-2.5 h-9 px-2.5 rounded-sm text-sm transition-colors ${on ? "bg-accent-soft text-ink font-medium" : "text-ink-muted hover:bg-field"}`}>
                   <Icon size={15} /> {i.label}
                 </Link>
               );

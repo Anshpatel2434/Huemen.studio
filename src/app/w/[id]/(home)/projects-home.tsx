@@ -117,17 +117,17 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
       {showWhatsNew && !justFinished && <WhatsNew onStart={() => setCreating("blank")} />}
       {/* Top bar */}
       <header className="h-12 shrink-0 flex items-center gap-2 px-5 border-b border-hairline bg-paper">
-        <h1 className="text-[0.9rem] font-medium flex-1">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
-        <button onClick={() => setCreating("blank")} className="flex items-center gap-1.5 h-8 px-3 rounded-[8px] border border-line text-[0.8rem] hover:border-ink"><span className="w-4 h-4 rounded-[4px] bg-ink text-on-ink flex items-center justify-center"><FileText size={10} /></span> New project</button>
-        <button onClick={() => setCreating("copy")} disabled={projects.length === 0} className="flex items-center gap-1.5 h-8 px-3 rounded-[8px] border border-line text-[0.8rem] hover:border-ink disabled:opacity-40"><span className="w-4 h-4 rounded-[4px] bg-accent text-on-ink flex items-center justify-center"><Copy size={10} /></span> From a brief</button>
-        <button onClick={() => setHero(true)} className="flex items-center gap-1.5 h-8 px-3 rounded-[8px] border border-line text-[0.8rem] hover:border-ink"><span className="w-4 h-4 rounded-[4px] bg-field flex items-center justify-center"><ClipboardPaste size={10} /></span> Paste notes</button>
+        <h1 className="text-sm font-medium flex-1">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
+        <button onClick={() => setCreating("blank")} className="flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line text-sm hover:border-ink"><span className="w-4 h-4 rounded-xs bg-ink text-on-ink flex items-center justify-center"><FileText size={10} /></span> New project</button>
+        <button onClick={() => setCreating("copy")} disabled={projects.length === 0} className="flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line text-sm hover:border-ink disabled:opacity-40"><span className="w-4 h-4 rounded-xs bg-accent text-on-ink flex items-center justify-center"><Copy size={10} /></span> From a brief</button>
+        <button onClick={() => setHero(true)} className="flex items-center gap-1.5 h-8 px-3 rounded-sm border border-line text-sm hover:border-ink"><span className="w-4 h-4 rounded-xs bg-field flex items-center justify-center"><ClipboardPaste size={10} /></span> Paste notes</button>
       </header>
 
       <div className="flex-1 overflow-y-auto">
         {rescanDays != null && setupStep == null && view !== "archived" && (
           <section className="border-b border-hairline bg-field">
             <div className="max-w-[1180px] mx-auto px-5 py-3 flex flex-wrap items-center gap-3">
-              <p className="flex-1 min-w-0 text-[0.85rem]">It&apos;s been {rescanDays} days since we measured your writing, and you&apos;ve published since. A fresh look keeps drafts close to how you sound now.</p>
+              <p className="flex-1 min-w-0 text-sm">It&apos;s been {rescanDays} days since we measured your writing, and you&apos;ve published since. A fresh look keeps drafts close to how you sound now.</p>
               <Link href={`/w/${tenantId}/brand/voice?preview=1#remeasure`} className={btnClass("secondary", "sm")}>See what would change</Link>
             </div>
           </section>
@@ -136,7 +136,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
           <section role="status" className="border-b border-hairline bg-ok-soft">
             <div className="max-w-[1180px] mx-auto px-5 py-4 flex flex-wrap items-center gap-3">
               <CheckCircle2 size={17} className="text-ok shrink-0" aria-hidden="true" />
-              <p className="flex-1 min-w-0 text-[0.88rem]">
+              <p className="flex-1 min-w-0 text-sm">
                 <span className="font-medium">You&apos;re set up.</span>
                 <span className="text-ink-muted"> Your voice is in every piece from here, and your first one is below.</span>
               </p>
@@ -147,7 +147,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
         {setupStep != null && view !== "archived" && (
           <section className="border-b border-hairline bg-accent-soft">
             <div className="max-w-[1180px] mx-auto px-5 py-4 flex flex-wrap items-center gap-3">
-              <p className="flex-1 min-w-0 text-[0.88rem]">
+              <p className="flex-1 min-w-0 text-sm">
                 <span className="font-medium">Set up your voice</span>
                 <span className="text-ink-muted"> · step {setupStep + 1} of 5. Until it&apos;s done, drafts won&apos;t sound much like you.</span>
               </p>
@@ -160,10 +160,10 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
           <section className="relative border-b border-hairline bg-panel">
             <div className="max-w-[1180px] mx-auto px-5 py-7">
               <div className="flex items-center gap-2">
-                <h2 className="text-[1.15rem]">Describe the brand and <span className="serif-accent">start the brief</span></h2>
-                <span className="h-5 px-1.5 rounded-[5px] bg-paper text-[0.62rem] font-medium flex items-center gap-1"><Sparkles size={10} /> AI</span>
+                <h2 className="text-lg">Describe the brand and <span className="serif-accent">start the brief</span></h2>
+                <span className="h-5 px-1.5 rounded-sm bg-paper text-xs font-medium flex items-center gap-1"><Sparkles size={10} /> AI</span>
               </div>
-              <form action={createFromPromptAction} className="mt-3 bg-paper border border-hairline rounded-[12px] shadow-[var(--shadow-sm)] flex items-end gap-2 p-2 focus-within:border-ink">
+              <form action={createFromPromptAction} className="mt-3 bg-paper border border-hairline rounded-md shadow-[var(--shadow-sm)] flex items-end gap-2 p-2 focus-within:border-ink">
                 <input type="hidden" name="tenantId" value={tenantId} />
                 <textarea
                   name="prompt"
@@ -171,19 +171,19 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={prompt.split("\n").length > 1 ? 4 : 1}
                   placeholder={EXAMPLES[0]}
-                  className="flex-1 resize-none bg-transparent outline-none text-[0.88rem] px-2 py-1.5 placeholder:text-ink-faint"
+                  className="flex-1 resize-none bg-transparent outline-none text-sm px-2 py-1.5 placeholder:text-ink-faint"
                 />
                 <PromptSubmit disabled={!prompt.trim()} />
               </form>
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                <span className="text-[0.72rem] text-ink-faint mr-1">Try</span>
+                <span className="text-xs text-ink-faint mr-1">Try</span>
                 {EXAMPLES.map((e) => (
-                  <button key={e} onClick={() => setPrompt(e)} className="h-6 px-2 rounded-[6px] bg-paper/70 border border-hairline text-[0.7rem] text-ink-muted hover:text-ink truncate max-w-[280px]">{e}</button>
+                  <button key={e} onClick={() => setPrompt(e)} className="h-6 px-2 rounded-sm bg-paper/70 border border-hairline text-xs text-ink-muted hover:text-ink truncate max-w-[280px]">{e}</button>
                 ))}
-                <span className="text-[0.7rem] text-ink-faint ml-auto">Paste workshop notes with labels (Niche:, Audience:) for more detail.</span>
+                <span className="text-xs text-ink-faint ml-auto">Paste workshop notes with labels (Niche:, Audience:) for more detail.</span>
               </div>
             </div>
-            <button onClick={() => { setHero(false); dismissHeroAction(tenantId); }} className="absolute top-3 right-4 w-7 h-7 rounded-[7px] flex items-center justify-center text-ink-muted hover:bg-paper" aria-label="Dismiss"><X size={15} /></button>
+            <button onClick={() => { setHero(false); dismissHeroAction(tenantId); }} className="absolute top-3 right-4 w-7 h-7 rounded-sm flex items-center justify-center text-ink-muted hover:bg-paper" aria-label="Dismiss"><X size={15} /></button>
           </section>
         )}
 
@@ -191,7 +191,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
           {/* Tabs + filters */}
           <div className="flex items-center gap-1 flex-wrap">
             {tabs.map((t) => (
-              <button key={t.v} onClick={() => router.push(t.v === "recents" ? `/w/${tenantId}` : `/w/${tenantId}?view=${t.v}`)} className={`h-8 px-3 rounded-[7px] text-[0.8rem] ${view === t.v ? "bg-field font-medium" : "text-ink-muted hover:text-ink"}`}>{t.label}</button>
+              <button key={t.v} onClick={() => router.push(t.v === "recents" ? `/w/${tenantId}` : `/w/${tenantId}?view=${t.v}`)} className={`h-8 px-3 rounded-sm text-sm ${view === t.v ? "bg-field font-medium" : "text-ink-muted hover:text-ink"}`}>{t.label}</button>
             ))}
             <span className="flex-1" />
             <Dropdown label={stage === "all" ? "All steps" : `${stageIndex(stage) + 1}. ${STAGE_LABEL[stage]}`} options={[["all", "All steps"], ...STAGES.map((s) => [s, `${stageIndex(s) + 1}. ${STAGE_LABEL[s]}`] as [string, string])]} onPick={(v) => setStage(v as Stage | "all")} />
@@ -202,13 +202,13 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
             <Dropdown label={band === "all" ? "Any band" : BAND_LABEL[band]} options={[["all", "Any band"], ...Object.entries(BAND_LABEL)]} onPick={setBand} />
             <Dropdown label={sort === "edited" ? "Last edited" : sort === "name" ? "Alphabetical" : "Date created"} options={[["edited", "Last edited"], ["name", "Alphabetical"], ["created", "Date created"]]} onPick={(v) => setSort(v as Sort)} />
             <div className="flex items-center ml-1">
-              <button onClick={() => setLayout("grid")} className={`w-8 h-8 rounded-[7px] flex items-center justify-center ${layout === "grid" ? "bg-field" : "text-ink-muted hover:text-ink"}`} aria-label="Grid"><LayoutGrid size={14} /></button>
-              <button onClick={() => setLayout("list")} className={`w-8 h-8 rounded-[7px] flex items-center justify-center ${layout === "list" ? "bg-field" : "text-ink-muted hover:text-ink"}`} aria-label="List"><List size={14} /></button>
+              <button onClick={() => setLayout("grid")} className={`w-8 h-8 rounded-sm flex items-center justify-center ${layout === "grid" ? "bg-field" : "text-ink-muted hover:text-ink"}`} aria-label="Grid"><LayoutGrid size={14} /></button>
+              <button onClick={() => setLayout("list")} className={`w-8 h-8 rounded-sm flex items-center justify-center ${layout === "list" ? "bg-field" : "text-ink-muted hover:text-ink"}`} aria-label="List"><List size={14} /></button>
             </div>
           </div>
 
           {shown.length === 0 ? (
-            <div className="mt-8 bg-paper border border-hairline rounded-[14px] max-w-xl mx-auto">
+            <div className="mt-8 bg-paper border border-hairline rounded-md max-w-xl mx-auto">
               <EmptyState
                 icon={view === "archived" ? <Archive size={18} /> : <FolderOpen size={18} />}
                 title={view === "archived" ? "Nothing archived" : q || filtered ? "No projects match" : "No projects yet"}
@@ -221,16 +221,16 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
               {shown.map((p) => <ProjectCard key={p.id} p={p} tenantId={tenantId} archived={view === "archived"} />)}
             </div>
           ) : (
-            <div className="mt-4 bg-paper border border-hairline rounded-[12px] overflow-hidden">
-              <div className="grid grid-cols-[minmax(0,1fr)_120px_90px_140px_40px] px-4 h-9 items-center text-[0.72rem] text-ink-faint border-b border-hairline">
+            <div className="mt-4 bg-paper border border-hairline rounded-md overflow-hidden">
+              <div className="grid grid-cols-[minmax(0,1fr)_120px_90px_140px_40px] px-4 h-9 items-center text-xs text-ink-faint border-b border-hairline">
                 <span>Name</span><span>Step</span><span>Voice</span><span>Last edited</span><span />
               </div>
               {shown.map((p) => {
                 const Icon = STAGE_ICON[p.stage];
                 return (
-                  <div key={p.id} className="grid grid-cols-[minmax(0,1fr)_120px_90px_140px_40px] px-4 h-12 items-center text-[0.8rem] border-b border-hairline last:border-0 hover:bg-panel">
+                  <div key={p.id} className="grid grid-cols-[minmax(0,1fr)_120px_90px_140px_40px] px-4 h-12 items-center text-sm border-b border-hairline last:border-0 hover:bg-panel">
                     <Link href={`/w/${tenantId}/p/${p.id}`} className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-6 h-6 rounded-[6px] flex items-center justify-center bg-ink text-on-ink shrink-0"><Icon size={12} /></span>
+                      <span className="w-6 h-6 rounded-sm flex items-center justify-center bg-ink text-on-ink shrink-0"><Icon size={12} /></span>
                       <span className="truncate font-medium">{p.name}</span>
                       {p.starred && <Star size={12} className="fill-current text-accent shrink-0" />}
                     </Link>
@@ -243,7 +243,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
               })}
             </div>
           )}
-          <p className="text-[0.72rem] text-ink-faint mt-6 pb-6">{projects.length} project{projects.length === 1 ? "" : "s"} in {workspaceName}{view === "recents" && projects.length > 12 ? " · showing the 12 most recent" : ""}</p>
+          <p className="text-xs text-ink-faint mt-6 pb-6">{projects.length} project{projects.length === 1 ? "" : "s"} in {workspaceName}{view === "recents" && projects.length > 12 ? " · showing the 12 most recent" : ""}</p>
         </div>
       </div>
 
@@ -251,19 +251,19 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
         <form action={createProjectAction} className="flex flex-col gap-4">
           <input type="hidden" name="tenantId" value={tenantId} />
           <label className="block">
-            <span className="text-[0.8rem] font-medium mb-1.5 block">Project name</span>
+            <span className="text-sm font-medium mb-1.5 block">Project name</span>
             <input name="name" className="field" placeholder="e.g. Q4 thought-leadership push" required autoFocus />
           </label>
           {creating === "copy" ? (
             <label className="block">
-              <span className="text-[0.8rem] font-medium mb-1.5 block">Copy the brief from</span>
+              <span className="text-sm font-medium mb-1.5 block">Copy the brief from</span>
               <select name="fromProject" className="field" defaultValue={projects[0]?.id} required>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <span className="block text-[0.72rem] text-ink-faint mt-1">Story, voice and visual identity are copied; pillars and content start fresh.</span>
+              <span className="block text-xs text-ink-faint mt-1">Story, voice and visual identity are copied; pillars and content start fresh.</span>
             </label>
           ) : (
-            <p className="text-[0.76rem] text-ink-muted">You&apos;ll start at the intake. Four steps follow: Brief → Pillars → Content → Visual, each unlocking the next.</p>
+            <p className="text-xs text-ink-muted">You&apos;ll start at the intake. Four steps follow: Brief → Pillars → Content → Visual, each unlocking the next.</p>
           )}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setCreating(null)} className={btnClass("ghost")}>Cancel</button>
@@ -287,13 +287,13 @@ function Dropdown({ label, options, onPick }: { label: string; options: [string,
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="h-8 px-2.5 rounded-[7px] text-[0.78rem] flex items-center gap-1 hover:bg-field">{label} <ChevronDown size={13} className="text-ink-faint" /></button>
+      <button onClick={() => setOpen((o) => !o)} className="h-8 px-2.5 rounded-sm text-xs flex items-center gap-1 hover:bg-field">{label} <ChevronDown size={13} className="text-ink-faint" /></button>
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-40 w-44 bg-paper border border-hairline rounded-[10px] shadow-[var(--shadow-lg)] p-1 pop">
+          <div className="absolute right-0 top-9 z-40 w-44 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-1 pop">
             {options.map(([v, l]) => (
-              <button key={v} onClick={() => { onPick(v); setOpen(false); }} className={`w-full text-left h-8 px-2.5 rounded-[7px] text-[0.8rem] hover:bg-field ${l === label ? "font-medium" : ""}`}>{l}</button>
+              <button key={v} onClick={() => { onPick(v); setOpen(false); }} className={`w-full text-left h-8 px-2.5 rounded-sm text-sm hover:bg-field ${l === label ? "font-medium" : ""}`}>{l}</button>
             ))}
           </div>
         </>
@@ -317,7 +317,7 @@ function CardMenu({ p, tenantId, archived, floating }: { p: Project; tenantId: s
     <div className={`relative ${floating ? "" : "justify-self-end"}`}>
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}
-        className={`w-7 h-7 rounded-[7px] flex items-center justify-center ${floating ? "bg-paper/95 shadow-[var(--shadow-sm)] opacity-0 group-hover:opacity-100 focus:opacity-100" : "hover:bg-field"} ${open ? "opacity-100" : ""} text-ink-muted hover:text-ink`}
+        className={`w-7 h-7 rounded-sm flex items-center justify-center ${floating ? "bg-paper/95 shadow-[var(--shadow-sm)] opacity-0 group-hover:opacity-100 focus:opacity-100" : "hover:bg-field"} ${open ? "opacity-100" : ""} text-ink-muted hover:text-ink`}
         aria-label="Project menu"
       >
         {pending ? <AgentDots /> : <MoreHorizontal size={15} />}
@@ -325,22 +325,22 @@ function CardMenu({ p, tenantId, archived, floating }: { p: Project; tenantId: s
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); }} />
-          <div className="absolute right-0 top-8 z-40 w-60 bg-menu text-menu-fg rounded-[10px] shadow-[var(--shadow-lg)] p-1.5 pop text-[0.8rem]" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute right-0 top-8 z-40 w-60 bg-menu text-menu-fg rounded-md shadow-[var(--shadow-lg)] p-1.5 pop text-sm" onClick={(e) => e.stopPropagation()}>
             {archived ? (
               <>
-                <button onClick={() => run(() => restoreProjectAction(tenantId, p.id), "Restored")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><RotateCcw size={14} /> Restore</button>
+                <button onClick={() => run(() => restoreProjectAction(tenantId, p.id), "Restored")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><RotateCcw size={14} /> Restore</button>
                 <div className="h-px bg-white/10 my-1" />
-                <button onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Trash2 size={14} /> Delete permanently</button>
+                <button onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Trash2 size={14} /> Delete permanently</button>
               </>
             ) : (
               <>
-                <button onClick={() => { setOpen(false); router.push(`/w/${tenantId}/p/${p.id}`); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><ExternalLink size={14} /> Open</button>
-                <button onClick={() => run(() => starProjectAction(tenantId, p.id, !p.starred), p.starred ? "Removed from starred" : "Starred")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Star size={14} /> {p.starred ? "Unstar" : "Add to starred"}</button>
-                <button onClick={() => { setOpen(false); setRenaming(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Pencil size={14} /> Rename</button>
-                <button onClick={() => start(async () => { setOpen(false); const id = await duplicateProjectAction(tenantId, p.id); router.push(`/w/${tenantId}/p/${id}/brief/questions`); })} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Copy size={14} className="shrink-0" /> <span className="whitespace-nowrap">New project from this brief</span></button>
+                <button onClick={() => { setOpen(false); router.push(`/w/${tenantId}/p/${p.id}`); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><ExternalLink size={14} /> Open</button>
+                <button onClick={() => run(() => starProjectAction(tenantId, p.id, !p.starred), p.starred ? "Removed from starred" : "Starred")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Star size={14} /> {p.starred ? "Unstar" : "Add to starred"}</button>
+                <button onClick={() => { setOpen(false); setRenaming(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Pencil size={14} /> Rename</button>
+                <button onClick={() => start(async () => { setOpen(false); const id = await duplicateProjectAction(tenantId, p.id); router.push(`/w/${tenantId}/p/${id}/brief/questions`); })} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Copy size={14} className="shrink-0" /> <span className="whitespace-nowrap">New project from this brief</span></button>
                 <div className="h-px bg-white/10 my-1" />
-                <button onClick={() => run(() => archiveProjectAction(tenantId, p.id), "Archived")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10 text-menu-fg/70"><Archive size={14} /> Archive</button>
-                <button onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-[6px] hover:bg-white/10"><Trash2 size={14} /> Delete</button>
+                <button onClick={() => run(() => archiveProjectAction(tenantId, p.id), "Archived")} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10 text-menu-fg/70"><Archive size={14} /> Archive</button>
+                <button onClick={() => { setOpen(false); setDeleting(true); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-sm hover:bg-white/10"><Trash2 size={14} /> Delete</button>
               </>
             )}
           </div>
@@ -368,18 +368,18 @@ function CardMenu({ p, tenantId, archived, floating }: { p: Project; tenantId: s
 function ProjectCard({ p, tenantId, archived }: { p: Project; tenantId: string; archived: boolean }) {
   const Icon = STAGE_ICON[p.stage];
   return (
-    <div className="group relative bg-paper border border-hairline rounded-[10px] hover:border-line hover:shadow-[var(--shadow)] transition-all">
+    <div className="group relative bg-paper border border-hairline rounded-md hover:border-line hover:shadow-[var(--shadow)] transition-all">
       <div className="absolute top-2 right-2 z-10"><CardMenu p={p} tenantId={tenantId} archived={archived} floating /></div>
       <Link href={archived ? "#" : `/w/${tenantId}/p/${p.id}`} onClick={(e) => archived && e.preventDefault()} className="block">
-      <div className="theme-light aspect-[16/10] relative bg-panel border-b border-hairline overflow-hidden rounded-t-[9px]">
+      <div className="theme-light aspect-[16/10] relative bg-panel border-b border-hairline overflow-hidden rounded-t-md">
         <Thumb p={p} />
         {p.starred && <Star size={13} className="absolute top-2.5 left-2.5 fill-current text-accent" />}
       </div>
       <div className="flex items-center gap-2.5 px-3 py-2.5">
-        <span className="w-6 h-6 rounded-[6px] flex items-center justify-center bg-ink text-on-ink shrink-0" title={`Step ${stageIndex(p.stage) + 1}: ${STAGE_LABEL[p.stage]}`}><Icon size={12} /></span>
+        <span className="w-6 h-6 rounded-sm flex items-center justify-center bg-ink text-on-ink shrink-0" title={`Step ${stageIndex(p.stage) + 1}: ${STAGE_LABEL[p.stage]}`}><Icon size={12} /></span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5 min-w-0"><span className="block text-[0.8rem] font-medium truncate">{p.name}</span></span>
-          <span className="block text-[0.7rem] text-ink-faint" suppressHydrationWarning>{archived ? "Archived" : "Edited"} {ago(p.updatedAt)}</span>
+          <span className="flex items-center gap-1.5 min-w-0"><span className="block text-sm font-medium truncate">{p.name}</span></span>
+          <span className="block text-xs text-ink-faint" suppressHydrationWarning>{archived ? "Archived" : "Edited"} {ago(p.updatedAt)}</span>
         </span>
         <BandPill p={p} />
       </div>
@@ -396,14 +396,14 @@ function Thumb({ p }: { p: Project }) {
   if (p.stage === "visual") {
     return (
       <div className="absolute inset-0 flex items-center justify-center gap-2 p-4" style={{ background: "#e9e8e5" }}>
-        <div className="w-[34%] aspect-[4/5] rounded-[3px] p-2 flex flex-col justify-between shadow-[var(--shadow)]" style={{ background: light }}>
+        <div className="w-[34%] aspect-[4/5] rounded-xs p-2 flex flex-col justify-between shadow-[var(--shadow)]" style={{ background: light }}>
           <span className="w-4 h-[3px] rounded-full" style={{ background: accent }} />
           <p className="text-[0.45rem] font-semibold leading-tight line-clamp-4" style={{ color: ink }}>{p.firstHook ?? p.name}</p>
         </div>
-        <div className="w-[34%] aspect-square rounded-[3px] p-2 flex flex-col justify-center shadow-[var(--shadow)]" style={{ background: ink }}>
+        <div className="w-[34%] aspect-square rounded-xs p-2 flex flex-col justify-center shadow-[var(--shadow)]" style={{ background: ink }}>
           <p className="serif-accent text-[0.55rem] leading-tight line-clamp-4" style={{ color: light }}>“{p.firstHook ?? p.name}”</p>
         </div>
-        <div className="w-[18%] aspect-[4/5] rounded-[3px] shadow-[var(--shadow)]" style={{ background: accent }} />
+        <div className="w-[18%] aspect-[4/5] rounded-xs shadow-[var(--shadow)]" style={{ background: accent }} />
       </div>
     );
   }
@@ -411,7 +411,7 @@ function Thumb({ p }: { p: Project }) {
     return (
       <div className="absolute inset-0 flex items-start justify-center gap-2 p-4 pt-5 canvas-dots">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="w-[30%] bg-paper rounded-[4px] p-1.5 shadow-[var(--shadow-sm)]" style={{ marginTop: i * 6 }}>
+          <div key={i} className="w-[30%] bg-paper rounded-xs p-1.5 shadow-[var(--shadow-sm)]" style={{ marginTop: i * 6 }}>
             <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: hueFor(p.id) }} /><span className="wf-bar h-1 w-8" /></div>
             {i === 0 && p.firstHook ? <p className="text-[0.4rem] font-semibold mt-1 leading-tight line-clamp-3">{p.firstHook}</p> : <span className="wf-bar h-1 w-full mt-1.5 block" />}
             <div className="mt-1 flex flex-col gap-0.5"><span className="wf-bar h-[3px] w-full" /><span className="wf-bar h-[3px] w-4/5" /><span className="wf-bar h-[3px] w-3/5" /></div>
@@ -424,12 +424,12 @@ function Thumb({ p }: { p: Project }) {
     const n = Math.max(2, Math.min(4, p.pillarCount));
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center canvas-dots">
-        <span className="w-20 h-6 rounded-[4px] bg-paper shadow-[var(--shadow-sm)] flex items-center px-1.5"><span className="wf-bar h-1 w-full" /></span>
+        <span className="w-20 h-6 rounded-xs bg-paper shadow-[var(--shadow-sm)] flex items-center px-1.5"><span className="wf-bar h-1 w-full" /></span>
         <span className="w-px h-3 bg-line" />
         <div className="relative flex gap-2 pt-3">
           <span className="absolute top-0 h-px bg-line" style={{ left: "1.25rem", right: "1.25rem" }} />
           {Array.from({ length: n }).map((_, i) => (
-            <span key={i} className="w-10 h-14 rounded-[4px] bg-paper shadow-[var(--shadow-sm)] p-1 flex flex-col gap-1"><span className="h-1 rounded" style={{ background: hueFor(p.id + i) }} /><span className="wf-bar h-1" /><span className="wf-bar h-1" /></span>
+            <span key={i} className="w-10 h-14 rounded-xs bg-paper shadow-[var(--shadow-sm)] p-1 flex flex-col gap-1"><span className="h-1 rounded" style={{ background: hueFor(p.id + i) }} /><span className="wf-bar h-1" /><span className="wf-bar h-1" /></span>
           ))}
         </div>
       </div>
@@ -437,7 +437,7 @@ function Thumb({ p }: { p: Project }) {
   }
   return (
     <div className="absolute inset-0 flex items-center justify-center p-4">
-      <div className="w-[62%] h-[88%] bg-paper rounded-[4px] shadow-[var(--shadow-sm)] p-2.5 flex flex-col">
+      <div className="w-[62%] h-[88%] bg-paper rounded-xs shadow-[var(--shadow-sm)] p-2.5 flex flex-col">
         <p className="text-[0.55rem] font-semibold leading-tight line-clamp-2">{p.niche ?? p.name}</p>
         <div className="mt-1.5 flex flex-col gap-1"><span className="wf-bar h-[3px] w-full" /><span className="wf-bar h-[3px] w-5/6" /><span className="wf-bar h-[3px] w-2/3" /></div>
         <div className="mt-auto">

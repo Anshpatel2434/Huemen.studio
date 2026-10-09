@@ -229,9 +229,96 @@
   --color-accent-fg: var(--accent-fg);
   --color-focus: var(--focus);
 
-  --font-sans: var(--font-sans-src), "Inter", system-ui, sans-serif;
+  --font-sans: var(--font-sans-src), "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-serif: var(--font-serif-src), "Instrument Serif", Georgia, serif;
   --font-mono: var(--font-mono-src), "IBM Plex Mono", ui-monospace, monospace;
+
+  /*
+   * The type scale (design system §03), as the only font sizes in the product.
+   * Display sizes are fluid. Line height and tracking come with each step, so a
+   * size can't be used with the wrong leading.
+   *
+   *   text-display  Heading 0   hero statement, one per page
+   *   text-3xl      Heading 1   page title
+   *   text-2xl      Heading 2   section title
+   *   text-xl       Heading 3   sub-section, large card title
+   *   text-lg       Body Large  lede, pull quote
+   *   text-base     Body / H4   reading text; H4 is base + bold
+   *   text-sm       Body Small  secondary, captions, helper text
+   *   text-xs       Body XS     fine print, metadata (the floor: nothing smaller)
+   */
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-sm: 14px;
+  --text-sm--line-height: 1.55;
+  --text-base: 16px;
+  --text-base--line-height: 1.55;
+  --text-lg: 20px;
+  --text-lg--line-height: 1.45;
+  --text-xl: clamp(20px, 2.2vw, 24px);
+  --text-xl--line-height: 1.22;
+  --text-xl--letter-spacing: -0.01em;
+  --text-2xl: clamp(24px, 3.2vw, 30px);
+  --text-2xl--line-height: 1.18;
+  --text-2xl--letter-spacing: -0.015em;
+  --text-3xl: clamp(30px, 4.6vw, 40px);
+  --text-3xl--line-height: 1.15;
+  --text-3xl--letter-spacing: -0.02em;
+  --text-display: clamp(40px, 7.5vw, 70px);
+  --text-display--line-height: 1.06;
+  --text-display--letter-spacing: -0.03em;
+
+  /* Radii (§05). Inputs take sm, cards md, modals lg, buttons and tags pill
+     (rounded-full). Nothing takes an arbitrary radius. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+}
+
+/*
+ * The rest of the token contract (§01, §05, §06), for CSS and inline styles.
+ * Tailwind's spacing is already the 4pt grid; these name the steps the system
+ * documents so a component can say what it means.
+ */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 28px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --space-9: 60px;
+  --space-10: 80px;
+  --measure: 68ch;
+  --container: 1320px;
+
+  /* Control sizing: 44px is the floor for anything clickable. */
+  --tap-min: 44px;
+  --control-h-sm: 44px;
+  --control-h-md: 48px;
+  --control-h-lg: 56px;
+
+  /* Motion: always through these, always behind prefers-reduced-motion. */
+  --motion-instant: 80ms;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 280ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 1, 1);
+
+  /* Elevation is a stacking contract, not a shadow palette. */
+  --z-base: 0;
+  --z-sticky: 200;
+  --z-dropdown: 300;
+  --z-overlay: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-toast: 700;
+  --z-tooltip: 800;
 }
 
 * { border-color: var(--hairline); }
@@ -241,26 +328,48 @@ body {
   background: var(--ground);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
-  letter-spacing: -0.005em;
+  font-size: 16px;            /* Body (§03): the default reading text */
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection { background: var(--ink); color: var(--on-ink); }
 
-/* Headings carry the weight in this system — grotesque, bold, tight. */
-h1, h2, h3 { letter-spacing: -0.025em; font-weight: 700; line-height: 1.12; }
-h4 { font-weight: 700; letter-spacing: -0.01em; }
+/*
+ * Headings (§03). Small headings get their hierarchy from weight (H4: bold);
+ * the large ones from size alone, set regular and tight, which is what makes
+ * them read as editorial rather than shouty. The weight follows the step, so
+ * a page title is regular whatever element carries it.
+ */
+@layer base {
+  /* Defaults only: the scale's line height and tracking (utilities) win. */
+  h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; text-wrap: balance; }
+  p, li { text-wrap: pretty; }
+}
+/* The rule itself, not a default: a large heading is regular, whatever else is on it. */
+:is(h1, h2, h3, h4).text-xl { font-weight: 500; }
+:is(h1, h2, h3, h4):is(.text-2xl, .text-3xl, .text-display) { font-weight: 400; }
 
 .serif-accent { font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
 
-/* Uppercase mono micro-labels — the brand signature (design system §03). */
+/* Numbers are mono and tabular (§15: scores, counts, confidence). */
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+/*
+ * Mono labels (§03). Tag 1 is metadata; Tag 2 is the one uppercase style in the
+ * system, for section labels and CTA links. `.label-mono` is the eyebrow the
+ * product uses everywhere: Tag 2's uppercase at Tag 1's size, the 12px floor,
+ * with the open tracking the system's own pages give their section labels.
+ */
+.t-tag-1 { font-family: var(--font-mono); font-size: 12px; line-height: 1.3; font-weight: 500; }
+.t-tag-2 { font-family: var(--font-mono); font-size: 14px; line-height: 1.3; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 .label-mono {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.14em;
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   font-weight: 500;
 }
@@ -303,18 +412,18 @@ h4 { font-weight: 700; letter-spacing: -0.01em; }
   width: 100%;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.6rem 0.8rem;
-  font-size: 0.9375rem;
+  border-radius: var(--radius-sm);
+  min-height: var(--control-h-md);   /* 48px (§05) */
+  padding: 0.6875rem 0.875rem;
+  font-size: 16px;                   /* 16 or iOS zooms the page on focus */
   line-height: 1.4;
   color: var(--ink);
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
 }
 .field:hover:not(:disabled):not([readonly]) { border-color: var(--ink); }
 .field[aria-invalid="true"] { border-color: var(--danger-line); border-width: 2px; }
 .field:disabled { background: var(--ground); color: var(--ink-faint); cursor: not-allowed; border-color: var(--hairline); }
 .field[readonly] { background: var(--ground); border-color: var(--hairline); }
-.field::placeholder { color: var(--ink-faint); }
 .field::placeholder { color: var(--ink-faint); }
 .field:focus { outline: none; background: var(--paper); border-color: var(--accent); }
 textarea.field { resize: vertical; line-height: 1.55; }

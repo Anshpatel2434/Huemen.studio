@@ -139,15 +139,15 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
       <Canvas onBackground={() => setSel(null)}>
         <div className="flex flex-col items-center p-10" data-canvas-bg="1" style={{ minWidth: rowWidth + 80 }}>
           {/* Root: the brief */}
-          <div className="bg-paper rounded-[10px] ring-1 ring-[var(--hairline)] shadow-[var(--shadow-sm)]" style={{ width: 300 }}>
+          <div className="bg-paper rounded-md ring-1 ring-[var(--hairline)] shadow-[var(--shadow-sm)]" style={{ width: 300 }}>
             <div className="flex items-center gap-2 h-10 px-3 border-b border-hairline">
               <FileText size={14} className="text-ink-muted" />
-              <span className="text-[0.82rem] font-medium flex-1 truncate">{brandName} · Brief</span>
-              <span className="text-[0.72rem] text-ink-faint tabular-nums">{completeness}%</span>
+              <span className="text-sm font-medium flex-1 truncate">{brandName} · Brief</span>
+              <span className="text-xs text-ink-faint tabular-nums">{completeness}%</span>
             </div>
             <div className="p-2 flex flex-col gap-1">
               {briefRows.map((r) => (
-                <Link key={r.label} href={`${base}/brand/edit`} className="flex items-center gap-2 h-8 px-2.5 rounded-[7px] border border-hairline bg-paper text-[0.8rem] hover:border-line">
+                <Link key={r.label} href={`${base}/brand/edit`} className="flex items-center gap-2 h-8 px-2.5 rounded-sm border border-hairline bg-paper text-sm hover:border-line">
                   {r.ok ? <Check size={13} className="text-ok" /> : <Circle size={11} className="text-accent" />}
                   <span className={r.ok ? "" : "text-ink-muted"}>{r.label}</span>
                 </Link>
@@ -191,10 +191,10 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
             ))}
             <div className="flex flex-col items-center">
               <div className="w-px h-8 bg-line" />
-              <button onClick={add} disabled={adding} className="rounded-[10px] border-2 border-dashed border-line hover:border-ink text-ink-muted hover:text-ink flex flex-col items-center justify-center gap-1.5 transition-colors disabled:opacity-60" style={{ width: CARD_W, height: 180 }}>
+              <button onClick={add} disabled={adding} className="rounded-md border-2 border-dashed border-line hover:border-ink text-ink-muted hover:text-ink flex flex-col items-center justify-center gap-1.5 transition-colors disabled:opacity-60" style={{ width: CARD_W, height: 180 }}>
                 <Plus size={18} />
-                <span className="text-[0.82rem] font-medium">{adding ? "Adding…" : "Add pillar"}</span>
-                <span className="text-[0.72rem] text-ink-faint px-6 text-center">A theme this brand keeps coming back to</span>
+                <span className="text-sm font-medium">{adding ? "Adding…" : "Add pillar"}</span>
+                <span className="text-xs text-ink-faint px-6 text-center">A theme this brand keeps coming back to</span>
               </button>
             </div>
           </div>
@@ -213,11 +213,11 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const [menu, setMenu] = useState(false);
-  const item = "w-full flex items-center gap-2 h-8 px-2 rounded-[6px] hover:bg-white/10 text-[0.8rem] disabled:opacity-40 disabled:hover:bg-transparent";
+  const item = "w-full flex items-center gap-2 h-8 px-2 rounded-sm hover:bg-white/10 text-sm disabled:opacity-40 disabled:hover:bg-transparent";
   return (
     <div
       onClick={onSelect}
-      className={`group bg-paper rounded-[10px] shadow-[var(--shadow-sm)] transition-[box-shadow,opacity] ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"} ${dragging ? "opacity-40" : ""}`}
+      className={`group bg-paper rounded-md shadow-[var(--shadow-sm)] transition-[box-shadow,opacity] ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"} ${dragging ? "opacity-40" : ""}`}
       style={{ width: CARD_W }}
     >
       <div className="flex items-center gap-1.5 h-10 pl-1.5 pr-3 border-b border-hairline relative">
@@ -227,49 +227,49 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
           onDragEnd={onDragEnd}
           title="Drag to reorder"
           aria-hidden
-          className="w-5 h-6 rounded-[5px] flex items-center justify-center text-ink-faint opacity-0 group-hover:opacity-100 hover:bg-field cursor-grab active:cursor-grabbing"
+          className="w-5 h-6 rounded-sm flex items-center justify-center text-ink-faint opacity-0 group-hover:opacity-100 hover:bg-field cursor-grab active:cursor-grabbing"
         >
           <GripVertical size={13} />
         </span>
         <Network size={14} className="text-ink-muted shrink-0" />
-        <div className="text-[0.82rem] font-medium flex-1 min-w-0" title={p.name}>
+        <div className="text-sm font-medium flex-1 min-w-0" title={p.name}>
           <EditableText value={p.name} required label="Pillar name" className="truncate" editing={editingName} onEditingChange={onEditingName} onCommit={(name) => onEdit({ name })} />
         </div>
-        <button onClick={(e) => { e.stopPropagation(); setMenu((m) => !m); }} className="w-6 h-6 rounded-[6px] flex items-center justify-center text-ink-faint hover:bg-field shrink-0" aria-label="Pillar menu"><MoreHorizontal size={15} /></button>
+        <button onClick={(e) => { e.stopPropagation(); setMenu((m) => !m); }} className="w-6 h-6 rounded-sm flex items-center justify-center text-ink-faint hover:bg-field shrink-0" aria-label="Pillar menu"><MoreHorizontal size={15} /></button>
         {menu && (
           <>
             <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenu(false); }} />
-            <div className="absolute right-2 top-9 z-20 w-44 bg-menu text-menu-fg rounded-[9px] shadow-[var(--shadow-lg)] p-1 pop" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute right-2 top-9 z-20 w-44 bg-menu text-menu-fg rounded-md shadow-[var(--shadow-lg)] p-1 pop" onClick={(e) => e.stopPropagation()}>
               <button onClick={() => { setMenu(false); onEditingName(true); }} className={item}><Pencil size={13} /> Rename</button>
               <button disabled={!canMove.left} onClick={() => { setMenu(false); onMove(-1); }} className={item}><ArrowLeft size={13} /> Move left</button>
               <button disabled={!canMove.right} onClick={() => { setMenu(false); onMove(1); }} className={item}><ArrowRight size={13} /> Move right</button>
               <div className="h-px bg-white/10 my-1" />
-              <button onClick={() => { setMenu(false); onDelete(); }} className={item}><Trash2 size={13} /> Delete <span className="ml-auto text-menu-fg/50 text-[0.7rem]">Del</span></button>
+              <button onClick={() => { setMenu(false); onDelete(); }} className={item}><Trash2 size={13} /> Delete <span className="ml-auto text-menu-fg/50 text-xs">Del</span></button>
             </div>
           </>
         )}
       </div>
       <div className="p-2 flex flex-col gap-1">
-        <div className="text-[0.75rem] text-ink-muted px-1 pb-1 leading-snug">
+        <div className="text-xs text-ink-muted px-1 pb-1 leading-snug">
           <EditableText value={p.description ?? ""} multiline label="Pillar description" placeholder="Add a description" onCommit={(description) => onEdit({ description })} />
         </div>
         {p.formats.length > 0 ? (
           p.formats.map((f) => (
-            <Link key={f} href={base} className="flex items-center gap-2 h-8 px-2.5 rounded-[7px] border border-hairline text-[0.8rem] hover:border-line">
+            <Link key={f} href={base} className="flex items-center gap-2 h-8 px-2.5 rounded-sm border border-hairline text-sm hover:border-line">
               <PenLine size={12} className="text-ink-faint" /> {formatByKey(f).label}
             </Link>
           ))
         ) : (
-          <p className="text-[0.75rem] text-ink-faint px-2.5 py-1.5">No content yet</p>
+          <p className="text-xs text-ink-faint px-2.5 py-1.5">No content yet</p>
         )}
         <div className="flex gap-1">
-          <Link href={`${base}/plan/ideas`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-[7px] bg-panel text-[0.75rem] text-ink-muted hover:text-ink"><Lightbulb size={12} /> {p.ideaCount} ideas</Link>
-          <Link href={`${base}/plan/calendar`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-[7px] bg-panel text-[0.75rem] text-ink-muted hover:text-ink"><CalendarDays size={12} /> {p.calendarCount} slots</Link>
+          <Link href={`${base}/plan/ideas`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-panel text-xs text-ink-muted hover:text-ink"><Lightbulb size={12} /> {p.ideaCount} ideas</Link>
+          <Link href={`${base}/plan/calendar`} className="flex-1 flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-panel text-xs text-ink-muted hover:text-ink"><CalendarDays size={12} /> {p.calendarCount} slots</Link>
         </div>
-        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-[7px] border border-dashed border-line text-[0.8rem] text-ink-muted hover:border-ink hover:text-ink"><Plus size={13} /> Draft content</button>
-        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-[7px] text-[0.8rem] text-ink-muted hover:bg-field"><Sparkles size={13} /> Ask AI</button>
+        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-sm border border-dashed border-line text-sm text-ink-muted hover:border-ink hover:text-ink"><Plus size={13} /> Draft content</button>
+        <button onClick={onDraft} className="flex items-center justify-center gap-1.5 h-8 rounded-sm text-sm text-ink-muted hover:bg-field"><Sparkles size={13} /> Ask AI</button>
       </div>
-      <div className="px-3 h-8 border-t border-hairline flex items-center text-[0.72rem] text-ink-faint">{p.contentCount} piece{p.contentCount === 1 ? "" : "s"}</div>
+      <div className="px-3 h-8 border-t border-hairline flex items-center text-xs text-ink-faint">{p.contentCount} piece{p.contentCount === 1 ? "" : "s"}</div>
     </div>
   );
 }

@@ -27,7 +27,7 @@ export function BriefToc({ sections }: { sections: { id: string; label: string }
         <a
           key={s.id}
           href={`#${s.id}`}
-          className={`block pl-4 py-1.5 text-[0.85rem] -ml-px border-l transition-colors ${active === s.id ? "border-ink text-ink" : "border-transparent text-ink-faint hover:text-ink"}`}
+          className={`block pl-4 py-1.5 text-sm -ml-px border-l transition-colors ${active === s.id ? "border-ink text-ink" : "border-transparent text-ink-faint hover:text-ink"}`}
         >
           {s.label}
         </a>

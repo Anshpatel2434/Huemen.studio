@@ -54,15 +54,15 @@ export function WritePiece({ tenantId, projectId, topic, format: initialFormat, 
 
   return (
     <div className="absolute inset-0 canvas-dots overflow-y-auto flex items-start sm:items-center justify-center p-4 sm:p-6">
-      <div className="bg-paper border border-hairline rounded-[14px] max-w-xl w-full shadow-[var(--shadow)] p-6 flex flex-col gap-5">
+      <div className="bg-paper border border-hairline rounded-md max-w-xl w-full shadow-[var(--shadow)] p-6 flex flex-col gap-5">
         <div>
           <p className="label-mono text-ink-faint">Content</p>
-          <h2 className="text-[1.25rem] mt-1.5 leading-snug">{topic}</h2>
-          {angle && <p className="text-[0.85rem] text-ink-muted mt-1">{angle}</p>}
+          <h2 className="text-lg mt-1.5 leading-snug">{topic}</h2>
+          {angle && <p className="text-sm text-ink-muted mt-1">{angle}</p>}
         </div>
 
         {confidence && confidence.score < 70 && (
-          <p className="text-[0.8rem] text-warn bg-warn-soft rounded-[8px] px-3 py-2 flex items-start gap-2">
+          <p className="text-sm text-warn bg-warn-soft rounded-sm px-3 py-2 flex items-start gap-2">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
             Your core is {confidence.score}% confident, so this will be closer to you once it has more of your writing.
           </p>
@@ -76,17 +76,17 @@ export function WritePiece({ tenantId, projectId, topic, format: initialFormat, 
               role="radio"
               aria-checked={mode === m.key}
               onClick={() => setMode(m.key)}
-              className={`text-left rounded-[10px] border p-3 min-h-11 flex flex-col gap-1 transition-colors ${mode === m.key ? "border-ink bg-field" : "border-hairline hover:border-line"}`}
+              className={`text-left rounded-md border p-3 min-h-11 flex flex-col gap-1 transition-colors ${mode === m.key ? "border-ink bg-field" : "border-hairline hover:border-line"}`}
             >
               <m.icon size={16} aria-hidden="true" />
-              <span className="text-[0.88rem] font-medium">{m.label}</span>
-              <span className="text-[0.75rem] text-ink-muted">{m.sub}</span>
+              <span className="text-sm font-medium">{m.label}</span>
+              <span className="text-xs text-ink-muted">{m.sub}</span>
             </button>
           ))}
         </div>
 
         <label className="block">
-          <span className="block text-[0.8rem] font-medium mb-1">Format</span>
+          <span className="block text-sm font-medium mb-1">Format</span>
           <select value={format} onChange={(e) => setFormat(e.target.value)} className="field min-h-11">
             {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
@@ -94,12 +94,12 @@ export function WritePiece({ tenantId, projectId, topic, format: initialFormat, 
 
         {mode === "check" && (
           <label className="block">
-            <span className="block text-[0.8rem] font-medium mb-1">Your piece. The first line is the hook.</span>
+            <span className="block text-sm font-medium mb-1">Your piece. The first line is the hook.</span>
             <textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} className="field leading-relaxed" />
           </label>
         )}
 
-        {error && <p role="alert" className="text-[0.85rem] text-danger bg-danger-soft rounded-[8px] px-3 py-2.5">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger bg-danger-soft rounded-sm px-3 py-2.5">{error}</p>}
 
         <button type="button" disabled={pending || (mode === "check" && !text.trim())} onClick={go} className={`${btnClass("primary")} self-start`}>
           {pending ? <><AgentDots /> {mode === "check" ? "Checking" : "Writing in your voice"}</> : mode === "ghostwrite" ? "Draft it" : mode === "cowrite" ? "Give me the outline" : "Save and check"}
