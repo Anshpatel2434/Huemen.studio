@@ -1,75 +1,42 @@
 "use client";
 
 /**
- * Workspace home, modelled on Figma's file browser: top bar with create
- * buttons, a dismissible "describe it" AI banner, tabs + filters + grid/list
- * toggle, and file cards with a hover ⋯ menu.
+ * The library, modelled on Figma's file browser: top bar with create
+ * buttons, a dismissible "describe it" AI banner, tabs (Recently viewed, All,
+ * Archived) + filters + grid/list toggle, and file cards with a hover ⋯ menu.
+ * The workspace's front door is Brand home (brand-home.tsx); this is
+ * `?view=recents|all|archived`.
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
-  Plus, FileText, PenLine, Palette, FolderOpen, X, ArrowRight, Copy, ClipboardPaste, Sparkles,
+  Plus, FileText, PenLine, Palette, FolderOpen, X, Copy, ClipboardPaste, Sparkles,
   LayoutGrid, List, ChevronDown, MoreHorizontal, Star, Pencil, Archive, RotateCcw, ExternalLink, Trash2, Lightbulb, CheckCircle2,
 } from "lucide-react";
 import {
-  Modal, SubmitButton, EmptyState, AgentDots, useToast, hueFor, IconButton, Tabs, Segmented, Field, Menu, MenuItem, MenuSeparator,
+  Modal, EmptyState, AgentDots, useToast, hueFor, IconButton, Tabs, Segmented, Menu, MenuItem, MenuSeparator,
 } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
 import { STAGES, STAGE_LABEL, stageIndex, type Stage } from "@/lib/projects/stages";
 import { WhatsNew } from "./whats-new";
+import { BriefPrompt, NewProjectModal } from "./create-project";
+import { BandPill, STATUS_LABEL, BAND_LABEL, ago, type Project } from "./project-bits";
 import { formatByKey } from "@/lib/content/formats";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import {
-  createProjectAction, createFromPromptAction, dismissHeroAction, starProjectAction, renameProjectAction,
+  dismissHeroAction, starProjectAction, renameProjectAction,
   archiveProjectAction, restoreProjectAction, duplicateProjectAction, deleteProjectAction,
 } from "../project-actions";
 
-type Project = {
-  id: string; name: string; stage: Stage; updatedAt: string; createdAt: string; completeness: number; niche: string | null;
-  palette: string[]; pillarCount: number; contentCount: number; firstHook: string | null; starred: boolean;
-  format: string | null; contentStatus: string | null;
-  voiceBand: "on_brand" | "drifting" | "off_brand" | null; voiceScore: number | null;
-};
 
 // The Library's filters (plan, Flows 5–7): platform, status and band.
 const platformOf = (p: Project) => (p.format ? formatByKey(p.format).platform ?? null : null);
-const STATUS_LABEL: Record<string, string> = { none: "No copy yet", draft: "Draft", edited: "Edited", approved: "Approved" };
-const BAND_LABEL: Record<string, string> = { on_brand: "On brand", drifting: "Drifting", off_brand: "Off brand", unchecked: "Not checked" };
-const BAND_TONE: Record<string, string> = {
-  on_brand: "bg-ok-soft text-ok", drifting: "bg-warn-soft text-warn", off_brand: "bg-danger-soft text-danger", unchecked: "bg-ground text-ink-faint",
-};
-
-function BandPill({ p }: { p: Project }) {
-  if (!p.contentStatus) return null;
-  const b = p.voiceBand ?? "unchecked";
-  return (
-    <span className={`label-mono inline-flex items-center gap-1.5 h-5 px-2 rounded-full shrink-0 ${BAND_TONE[b]}`} title={p.voiceScore != null ? `${p.voiceScore}/100 against your voice` : "Not checked yet"}>
-      <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
-      {p.voiceScore != null ? p.voiceScore : "–"}
-      <span className="sr-only"> {BAND_LABEL[b]}</span>
-    </span>
-  );
-}
 type View = "recents" | "all" | "archived";
 type Sort = "edited" | "name" | "created";
 
 const STAGE_ICON: Record<Stage, typeof FileText> = { ideate: Lightbulb, content: PenLine, visual: Palette };
-const EXAMPLES = [
-  "Leadership coach for first-time engineering managers. Direct, warm, a bit contrarian.",
-  "Founder building a D2C skincare brand in India, in public. Numbers-first, honest.",
-  "Keynote speaker on resilience for HR leaders. Story-led, energetic.",
-];
-
-function ago(iso: string): string {
-  const s = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 60) return "just now";
-  const m = Math.round(s / 60); if (m < 60) return `${m} minute${m === 1 ? "" : "s"} ago`;
-  const h = Math.round(m / 60); if (h < 24) return `${h} hour${h === 1 ? "" : "s"} ago`;
-  const d = Math.round(h / 24); if (d < 30) return `${d} day${d === 1 ? "" : "s"} ago`;
-  const mo = Math.round(d / 30); return mo < 12 ? `${mo} month${mo === 1 ? "" : "s"} ago` : `${Math.round(mo / 12)} year ago`;
-}
 
 export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQuery, showHero, showWhatsNew, setupStep, rescanDays, justFinished = false }: {
   tenantId: string; workspaceName: string; projects: Project[]; view: View; initialQuery: string; showHero: boolean; showWhatsNew: boolean;
@@ -91,7 +58,6 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
   const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [creating, setCreating] = useState<null | "blank" | "copy">(null);
   const [hero, setHero] = useState(showHero);
-  const [prompt, setPrompt] = useState("");
 
   const shown = useMemo(() => {
     let list = projects.filter((p) =>
@@ -164,25 +130,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
                 <h2 className="text-lg">Describe the brand and <span className="serif-accent">start the brief</span></h2>
                 <span className="h-5 px-1.5 rounded-sm bg-paper text-xs font-medium flex items-center gap-1"><Sparkles size={10} /> AI</span>
               </div>
-              <form action={createFromPromptAction} className="mt-3 bg-paper border border-hairline rounded-md shadow-[var(--shadow-sm)] flex items-end gap-2 p-2 focus-within:border-ink">
-                <input type="hidden" name="tenantId" value={tenantId} />
-                <textarea
-                  name="prompt"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  rows={prompt.split("\n").length > 1 ? 4 : 1}
-                  placeholder={EXAMPLES[0]}
-                  className="flex-1 resize-none bg-transparent outline-none text-base px-2 py-2.5 min-h-11 placeholder:text-ink-faint"
-                />
-                <PromptSubmit disabled={!prompt.trim()} />
-              </form>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm text-ink-faint mr-1">Try</span>
-                {EXAMPLES.map((e) => (
-                  <button key={e} onClick={() => setPrompt(e)} className={`${btnClass("secondary", "sm")} !px-4 max-w-[300px] !block truncate`}>{e}</button>
-                ))}
-              </div>
-              <p className="text-sm text-ink-faint mt-2">Paste workshop notes with labels (Niche:, Audience:) for more detail.</p>
+<BriefPrompt tenantId={tenantId} />
             </div>
             <IconButton label="Dismiss" onClick={() => { setHero(false); dismissHeroAction(tenantId); }} className="!absolute top-3 right-4"><X size={16} /></IconButton>
           </section>
@@ -195,7 +143,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
               label="Projects"
               className="!border-b-0"
               value={view}
-              items={tabs.map((t) => ({ value: t.v, label: t.label, href: t.v === "recents" ? `/w/${tenantId}` : `/w/${tenantId}?view=${t.v}` }))}
+              items={tabs.map((t) => ({ value: t.v, label: t.label, href: `/w/${tenantId}?view=${t.v}` }))}
             />
             <span className="flex-1" />
             <Dropdown label={stage === "all" ? "All steps" : `${stageIndex(stage) + 1}. ${STAGE_LABEL[stage]}`} options={[["all", "All steps"], ...STAGES.map((s) => [s, `${stageIndex(s) + 1}. ${STAGE_LABEL[s]}`] as [string, string])]} onPick={(v) => setStage(v as Stage | "all")} />
@@ -257,36 +205,8 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
         </div>
       </div>
 
-      <Modal open={creating !== null} onClose={() => setCreating(null)} title={creating === "copy" ? "New project from a brief" : "New project"} width={460}>
-        <form action={createProjectAction} className="flex flex-col gap-5">
-          <input type="hidden" name="tenantId" value={tenantId} />
-          <Field label="Project name" required>
-            <input name="name" className="field" placeholder="e.g. Q4 thought-leadership push" autoFocus />
-          </Field>
-          {creating === "copy" ? (
-            <Field label="Copy the brief from" hint="Story, voice and visual identity are copied; pillars and content start fresh." required>
-              <select name="fromProject" className="field" defaultValue={projects[0]?.id}>
-                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </Field>
-          ) : (
-            <p className="text-sm text-ink-muted">It starts at Ideate. Content and Visual follow, each unlocking the next.</p>
-          )}
-          <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={() => setCreating(null)} className={btnClass("ghost")}>Cancel</button>
-            <SubmitButton pendingLabel="Creating…">Create project</SubmitButton>
-          </div>
-        </form>
-      </Modal>
+      <NewProjectModal tenantId={tenantId} projects={projects} mode={creating} onClose={() => setCreating(null)} />
     </div>
-  );
-}
-
-function PromptSubmit({ disabled }: { disabled: boolean }) {
-  return (
-    <SubmitButton variant="primary" size="sm" pendingLabel="Starting…" className={disabled ? "opacity-40 pointer-events-none" : ""}>
-      Start brief <ArrowRight size={13} />
-    </SubmitButton>
   );
 }
 

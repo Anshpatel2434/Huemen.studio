@@ -3,7 +3,7 @@
 /**
  * The app shell (design system §14): one frame for every workspace page.
  *
- *   sidebar   account and workspace switcher, search, the studio (Recents,
+ *   sidebar   account and workspace switcher, search, the studio (Home,
  *             Create, Check, Brand core, Plan), the workspace (Library,
  *             Archived, Usage), AI this month, Starred, appearance, access
  *   top bar   breadcrumbs, the section's own actions, the theme toggle, and
@@ -20,7 +20,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ChevronDown, Clock, LayoutGrid, BarChart3, Settings, Users, LogOut, Plus, Search, Archive, Star, ChevronRight,
+  ChevronDown, House, LayoutGrid, BarChart3, Settings, Users, LogOut, Plus, Search, Archive, Star, ChevronRight,
   PenLine, ScanText, Fingerprint, CalendarDays, Menu as MenuIcon, X,
 } from "lucide-react";
 import { Avatar, IconButton, LogoMark, Menu, MenuItem, MenuSeparator, ToastProvider } from "@/components/ui";
@@ -128,7 +128,7 @@ function Crumbs({ nav, section, tabs }: { nav: ShellNav; section?: string; tabs?
   const home = `/w/${nav.workspace.id}`;
   const view = params.get("view");
   const here: { label: string; href?: string }[] = [];
-  if (path === home) here.push({ label: view === "all" ? "Library" : view === "archived" ? "Archived" : "Recents" });
+  if (path === home) here.push({ label: view === "all" ? "Library" : view === "archived" ? "Archived" : view === "recents" ? "Recently viewed" : "Home" });
   else if (path === `${home}/usage`) here.push({ label: "Usage" });
   else if (section) {
     const tab = tabs?.find((t) => tabOn(t, path));
@@ -150,7 +150,7 @@ function Crumbs({ nav, section, tabs }: { nav: ShellNav; section?: string; tabs?
   );
 }
 
-function NavItem({ href, icon: Icon, label, on }: { href: string; icon: typeof Clock; label: string; on: boolean }) {
+function NavItem({ href, icon: Icon, label, on }: { href: string; icon: typeof House; label: string; on: boolean }) {
   return (
     <Link href={href} aria-current={on ? "page" : undefined} className="hu-navitem">
       <Icon size={17} aria-hidden="true" /> <span className="flex-1 truncate">{label}</span>
@@ -164,7 +164,7 @@ function Sidebar({ nav }: { nav: ShellNav }) {
   const path = usePathname();
   const router = useRouter();
   const params = useSearchParams();
-  const view = params.get("view") ?? "recents";
+  const view = params.get("view");
   const [account, setAccount] = useState(false);
   const [q, setQ] = useState(params.get("q") ?? "");
   const home = `/w/${workspace.id}`;
@@ -237,7 +237,7 @@ function Sidebar({ nav }: { nav: ShellNav }) {
       {/* The studio (§14: Brand core, Create, Check, Library) */}
       <p className="hu-navgroup">Studio</p>
       <nav className="flex flex-col gap-0.5 shrink-0" aria-label="Studio">
-        <NavItem href={home} icon={Clock} label="Recents" on={isHome && view === "recents"} />
+        <NavItem href={home} icon={House} label="Home" on={isHome && !view} />
         <NavItem href={`${home}/create`} icon={PenLine} label="Create" on={path.startsWith(`${home}/create`)} />
         <NavItem href={`${home}/check`} icon={ScanText} label="Check" on={path.startsWith(`${home}/check`)} />
         <NavItem href={`${home}/brand`} icon={Fingerprint} label="Brand core" on={path.startsWith(`${home}/brand`) || path.startsWith(`${home}/onboarding`)} />
@@ -250,7 +250,7 @@ function Sidebar({ nav }: { nav: ShellNav }) {
         <span className="ml-auto shrink-0 normal-case tracking-normal font-sans text-xs font-medium px-2 py-0.5 rounded-full bg-accent-soft text-accent-ink">{ROLE[user.role]}</span>
       </p>
       <nav className="flex flex-col gap-0.5 shrink-0" aria-label="Workspace">
-        <NavItem href={`${home}?view=all`} icon={LayoutGrid} label="Library" on={isHome && view === "all"} />
+        <NavItem href={`${home}?view=all`} icon={LayoutGrid} label="Library" on={isHome && (view === "all" || view === "recents")} />
         <NavItem href={`${home}?view=archived`} icon={Archive} label="Archived" on={isHome && view === "archived"} />
         <NavItem href={`${home}/usage`} icon={BarChart3} label="Usage" on={path === `${home}/usage`} />
       </nav>

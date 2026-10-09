@@ -35,16 +35,18 @@ export function BrandCoreCard({
     : trained ? { tone: "ok" as const, word: "Trained" }
     : { tone: "warn" as const, word: "Provisional" };
   return (
-    <div className="bg-paper border border-hairline rounded-md overflow-hidden">
+    <div className="@container bg-paper border border-hairline rounded-md overflow-hidden">
       <HueStrip count={8} className="!rounded-none" />
       <div className="p-6">
-        <div className="flex items-center gap-3.5">
+        {/* Sized by its own width (container query), so it reads the same in a
+            360px column on Brand home and full width in Brand core. */}
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-3">
           <Avatar seed={seed} label={name} size="lg" />
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-medium truncate">{name}</p>
-            <p className="text-sm text-ink-muted truncate">{subtitle}</p>
+          <div className="min-w-0 flex-1 basis-[12ch]">
+            <p className="text-lg font-medium leading-snug break-words">{name}</p>
+            <p className="text-sm text-ink-muted break-words">{subtitle}</p>
           </div>
-          <Badge tone={badge.tone}>{badge.word}</Badge>
+          <span className="@md:order-none order-last w-full @md:w-auto"><Badge tone={badge.tone}>{badge.word}</Badge></span>
         </div>
 
         {attributes.length > 0 && (
@@ -58,7 +60,7 @@ export function BrandCoreCard({
           </div>
         )}
 
-        <div className="mt-5 pt-5 border-t border-hairline grid grid-cols-4 gap-3">
+        <div className="mt-5 pt-5 border-t border-hairline grid grid-cols-2 @md:grid-cols-4 gap-x-3 gap-y-4">
           <div>
             <p className="num text-xl font-medium leading-none" style={{ color: trained ? "var(--ok)" : "var(--ink)" }}>{confidence}<span className="text-sm text-ink-faint">%</span></p>
             <p className="label-mono text-ink-faint mt-1">Confidence</p>
@@ -140,6 +142,68 @@ export function Findings({ items }: { items: Finding[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The composer's collapsed core §15.7: whose voice is in use, how sure the
+ * system is, and the words it learned. Sits beside every draft.
+ */
+export function CoreAside({ name, seed, confidence, attributes, trained, children }: {
+  name: string; seed: string; confidence: number; attributes: string[]; trained: boolean; children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <Avatar seed={seed} label={name} size="md" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold truncate">{name}</p>
+          <p className="label-mono text-ink-faint">
+            <span className="num" style={{ color: trained ? "var(--ok)" : undefined }}>{confidence}%</span> confident
+          </p>
+        </div>
+      </div>
+      {attributes.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {attributes.map((a) => <span key={a} className="hu-tag">{a}</span>)}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Usage and limits §15.5: shown before it becomes a wall, always with the
+ * reset date so a limit reads as a rhythm, not a punishment.
+ */
+export function UsageMeter({ rows, resets, footer }: {
+  rows: { label: string; used: number; cap: number | null }[];
+  /** e.g. "1 November". */
+  resets: string;
+  footer?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      {rows.map((r) => {
+        const pct = r.cap ? Math.min(100, (r.used / r.cap) * 100) : 0;
+        const near = r.cap ? r.used / r.cap >= 0.8 : false;
+        return (
+          <div key={r.label}>
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span>{r.label}</span>
+              <span className="num text-ink-muted">{r.used}{r.cap ? <span className="text-ink-faint"> / {r.cap}</span> : <span className="text-ink-faint"> · no cap</span>}</span>
+            </div>
+            {r.cap ? (
+              <div className="mt-2 h-1.5 rounded-full bg-active overflow-hidden" role="progressbar" aria-label={r.label} aria-valuemin={0} aria-valuemax={r.cap} aria-valuenow={r.used}>
+                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: near ? "var(--warn-line)" : "var(--accent)" }} />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+      <p className="text-xs text-ink-faint">Resets {resets}.{footer ? <> {footer}</> : null}</p>
     </div>
   );
 }

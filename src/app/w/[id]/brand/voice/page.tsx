@@ -11,6 +11,7 @@ import { btnClass } from "@/components/btn";
 import { EmptyState, SubmitButton, Alert } from "@/components/ui";
 import Link from "next/link";
 import { BrandCoreCard } from "@/components/composites";
+import { coreCardFacts } from "@/lib/voice/core-card";
 import { confidence } from "@/lib/voice/derive";
 import { nextDeepQuestions } from "@/lib/voice/questions";
 import { approvedPieceCount, approvedSince, listEditProposals, listProposals, ownsVoice } from "@/lib/data/training";
@@ -98,22 +99,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   const Hidden = () => <input type="hidden" name="tenantId" value={id} />;
 
   // §15.1 brand core card — the coloured summary of the measured voice.
-  const coreAttrs = (pack.identity.toneDescriptors?.value ?? []).slice(0, 5);
-  const words = pack.corpusStats.words;
-  const coreCard = {
-    name: pack.displayName || "Your voice",
-    seed: pack.id,
-    subtitle: `${pack.corpusStats.channels[0] ? pack.corpusStats.channels.join(", ") + " · " : ""}core v${pack.version}${pack.scannedAt ? ` · measured ${new Date(pack.scannedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}`,
-    trained: conf.trained,
-    state,
-    attributes: coreAttrs,
-    confidence: conf.score,
-    stats: [
-      { label: "Samples", value: String(pack.corpusStats.pieces) },
-      { label: "Words read", value: words >= 1000 ? `${(words / 1000).toFixed(1)}k` : String(words) },
-      { label: "Channels", value: String(pack.corpusStats.channels.length) },
-    ],
-  };
+  const coreCard = coreCardFacts(pack, now);
 
   return (
     <DocPage
