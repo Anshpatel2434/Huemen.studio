@@ -1,17 +1,12 @@
-import { workspaceScope } from "@/lib/auth/workspace";
-import { getWorkspace } from "@/lib/data/workspaces";
-import { SectionChrome } from "@/components/section-chrome";
+import { WorkspaceShell } from "@/components/workspace-shell";
 
 /** Planning: ideas, calendar and offers, for the whole workspace. */
 export default async function PlanLayout({ children, params }: LayoutProps<"/w/[id]/plan">) {
   const { id } = await params;
-  const { scope } = await workspaceScope(id);
-  const ws = await getWorkspace(scope);
   const base = `/w/${id}/plan`;
   return (
-    <SectionChrome
+    <WorkspaceShell
       tenantId={id}
-      workspaceName={ws?.name ?? "Workspace"}
       section="Plan"
       tabs={[
         { href: `${base}/ideas`, label: "Ideas" },
@@ -20,7 +15,6 @@ export default async function PlanLayout({ children, params }: LayoutProps<"/w/[
       ]}
     >
       {children}
-    </SectionChrome>
+    </WorkspaceShell>
   );
 }
-

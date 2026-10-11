@@ -26,11 +26,34 @@ export interface SessionScope {
   isPlatformAdmin: boolean;
 }
 
+/**
+ * The database can't be reached (not started, wrong port, network). Node
+ * reports a refused connection to a host with two addresses (::1 and
+ * 127.0.0.1) as an AggregateError, which the Next dev server fails to
+ * serialise: the page goes blank and the real cause is buried. A plain Error
+ * with the cause spelled out reaches the error boundary and the log intact.
+ */
+export class DatabaseUnavailableError extends Error {
+  constructor(public readonly code: string) {
+    super(`Can't reach the database (${code}). Is it running? Start it with \`npm run db:up\` (Docker must be running).`);
+    this.name = "DatabaseUnavailableError";
+  }
+}
+
+async function connect(): Promise<PoolClient> {
+  try {
+    return await appPool().connect();
+  } catch (err) {
+    const e = err as { code?: string; errors?: { code?: string }[] };
+    throw new DatabaseUnavailableError(e.code ?? e.errors?.[0]?.code ?? (err instanceof Error ? err.message : "unknown"));
+  }
+}
+
 export async function withTenantSession<T>(
   scope: SessionScope,
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await appPool().connect();
+  const client = await connect();
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.current_tenant', $1, true)", [

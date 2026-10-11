@@ -28,7 +28,7 @@ export default async function LinkExpiredPage({ searchParams }: PageProps<"/auth
       <form action={signInWithEmail} className="mt-6 flex flex-col gap-3">
         {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
         <label className="block">
-          <span className="block text-[0.76rem] text-ink-muted mb-1.5">Email address</span>
+          <span className="block text-xs text-ink-muted mb-1.5">Email address</span>
           <input name="email" type="email" required autoComplete="email" defaultValue={email} placeholder="Enter your email address…" className="field" />
         </label>
         <SubmitButton variant="primary" pendingLabel="Sending…" className="w-full">Send a new link</SubmitButton>

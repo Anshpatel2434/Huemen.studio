@@ -44,7 +44,7 @@ export default async function QuestionnairePage({
     <main className="flex-1 flex flex-col items-center px-5 py-14">
       <LogoMark size={32} />
       <p className="label-mono text-ink-faint mt-6">Pre-workshop questionnaire · {name}</p>
-      <h1 className="text-[2rem] sm:text-[2.4rem] text-center mt-3 leading-[1.1] max-w-xl">
+      <h1 className="text-3xl text-center mt-3 leading-[1.1] max-w-xl">
         Tell us your story. <span className="serif-accent">We&apos;ll bring the brief.</span>
       </h1>
       <p className="text-ink-muted text-center mt-3 max-w-md">
@@ -52,19 +52,19 @@ export default async function QuestionnairePage({
       </p>
 
       {done ? (
-        <div className="mt-10 w-full max-w-[640px] bg-paper border border-hairline rounded-[14px] p-8 text-center fade-up">
+        <div className="mt-10 w-full max-w-[640px] bg-paper border border-hairline rounded-md p-8 text-center fade-up">
           <CheckCircle2 className="mx-auto text-ok" size={28} />
           <p className="mt-3 font-medium">Received, thank you.</p>
-          <p className="text-ink-muted text-[0.875rem] mt-1">Your answers are saved as a draft brief. See you at the workshop.</p>
+          <p className="text-ink-muted text-sm mt-1">Your answers are saved as a draft brief. See you at the workshop.</p>
         </div>
       ) : (
-        <PersistForm storageKey={`huemen:q:${token}`} action={submitQuestionnaire} className="mt-10 w-full max-w-[640px] bg-paper border border-hairline rounded-[14px] p-6 sm:p-8 flex flex-col gap-5 shadow-[var(--shadow-sm)]">
+        <PersistForm storageKey={`huemen:q:${token}`} action={submitQuestionnaire} className="mt-10 w-full max-w-[640px] bg-paper border border-hairline rounded-md p-6 sm:p-8 flex flex-col gap-5 shadow-[var(--shadow-sm)]">
           <input type="hidden" name="token" value={token} />
           {QUESTIONS.map((q, i) => (
             <label key={q.name} className="block">
               <span className="flex items-baseline gap-2 mb-1.5">
                 <span className="label-mono text-ink-faint">{String(i + 1).padStart(2, "0")}</span>
-                <span className="text-[0.9rem] font-medium">{q.label}</span>
+                <span className="text-sm font-medium">{q.label}</span>
               </span>
               {q.rows === 1 ? (
                 <input name={q.name} className="field" required={q.required} placeholder={q.hint} />

@@ -30,8 +30,8 @@ export function VoiceRecorder({ tenantId, enabled, onText }: { tenantId: string;
     return () => { if (timer.current) clearInterval(timer.current); rec.current?.stream.getTracks().forEach((t) => t.stop()); };
   }, []);
 
-  if (!enabled) return <p className="text-[0.75rem] text-ink-faint">Recording isn&apos;t switched on here yet. Type it, or paste a transcript.</p>;
-  if (!supported) return <p className="text-[0.75rem] text-ink-faint">This browser can&apos;t record. Type it, or paste a transcript.</p>;
+  if (!enabled) return <p className="text-xs text-ink-faint">Recording isn&apos;t switched on here yet. Type it, or paste a transcript.</p>;
+  if (!supported) return <p className="text-xs text-ink-faint">This browser can&apos;t record. Type it, or paste a transcript.</p>;
 
   const stop = () => {
     if (timer.current) clearInterval(timer.current);
@@ -93,8 +93,8 @@ export function VoiceRecorder({ tenantId, enabled, onText }: { tenantId: string;
           {state === "sending" ? <><AgentDots /> Writing it down</> : <><Mic size={14} aria-hidden="true" /> Record</>}
         </button>
       )}
-      {state === "recording" && <span role="status" className="text-[0.78rem] text-ink-muted">Recording. Talk the way you would to a friend.</span>}
-      {error && <span role="alert" className="text-[0.78rem] text-danger">{error}</span>}
+      {state === "recording" && <span role="status" className="text-xs text-ink-muted">Recording. Talk the way you would to a friend.</span>}
+      {error && <span role="alert" className="text-xs text-danger">{error}</span>}
     </div>
   );
 }

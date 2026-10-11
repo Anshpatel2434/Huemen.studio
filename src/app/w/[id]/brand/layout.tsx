@@ -1,6 +1,4 @@
-import { workspaceScope } from "@/lib/auth/workspace";
-import { getWorkspace } from "@/lib/data/workspaces";
-import { SectionChrome } from "@/components/section-chrome";
+import { WorkspaceShell } from "@/components/workspace-shell";
 
 /**
  * Brand core: brief, voice, pillars and visual. Set once in onboarding, refined here,
@@ -9,13 +7,10 @@ import { SectionChrome } from "@/components/section-chrome";
  */
 export default async function BrandLayout({ children, params }: LayoutProps<"/w/[id]/brand">) {
   const { id } = await params;
-  const { scope } = await workspaceScope(id);
-  const ws = await getWorkspace(scope);
   const base = `/w/${id}/brand`;
   return (
-    <SectionChrome
+    <WorkspaceShell
       tenantId={id}
-      workspaceName={ws?.name ?? "Workspace"}
       section="Brand core"
       tabs={[
         { href: base, label: "Brief", exact: true },
@@ -25,6 +20,6 @@ export default async function BrandLayout({ children, params }: LayoutProps<"/w/
       ]}
     >
       {children}
-    </SectionChrome>
+    </WorkspaceShell>
   );
 }

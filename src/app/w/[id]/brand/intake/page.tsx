@@ -16,12 +16,12 @@ export default async function IntakePage({ params }: PageProps<"/w/[id]/brand/in
   return (
     <div className="min-h-screen flex flex-col">
       <header className="h-14 flex items-center justify-between px-4">
-        <Link href={`/w/${id}`} className="p-1 rounded-[8px] hover:bg-field"><LogoMark size={26} /></Link>
-        <Link href={`/w/${id}/brand`} className="flex items-center gap-1.5 text-[0.82rem] text-ink-muted hover:text-ink"><ArrowLeft size={14} /> Open {(ws?.name ?? "Your brand")}</Link>
+        <Link href={`/w/${id}`} className="p-1 rounded-sm hover:bg-field"><LogoMark size={26} /></Link>
+        <Link href={`/w/${id}/brand`} className="flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink"><ArrowLeft size={14} /> Open {(ws?.name ?? "Your brand")}</Link>
       </header>
       <main className="flex-1 flex flex-col items-center px-5 pt-10 pb-20">
         <StageChips active="brief" />
-        <h1 className="text-center text-[2.1rem] sm:text-[2.6rem] leading-[1.1] mt-7 max-w-2xl fade-up">
+        <h1 className="text-center text-3xl leading-[1.1] mt-7 max-w-2xl fade-up">
           Dump in everything you&apos;ve got.
           <br />
           <span className="serif-accent">We&apos;ll turn it into a brief.</span>

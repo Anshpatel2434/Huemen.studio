@@ -8,6 +8,7 @@ import { emptyIndex, tagged, type VoicePack } from "@/lib/voice/types";
 import { openaiTranscriber } from "@/lib/ai/providers/openai-transcribe";
 import { AiConfigError, ProviderError } from "@/lib/ai/errors";
 import { MIN_PICKS, MAX_PICKS } from "@/lib/voice/words";
+import { coreCardFacts } from "@/lib/voice/core-card";
 
 function pack(over: Partial<VoicePack> = {}): VoicePack {
   return {
@@ -134,5 +135,39 @@ describe("voice-note transcription", () => {
     expect(() => selectTranscriber({ ...base, AI_TRANSCRIBE_PROVIDER: "openai", AI_TRANSCRIBE_MODEL: "m" })).toThrow(AiConfigError);
     expect(() => selectTranscriber({ ...base, AI_TRANSCRIBE_PROVIDER: "openai", OPENAI_API_KEY: "k" })).toThrow(AiConfigError);
     expect(selectTranscriber({ ...base, AI_TRANSCRIBE_PROVIDER: "openai", OPENAI_API_KEY: "k", AI_TRANSCRIBE_MODEL: "m" })).not.toBeNull();
+  });
+});
+
+describe("the brand core card's facts (§15.1), shared by Brand home, Voice and Check", () => {
+  it("says the same thing wherever the core is shown", () => {
+    const p = pack({
+      displayName: "Alex Rivera", version: 4, scannedAt: "2026-10-02T09:00:00Z",
+      corpusStats: { pieces: 3, words: 1250, sentences: 40, channels: ["linkedin", "newsletter"] },
+      identity: { toneDescriptors: tagged(["Direct", "Warm", "Contrarian", "Evidence-led", "Dry", "Sixth"], "ask") },
+    });
+    const f = coreCardFacts(p, NOW);
+    expect(f.name).toBe("Alex Rivera");
+    expect(f.subtitle).toBe("linkedin, newsletter · core v4 · measured 2 Oct");
+    expect(f.attributes).toEqual(["Direct", "Warm", "Contrarian", "Evidence-led", "Dry"]);
+    expect(f.stats).toEqual([
+      { label: "Samples", value: "3" },
+      { label: "Words read", value: "1.3k" },
+      { label: "Channels", value: "2" },
+    ]);
+    expect(f.state).toBe("trained");
+  });
+
+  it("never rounds confidence up, and says what would raise it", () => {
+    const f = coreCardFacts(pack({ corpusStats: stats(1) }), NOW);
+    expect(f.confidence).toBeLessThan(70);
+    expect(f.trained).toBe(false);
+    expect(f.missing[0]).toMatch(/more pieces of your writing/);
+  });
+
+  it("falls back to a plain name and Empty before there is any writing", () => {
+    const f = coreCardFacts(pack({ displayName: "" }), NOW);
+    expect(f.name).toBe("Your voice");
+    expect(f.state).toBe("empty");
+    expect(f.subtitle).toBe("core v1");
   });
 });
