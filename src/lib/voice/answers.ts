@@ -17,6 +17,7 @@ import {
   type DialKey,
   type Guardrail,
   type PersonalityWord,
+  type Quadrant,
   type VoicePack,
 } from "./types";
 import type { PackPatch } from "@/lib/data/voice-pack";
@@ -41,12 +42,19 @@ function guardrail(pack: VoicePack, id: string, name: string, rule: string, why 
   return rule ? [...others, { id, name, rule, why, instead, source: "ask" }] : others;
 }
 
-export function applyAnswer(pack: VoicePack, questionId: string, answer: Answer): AnswerOutcome {
+export function applyAnswer(
+  pack: VoicePack,
+  questionId: string,
+  answer: Answer,
+  /** True when the answer came from a recorded voice note (05 Part 1 rule 3). */
+  opts: { spoken?: boolean } = {},
+): AnswerOutcome {
   const q = questionById(questionId);
   if (!q) throw new Error(`Unknown question ${questionId}`);
   const id = pack.identity;
   const value = text(answer);
-  const spokenSample = q.spoken && value.split(/\s+/).length >= 15 ? value : undefined;
+  // Only a voice note is a spoken sample: a typed answer is not how they talk.
+  const spokenSample = opts.spoken && value.split(/\s+/).length >= 15 ? value : undefined;
 
   switch (q.fills) {
     case "identity.reader":
@@ -63,10 +71,37 @@ export function applyAnswer(pack: VoicePack, questionId: string, answer: Answer)
       return { patch: { identity: { ...id, guarded: tagged(value, "ask") } }, spokenSample };
     case "identity.unguarded":
       return { patch: { identity: { ...id, unguarded: tagged(value, "ask") } }, spokenSample };
-    case "identity.humour":
+    case "identity.humour": {
+      // C9: up to two kinds, plus a dose (05: "Multi (up to 2) + Dial").
+      if (typeof answer === "object" && !Array.isArray(answer)) {
+        const picks = (answer.picks ?? "").trim();
+        const dose = Number(answer.dose);
+        const text = [picks, Number.isFinite(dose) && dose >= 1 ? `dose ${dose} of 10` : ""].filter(Boolean).join(" · ");
+        return { patch: { identity: { ...id, humour: tagged(text, "ask") } } };
+      }
       return { patch: { identity: { ...id, humour: tagged(value, "ask") } } };
+    }
     case "identity.language":
       return { patch: { identity: { ...id, language: tagged(value, "ask") } } };
+    case "identity.languageMixing": {
+      const base = (id.language?.value ?? "").replace(/\s*·\s*mixing:.*$/i, "");
+      return { patch: { identity: { ...id, language: tagged([base, `mixing: ${value}`].filter(Boolean).join(" · "), "ask") } } };
+    }
+    case "identity.quadrant": {
+      // C3: where they are today, and where they want to be (an aspiration when they differ).
+      const a = typeof answer === "object" && !Array.isArray(answer) ? answer : { today: value };
+      const today = a.today as Quadrant | undefined;
+      const want = a.want as Quadrant | undefined;
+      if (!today) return { patch: {} };
+      const quadrant = want && want !== today
+        ? { ...tagged<Quadrant>(want, "ask", "aspiration"), measuredValue: today }
+        : tagged<Quadrant>(today, "ask");
+      return { patch: { identity: { ...id, quadrant } } };
+    }
+    case "voice.oneBreath":
+      return { patch: { identity: { ...id, answers: { ...(id.answers ?? {}), E6: value } } }, spokenSample };
+    case "contexts.disagreement":
+      return { patch: { identity: { ...id, answers: { ...(id.answers ?? {}), "F3 · Disagreeing with someone (a line they'd use)": value } } } };
     case "identity.personalityLonglist":
       return { patch: { identity: { ...id, personalityLonglist: tagged(list(answer), "ask") } } };
     case "identity.personalityWords": {
@@ -121,10 +156,22 @@ export function applyAnswer(pack: VoicePack, questionId: string, answer: Answer)
       return { patch: { guardrails: guardrail(pack, "stance", "Stance", value) } };
     case "guardrails.toneMix":
       return { patch: { guardrails: guardrail(pack, "tone-mix", "Mix of stories", value) } };
+    case "guardrails.closers":
+      return { patch: { guardrails: guardrail(pack, "closers", "How they invite people in", `End the way they do: ${value}`, "", "Never with an ending they find pushy.") } };
+    case "guardrails.framing": {
+      // D4: one rule per topic picked, each with how they want it framed.
+      const topics = typeof answer === "object" && !Array.isArray(answer) ? answer : {};
+      let rails = pack.guardrails.filter((g) => !g.id.startsWith("framing:"));
+      for (const [topic, how] of Object.entries(topics)) {
+        if (!how.trim()) continue;
+        rails = [...rails, { id: `framing:${topic.toLowerCase()}`, name: `Framing: ${topic}`, rule: `${topic}: ${how.trim()}`, why: "How they framed it themselves.", instead: "", source: "ask" }];
+      }
+      return { patch: { guardrails: rails } };
+    }
 
     case "redPen.neverList":
     case "redPen.pushy": {
-      const add = list(answer).map((w) => w.toLowerCase());
+      const add = list(answer).map((w) => w.toLowerCase()).filter((w) => w !== "none of these");
       const never = [...new Set([...pack.index.neverWords.map((w) => w.toLowerCase()), ...add])];
       return {
         patch: {

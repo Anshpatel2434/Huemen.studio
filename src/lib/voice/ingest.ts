@@ -101,6 +101,8 @@ export function ingestLinkedIn(csv: string): IngestResult {
 const WA_LINE =
   /^\[?(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[APap][Mm])?)\]?\s*(?:-\s*)?([^:]{1,60}):\s?(.*)$/;
 const WA_SKIP = /<media omitted>|<attached:|this message was deleted|messages and calls are end-to-end encrypted/i;
+/** Days of a chat kept, newest first: years of chat would drown every other source. */
+export const WA_MAX_DAYS = 60;
 
 /**
  * WhatsApp "Export chat" (.txt). Keeps ONLY the messages sent by `myName`, and
@@ -132,7 +134,10 @@ export function ingestWhatsApp(text: string, myName: string): IngestResult {
     }
   }
 
-  const pieces: IngestedPiece[] = [...byDay.values()]
+  // An export runs oldest to newest; the most recent days are how they write now.
+  const days = [...byDay.values()];
+  const kept = days.slice(-WA_MAX_DAYS);
+  const pieces: IngestedPiece[] = kept
     .map((msgs) => msgs.filter(Boolean).join("\n"))
     .filter((b) => b.trim().length > 0)
     .map((body) => ({ body, channel: "whatsapp", visibility: "private" as const, kind: "unguarded" as const }));
@@ -146,7 +151,7 @@ export function ingestWhatsApp(text: string, myName: string): IngestResult {
   }
   return {
     pieces,
-    summary: `${mineCount} of your messages read, grouped into ${pieces.length} days. ${theirs} messages from other people were left out and not stored.`,
+    summary: `${mineCount} of your messages read, grouped into ${pieces.length} days${days.length > kept.length ? ` (the most recent ${WA_MAX_DAYS}; ${days.length - kept.length} older days left out)` : ""}. ${theirs} messages from other people were left out and not stored.`,
   };
 }
 
@@ -224,33 +229,37 @@ export const SOURCE_GROUPS: { group: string; private?: boolean; sources: { key: 
       { key: "instagram", label: "Instagram", channel: "instagram", how: "Paste captions" },
       { key: "x", label: "X", channel: "x", how: "Paste posts" },
       { key: "threads", label: "Threads", channel: "threads", how: "Paste posts" },
+      { key: "facebook", label: "Facebook", channel: "facebook", how: "Paste posts. Separate them with a --- line" },
+      { key: "youtube_community", label: "YouTube community posts", channel: "youtube_community", how: "Paste posts from your channel's Community tab" },
     ],
   },
   {
     group: "Long-form",
     sources: [
-      { key: "newsletter", label: "Newsletter or blog", channel: "newsletter", how: "Upload .txt or .md, or paste. Separate several pieces with a --- line" },
+      { key: "newsletter", label: "Newsletter or blog", channel: "newsletter", how: "Upload PDF, Word, .txt or .md, or paste. Separate several pieces with a --- line" },
     ],
   },
   {
     group: "Spoken",
     sources: [
-      { key: "spoken", label: "Podcast, video or talk", channel: "spoken", how: "Paste or upload a transcript" },
+      { key: "spoken", label: "Podcast, video or talk", channel: "spoken", how: "Paste or upload a transcript (captions, PDF or Word work too)" },
     ],
   },
   {
     group: "Private",
     private: true,
     sources: [
-      { key: "email", label: "Sent email", channel: "email", how: "Paste sent emails. Quoted replies and signatures are removed" },
+      { key: "email", label: "Sent email (Gmail)", channel: "email", how: "Connect Gmail below, or paste sent emails. Quoted replies and signatures are removed" },
+      { key: "outlook", label: "Outlook", channel: "email", how: "Paste sent emails from Outlook. Quoted replies and signatures are removed" },
       { key: "whatsapp", label: "WhatsApp", channel: "whatsapp", how: "Upload a chat export (.txt). Only your own messages are kept" },
-      { key: "slack", label: "Slack or Teams", channel: "slack", how: "Paste your own messages" },
+      { key: "slack", label: "Slack", channel: "slack", how: "Paste your own messages" },
+      { key: "teams", label: "Microsoft Teams", channel: "slack", how: "Paste your own messages from Teams chats or channels" },
     ],
   },
   {
     group: "Documents",
     sources: [
-      { key: "documents", label: "Proposals, decks, reports", channel: "documents", how: "Upload .txt or .md, or paste" },
+      { key: "documents", label: "Proposals, decks, reports", channel: "documents", how: "Upload PDF, Word (.docx), .txt or .md, or paste" },
     ],
   },
 ];

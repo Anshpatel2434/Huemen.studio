@@ -1,4 +1,4 @@
-import { Mic, ScanLine, Quote, Lock, AlertTriangle, CheckCircle2, Trash2, EyeOff, Eye } from "lucide-react";
+import { Mic, ScanLine, Quote, Lock, AlertTriangle, CheckCircle2, Circle, Trash2, EyeOff, Eye, Download } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { listSamples, listVersions, loadPackForWorkspace, previewRescan } from "@/lib/data/voice-pack";
 import { coreState, diffPacks, rescanDue } from "@/lib/voice/lifecycle";
@@ -12,13 +12,14 @@ import { EmptyState, SubmitButton, Alert } from "@/components/ui";
 import Link from "next/link";
 import { BrandCoreCard } from "@/components/composites";
 import { coreCardFacts } from "@/lib/voice/core-card";
-import { confidence } from "@/lib/voice/derive";
-import { nextDeepQuestions } from "@/lib/voice/questions";
+import { confidence, deriveHardRules, deriveSelfCheck, readyChecklist, skipDeep, suggestVoiceLine, voiceMeter } from "@/lib/voice/derive";
+import { nextDeepQuestions, QUESTIONS } from "@/lib/voice/questions";
+import { VOICE_FILES } from "@/lib/voice/export";
 import { approvedPieceCount, approvedSince, listEditProposals, listProposals, ownsVoice } from "@/lib/data/training";
 import { QuestionField } from "../../onboarding/steps";
 import {
   addSamplesAction, decideEditAction, decidePatternAction, decideProposalAction, deleteSampleAction, excludeSampleAction, previewRescanAction, rescanAction,
-  resolveSignatureAction, restoreVersionAction, saveVoiceAction,
+  resolveSignatureAction, restoreVersionAction, saveSelfCheckAction, saveVoiceAction, setAntiSampleAction, setBenchmarkNoteAction,
 } from "./actions";
 import { patternsFor } from "@/lib/data/patterns";
 
@@ -90,7 +91,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   const changedFrom = (i: number) => diffPacks(versions[i].snapshot, i === 0 ? pack : versions[i - 1].snapshot);
   const owner = ownsVoice({ userId: session.userId, role: session.role }, pack);
   const conf = confidence(pack);
-  const deep = nextDeepQuestions(pack.onboarding.answered ?? [], approved);
+  const deep = nextDeepQuestions(pack.onboarding.answered ?? [], approved, 3, skipDeep(pack));
   const moved = ([] as string[]).concat(sp.moved ?? []);
   const level = corpusLevel(pack.corpusStats);
   const lines = mechanicsLines(pack);
@@ -103,6 +104,18 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
   // §15.1 brand core card — the coloured summary of the measured voice.
   const coreCard = coreCardFacts(pack, now);
+
+  // The meter (Core = 70%, Deep fills the rest) and what "ready to write" still needs.
+  const meter = voiceMeter(pack, QUESTIONS.filter((q) => q.tier === "deep").length);
+  const ready = readyChecklist(pack, CORPUS_MINIMUM_PIECES);
+  const benchmarks = samples.filter((s) => s.kind === "benchmark" && s.visibility === "public");
+  const notes = pack.onboarding.benchmarkNotes ?? {};
+  const anti = pack.onboarding.antiSample;
+  // Candidates for the anti-sample: public pieces that aren't benchmarks. Quoted in prompts, so never private.
+  const antiPool = samples.filter((s) => s.visibility === "public" && s.kind !== "benchmark" && (!s.excluded || s.id === anti?.sampleId)).slice(0, 8);
+  const selfCheck = pack.redPen.selfCheck?.value?.length ? pack.redPen.selfCheck.value : deriveSelfCheck(pack);
+  const suggestedLine = pack.voiceLine.trim() ? "" : suggestVoiceLine(pack);
+  const rules = pack.hardRules.length ? pack.hardRules : deriveHardRules(pack);
 
   return (
     <DocPage
@@ -148,6 +161,32 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             {!pack.onboarding.completedAt && <Link href={`/w/${id}/onboarding`}>Carry on setting up</Link>}
           </Alert>
         )}
+
+        <Card label="Ready to write">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-xl font-medium tabular-nums">{meter.score}%</span>
+            <span className="flex-1 h-1.5 bg-field rounded-full overflow-hidden" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={meter.score} aria-label="How complete your voice is">
+              <span className="block h-full bg-ink rounded-full" style={{ width: `${meter.score}%` }} />
+            </span>
+            <span className="text-xs text-ink-faint tabular-nums">core {meter.coreDone}/{meter.coreTotal}</span>
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+            {ready.map((r) => (
+              <li key={r.label} className={`flex items-start gap-2 ${r.done ? "text-ink-muted" : ""}`}>
+                {r.done ? <CheckCircle2 size={14} className="text-ok mt-0.5 shrink-0" /> : <Circle size={14} className="text-ink-faint mt-0.5 shrink-0" />}
+                {r.label}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 pt-3 border-t border-hairline flex flex-wrap items-center gap-2">
+            <span className="label-mono text-ink-faint mr-1">Download</span>
+            <a href={`/w/${id}/brand/voice/export`} className={btnClass("secondary", "sm")}><Download size={12} /> Whole pack</a>
+            {VOICE_FILES.map((f) => (
+              <a key={f} href={`/w/${id}/brand/voice/export?file=${encodeURIComponent(f)}`} className={btnClass("ghost", "sm")}>{f}</a>
+            ))}
+          </div>
+          <p className="text-xs text-ink-faint mt-2">The same pack, as the eight files. Private writing is counted in them, never included.</p>
+        </Card>
 
         {(proposals.length > 0 || learned.length > 0) && (
           <Card label="Waiting for a decision">
@@ -344,7 +383,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             <div className="flex flex-col gap-4">
               <label className="block">
                 <span className="label-mono text-ink-faint">Your voice in one line</span>
-                <input name="voiceLine" defaultValue={pack.voiceLine} placeholder="An essayist who finds the big idea in a small moment." className="field mt-1.5" />
+                <input name="voiceLine" defaultValue={pack.voiceLine || suggestedLine} placeholder="An essayist who finds the big idea in a small moment." className="field mt-1.5" />
+                {suggestedLine && <span className="block text-xs text-ink-faint mt-1">Suggested from your answers. Rewrite it in your words, or save it as it is.</span>}
               </label>
               <label className="block">
                 <span className="label-mono text-ink-faint">The one reader you picture</span>
@@ -356,7 +396,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               </label>
               <label className="block">
                 <span className="label-mono text-ink-faint">Hard rules — one per line. These beat every other instruction.</span>
-                <textarea name="hardRules" rows={3} defaultValue={pack.hardRules.join("\n")} placeholder="Never claim a title. Let the reader conclude it." className="field mt-1.5" />
+                <textarea name="hardRules" rows={3} defaultValue={rules.join("\n")} placeholder="Never claim a title. Let the reader conclude it." className="field mt-1.5" />
+                {!pack.hardRules.length && <span className="block text-xs text-ink-faint mt-1">Drafted from your lines and habits. The facts rule always stays one of the three.</span>}
               </label>
               <label className="block">
                 <span className="label-mono text-ink-faint">Words you&apos;d never use</span>
@@ -364,6 +405,73 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               </label>
               <div><SubmitButton pendingLabel="Saving…" size="md">Save</SubmitButton></div>
             </div>
+          </Card>
+        </form>
+
+        {/* ---- G3: why these three are them ------------------------------ */}
+        {benchmarks.length > 0 && (
+          <Card label="Your benchmarks · why they're you">
+            <p className="text-sm text-ink-muted mb-3">We drafted a line for each from what the piece does. Put it in your words: drafts are matched against these.</p>
+            <div className="flex flex-col gap-3">
+              {benchmarks.map((b) => (
+                <form key={b.id} action={setBenchmarkNoteAction} className="border border-hairline rounded-md p-3 flex flex-col gap-2">
+                  <Hidden /><input type="hidden" name="sampleId" value={b.id} />
+                  <div className="flex items-center gap-2">
+                    <span className="label-mono text-ink-faint">{PLATFORM_RULES[b.channel]?.label ?? b.channel}</span>
+                    {notes[b.id]?.confirmed && <span className="label-mono px-1.5 h-5 inline-flex items-center rounded-xs bg-ok-soft text-ok">confirmed</span>}
+                  </div>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-3 text-ink-muted">{b.body}</p>
+                  <textarea name="note" rows={2} defaultValue={notes[b.id]?.note ?? ""} placeholder="What makes this one unmistakably you?" className="field font-[inherit]" readOnly={!owner} />
+                  {owner && <div><SubmitButton pendingLabel="Saving…" size="sm" variant={notes[b.id]?.confirmed ? "ghost" : "secondary"}>{notes[b.id]?.confirmed ? "Update" : "That's it"}</SubmitButton></div>}
+                </form>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* ---- G4: the one that isn't them ------------------------------- */}
+        {(anti || (owner && antiPool.length > 0)) && (
+          <Card label="The one that isn't you">
+            {anti && (
+              <div className="mb-4 border border-hairline rounded-md p-3 text-sm flex flex-col gap-1.5">
+                <p className="whitespace-pre-wrap line-clamp-3 text-ink-muted">{anti.text}</p>
+                <p><span className="text-ink-faint">What&apos;s off:</span> {anti.off}</p>
+                {anti.fixed && <p><span className="text-ink-faint">How you&apos;d write it:</span> {anti.fixed}</p>}
+              </div>
+            )}
+            {owner && antiPool.length > 0 && (
+              <details open={!anti}>
+                <summary className="cursor-pointer min-h-11 flex items-center text-sm text-ink-muted">{anti ? "Pick a different one" : "Pick a piece that sounds almost like you, but not quite"}</summary>
+                <form action={setAntiSampleAction} className="flex flex-col gap-2 pt-1">
+                  <Hidden />
+                  <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Piece">
+                    {antiPool.map((s, i) => (
+                      <label key={s.id} className="border border-hairline rounded-md px-3 py-2 text-sm cursor-pointer has-[:checked]:border-ink has-[:checked]:bg-field has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink">
+                        <input type="radio" name="sampleId" value={s.id} required defaultChecked={s.id === anti?.sampleId || (!anti && i === 0)} className="sr-only" />
+                        <span className="label-mono text-ink-faint mr-2">{PLATFORM_RULES[s.channel]?.label ?? s.channel}</span>
+                        <span className="line-clamp-2">{s.body}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <input name="off" required placeholder="What's off about it? (too salesy, too formal, not how I'd open)" className="field" />
+                  <textarea name="fixed" rows={2} placeholder="Optional: the first line, the way you'd actually write it" className="field font-[inherit]" />
+                  <p className="text-xs text-ink-faint">It stops shaping your measured voice, and drafts are told to avoid exactly this.</p>
+                  <div><SubmitButton pendingLabel="Saving…" size="sm">Save</SubmitButton></div>
+                </form>
+              </details>
+            )}
+          </Card>
+        )}
+
+        {/* ---- the red-pen self-check ------------------------------------ */}
+        <form action={saveSelfCheckAction}>
+          <Card label="Self-check · run on every draft">
+            <Hidden />
+            <p className="text-sm text-ink-muted mb-2">
+              {pack.redPen.selfCheck?.value?.length ? "Your questions." : "Drafted from your measurements. Edit any line, add your own, or clear it to go back to the drafted list."}
+            </p>
+            <textarea name="selfCheck" rows={Math.min(10, selfCheck.length + 1)} defaultValue={selfCheck.join("\n")} className="field font-[inherit] leading-relaxed" />
+            <div className="mt-2"><SubmitButton pendingLabel="Saving…" size="sm" variant="secondary">Save self-check</SubmitButton></div>
           </Card>
         </form>
 

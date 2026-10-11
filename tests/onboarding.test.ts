@@ -119,7 +119,7 @@ describe("step 2: confirm your voice", () => {
   it("keeps a spoken answer as a spoken sample", async () => {
     if (!dbReachable) return;
     const long = "I'd be the person in the corner asking everyone what actually went wrong on their last project, and then admitting my own worst one before they had to.";
-    await answer(W, owner, await pack(), "C1", long);
+    await answer(W, owner, await pack(), "C1", long, { spoken: true });
     expect((await listSamples(W, (await pack()).id)).some((s) => s.kind === "spoken" && s.body === long)).toBe(true);
   });
 

@@ -435,6 +435,8 @@ export interface Onboarding {
    * and (optionally) the fix. Teaches the edge of the voice (samples.md).
    */
   antiSample?: { sampleId?: string; text: string; off: string; fixed?: string };
+  /** G3: why each benchmark is them, by sample id. Drafted, then confirmed or edited. */
+  benchmarkNotes?: Record<string, { note: string; confirmed: boolean }>;
 }
 
 /**

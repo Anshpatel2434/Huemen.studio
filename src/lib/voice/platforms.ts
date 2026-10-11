@@ -101,6 +101,25 @@ export const PLATFORM_RULES: Record<string, PlatformRule> = {
     formatting: "plain",
     norms: ["The subject says what it is about.", "One ask per email where possible."],
   },
+  // Working values, less settled than the others: re-check before launch.
+  facebook: {
+    key: "facebook",
+    label: "Facebook post",
+    maxChars: 63206,
+    visibleChars: 480,
+    maxHashtags: 3,
+    formatting: "plain",
+    norms: ["The first few lines show before 'See more'; land the point there.", "Conversational. Questions that invite a reply do well."],
+  },
+  youtube_community: {
+    key: "youtube_community",
+    label: "YouTube community post",
+    maxChars: null,
+    visibleChars: null,
+    maxHashtags: 3,
+    formatting: "plain",
+    norms: ["Short and direct: an update, a question or a poll for people who already watch.", "Talks to the audience the way the videos do."],
+  },
   whatsapp: {
     key: "whatsapp",
     label: "WhatsApp",

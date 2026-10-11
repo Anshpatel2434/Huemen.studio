@@ -21,7 +21,7 @@ import { addSamples, listSamples, loadPackForWorkspace, rescan, type NewSample }
 import { writePack, type Actor } from "./training";
 import { loadFoundation, saveFoundation } from "./foundation";
 import { applyAnswer, applyDials, type Answer } from "@/lib/voice/answers";
-import { confirmCards, estimateDials } from "@/lib/voice/derive";
+import { confirmCards, draftBenchmarkNote, estimateDials } from "@/lib/voice/derive";
 import type { IngestedPiece } from "@/lib/voice/ingest";
 import { tagged, withUserEdits } from "@/lib/voice/types";
 import {
@@ -200,12 +200,17 @@ export async function answer(
   pack: VoicePack,
   questionId: string,
   value: Answer,
+  opts: { spoken?: boolean } = {},
 ): Promise<void> {
-  const { patch, spokenSample } = applyAnswer(pack, questionId, value);
+  const { patch, spokenSample } = applyAnswer(pack, questionId, value, opts);
   if (Object.keys(patch).length) await writePack(scope, actor, pack, patch, `Answered ${questionId}.`);
   if (spokenSample) {
-    // A spoken answer is also how they sound (file 05, Part 1, rule 3).
-    await addSamples(scope, pack.id, [{ body: spokenSample, channel: "spoken", kind: "spoken", source: "voice_note", visibility: "public" }]);
+    // A spoken answer is also how they sound (file 05, Part 1, rule 3). The
+    // guard-down party answer is their unguarded voice (samples.md).
+    await addSamples(scope, pack.id, [{
+      body: spokenSample, channel: "spoken", kind: questionId === "C2" ? "unguarded" : "spoken",
+      source: "voice_note", visibility: "public",
+    }]);
   }
   await updateOnboarding(scope, pack, { answered: [questionId] });
 }
@@ -312,7 +317,47 @@ export async function setBenchmarks(scope: WorkspaceScope, pack: VoicePack, samp
       [pack.id, sampleIds.slice(0, 3)],
     );
   });
-  await updateOnboarding(scope, pack, { answered: ["G2"] });
+  // G3 in Core: a note for each pick is drafted now, from what the piece does;
+  // the person confirms or rewrites it on the Voice page.
+  const picked = (await listSamples(scope, pack.id)).filter((s) => sampleIds.slice(0, 3).includes(s.id) && s.visibility === "public");
+  const notes = { ...(pack.onboarding.benchmarkNotes ?? {}) };
+  for (const s of picked) if (!notes[s.id]) notes[s.id] = { note: draftBenchmarkNote(s.body), confirmed: false };
+  await updateOnboarding(scope, pack, { answered: ["G2"], benchmarkNotes: notes });
+}
+
+/** G3: why a benchmark is them, in their own words. */
+export async function setBenchmarkNote(scope: WorkspaceScope, pack: VoicePack, sampleId: string, note: string): Promise<void> {
+  const notes = { ...(pack.onboarding.benchmarkNotes ?? {}), [sampleId]: { note: note.trim().slice(0, 300), confirmed: true } };
+  await updateOnboarding(scope, pack, { benchmarkNotes: notes, answered: ["G3"] });
+}
+
+/**
+ * G4: the one piece that doesn't sound like them, and what's off about it.
+ * It becomes the anti-sample (samples.md) and stops shaping the measured
+ * voice. Public pieces only: the anti-sample is quoted in prompts.
+ */
+export async function setAntiSample(
+  scope: WorkspaceScope,
+  pack: VoicePack,
+  v: { sampleId: string; off: string; fixed?: string },
+): Promise<void> {
+  const sample = (await listSamples(scope, pack.id, { includeExcluded: true })).find((s) => s.id === v.sampleId && s.visibility === "public");
+  if (!sample || !v.off.trim()) return;
+  const before = pack.onboarding.antiSample?.sampleId;
+  await withTenantSession(scope, async (c) => {
+    // The previous anti-sample counts as their writing again.
+    if (before && before !== sample.id)
+      await c.query(`UPDATE voice_samples SET kind = 'corpus', excluded = false, exclusion_reason = NULL WHERE id = $1 AND pack_id = $2 AND kind = 'anti_sample'`, [before, pack.id]);
+    await c.query(
+      `UPDATE voice_samples SET kind = 'anti_sample', excluded = true, exclusion_reason = 'Not like me (anti-sample)' WHERE id = $1 AND pack_id = $2`,
+      [sample.id, pack.id],
+    );
+  });
+  await updateOnboarding(scope, pack, {
+    antiSample: { sampleId: sample.id, text: sample.body.slice(0, 600), off: v.off.trim().slice(0, 300), fixed: v.fixed?.trim().slice(0, 600) || undefined },
+    answered: ["G4"],
+  });
+  await rescan(scope, pack.id);
 }
 
 export async function setWorkMode(scope: WorkspaceScope, actor: Actor, pack: VoicePack, mode: WorkMode): Promise<void> {

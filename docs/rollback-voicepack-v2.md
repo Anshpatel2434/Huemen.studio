@@ -7,9 +7,12 @@ Each finished phase gets its own commit and tag, so you can roll back one phase 
 | Tag | What it adds |
 |---|---|
 | `pre-voicepack-v2` | The starting point (Gmail read once, "What we noticed", the bug fixes from the 06 Oct test pass) |
-| `vp2-phase1` | Answers reach the AI, re-scans keep edits, privacy fixes, rule order, paste splitting, clean-up |
-| `vp2-phase2` | Per-platform blocks and measuring, per-task loading, platform checks and formats |
-| `vp2-phase3` | Anti-sample, notes, self-check, missing questions, new sources, Voice Pack export |
+| `vp2-phase1` | Answers reach the AI, re-scans keep edits, privacy fixes, per-platform blocks and measuring, per-task loading, platform checks and new formats, paste splitting |
+| `vp2-phase2` | Voice meter, typical benchmarks, derived self-check and hard rules, then Ansh's `design-system-v1` merged in |
+| `vp2-phase3` | The missing questions, benchmark notes, the anti-sample, the editable self-check, the "ready to write" checklist, the eight-file export, new sources (Facebook, YouTube community, Outlook, Teams, PDF and Word), the WhatsApp cap, link consent on the server, payoff fixes, aspiration in the check |
+
+To undo only the last phase, reset to the tag before it (for example `git reset --hard vp2-phase2`).
+`vp2-phase3` also adds two packages (`unpdf`, `fflate`); after a reset, run `npm install` so `node_modules` matches.
 
 ## Roll back the code
 

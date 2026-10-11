@@ -30,7 +30,9 @@
  * prompt (the party answers, dials, persona, roots, feelings, sign-offs, tone
  * shifts), plus the red pen (exceptions, self-check), benchmark notes and the
  * anti-sample. And the voice is loaded per TASK in the spec's order (01 §3):
- * write, rewrite, check and short reply each load only what they need.
+ * write, rewrite, check and short reply each load only what they need. The
+ * check also carries their aspiration, so a draft aimed where they want to
+ * sound isn't marked down for not matching their old writing.
  */
 export const CONTEXT_VERSION = 4;
 
@@ -109,6 +111,9 @@ export interface VoicePackInput {
   dials?: { left: string; right: string; value: number }[];
   /** H1: they chose how they want to sound over how they wrote. */
   dialsAspiration?: boolean;
+  /** The quadrant is where they want to be (C3); `quadrantToday` is where their writing sits. */
+  quadrantAspiration?: boolean;
+  quadrantToday?: string | null;
   /** C1 / C2: the voice lives between these two. */
   guarded?: string | null;
   unguarded?: string | null;
@@ -339,6 +344,22 @@ const DIAL_LEAN = (d: { left: string; right: string; value: number }) =>
   d.value <= 3 ? `leans ${d.left.toLowerCase()}` : d.value >= 8 ? `leans ${d.right.toLowerCase()}` : "in between";
 
 /** identity.md: who is speaking. Loaded last for writing, per the spec. */
+/**
+ * For the check: where they want to sound, when it differs from their corpus
+ * (C3 compass, C4 dials). Without it the judge marks a deliberate move toward
+ * their aspiration as drift.
+ */
+function voiceAspiration(vp: VoicePackInput): string[] {
+  const out: string[] = [];
+  if (vp.quadrantAspiration && nonEmpty(vp.quadrant))
+    out.push(`They want to sound like a ${vp.quadrant}${nonEmpty(vp.quadrantToday) ? `; their past writing reads more like a ${vp.quadrantToday}` : ""}.`);
+  const dials = (vp.dials ?? []).filter((d) => d.value >= 1 && d.value <= 10);
+  if (vp.dialsAspiration && dials.length)
+    out.push(`Where they want the dials, 1 to 10: ${dials.map((d) => `${d.left}–${d.right} ${d.value}`).join(" · ")}.`);
+  if (!out.length) return [];
+  return ["Where they're heading (a move toward this is on-voice, not drift):", ...out.map((l) => `  - ${l}`)];
+}
+
 function voiceIdentity(vp: VoicePackInput): string[] {
   const out: string[] = [];
   if (nonEmpty(vp.whatTheyDo)) out.push(`What they do, in their words: ${vp.whatTheyDo!.trim()}`);
@@ -435,7 +456,7 @@ function serializeVoicePack(vp: VoicePackInput, platform: PlatformInput | null |
     case "rewrite":
       return [...voiceCore(vp), ...voiceMechanics(vp), ...voiceRedPen(vp), ...voiceSamples(vp)];
     case "check":
-      return [...voiceCore(vp), ...voiceGuardrails(vp), ...voiceMechanics(vp), ...voiceRedPen(vp)];
+      return [...voiceCore(vp), ...voiceGuardrails(vp), ...voiceMechanics(vp), ...voiceAspiration(vp), ...voiceRedPen(vp)];
     case "reply":
       return [...voiceCore(vp), ...voiceContext(vp, platform), ...voiceRedPen(vp)];
     default:

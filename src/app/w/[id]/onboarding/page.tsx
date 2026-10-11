@@ -355,7 +355,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         }}
         missing={conf.missing}
         confidence={conf.score}
-        first={first && { id: first.id, name: first.name, hook: draft?.hook ?? null, body: draft?.body ?? null, cta: draft?.cta ?? null, score: draftCheck?.score ?? null, band: draftCheck?.band ?? null }}
+        first={first && { id: first.id, name: first.name, hook: draft?.hook ?? null, body: draft?.body ?? null, cta: draft?.cta ?? null, score: draftCheck?.score ?? null, band: draftCheck?.band ?? null, fixes: (draftCheck?.issues ?? []).slice(0, 3).map((i) => i.message) }}
         firstState={
           p.onboarding.firstPiece?.state === "writing" && !firstPieceStale(p.onboarding.firstPiece, Date.now()) ? "writing"
           : p.onboarding.firstPiece?.state === "writing" || p.onboarding.firstPiece?.state === "failed" ? "failed"

@@ -267,7 +267,7 @@ export function UrlImport({ tenantId }: { tenantId: string }) {
     let total = 0;
     for (const url of urls) {
       setBusy(url);
-      const r = await importUrlAction(tenantId, url);
+      const r = await importUrlAction(tenantId, url, mine);
       if (r.ok) {
         total += r.value.added;
         out.push({ url, ok: true, text: `${r.value.note}${r.value.found > r.value.added ? ` ${r.value.found - r.value.added} already on file.` : ""}` });

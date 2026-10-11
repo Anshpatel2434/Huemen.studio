@@ -8,7 +8,7 @@ import {
 } from "@/lib/data/voice-pack";
 import { decideEditProposal, decideProposal, ownsVoice, restoreVersion, writePack, type WriteOutcome } from "@/lib/data/training";
 import { tagged } from "@/lib/voice/types";
-import { finishIngest } from "@/lib/data/onboarding";
+import { finishIngest, setAntiSample, setBenchmarkNote } from "@/lib/data/onboarding";
 import { decidePattern } from "@/lib/data/patterns";
 import { splitPieces } from "@/lib/voice/ingest";
 
@@ -165,4 +165,34 @@ export async function decidePatternAction(fd: FormData): Promise<void> {
     keep: str(fd, "keep") === "1",
   });
   revalidatePath(path);
+}
+
+// ---- benchmarks, the anti-sample and the self-check (G3, G4, red-pen) --------
+
+/** G3: why a benchmark is them. Theirs to confirm, so owner-only. */
+export async function setBenchmarkNoteAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack || !ownsVoice(actor, pack)) return;
+  const note = str(fd, "note");
+  if (note) await setBenchmarkNote(scope, pack, str(fd, "sampleId"), note);
+  revalidatePath(path);
+}
+
+/** G4: the piece that is almost them but wrong, and what's off about it. */
+export async function setAntiSampleAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack || !ownsVoice(actor, pack)) return;
+  await setAntiSample(scope, pack, { sampleId: str(fd, "sampleId"), off: str(fd, "off"), fixed: str(fd, "fixed") });
+  revalidatePath(path);
+}
+
+/** The red-pen self-check, one question per line. Empty restores the derived list. */
+export async function saveSelfCheckAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack) return;
+  const qs = str(fd, "selfCheck").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 10);
+  const redPen = { ...pack.redPen };
+  if (qs.length) redPen.selfCheck = tagged(qs, "ask");
+  else delete redPen.selfCheck;
+  done(path, await writePack(scope, actor, pack, { redPen }, "Self-check edited."));
 }

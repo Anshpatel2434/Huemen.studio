@@ -38,9 +38,12 @@ describe("everything the person told us reaches the prompt (01 §3)", () => {
       selfCheck: tagged(["Could anyone else have written this line?"], "edit"),
       exceptions: tagged([{ item: "Ellipsis allowed", evidence: "about 1.6 a piece" }], "scan"),
     },
-    onboarding: { antiSample: { text: "Unlock your financial potential today!", off: "Salesy, not her", fixed: "Start with one number." } },
+    onboarding: {
+      antiSample: { text: "Unlock your financial potential today!", off: "Salesy, not her", fixed: "Start with one number." },
+      benchmarkNotes: { s1: { note: "Short, blunt, a reframe.", confirmed: true } },
+    },
   });
-  const vp = packToContextInput(p, [{ id: "s1", channel: "linkedin", kind: "benchmark", source: "paste", visibility: "public", body: "Your first salary is a test.", wordCount: 6, excluded: false, note: "Short, blunt, a reframe." }]);
+  const vp = packToContextInput(p, [{ id: "s1", channel: "linkedin", kind: "benchmark", source: "paste", visibility: "public", body: "Your first salary is a test.", wordCount: 6, excluded: false }]);
   const write = buildBrandContext({ voicePack: vp, task: "write" }).serialized;
 
   it("carries the party answers, dials, persona, roots, feelings, tone shifts and sign-offs", () => {
@@ -76,6 +79,10 @@ describe("everything the person told us reaches the prompt (01 §3)", () => {
     expect(check).toContain("Every piece has: a closing question");
     expect(check).not.toContain("Their real writing");
     expect(check).not.toContain("In public, sober");
+    // The check knows where they're heading, so a move toward it isn't drift.
+    expect(check).toContain("Where they're heading");
+    expect(check).toContain("Fun–Serious 3");
+    expect(write).not.toContain("Where they're heading");
 
     const rewrite = buildBrandContext({ voicePack: vp, task: "rewrite" }).serialized;
     expect(rewrite).toContain("Their real writing");

@@ -21,7 +21,7 @@ import "server-only";
 import { withTenantSession, type SessionScope } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
 import { measureCorpus } from "@/lib/voice/measure";
-import { scanChanges } from "@/lib/voice/derive";
+import { scanChanges, typicality } from "@/lib/voice/derive";
 import {
   applyUserEdits,
   emptyIndex,
@@ -478,23 +478,31 @@ export async function fewShotSamples(
   channel?: string,
   limit = FEW_SHOT_LIMIT,
 ): Promise<VoiceSample[]> {
-  return withTenantSession(scope, async (c) => {
-    const rows = (
+  const pool = await withTenantSession(scope, async (c) =>
+    (
       await c.query(
         `SELECT ${SAMPLE_COLS} FROM voice_samples
           WHERE pack_id=$1
             AND visibility='public'
             AND excluded=false
             AND kind <> 'anti_sample'
-          ORDER BY (kind='benchmark') DESC,
-                   ($2::text IS NOT NULL AND channel=$2) DESC,
-                   word_count DESC
-          LIMIT $3`,
-        [packId, channel ?? null, limit],
+          ORDER BY created_at DESC
+          LIMIT 120`,
+        [packId],
       )
-    ).rows;
-    return rows.map(sampleRow);
-  });
+    ).rows.map(sampleRow),
+  );
+  // Benchmarks first (they said "this is most me"), then the target platform,
+  // then the most TYPICAL pieces, closest to their median on every habit (01 §3:
+  // "samples from the target platform first"; 06 §4: typical beats longest).
+  const typ = typicality(pool);
+  const rank = (s: VoiceSample, i: number) =>
+    (s.kind === "benchmark" ? 0 : 2) + (channel && s.channel === channel ? 0 : 1) + typ[i] / 100;
+  return pool
+    .map((s, i) => ({ s, r: rank(s, i) }))
+    .sort((a, b) => a.r - b.r)
+    .slice(0, limit)
+    .map((x) => x.s);
 }
 
 // ---- the scan ---------------------------------------------------------------

@@ -142,7 +142,7 @@ export function packToContextInput(
     mustHaves: (pack.redPen.mustHaves?.value ?? pack.index.mustHaves ?? []).map(mustHaveLabel),
     mechanicsLines: mechanicsLines(pack),
     context: ctx ? { channel: ctx.channel, tag: ctx.tag, lines: contextLines(ctx) } : null,
-    samples: samples.map((s) => ({ channel: s.channel, body: s.body, note: s.kind === "benchmark" ? s.note : undefined })),
+    samples: samples.map((s) => ({ channel: s.channel, body: s.body, note: s.kind === "benchmark" ? pack.onboarding.benchmarkNotes?.[s.id]?.note : undefined })),
     corpusPieces: pack.corpusStats.pieces,
     stories: pack.identity.stories?.value ?? [],
     proofs: pack.identity.proofs?.value ?? [],
@@ -182,6 +182,7 @@ const NOTE_LABELS: Record<string, string> = {
   A6: "What people say about how they write",
   B2: "Voices they admire, and why",
   B4: "At their best on the page they become",
+  E6: "Their whole work, said in one breath",
 };
 
 /** Everything identity.md holds, for the prompt (01 §3). */
@@ -201,6 +202,8 @@ function identityInput(pack: VoicePack): Partial<VoicePackInput> {
       left: DIAL_LABELS[k][0], right: DIAL_LABELS[k][1], value: dials[k] as number,
     })),
     dialsAspiration: id.dials?.confidence === "aspiration",
+    quadrantAspiration: id.quadrant?.confidence === "aspiration",
+    quadrantToday: id.quadrant?.measuredValue ? QUADRANT_LABELS[String(id.quadrant.measuredValue)] ?? null : null,
     guarded: id.guarded?.value ?? null,
     unguarded: id.unguarded?.value ?? null,
     feelings: id.feeling30s || id.feeling5m || id.feeling20m

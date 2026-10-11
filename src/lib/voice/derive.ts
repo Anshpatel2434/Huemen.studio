@@ -249,6 +249,93 @@ export function voiceMeter(pack: VoicePack, deepTotal: number): { score: number;
   return { score: Math.min(100, score), coreDone, coreTotal: CORE_ITEMS.length };
 }
 
+/**
+ * "Ready to write" (06, Definition of Done): what a pack needs before drafts
+ * can be trusted to sound like them. Each line names what's missing, in words
+ * the person can act on.
+ */
+export function readyChecklist(pack: VoicePack, minPieces: number): { label: string; done: boolean }[] {
+  const benchmarks = Object.values(pack.onboarding.benchmarkNotes ?? {});
+  return [
+    { label: `At least ${minPieces} pieces of your writing measured`, done: pack.corpusStats.pieces >= minPieces },
+    { label: "Your voice in one line", done: !!pack.voiceLine.trim() },
+    { label: "Lines you never cross", done: pack.guardrails.length > 0 },
+    { label: "A never-list", done: pack.index.neverWords.length > 0 },
+    { label: "Three benchmark pieces picked", done: (pack.onboarding.answered ?? []).includes("G2") && benchmarks.length >= 1 },
+    { label: "Why each benchmark is you, confirmed", done: benchmarks.length > 0 && benchmarks.every((b) => b.confirmed) },
+    { label: "One piece that isn't you (the anti-sample)", done: !!pack.onboarding.antiSample },
+    { label: "One platform measured from five real pieces", done: Object.values(pack.contexts).some((c) => c.tag === "measured") },
+  ];
+}
+
+/**
+ * A first draft of "your voice in one line" (VOICE.md) from what they told us:
+ * their role, their four words and the one idea they carry. A suggestion the
+ * person rewrites, never saved unless they save it.
+ */
+export function suggestVoiceLine(pack: VoicePack): string {
+  const role = (pack.identity.personaRoles?.value ?? [])[0];
+  const words = (pack.identity.personalityWords?.value ?? []).map((w) => w.word.toLowerCase()).slice(0, 3);
+  const carries = pack.identity.carries?.value?.trim().replace(/\.$/, "");
+  if (!role && !words.length && !carries) return "";
+  const who = role ? `${/^[aeiou]/i.test(role) ? "An" : "A"} ${role.toLowerCase()}` : "Someone";
+  const how = words.length ? `, ${words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0]},` : "";
+  return carries ? `${who}${how} who keeps coming back to one idea: ${carries.charAt(0).toLowerCase()}${carries.slice(1)}.` : `${who}${how.replace(/,$/, "")}.`;
+}
+
+// ---- benchmark notes (G3: "the model drafts the notes and the user confirms") ----
+
+/**
+ * A two-line draft of why a benchmark is them, from what the piece actually
+ * does: its rhythm, its move, its word choice. Drafted in code so it is
+ * always there and always true; the person edits it in their own words.
+ */
+export function draftBenchmarkNote(body: string): string {
+  const m = measurePiece(body);
+  const lens = m.sentenceLengths;
+  const avg = lens.length ? Math.round(lens.reduce((a, b) => a + b, 0) / lens.length) : 0;
+  const short = lens.filter((l) => l <= 4).length;
+  const bits: string[] = [];
+  if (avg) bits.push(avg <= 10 ? `short, direct sentences (about ${avg} words)` : avg >= 18 ? `long, flowing sentences (about ${avg} words)` : `medium sentences (about ${avg} words)`);
+  if (short) bits.push(`${short === 1 ? "one very short line" : `${short} very short lines`} for emphasis`);
+  const first = m.firstLine;
+  if (/\?\s*$/.test(first)) bits.push("opens on a question");
+  else if (words(first).length <= 8) bits.push("opens with a short, blunt line");
+  else if (/^(i|we|my)\b/i.test(first)) bits.push("opens from their own experience");
+  if (m.endsWithQuestion) bits.push("hands it to the reader with a question at the end");
+  if (m.sentenceInitials.some((w) => w === "but" || w === "and" || w === "so")) bits.push('starts sentences with "But", "And" or "So"');
+  if (m.punctuation.ellipsis > 0) bits.push("uses an ellipsis");
+  if (m.contractionOpportunities && m.contractionsUsed / m.contractionOpportunities >= 0.6) bits.push("talks the way they speak (it's, don't)");
+  const s = bits.slice(0, 4).join("; ");
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) + "." : "";
+}
+
+// ---- skip rules for the Deep questions (05 "Skip if") -------------------------
+
+/**
+ * Deep questions the pack already answers, so they are never asked: never ask
+ * someone what their own writing (or an earlier answer) already told us.
+ */
+export function skipDeep(pack: VoicePack): string[] {
+  const out: string[] = [];
+  const id = pack.identity;
+  const answers = id.answers ?? {};
+  if (id.voiceParagraph?.value) out.push("A1");
+  if (id.humour?.value) out.push("C9");
+  if (id.languages?.value) out.push("C10");
+  // Mixing only matters to someone who writes in more than one language.
+  const multilingual = (id.languages?.value?.also.length ?? 0) > 0 || /,|hinglish|hindi|gujarati|punjabi|marathi|tamil|bengali/i.test(id.language?.value ?? "");
+  if (!multilingual || /mixing:/i.test(id.language?.value ?? "") || id.languages?.value?.when) out.push("C10b");
+  const words = id.personalityWords?.value ?? [];
+  if (words.length >= 4 && words.every((w) => w.meaning.trim())) out.push("C7");
+  if (id.feeling30s?.value && id.feeling5m?.value && id.feeling20m?.value) out.push("C8");
+  // Sent email or chat already shows how they disagree and sign off.
+  const scannedPrivate = ["email", "whatsapp", "slack"].some((c) => pack.contexts[c]?.tag === "measured");
+  if (scannedPrivate || Object.keys(answers).some((k) => k.startsWith("F3 · Disagreeing"))) out.push("F4");
+  if (/Signs off/.test(pack.contexts.email?.closer ?? "")) out.push("F5");
+  return out;
+}
+
 // ---- red-pen self-check, derived (01 §3 red-pen.md) -------------------------------
 
 /**

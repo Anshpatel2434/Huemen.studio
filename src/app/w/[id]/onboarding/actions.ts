@@ -112,9 +112,9 @@ export async function voiceNotesAction(tenantId: string, notes: string[]) {
 
 // ---- step 2: confirm your voice ----------------------------------------------
 
-export async function answerAction(tenantId: string, questionId: string, value: Answer) {
+export async function answerAction(tenantId: string, questionId: string, value: Answer, opts: { spoken?: boolean } = {}) {
   const { scope, actor } = await actionActor(tenantId);
-  await answer(scope, actor, await requirePack(scope), questionId, value);
+  await answer(scope, actor, await requirePack(scope), questionId, value, { spoken: !!opts.spoken });
   refresh(tenantId);
 }
 
@@ -342,9 +342,11 @@ export async function languagesAction(tenantId: string, v: LanguageMix) {
  * Their own writing from links: a website, blog, Substack, Medium or a podcast
  * feed with transcripts. One link at a time so the page can show progress.
  */
-export async function importUrlAction(tenantId: string, url: string) {
+export async function importUrlAction(tenantId: string, url: string, ownWriting: boolean) {
   const { scope } = await actionActor(tenantId);
   return attempt(async () => {
+    // The tick box is the consent; the server holds the line, not the button.
+    if (ownWriting !== true) throw new WebImportError("Tick the box to confirm this is your own writing first.");
     const pack = await requirePack(scope);
     const { pieces, note } = await importFromUrl(url);
     const added = await addSamples(
