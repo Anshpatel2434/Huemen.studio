@@ -11,6 +11,7 @@
  */
 import type { VoicePackInput } from "@/lib/context/context-builder";
 import { DIAL_KEYS, DIAL_LABELS, LANGUAGES, type VoiceContext, type VoicePack, type VoiceSample } from "./types";
+import { deriveHardRules, deriveSelfCheck } from "./derive";
 
 const pctWord = (n: number): string => `${Math.round(n)}%`;
 
@@ -126,7 +127,8 @@ export function packToContextInput(
   const ctx = channel ? pack.contexts[channel] : undefined;
   return {
     voiceLine: pack.voiceLine,
-    hardRules: pack.hardRules,
+    // Their own three rules, or derived ones; the facts rule is always one (VOICE.md).
+    hardRules: deriveHardRules(pack),
     toneDescriptors: pack.identity.toneDescriptors?.value ?? [],
     personalityWords: pack.identity.personalityWords?.value ?? [],
     reader: pack.identity.reader?.value ?? null,
@@ -155,7 +157,7 @@ export function packToContextInput(
     preferences: (pack.identity.preferences?.value ?? []).map((p) => ({ chosen: p.chosen, over: p.over })),
     ...identityInput(pack),
     exceptions: (pack.redPen.exceptions?.value ?? []).map((e) => `${e.item} (${e.evidence})`),
-    selfCheck: pack.redPen.selfCheck?.value ?? [],
+    selfCheck: pack.redPen.selfCheck?.value?.length ? pack.redPen.selfCheck.value : deriveSelfCheck(pack),
     antiSample: pack.onboarding.antiSample ?? null,
   };
 }

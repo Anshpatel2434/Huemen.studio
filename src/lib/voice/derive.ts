@@ -216,29 +216,130 @@ export function confirmCards(pack: VoicePack, samples: VoiceSample[]): ConfirmCa
   return cards;
 }
 
+// ---- the voice meter (05, Part 1 rule 5) ---------------------------------------
+
+/** The Core flow (05, Part 2), each worth an equal share of 70. */
+const CORE_ITEMS: { id: string; done: (p: VoicePack) => boolean }[] = [
+  { id: "G1", done: (p) => (p.onboarding.sources ?? []).length > 0 && p.corpusStats.pieces > 0 },
+  { id: "A2", done: (p) => !!p.identity.reader?.value },
+  { id: "A3", done: (p) => (p.identity.personaRoles?.value ?? []).length > 0 },
+  { id: "A4", done: (p) => !!p.identity.carries?.value || (p.onboarding.answered ?? []).includes("A4") },
+  { id: "C1", done: (p) => !!p.identity.guarded?.value },
+  { id: "C2", done: (p) => !!p.identity.unguarded?.value },
+  { id: "C4", done: (p) => Object.keys(p.identity.dials?.value ?? {}).length > 0 },
+  { id: "C5", done: (p) => (p.identity.personalityLonglist?.value ?? []).length > 0 },
+  { id: "C6", done: (p) => (p.identity.personalityWords?.value ?? []).length >= 4 },
+  { id: "D", done: (p) => p.guardrails.some((g) => ["self-label", "off-limits", "never-write"].includes(g.id)) },
+  { id: "E1", done: (p) => p.index.neverWords.length > 0 },
+  { id: "F1", done: (p) => (p.onboarding.writeFor ?? []).length > 0 },
+  { id: "F2", done: (p) => (p.onboarding.answered ?? []).includes("F2") },
+  { id: "G2", done: (p) => (p.onboarding.answered ?? []).includes("G2") },
+];
+
+/**
+ * The meter that fills as they answer: Core complete is 70%, the Deep
+ * questions fill the rest (05, Part 1 rule 5). Separate from `confidence`,
+ * which also asks whether there is enough real writing to trust.
+ */
+export function voiceMeter(pack: VoicePack, deepTotal: number): { score: number; coreDone: number; coreTotal: number } {
+  const coreDone = CORE_ITEMS.filter((c) => c.done(pack)).length;
+  const answered = new Set(pack.onboarding.answered ?? []);
+  const deepDone = [...answered].filter((id) => !CORE_ITEMS.some((c) => c.id === id) && /^[A-G]\d/.test(id)).length;
+  const score = Math.floor((coreDone / CORE_ITEMS.length) * 70 + (deepTotal ? Math.min(1, deepDone / deepTotal) * 30 : 0));
+  return { score: Math.min(100, score), coreDone, coreTotal: CORE_ITEMS.length };
+}
+
+// ---- red-pen self-check, derived (01 §3 red-pen.md) -------------------------------
+
+/**
+ * 5–8 yes/no questions from their own measurements and lines, ending with the
+ * spec's own: "Could anyone else have written this line?" Derived, so it is
+ * always there; the person can edit it on the Voice page.
+ */
+export function deriveSelfCheck(pack: VoicePack): string[] {
+  const out: string[] = [];
+  const s = pack.mechanics.sentences?.value;
+  if (s?.mean) out.push(`Do sentences average about ${Math.round(s.mean)} words, with a short one dropped in?`);
+  const c = pack.mechanics.contractions?.value;
+  if (typeof c === "number") out.push(c >= 0.6 ? "Does it contract the way they talk (it's, don't, I'm)?" : c <= 0.2 ? "Are words written out, not contracted?" : "Are contractions used about as often as they use them?");
+  const p = pack.index.punctuation;
+  const banned = (["emDash", "exclamation", "semicolon", "emoji"] as const).filter((k) => p[k]?.allowed === false);
+  if (banned.length) out.push(`Is it free of ${banned.map((k) => ({ emDash: "em dashes", exclamation: "exclamation marks", semicolon: "semicolons", emoji: "emoji" })[k]).join(", ")}?`);
+  if (pack.index.neverWords.length) out.push("Is every word on their never-list gone?");
+  if (pack.index.mustHaves.includes("closing_question")) out.push("Does it end on a question?");
+  if (pack.guardrails.length) out.push("Does it keep every one of their lines, including how they'd frame a sensitive topic?");
+  if (pack.identity.carries?.value) out.push("Does it quietly carry their one idea?");
+  out.push("Is every number, name and result one they gave us, not invented?");
+  return [...out.slice(0, 7), `Could anyone else have written this line? If yes, rewrite it until only ${pack.displayName || "they"} could have.`];
+}
+
+/**
+ * The three hard rules (VOICE.md) when the person hasn't written their own:
+ * their strongest guardrail, their strongest mechanical habit, and the facts
+ * rule, which is always rule 3 (templates/VOICE.md).
+ */
+export function deriveHardRules(pack: VoicePack): string[] {
+  const facts = "Never invent a fact, name, number or credential. Use a [placeholder].";
+  const own = pack.hardRules.filter((r) => r.trim());
+  if (own.length) return own.some((r) => /invent/i.test(r)) ? own.slice(0, 3) : [...own.slice(0, 2), facts];
+  const out: string[] = [];
+  const g = pack.guardrails.find((x) => x.id === "self-label") ?? pack.guardrails[0];
+  if (g) out.push(g.rule);
+  const p = pack.index.punctuation;
+  const banned = (["emDash", "exclamation", "semicolon"] as const).filter((k) => p[k]?.allowed === false);
+  if (banned.length) out.push(`No ${banned.map((k) => ({ emDash: "em dashes", exclamation: "exclamation marks", semicolon: "semicolons" })[k]).join(", ")}.`);
+  else if (pack.index.neverWords.length) out.push(`Never use: ${pack.index.neverWords.slice(0, 5).join(", ")}.`);
+  return [...out.slice(0, 2), facts];
+}
+
 // ---- benchmarks (G2) --------------------------------------------------------
 
 /**
- * The 6–8 pieces most typical of the voice: closest to the corpus median on
- * length and sentence rhythm. Not the most liked; the spec is explicit that
- * typical beats popular. Public pieces only: a benchmark is quoted in prompts.
+ * How far a piece sits from the corpus median, over every habit we measure:
+ * length, sentence rhythm, short and long sentences, punctuation density,
+ * contractions, single-line paragraphs and question endings (06 §4: "closest
+ * to the median on all metrics, not highest engagement"). Lower is more typical.
+ */
+export function typicality(pool: { body: string }[]): number[] {
+  const rows = pool.map((s) => {
+    const m = measurePiece(s.body);
+    const lens = m.sentenceLengths;
+    const n = lens.length || 1;
+    const punct = Object.values(m.punctuation).reduce((a, b) => a + b, 0);
+    return [
+      m.wordCount,
+      lens.reduce((a, b) => a + b, 0) / n,
+      lens.filter((l) => l <= 4).length / n,
+      lens.filter((l) => l > 18).length / n,
+      (punct / Math.max(1, m.wordCount)) * 100,
+      m.contractionOpportunities ? m.contractionsUsed / m.contractionOpportunities : 0,
+      m.paragraphCount ? m.singleSentenceParagraphs / m.paragraphCount : 0,
+      m.endsWithQuestion ? 1 : 0,
+    ];
+  });
+  if (!rows.length) return [];
+  const med = rows[0].map((_, j) => {
+    const col = rows.map((r) => r[j]).sort((a, b) => a - b);
+    return col[Math.floor(col.length / 2)];
+  });
+  const spread = rows[0].map((_, j) => {
+    const col = rows.map((r) => r[j]);
+    return Math.max(...col) - Math.min(...col) || 1;
+  });
+  return rows.map((r) => r.reduce((d, v, j) => d + Math.abs(v - med[j]) / spread[j], 0));
+}
+
+/**
+ * The 6–8 pieces most typical of the voice. Not the most liked; the spec is
+ * explicit that typical beats popular. Public pieces only: a benchmark is
+ * quoted in prompts.
  */
 export function benchmarkPicks(samples: VoiceSample[], max = 8): VoiceSample[] {
   const pool = samples.filter((s) => s.visibility === "public" && !s.excluded && s.wordCount >= 15);
   if (pool.length <= 3) return pool;
-  const stats = pool.map((s) => {
-    const m = measurePiece(s.body);
-    const lens = m.sentenceLengths;
-    return { s, words: m.wordCount, mean: lens.length ? lens.reduce((a, b) => a + b, 0) / lens.length : 0 };
-  });
-  const median = (xs: number[]) => {
-    const a = [...xs].sort((x, y) => x - y);
-    return a[Math.floor(a.length / 2)];
-  };
-  const mw = median(stats.map((x) => x.words)) || 1;
-  const ms = median(stats.map((x) => x.mean)) || 1;
-  return stats
-    .map((x) => ({ s: x.s, d: Math.abs(x.words - mw) / mw + Math.abs(x.mean - ms) / ms }))
+  const d = typicality(pool);
+  return pool
+    .map((s, i) => ({ s, d: d[i] }))
     .sort((a, b) => a.d - b.d)
     .slice(0, Math.min(max, Math.max(6, Math.ceil(pool.length / 2))))
     .map((x) => x.s);
