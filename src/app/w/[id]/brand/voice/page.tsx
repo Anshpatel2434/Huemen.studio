@@ -83,7 +83,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
     approvedSince(scope, pack.scannedAt),
     sp.preview ? previewRescan(scope, pack.id) : Promise.resolve(null),
   ]);
-  const now = Date.now();
+  const now = await requestTime();
   const state = coreState(pack, now);
   const due = rescanDue(pack, sinceScan, now);
   // Each saved version is the state a change replaced; diff it against the
@@ -98,7 +98,6 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   const never = pack.index.neverWords.length ? pack.index.neverWords : (pack.redPen.neverList?.value ?? []);
   const contexts = Object.values(pack.contexts);
   const signatures = pack.mechanics.signaturePhrases?.value ?? [];
-  const Hidden = () => <input type="hidden" name="tenantId" value={id} />;
   // Across sources: phrases they use in more than one place, said publicly at least once.
   const noticed = await patternsFor(scope, pack, samples);
 
@@ -128,7 +127,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
       <div className="mb-6 flex flex-col gap-3"><BrandCoreCard {...coreCard} /><CoreWatcher state={state} pieces={pack.corpusStats.pieces} /></div>
       <div className="flex flex-col gap-5">
         {due.due && !preview && (
-          <Alert tone="info" action={<form action={previewRescanAction}><Hidden /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>}>
+          <Alert tone="info" action={<form action={previewRescanAction}><Hidden id={id} /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>}>
             It&apos;s been {due.days} days since we measured your writing, and you&apos;ve approved {sinceScan} new {sinceScan === 1 ? "piece" : "pieces"} since. Worth a fresh look?
           </Alert>
         )}
@@ -139,7 +138,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             <p className="text-xs text-ink-faint">Only what was measured changes. Anything you typed or decided stays yours.</p>
             <div className="flex flex-wrap gap-2">
               {preview.length > 0 && (
-                <form action={rescanAction}><Hidden /><SubmitButton pendingLabel="Applying…" size="sm">Apply</SubmitButton></form>
+                <form action={rescanAction}><Hidden id={id} /><SubmitButton pendingLabel="Applying…" size="sm">Apply</SubmitButton></form>
               )}
               <a href={`/w/${id}/brand/voice`} className={btnClass("ghost", "sm")}>{preview.length ? "Keep it as it is" : "Close"}</a>
             </div>
@@ -198,10 +197,10 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                   </span>
                   {owner ? (
                     <>
-                      <form action={decideProposalAction}><Hidden /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="1" />
+                      <form action={decideProposalAction}><Hidden id={id} /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="1" />
                         <SubmitButton pendingLabel="…" size="sm">Approve</SubmitButton>
                       </form>
-                      <form action={decideProposalAction}><Hidden /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="0" />
+                      <form action={decideProposalAction}><Hidden id={id} /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="0" />
                         <SubmitButton pendingLabel="…" size="sm" variant="ghost">Reject</SubmitButton>
                       </form>
                     </>
@@ -215,10 +214,10 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                   <span className="flex-1 min-w-0 text-sm">
                     You&apos;ve cut &ldquo;{l.value}&rdquo; from {l.count} drafts. Never use it?
                   </span>
-                  <form action={decideEditAction}><Hidden /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="1" />
+                  <form action={decideEditAction}><Hidden id={id} /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="1" />
                     <SubmitButton pendingLabel="…" size="sm">Add to never-list</SubmitButton>
                   </form>
-                  <form action={decideEditAction}><Hidden /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="0" />
+                  <form action={decideEditAction}><Hidden id={id} /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="0" />
                     <SubmitButton pendingLabel="…" size="sm" variant="ghost">It was a one-off</SubmitButton>
                   </form>
                 </div>
@@ -254,10 +253,10 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                     </span>
                     {owner && (
                       <>
-                        <form action={decidePatternAction}><Hidden /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="1" />
+                        <form action={decidePatternAction}><Hidden id={id} /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="1" />
                           <SubmitButton pendingLabel="…" size="sm">Keep it</SubmitButton>
                         </form>
-                        <form action={decidePatternAction}><Hidden /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="0" />
+                        <form action={decidePatternAction}><Hidden id={id} /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="0" />
                           <SubmitButton pendingLabel="…" size="sm" variant="ghost">Not me</SubmitButton>
                         </form>
                       </>
@@ -279,7 +278,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             </span>
             <span className="flex-1" />
             <form action={previewRescanAction}>
-              <Hidden />
+              <Hidden id={id} />
               <SubmitButton pendingLabel="Measuring…" size="sm" variant="ghost"><ScanLine size={13} /> Re-measure</SubmitButton>
             </form>
           </div>
@@ -294,7 +293,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           )}
 
           <form action={addSamplesAction} className="mt-4 flex flex-col gap-2">
-            <Hidden />
+            <Hidden id={id} />
             <textarea
               name="text"
               rows={5}
@@ -364,10 +363,10 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                 <div key={s.phrase} className="flex items-center gap-2 border border-hairline rounded-md px-3 py-2">
                   <span className="flex-1 text-sm">&ldquo;{s.phrase}&rdquo;</span>
                   <span className="text-xs text-ink-faint tabular-nums">{s.count} pieces</span>
-                  <form action={resolveSignatureAction}><Hidden /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="1" />
+                  <form action={resolveSignatureAction}><Hidden id={id} /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="1" />
                     <SubmitButton pendingLabel="…" size="sm" variant="ghost">Keep</SubmitButton>
                   </form>
-                  <form action={resolveSignatureAction}><Hidden /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="0" />
+                  <form action={resolveSignatureAction}><Hidden id={id} /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="0" />
                     <SubmitButton pendingLabel="…" size="sm" variant="ghost">Drop</SubmitButton>
                   </form>
                 </div>
@@ -379,7 +378,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* ---- the parts a person writes themselves ---------------------- */}
         <form action={saveVoiceAction}>
           <Card label="04 · In your words">
-            <Hidden />
+            <Hidden id={id} />
             <div className="flex flex-col gap-4">
               <label className="block">
                 <span className="label-mono text-ink-faint">Your voice in one line</span>
@@ -415,7 +414,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             <div className="flex flex-col gap-3">
               {benchmarks.map((b) => (
                 <form key={b.id} action={setBenchmarkNoteAction} className="border border-hairline rounded-md p-3 flex flex-col gap-2">
-                  <Hidden /><input type="hidden" name="sampleId" value={b.id} />
+                  <Hidden id={id} /><input type="hidden" name="sampleId" value={b.id} />
                   <div className="flex items-center gap-2">
                     <span className="label-mono text-ink-faint">{PLATFORM_RULES[b.channel]?.label ?? b.channel}</span>
                     {notes[b.id]?.confirmed && <span className="label-mono px-1.5 h-5 inline-flex items-center rounded-xs bg-ok-soft text-ok">confirmed</span>}
@@ -443,7 +442,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               <details open={!anti}>
                 <summary className="cursor-pointer min-h-11 flex items-center text-sm text-ink-muted">{anti ? "Pick a different one" : "Pick a piece that sounds almost like you, but not quite"}</summary>
                 <form action={setAntiSampleAction} className="flex flex-col gap-2 pt-1">
-                  <Hidden />
+                  <Hidden id={id} />
                   <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Piece">
                     {antiPool.map((s, i) => (
                       <label key={s.id} className="border border-hairline rounded-md px-3 py-2 text-sm cursor-pointer has-[:checked]:border-ink has-[:checked]:bg-field has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink">
@@ -466,7 +465,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* ---- the red-pen self-check ------------------------------------ */}
         <form action={saveSelfCheckAction}>
           <Card label="Self-check · run on every draft">
-            <Hidden />
+            <Hidden id={id} />
             <p className="text-sm text-ink-muted mb-2">
               {pack.redPen.selfCheck?.value?.length ? "Your questions." : "Drafted from your measurements. Edit any line, add your own, or clear it to go back to the drafted list."}
             </p>
@@ -530,7 +529,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                     <span className="text-xs text-ink-faint tabular-nums">{s.wordCount} words</span>
                     <span className="flex-1" />
                     <form action={excludeSampleAction}>
-                      <Hidden />
+                      <Hidden id={id} />
                       <input type="hidden" name="sampleId" value={s.id} />
                       <input type="hidden" name="excluded" value={s.excluded ? "0" : "1"} />
                       <SubmitButton pendingLabel="…" size="sm" variant="ghost">
@@ -538,7 +537,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                       </SubmitButton>
                     </form>
                     <form action={deleteSampleAction}>
-                      <Hidden />
+                      <Hidden id={id} />
                       <input type="hidden" name="sampleId" value={s.id} />
                       <SubmitButton pendingLabel="…" size="sm" variant="ghost"><Trash2 size={12} /></SubmitButton>
                     </form>
@@ -582,7 +581,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                       ) : (
                         <p className="text-ink-muted">Nothing you decided differs from now.</p>
                       )}
-                      <form action={restoreVersionAction}><Hidden /><input type="hidden" name="version" value={v.version} />
+                      <form action={restoreVersionAction}><Hidden id={id} /><input type="hidden" name="version" value={v.version} />
                         <SubmitButton pendingLabel="Restoring…" size="sm" variant="secondary">Restore this version</SubmitButton>
                       </form>
                     </div>
@@ -600,4 +599,14 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
       </div>
     </DocPage>
   );
+}
+
+/** The workspace every form on this page acts in. */
+function Hidden({ id }: { id: string }) {
+  return <input type="hidden" name="tenantId" value={id} />;
+}
+
+/** One clock for the whole render, read outside it (render stays pure). */
+async function requestTime(): Promise<number> {
+  return Date.now();
 }

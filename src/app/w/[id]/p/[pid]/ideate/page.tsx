@@ -41,12 +41,6 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
   const open = ideas.filter((i) => i.status === "new").slice(0, 6);
   const ready = pillars.length > 0 && !ctx.degraded;
 
-  const Hidden = () => (
-    <>
-      <input type="hidden" name="tenantId" value={id} />
-      <input type="hidden" name="projectId" value={pid} />
-    </>
-  );
 
   return (
     <DocPage
@@ -72,7 +66,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
       )}
 
       <form action={setIdeateAction} className="flex flex-col gap-6">
-        <Hidden />
+        <Hidden id={id} pid={pid} />
 
         <section className="bg-paper border border-hairline rounded-md p-5">
           <p className="label-mono text-ink-faint mb-3">01 · Where does it go</p>
@@ -154,7 +148,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {open.map((i) => (
               <form key={i.id} action={setIdeateAction} className="bg-paper border border-hairline rounded-md p-4 flex flex-col gap-3">
-                <Hidden />
+                <Hidden id={id} pid={pid} />
                 <input type="hidden" name="ideaId" value={i.id} />
                 <input type="hidden" name="topic" value={i.rawText} />
                 {i.pillarId && <input type="hidden" name="pillarId" value={i.pillarId} />}
@@ -179,5 +173,15 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
         </div>
       )}
     </DocPage>
+  );
+}
+
+/** The workspace and project every form on this page acts in. */
+function Hidden({ id, pid }: { id: string; pid: string }) {
+  return (
+    <>
+      <input type="hidden" name="tenantId" value={id} />
+      <input type="hidden" name="projectId" value={pid} />
+    </>
   );
 }

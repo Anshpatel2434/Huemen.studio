@@ -303,7 +303,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
         )}
         <p className="text-sm text-ink-muted flex items-start gap-2 bg-field rounded-sm px-3 py-2.5">
           <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-          We'll read only what you pick, to learn how you sound. We never train shared models on your writing, and you can remove any source any time. From email and chat we keep only what you wrote; other people's words are removed before anything is stored, and your private writing is measured but never quoted in a draft.
+          We&apos;ll read only what you pick, to learn how you sound. We never train shared models on your writing, and you can remove any source any time. From email and chat we keep only what you wrote; other people&apos;s words are removed before anything is stored, and your private writing is measured but never quoted in a draft.
         </p>
       </Section>
 
@@ -957,8 +957,8 @@ export function PayoffStep(props: {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-3xl">Here's how you <span className="serif-accent">sound.</span></h1>
-        <p className="text-ink-muted mt-2 max-w-[62ch]">Your voice mirror, a first piece written in it, and a check on something you've already written. Edit anything that's wrong; every change trains the core.</p>
+        <h1 className="text-3xl">Here&apos;s how you <span className="serif-accent">sound.</span></h1>
+        <p className="text-ink-muted mt-2 max-w-[62ch]">Your voice mirror, a first piece written in it, and a check on something you&apos;ve already written. Edit anything that&apos;s wrong; every change trains the core.</p>
       </div>
 
       {props.confidence < 70 && (
@@ -1011,7 +1011,7 @@ export function PayoffStep(props: {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <label htmlFor="own-first" className="text-sm">You chose to write it yourself. Write or paste it here and we'll check it against your voice.</label>
+            <label htmlFor="own-first" className="text-sm">You chose to write it yourself. Write or paste it here and we&apos;ll check it against your voice.</label>
             <textarea id="own-first" rows={6} value={own} onChange={(e) => setOwn(e.target.value)} className="field" />
             <button type="button" disabled={pending || !own.trim()} onClick={() => start(async () => { await ownDraftForFirstPieceAction(tenantId, own); setOwn(""); router.refresh(); })} className={`${btnClass("primary", "sm")} self-start`}>Check it</button>
           </div>
@@ -1024,7 +1024,7 @@ export function PayoffStep(props: {
           {props.ownCheck.issues.length ? (
             <ul className="flex flex-col gap-1.5 text-sm">{props.ownCheck.issues.map((i) => <li key={i} className="flex gap-2"><Circle size={8} className="mt-2 shrink-0 fill-current" aria-hidden="true" /> {i}</li>)}</ul>
           ) : (
-            <p className="text-sm text-ink-muted">Nothing to flag. That's what your voice looks like to the check.</p>
+            <p className="text-sm text-ink-muted">Nothing to flag. That&apos;s what your voice looks like to the check.</p>
           )}
         </Section>
       )}
