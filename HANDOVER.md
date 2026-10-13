@@ -24,7 +24,7 @@ Postgres 18 (RLS). Handover-friendly — the client will own and run it.
   ([`context-builder.ts`](src/lib/context/context-builder.ts)). No module builds
   its own context. Prompts = system template + context block + task input.
 
-**UI look** (AGENTS.md §3.5): editorial, monochrome + one vermilion accent
+**UI look**: the hueman design system v1 (`docs/hueman-design-system-v1.html`) supersedes AGENTS.md §3.5. Earlier: editorial, monochrome + one vermilion accent
 (`#FF3429`), grotesque sans + serif-italic accent, uppercase micro-labels,
 generous whitespace. All colours are CSS tokens in
 [`globals.css`](src/app/globals.css) — never hardcode hex; per-tenant branding
@@ -33,26 +33,37 @@ scroll-jacking/animation.
 
 ---
 
-## 2. Current state (as of this handover)
+## 2. Current state (2026-10-13, branch `voice-pack-v2`)
 
-**Phase 0 + Phase 1 are complete and verified.** 14 tests green (context builder,
-cross-tenant isolation, storage); typecheck + lint + `next build` clean.
+**Demo-ready on the mock provider; not production-ready.** 274 tests green,
+CI green from a clean clone (migrate from empty, typecheck, lint, test, build).
+`TASKS.md` was re-ticked from a code audit on 13 Oct; trust its dated notes
+over its headings. The audit's parked items are in `docs/phase-two.md`.
 
-Working + verified end to end:
-- DB schema (14 core + support tables) + RLS + cross-tenant isolation tests.
-- Versioned context builder (unit-tested) + DB loader.
-- Provider-agnostic AI facade (mock providers) with logging + retry.
-- Auth (dev cookie adapter) + role/scope resolution; storage (local driver,
-  tenant-prefixed keys, signed URLs).
-- App: landing → dev login → dashboard (completeness indicator) → **Brand
-  Foundation editor** (story/voice/visual + asset uploads) → **public
-  questionnaire** (`/q/[token]`) → **admin console** (create/invite/assign/archive
-  + audit trail).
+Working, verified in the browser (13 Oct):
+- Sign-in (dev driver) as admin, demo client or fresh client; passwordless
+  pages, invite page, branded 404 and error pages.
+- **Onboarding** (fresh client): five steps from About you to First draft, with
+  pasted writing, uploads (PDF, Word, LinkedIn export, WhatsApp), links, voice
+  confirmation, hue, first piece. Connections (Gmail, Docs, Calendar, YouTube,
+  LinkedIn) are coded and switch on with credentials; untested against live APIs.
+- **Studio** (demo client): Brand home, Create (topics from pillars), Check
+  (deterministic score + model findings), Brand core (brief, voice pack page,
+  pillars map, visual), Plan (ideas, calendar with the 90-day generator,
+  offers), Library, Usage.
+- **Project editor**: Ideate, Content (variants, steers, history, never-word
+  flags, inline canvas editing), Visual (post image, quote card, carousel;
+  PNG download at channel size, zip per piece), Export (PDF + Markdown).
+- **Admin**: Settings > Workspaces & access (create, invite link, assign coach,
+  archive, monthly AI caps), Settings > Prompts (versioned template editor),
+  Settings > AI usage. All audited.
 
-Partial / open: **P1-12** — the image-model choice and font-licence decisions
-need the client's real assets (recorded in [`docs/decisions.md`](docs/decisions.md)).
+Not working outside `AUTH_DRIVER=dev`: sign-in, invites by email, file storage
+on S3. No image model, no job queue, no rate limiting. See §8.
 
-**Next work starts at Phase 2** (see §6).
+**Accounts after `npm run db:seed`:** `admin@huemen.studio` (owner-admin),
+`demo@client.test` (finished client with pieces, pillars, caps),
+`fresh@client.test` (walks onboarding from zero).
 
 ---
 
@@ -128,31 +139,20 @@ Rules that keep you inside the invariants:
 
 ---
 
-## 6. Next work (Phase 2 — do in this order)
+## 6. Next work (in this order)
 
-From TASKS.md. Phase 2 = AI wrapper is built (P2-1/2-3 largely done); build the
-studios on top.
-
-- **P2-2 Prompt template store** — resolve `prompt_templates` by key (per-tenant
-  override → global fallback). Feed the resolved `systemTemplate` into
-  `generateText`. Globals are already seeded.
-- **P2-6…P2-10 Content Studio** — page at `src/app/dashboard/studio`. Formats
-  (LinkedIn post/hook set, IG caption/carousel, newsletter, pitch email, talk
-  abstract) → pick format + optional topic → `loadBrandContext` → `generateText`
-  (2–3 variants) → inline edit → save `content_items` (stamp `prompt_version`).
-  Voice guardrails: check output against `ctx.guardrails.dontWords`, FLAG in UI
-  (don't auto-rewrite). Keep generation history in `content_generations`
-  (regenerate-with-steer). Wire `ctx.degraded` messaging.
-- **P2-11…P2-15 Visual Studio** — same screen as copy; brand-aware image prompts
-  (append palette/style, negative prompts); **templated canvas** for
-  carousels/quote-cards (real text overlay — image models misrender text);
-  variants + per-channel export dims → `image_assets`.
-- **P2-4 queue** — batch ops (carousels, later the 90-day calendar) go through
-  the `jobs` table, not the request thread; show job status.
-
-Then Phase 3 (calendar, strategy tools, idea inbox, repurposing, AEO, exports,
-admin analytics/caps, white-label) and Phase 4 (DoD/handover). Full detail +
-constraints + "Done when" checks are in TASKS.md — follow them per task.
+1. **Make it run in production** (`docs/phase-two.md`, "Launch blockers"):
+   a managed auth provider or a real email sender for the one-time links,
+   the S3 storage driver, upload re-encoding. Nothing else can ship first.
+2. **Run a real model.** Set `AI_TEXT_PROVIDER=anthropic` with the two model
+   names and walk onboarding once with real writing; the mock has never been
+   off. Never put a key in the repo or a message.
+3. **Failed draft as a retryable state** (TASKS P2-3): save the request before
+   the model call; show Retry, not a toast.
+4. **Job queue** (P2-4) once more than a handful of clients run batches.
+5. The proposal modules not started (strategy tools, AEO, repurposing, AI
+   offer designer, image model, custom domain, full branding) after the client
+   has been told and has chosen.
 
 ---
 
@@ -184,9 +184,9 @@ constraints + "Done when" checks are in TASKS.md — follow them per task.
 
 ## 8. Handover checklist not yet done (Phase 4 / DoD §11)
 
-Track these; they are NOT complete: git repo + full history (this dir isn't a git
-repo yet), real managed-auth provider (dev cookie adapter now), S3 storage driver
-(local now), real AI providers + "no-training" setting recorded, image
-re-encoding on upload (deferred to P4-1 security pass), rate limiting, custom
-domain + full white-label pass, secrets rotation, ER diagram, phase-two list
-finalised. See TASKS.md Phase 4.
+Not complete: managed auth or email sender (dev cookie adapter only), S3
+driver, image re-encoding on upload, rate limiting, job queue, real AI provider
+exercised + "no-training" setting recorded in the client's account, custom
+domain + full white-label pass (only the accent colour is applied), secrets
+rotation, ER diagram, README deployment section, HTTP-level cross-tenant tests,
+observability. See `docs/phase-two.md` and TASKS.md Phase 4.

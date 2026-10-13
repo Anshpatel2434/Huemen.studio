@@ -10,6 +10,16 @@
 > **Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (note why).
 > Task IDs (P0-1, etc.) are stable — reference them in commits.
 >
+> **Build status (2026-10-13).** Audited against the code on branch
+> `voice-pack-v2` and re-ticked below (the earlier ticks had gone stale). Built
+> and demo-ready: the whole studio on the mock provider, onboarding, voice pack,
+> content, templated visuals with PNG export, calendar generator, caps, prompt
+> editor, PDF/Markdown export, connections code. 274 tests green, CI green from
+> a clean clone. **Blocks production, not the demo:** sign-in outside the dev
+> driver, an email sender, the S3 driver, an image model, a job queue, rate
+> limiting, upload re-encoding. Parked items are in `docs/phase-two.md`.
+> Marked `[!]` below = parked, needs a client conversation.
+>
 > **Build status (2026-09-01).** Phase 0 done and the Phase 1 spine built +
 > verified: Next.js 16 scaffold, Postgres 18 (docker, port 5544) with full
 > schema + RLS, the versioned context builder (unit-tested), the provider-
@@ -205,72 +215,88 @@ upload + questionnaire), context builder written + unit-tested.
 *Brief §06 Week 2. Blocked on real brand assets (Visual Studio cannot be tuned without them) and needs Sahil's voice sign-off this week.*
 
 ### 2a. AI layer (INV-2, §05)
-- [~] **P2-1 — Provider-agnostic AI wrapper. [backend-only]** One interface for text, one for
+- [x] **P2-1 — Provider-agnostic AI wrapper. [backend-only]** One interface for text, one for
   image. Model choice + params in **config, never hardcoded** in feature code.
   Retry + fallback policy defined **once** at the wrapper level. Text model
   routing per P1-12.
   - **Done when:** swapping a model = a config change; a provider hiccup surfaces
     as retry/fallback, not a broken screen.
-- [ ] **P2-2 — Prompt template store.** `prompt_templates` as **data** — versioned
+  - _2026-10-13:_ Built: `lib/ai` facade, mock + Anthropic text providers, config-only model choice, retry/fallback once, `enforceCap` before any call. Image providers: templates only (see P2-13).
+- [x] **P2-2 — Prompt template store.** `prompt_templates` as **data** — versioned
   bodies by key, target model, params, global + per-tenant overrides.
   - **Done when:** a template can be edited + versioned without a redeploy; each
     generation resolves the correct (tenant-override-aware) version.
-- [ ] **P2-3 — Generation logging + visible failure states.** Every model call
+  - _2026-10-13:_ Built: `prompt_templates` resolved per call (tenant override > global > built-in default v0). Admin editor at Settings > Prompts, every save a new version, audited.
+- [~] **P2-3 — Generation logging + visible failure states.** Every model call
   writes a `generation_logs` row **before returning** (kind, model, tokens
   in/out, image count, latency, status, user, tenant).
   - **Constraint:** **no silent failures** — a failed generation is a visible,
     **retryable** UI state; input is saved (never lose a draft).
   - **Done when:** every call is logged; a forced failure shows a retryable state.
-- [ ] **P2-4 — Streaming vs. queue policy.** Stream anything the user waits on;
+  - _2026-10-13:_ Every call logs, success and failure. OPEN: a failed draft is a toast, not a stored retryable state, and the request is not saved before the model call.
+- [!] **P2-4 — Streaming vs. queue policy.** Stream anything the user waits on;
   **queue anything over ~10s**. Job queue with retries+backoff, dead-letter,
   visible job status in the UI.
   - **Done when:** single text gen streams; a long batch queues with visible
     progress and retained partial results on failure.
+  - _2026-10-13:_ No queue, no streaming: generation runs in the request thread (`AI_TEXT_TIMEOUT_MS`). The `jobs` table and `QUEUE_DRIVER` exist unused. Parked, client to be told.
 - [ ] **P2-5 — Rate limiting on generation endpoints.** Per user **and** per
   tenant (§07). **Done when:** limits enforced + surfaced clearly when hit.
+  - _2026-10-13:_ Not built. Only the hard usage cap (P3-9) bounds spend.
 
 ### 2b. AI Content Studio — text (§4.2)
-- [ ] **P2-6 — All text formats.** LinkedIn post, LinkedIn hook set, Instagram
+- [x] **P2-6 — All text formats.** LinkedIn post, LinkedIn hook set, Instagram
   caption, Instagram carousel copy (slide-by-slide), newsletter section, pitch
   email, talk abstract.
   - **Constraint (INV-2):** context injected automatically via P1-11 — **the user
     types no brand context** (handover truth #1).
-- [ ] **P2-7 — Generation flow + variants.** Pick format → optional topic/idea →
+  - _2026-10-13:_ 13 formats in `lib/content/formats.ts`, each with its template.
+- [x] **P2-7 — Generation flow + variants.** Pick format → optional topic/idea →
   context auto-injected → **2–3 variants** → edit inline → save as `content_item`
   (stamp `prompt_version`).
-- [ ] **P2-8 — Voice guardrails.** do/don't words **enforced in the prompt** and
+  - _2026-10-13:_ 2 variants per draft (UI never asks for 3), inline edit, `prompt_version` + template id stamped. Co-write and own-draft paths stamp nothing (minor).
+- [x] **P2-8 — Voice guardrails.** do/don't words **enforced in the prompt** and
   **checked post-generation**; violations **flagged in the UI**, not silently
   rewritten.
   - **Done when:** a don't-word in output is flagged, not auto-removed.
-- [ ] **P2-9 — Regenerate-with-steer + generation history.** Steers ("shorter",
+  - _2026-10-13:_ Never-words in the prompt and checked after, flagged not rewritten; deterministic voice score + model findings. Do-words only reach the prompt on the legacy no-pack path.
+- [x] **P2-9 — Regenerate-with-steer + generation history.** Steers ("shorter",
   "more contrarian", "less corporate") **without losing the previous version** —
   keep generation history per `content_item`.
-- [ ] **P2-10 — Completeness-aware degradation.** Wire P1-10: thin foundation →
+  - _2026-10-13:_ Five steers, `content_generations` history with "Use".
+- [x] **P2-10 — Completeness-aware degradation.** Wire P1-10: thin foundation →
   studio visibly says so rather than emitting generic output.
+  - _2026-10-13:_ Thin brief: warning badge in Content, pillar generation blocked while degraded.
 
 ### 2c. AI Visual Studio — images (§4.3)
-- [ ] **P2-11 — Visual Studio in the same screen as copy.** Generate the post,
+- [~] **P2-11 — Visual Studio in the same screen as copy.** Generate the post,
   then its visual **without navigating away**.
-- [ ] **P2-12 — Output types.** Single-image LinkedIn/Instagram post, carousel
+  - _2026-10-13:_ Visual is its own step (`/p/[pid]/visual`), one click from Content, not the same screen.
+- [~] **P2-12 — Output types.** Single-image LinkedIn/Instagram post, carousel
   frame set, quote card, announcement graphic.
-- [ ] **P2-13 — Brand-aware prompting.** Palette, type treatment, style notes from
+  - _2026-10-13:_ Post image, quote card, carousel frames. No announcement graphic.
+- [!] **P2-13 — Brand-aware prompting.** Palette, type treatment, style notes from
   `visual_identities` **appended to every image prompt**, with **negative
   prompts** for the generic AI look.
   - **Constraint (risk §10):** generic/off-brand images are the highest-probability
     failure — tune against **real reference assets**.
-- [ ] **P2-14 — Templated carousel/quote-card rendering (per P1-12 default).**
+  - _2026-10-13:_ No image model wired (brief §09 default: templates). `generateImage` has no callers. Image prompting with palette / negative prompts is not exercised. Client decision pending (AI images yes or no).
+- [x] **P2-14 — Templated carousel/quote-card rendering (per P1-12 default).**
   Templated canvas with **real text overlay** + model-generated backgrounds.
   - **Rationale:** image models misrender text; a typo on a client's carousel is a
     **brand-damaging** failure we own. Respect font-licence outcome from P1-12.
-- [ ] **P2-15 — Variants + correct export dimensions.** Regenerate, keep variants,
+  - _2026-10-13:_ Templated artboards with real text over brand colours, editable in place.
+- [~] **P2-15 — Variants + correct export dimensions.** Regenerate, keep variants,
   download at correct per-channel export dimensions. Save to `image_assets`.
+  - _2026-10-13:_ Download as PNG at the channel size, per artboard and as a zip per piece (13 Oct). Variants are not kept: a regenerate replaces the set.
 
 ### 2d. Client portal shell + isolation verified
-- [ ] **P2-16 — Client portal shell.** Navigation + **workspace switcher for
+- [x] **P2-16 — Client portal shell.** Navigation + **workspace switcher for
   coaches**; per-client isolation enforced in the **data layer** (not UI).
   - **Constraint (INV-1):** isolation verified by P1-3 tests covering every new
     endpoint. **Done when:** a coach switches between only assigned workspaces; a
     client sees only their own; cross-tenant tests green.
+  - _2026-10-13:_ One app shell, workspace switcher for coaches and admins, isolation in the data layer; cross-tenant tests at the data layer (no HTTP route tests).
 
 **Phase 2 preview gate + reviews:** AI wrapper + template store live; Content
 Studio (all formats, variants, inline edit, history, guardrails); Visual Studio
@@ -283,49 +309,62 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 *Brief §06 Week 3. Needs client-name domain + provider accounts by start of week for the white-label pass.*
 
 ### 3a. Content Studio remainder (§4.2)
-- [ ] **P3-1 — 90-day calendar generator.** Pillars + posting frequency → dated
+- [x] **P3-1 — 90-day calendar generator.** Pillars + posting frequency → dated
   slots (topic, hook angle, CTA) written to `calendar_entries` as drafts.
   - **Constraint:** batch op → **queues** with visible progress + retained partial
     results (§07).
+  - _2026-10-13:_ Built 13 Oct as one model call: days and channels planned in code (`planSlots`), `calendar_plan` fills each slot, rows written in one transaction. Not queued (see P2-4).
 
 ### 3b. Strategy & packaging tools (§4.4)
 - [ ] **P3-2 — Niche validation / positioning / authority / growth.** Niche
   validation flow, 3×3 positioning matrix, authority ladder, Q1–Q4 growth-plan
   generator.
-- [ ] **P3-3 — Offer designer.** Expertise-in → packaged offer out (format,
+  - _2026-10-13:_ Not built. Nearest: the five strategy questions that seed pillars.
+- [~] **P3-3 — Offer designer.** Expertise-in → packaged offer out (format,
   promise, deliverables, pricing logic) → saves to `offers`, **reusable as
   context** for pitch emails.
+  - _2026-10-13:_ Manual form (no AI designer). Saved offers now reach every prompt through the context builder (13 Oct).
 - [ ] **P3-4 — Answer-first (AEO) page generator.** Structured Q&A pages from the
   brand profile, exportable as **HTML or Markdown**.
+  - _2026-10-13:_ Not built.
 
 ### 3c. Workflow & collaboration (§4.5)
-- [ ] **P3-5 — Idea inbox.** Quick capture (text paste; email-in later),
+- [x] **P3-5 — Idea inbox.** Quick capture (text paste; email-in later),
   **auto-tagged to a pillar**, one-click convert to a `content_item` (set
   `converted_to_content_item_id`).
+  - _2026-10-13:_ Capture, keyword auto-tag to a pillar, convert starts a piece; `converted_to_content_item_id` set when the first copy lands (13 Oct).
 - [ ] **P3-6 — Repurposing pipeline.** One long-form item → fan out to short
   posts, carousel copy, an email, a talk outline — **all linked back to the
   source**.
-- [ ] **P3-7 — Exports.** PDF **and** Markdown/Notion-compatible export of brand
+  - _2026-10-13:_ Not built. `source_content_item_id` exists unused.
+- [x] **P3-7 — Exports.** PDF **and** Markdown/Notion-compatible export of brand
   foundation, calendar, and content (Markdown per P1-12).
   - **Constraint:** exports carry **client branding**, **no Okra marks**.
+  - _2026-10-13:_ PDF (`@react-pdf/renderer`) and Markdown, approved-only or all; voice pack as eight files. Titled by the person or workspace, no Okra marks. Tenant palette/logo not yet applied to exports (see P3-12).
 
 ### 3d. Admin & analytics (§4.6)
-- [ ] **P3-8 — Per-tenant usage view.** Generations run, images produced, active
+- [x] **P3-8 — Per-tenant usage view.** Generations run, images produced, active
   users, last activity — reads from `generation_logs`.
-- [ ] **P3-9 — Usage caps.** Per-tenant caps with a **soft warning** and a **hard
+  - _2026-10-13:_ `/w/[id]/usage` and Settings > AI usage, from `generation_logs`.
+- [x] **P3-9 — Usage caps.** Per-tenant caps with a **soft warning** and a **hard
   stop**, admin-configurable. Surface runaway usage — don't hide it (client pays
   provider costs directly).
   - **Constraint:** cap changes are **audited** (§07).
-- [ ] **P3-10 — Global prompt template management + versioning.** Admin edits
+  - _2026-10-13:_ Built 13 Oct: caps form on Settings > Workspaces (audited), amber meter past the soft cap, `enforceCap` hard stop before the provider with a plain message.
+- [x] **P3-10 — Global prompt template management + versioning.** Admin edits
   prompts **without a redeploy**; versions traceable to `content_items`.
+  - _2026-10-13:_ Built 13 Oct: Settings > Prompts. See P2-2.
 
 ### 3e. White-label layer (§4.7)
 - [ ] **P3-11 — Custom domain + TLS.** Custom domain support with TLS.
-- [ ] **P3-12 — Branding config applied everywhere.** Logo/palette/fonts applied to
+  - _2026-10-13:_ Not built; no host-based tenant resolution.
+- [~] **P3-12 — Branding config applied everywhere.** Logo/palette/fonts applied to
   client-facing UI **and transactional emails**.
-- [ ] **P3-13 — No-Okra-marks pass.** Verify **specifically**: email templates,
+  - _2026-10-13:_ Only `branding.accent` is applied to the chrome. No logo/palette/fonts, no edit UI, nothing in exports; emails do not exist yet.
+- [~] **P3-13 — No-Okra-marks pass.** Verify **specifically**: email templates,
   page titles, favicons, error pages, PDF exports.
   - **Done when:** a reviewer finds zero Okra marks across all client-facing surfaces.
+  - _2026-10-13:_ A sweep of `src/` finds no Okra marks in page titles, exports, error pages or the icon. Emails cannot be checked until a sender exists. Formal reviewer pass still to do.
 
 **Phase 3 preview gate:** all Week-3 features live; white-label pass complete.
 
@@ -337,7 +376,8 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 ### Security review & hardening (brief §06 Week 3 close)
 - [ ] **P4-1 — Security review.** Verify §07 across the app: RLS, storage scoping,
   rate limits, upload validation, provider "no-training" setting recorded.
-- [ ] **P4-2 — Seed data.** Realistic seed for a demo/reference workspace.
+- [x] **P4-2 — Seed data.** Realistic seed for a demo/reference workspace.
+  - _2026-10-13:_ Owner org, a finished demo client (pieces, pillars, voice pack, caps) and a fresh client for onboarding.
 
 ### Product DoD (§11)
 - [ ] **P4-3** — A new client workspace can be created, invited, and used end to
@@ -353,15 +393,17 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 - [ ] **P4-8** — **No Okra marks** in any client-facing surface (emails, exports,
   error pages).
 - [ ] **P4-9** — **Secrets rotated**; no credentials in repo or its history.
-- [ ] **P4-10** — Migrations **run clean from empty** on a fresh database.
+- [x] **P4-10** — Migrations **run clean from empty** on a fresh database.
+  - _2026-10-13:_ Runs clean from empty in CI and locally (13 Oct).
 
 ### Handover DoD (§11)
 - [ ] **P4-11** — Source code in the **client's own repository, with full history**.
 - [ ] **P4-12** — Hosting, DB, storage, domain, and model-provider accounts in the
   **client's name**; access transferred and **Okra's access removed on
   confirmation**.
-- [ ] **P4-13** — **README** covering local setup, env vars, deployment, and **how
+- [~] **P4-13** — **README** covering local setup, env vars, deployment, and **how
   to edit prompt templates**.
+  - _2026-10-13:_ README covers setup, env vars and prompt editing. No deployment section yet.
 - [ ] **P4-14** — **Architecture note + data-model diagram** checked into the repo.
 - [ ] **P4-15** — **Phase-two list** written up from everything parked during the
   build, handed over with the code.
@@ -374,4 +416,9 @@ Seed items (NOT in v1): video gen/editing · direct LinkedIn/Instagram publishin
 client self-serve sign-up + billing · native mobile apps · paid-ads/landing/CRM ·
 published-post performance analytics.
 
-- _(add parked items here as they arise, with date + who raised it)_
+- _2026-10-13 · build team_ · Background job queue and streaming (P2-4): generation runs in the request thread, bounded by a timeout. Needed before 90-day plans and carousel sets run for many clients at once.
+- _2026-10-13 · build team_ · Rate limiting per user and per tenant (P2-5). The hard usage cap bounds spend in the meantime.
+- _2026-10-13 · build team_ · Image model (P2-13): visuals are templated by the brief's own default; an AI-image provider is a client decision (cost) and a provider choice.
+- _2026-10-13 · build team_ · Strategy tools (P3-2), AEO page generator (P3-4), repurposing pipeline (P3-6), AI offer designer (P3-3): proposal modules not started.
+- _2026-10-13 · build team_ · Custom domain + TLS (P3-11); full tenant branding on chrome, emails and exports (P3-12).
+- _2026-10-13 · build team_ · Production sign-in (managed auth or a real email sender), S3 storage driver, upload re-encoding and SVG hardening: not demo-blocking, launch-blocking. See `docs/phase-two.md`.
