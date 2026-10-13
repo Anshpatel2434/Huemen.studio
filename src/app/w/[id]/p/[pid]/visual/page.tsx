@@ -2,6 +2,8 @@ import { projectScope } from "@/lib/auth/workspace";
 import { listContent } from "@/lib/data/content";
 import { loadFoundation } from "@/lib/data/foundation";
 import { listVisuals } from "@/lib/data/pipeline";
+import { getWorkspace } from "@/lib/data/workspaces";
+import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { stageIndex } from "@/lib/projects/stages";
 import { LockedStep } from "@/components/locked-step";
 import { VisualBoard } from "./visual-board";
@@ -16,7 +18,10 @@ export default async function VisualPage({ params, searchParams }: PageProps<"/w
   if (stageIndex(project.stage) < stageIndex("content")) {
     return <LockedStep stage="visual" needs="Visuals are designed from your drafted copy. Write the piece first." href={`${base}/content`} cta="Go to Content" />;
   }
-  const [items, f, visuals] = await Promise.all([listContent(scope), loadFoundation(scope), listVisuals(scope)]);
+  const [items, f, visuals, ws, pack] = await Promise.all([listContent(scope), loadFoundation(scope), listVisuals(scope), getWorkspace(scope), loadPackForWorkspace(scope)]);
+  // The sign-off on a visual is the PERSON (their voice pack's name), else the
+  // workspace; never the piece's own title, which is what a project is now.
+  const brandName = pack?.displayName?.trim() || ws?.name || "Your brand";
   const schemeOf = new Map(visuals.map((v) => [v.contentItemId, v.scheme]));
   const palette = f.palette.split(",").map((s) => s.trim()).filter((s) => /^#[0-9a-f]{3,8}$/i.test(s));
   const fonts = f.fonts.split(",").map((s) => s.trim()).filter(Boolean);
@@ -25,7 +30,7 @@ export default async function VisualPage({ params, searchParams }: PageProps<"/w
     <VisualBoard
       tenantId={id}
       projectId={pid}
-      brandName={project.name}
+      brandName={brandName}
       items={items.map((i) => ({ id: i.id, format: i.format, hook: i.hook, body: i.body, cta: i.cta, status: i.status, pillarName: i.pillarName, scheme: schemeOf.get(i.id) ?? null }))}
       palette={palette}
       fonts={fonts}

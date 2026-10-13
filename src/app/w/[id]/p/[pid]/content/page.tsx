@@ -12,6 +12,7 @@ import { generateVisualsAction } from "../pipeline-actions";
 import { ContentBoard } from "./content-board";
 import { WritePiece } from "./write-piece";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
+import { getWorkspace } from "@/lib/data/workspaces";
 import { confidence } from "@/lib/voice/derive";
 
 export const metadata = { title: "Content" };
@@ -31,7 +32,9 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
       />
     );
   }
-  const [items, pillars, ctx, pack] = await Promise.all([listContent(scope), listPillars(scope), loadBrandContext(scope), loadPackForWorkspace(scope)]);
+  const [items, pillars, ctx, pack, ws] = await Promise.all([listContent(scope), listPillars(scope), loadBrandContext(scope), loadPackForWorkspace(scope), getWorkspace(scope)]);
+  // The author shown on the post wireframes: the person, else the workspace.
+  const brandName = pack?.displayName?.trim() || ws?.name || "Your brand";
   const approved = items.filter((i) => i.status === "approved").length;
   const flagged = items.filter((i) => i.violations.length).length;
   const visualDone = stageIndex(project.stage) >= stageIndex("visual");
@@ -56,7 +59,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
         <ContentBoard
           tenantId={id}
           projectId={pid}
-          brandName={project.name}
+          brandName={brandName}
           items={items}
           pillars={pillars.map((p) => ({ id: p.id, name: p.name }))}
           selectedId={typeof sp.item === "string" ? sp.item : null}

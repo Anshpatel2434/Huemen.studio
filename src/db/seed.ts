@@ -174,10 +174,10 @@ async function main() {
     { tenantId: clientTenant, userId: clientUser, isPlatformAdmin: false },
     (c) =>
       c.query(
-        `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, status, voice_index, corpus_stats, identity)
-         VALUES ($1,$2,'default',$3,'active',$4,$5,$6)
+        `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, status, voice_index, corpus_stats, identity, onboarding)
+         VALUES ($1,$2,'default',$3,'active',$4,$5,$6,$7)
          ON CONFLICT (tenant_id, user_id, slug)
-         DO UPDATE SET voice_index = EXCLUDED.voice_index, corpus_stats = EXCLUDED.corpus_stats, identity = EXCLUDED.identity, status = 'active'`,
+         DO UPDATE SET voice_index = EXCLUDED.voice_index, corpus_stats = EXCLUDED.corpus_stats, identity = EXCLUDED.identity, status = 'active', onboarding = EXCLUDED.onboarding`,
         [
           clientTenant,
           clientUser,
@@ -185,6 +185,10 @@ async function main() {
           JSON.stringify({ neverWords: ["synergy", "leverage", "guru", "game-changing", "revolutionise"] }),
           JSON.stringify({ pieces: 12, words: 3400, channels: ["linkedin"] }),
           JSON.stringify({ toneDescriptors: { value: ["Direct", "Warm", "Contrarian", "Evidence-led"], source: "ask", confidence: "inferred" } }),
+          // The demo client is the FINISHED workspace: it opens on the studio with
+          // its pieces, not in onboarding. fresh@client.test is the one that walks
+          // the flow from zero.
+          JSON.stringify({ step: 4, welcomedAt: "2026-09-01T09:00:00.000Z", completedAt: "2026-09-01T09:30:00.000Z", writeFor: ["linkedin"] }),
         ],
       ),
   );
