@@ -189,6 +189,16 @@ async function main() {
       ),
   );
 
+  // Demo caps (brief §4.6): a soft warning and a hard stop, so the usage meter
+  // and the admin page have something to show. Admin-editable in Settings.
+  await withTenantSession(admin, (c) =>
+    c.query(
+      `INSERT INTO tenant_usage_caps (tenant_id, monthly_text_soft, monthly_text_hard, monthly_image_soft, monthly_image_hard, updated_by)
+       VALUES ($1, 150, 200, 100, 150, $2) ON CONFLICT (tenant_id) DO NOTHING`,
+      [clientTenant, adminUser],
+    ),
+  );
+
   // Global prompt templates (tenant_id NULL).
   await withTenantSession(admin, async (c) => {
     const templates: [string, string][] = [

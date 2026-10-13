@@ -24,7 +24,7 @@ import { mockImageProvider, mockTextProvider } from "./providers/mock";
 import { anthropicTextProvider } from "./providers/anthropic";
 import { openaiTranscriber, type FetchLike, type Transcriber } from "./providers/openai-transcribe";
 import { assemblePrompt } from "./prompt";
-import { AiConfigError, ProviderError } from "./errors";
+import { AiConfigError, ProviderError, UsageCapError } from "./errors";
 import type { Env } from "@/lib/env";
 import type { Effort, TextRoute } from "./types";
 import type { TaskDef } from "./tasks";
@@ -155,6 +155,30 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
 const logStatus = (err: unknown): "error" | "timeout" =>
   err instanceof ProviderError && err.kind === "timeout" ? "timeout" : "error";
 
+/**
+ * The hard stop (brief §4.6: a soft warning and a hard stop, admin-set). Runs
+ * before the provider is reached. Successful calls this month are counted
+ * against the cap; failed ones cost nothing and are not. No cap row, or a
+ * null hard cap, means unlimited: the admin page says so in as many words.
+ */
+export async function enforceCap(scope: SessionScope, kind: "text" | "image"): Promise<void> {
+  if (!scope.tenantId) return;
+  const col = kind === "text" ? "monthly_text_hard" : "monthly_image_hard";
+  const row = await withTenantSession(scope, async (c) => {
+    const cap = (await c.query<{ hard: number | null }>(`SELECT ${col} AS hard FROM tenant_usage_caps LIMIT 1`)).rows[0];
+    if (!cap?.hard) return null;
+    const used = (
+      await c.query<{ n: number }>(
+        kind === "text"
+          ? `SELECT count(*)::int AS n FROM generation_logs WHERE kind='text' AND status='ok' AND created_at >= date_trunc('month', now())`
+          : `SELECT coalesce(sum(image_count),0)::int AS n FROM generation_logs WHERE kind='image' AND status='ok' AND created_at >= date_trunc('month', now())`,
+      )
+    ).rows[0].n;
+    return { used, cap: cap.hard };
+  });
+  if (row && row.used >= row.cap) throw new UsageCapError(kind, row.used, row.cap);
+}
+
 export async function generateText(
   scope: SessionScope,
   req: TextGenRequest & { systemTemplate: string; contentItemId?: string | null },
@@ -166,6 +190,7 @@ export async function generateText(
   let model = `${env.AI_TEXT_PROVIDER}-${route}`;
   const started = Date.now();
   try {
+    await enforceCap(scope, "text");
     const provider = selectTextProvider(env);
     model = resolveTextModel(env, route);
     // INV-2: the one assembly, handed to whichever provider is configured.
@@ -208,6 +233,7 @@ export async function generateImage(
   const model = env.AI_IMAGE_MODEL || "mock-image";
   const started = Date.now();
   try {
+    await enforceCap(scope, "image");
     const provider = selectImageProvider(env);
     const result = await withRetry(() => provider.generate(req, model));
     await logGeneration(scope, {
@@ -248,6 +274,7 @@ export async function runTask<T>(
   let model = `${env.AI_TEXT_PROVIDER}-${route}`;
   const started = Date.now();
   try {
+    await enforceCap(scope, "text");
     const provider = selectTextProvider(env);
     model = resolveTextModel(env, route);
     const template = await resolveTemplate(scope, task.key);

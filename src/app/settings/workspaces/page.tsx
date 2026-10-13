@@ -3,14 +3,24 @@ import { redirect } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/auth/types";
-import { listCoaches, listWorkspaces } from "@/lib/data/admin";
+import { listCaps, listCoaches, listWorkspaces } from "@/lib/data/admin";
+import { loadUsage } from "@/lib/data/insights";
 import { signQuestionnaireToken } from "@/lib/invite/token";
 import { signLink } from "@/lib/auth/tokens";
 import { listMembers } from "@/lib/data/auth";
 import { getEnv } from "@/lib/env";
 import { Badge, SubmitButton } from "@/components/ui";
 import { CopyField } from "./copy-field";
-import { assignCoachAction, createWorkspaceAction, inviteUserAction, setStatusAction } from "./actions";
+import { assignCoachAction, createWorkspaceAction, inviteUserAction, setCapsAction, setStatusAction } from "./actions";
+
+function CapField({ name, label, value }: { name: string; label: string; value: number | null | undefined }) {
+  return (
+    <label className="block min-w-0">
+      <span className="block text-xs text-ink-muted mb-1 truncate">{label}</span>
+      <input name={name} type="number" min={1} step={1} inputMode="numeric" defaultValue={value ?? ""} placeholder="none" className="field num" aria-label={label} />
+    </label>
+  );
+}
 
 export const metadata = { title: "Workspaces & access" };
 
@@ -19,9 +29,14 @@ export default async function WorkspacesAdminPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!isPlatformAdmin(session.role)) redirect("/settings");
-  const [workspaces, coaches] = await Promise.all([listWorkspaces(session), listCoaches(session)]);
+  const [workspaces, coaches, caps] = await Promise.all([listWorkspaces(session), listCoaches(session), listCaps(session)]);
   const appUrl = getEnv().APP_URL;
   const members = await listMembers(workspaces.map((w) => w.id));
+  const usage = new Map(
+    await Promise.all(
+      workspaces.map(async (w) => [w.id, (await loadUsage({ tenantId: w.id, userId: session.userId, isPlatformAdmin: false })).textThisMonth] as const),
+    ),
+  );
   const ROLE = { owner_admin: "Admin", coach: "Coach", client: "Client" } as const;
 
   return (
@@ -94,6 +109,21 @@ export default async function WorkspacesAdminPage() {
                 <p className="text-xs text-ink-muted mb-1">Questionnaire link</p>
                 <CopyField value={`${appUrl}/q/${signQuestionnaireToken(w.id)}`} />
               </div>
+              <form action={setCapsAction} className="border-t border-hairline pt-3">
+                <input type="hidden" name="tenantId" value={w.id} />
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-xs text-ink-muted">Monthly AI caps</p>
+                  <p className="text-xs text-ink-faint">{caps.get(w.id)?.textHard ? `${usage.get(w.id) ?? 0} of ${caps.get(w.id)!.textHard} text this month` : "No hard cap: unlimited"}</p>
+                </div>
+                <div className="mt-2 grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-end">
+                  <CapField name="textSoft" label="Text, warn at" value={caps.get(w.id)?.textSoft} />
+                  <CapField name="textHard" label="Text, stop at" value={caps.get(w.id)?.textHard} />
+                  <CapField name="imageSoft" label="Images, warn at" value={caps.get(w.id)?.imageSoft} />
+                  <CapField name="imageHard" label="Images, stop at" value={caps.get(w.id)?.imageHard} />
+                  <SubmitButton variant="secondary" size="sm" pendingLabel="…">Save caps</SubmitButton>
+                </div>
+                <p className="text-xs text-ink-faint mt-2">Warn turns the usage meter amber. Stop refuses further generations until the month resets, with a message saying who can raise it. Leave a field empty for no limit. Changes are audited.</p>
+              </form>
             </div>
           </section>
         ))}
