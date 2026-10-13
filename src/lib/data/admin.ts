@@ -160,6 +160,68 @@ export async function setUsageCaps(session: Session, tenantId: string, caps: Omi
   await audit(scope, tenantId, "caps.update", next);
 }
 
+export interface TemplateVersionRow {
+  id: string;
+  tenantId: string | null;
+  key: string;
+  version: number;
+  body: string;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+/** Every saved template version, newest first within a key, for the admin page. */
+export async function listTemplateVersions(session: Session): Promise<TemplateVersionRow[]> {
+  const scope = scopeOf(session);
+  return (
+    await withTenantSession(scope, (c) =>
+      c.query(
+        `SELECT t.id, t.tenant_id, t.key, t.version, t.body, t.created_at, u.email AS created_by
+           FROM prompt_templates t LEFT JOIN users u ON u.id = t.created_by
+          WHERE t.is_active
+          ORDER BY t.key, t.tenant_id NULLS FIRST, t.version DESC`,
+      ),
+    )
+  ).rows.map((r) => ({
+    id: r.id,
+    tenantId: r.tenant_id,
+    key: r.key,
+    version: r.version,
+    body: r.body,
+    createdAt: new Date(r.created_at).toISOString(),
+    createdBy: r.created_by ?? null,
+  }));
+}
+
+/**
+ * Save a template as a NEW version (brief §05: edited and versioned without a
+ * redeploy). Nothing is overwritten: every draft keeps the version it was
+ * written with, and an older body can be saved again to go back. A tenant id
+ * makes it that workspace's override; null edits the global one. Audited.
+ */
+export async function saveTemplate(session: Session, input: { key: string; body: string; tenantId: string | null }): Promise<number> {
+  const scope = scopeOf(session);
+  const body = input.body.trim();
+  if (!body) throw new Error("empty template");
+  const version = await withTenantSession(scope, async (c) => {
+    const next =
+      (
+        await c.query<{ v: number }>(
+          `SELECT coalesce(max(version), 0)::int + 1 AS v FROM prompt_templates WHERE key = $1 AND tenant_id IS NOT DISTINCT FROM $2`,
+          [input.key, input.tenantId],
+        )
+      ).rows[0].v;
+    await c.query(
+      `INSERT INTO prompt_templates (tenant_id, key, version, body, created_by) VALUES ($1,$2,$3,$4,$5)`,
+      [input.tenantId, input.key, next, body, scope.userId],
+    );
+    return next;
+  });
+  // A global edit is audited against the admin's own org; an override against its workspace.
+  await audit(scope, input.tenantId ?? session.tenantId, "template.update", { key: input.key, version, scope: input.tenantId ? "workspace" : "global" });
+  return version;
+}
+
 export async function setWorkspaceStatus(
   session: Session,
   tenantId: string,

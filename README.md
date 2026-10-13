@@ -66,8 +66,20 @@ Prompts are **data, not code** — rows in `prompt_templates`, versioned by `key
 `tenant_id NULL` = a global template shared by all workspaces; a non-null
 `tenant_id` is a per-tenant override. Editing/adding a version does not require a
 redeploy, and the version used is stamped on each generated item for
-traceability. (Admin UI for this: TASKS P3-10.) To seed/change globals now, edit
-[`src/db/seed.ts`](src/db/seed.ts) or insert rows directly as an admin session.
+traceability.
+
+**Edit them in the app:** sign in as an owner-admin and open **Settings ›
+Prompts**. Every template the studio resolves is listed (writing formats, brand
+core, studio tasks) with what it says today. *Edit* opens an editor; *Save*
+writes a new version, used from the next draft on, either for every workspace
+or for one workspace as an override. The history is in the same dialog and any
+older version can be loaded and saved again. Each save is an audit-log row.
+
+The built-in defaults live in [`src/lib/ai/template-defaults.ts`](src/lib/ai/template-defaults.ts)
+and run (stamped as version 0) until a row exists. The output contract (the
+shape the code parses back) is code-owned in [`src/lib/ai/prompt.ts`](src/lib/ai/prompt.ts)
+and is appended after the template, so an edit can change how the model
+writes but never break parsing.
 
 ## App structure (UI)
 Workspace → projects → a Figma-style editor. A **workspace** is a tenant (one

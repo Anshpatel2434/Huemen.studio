@@ -17,7 +17,12 @@ export default async function SettingsLayout({ children }: LayoutProps<"/setting
     { href: "/settings", label: "Account", exact: true },
     { href: "/settings/connections", label: "Connections" },
     { href: "/settings/usage", label: "AI usage" },
-    ...(isPlatformAdmin(session.role) ? [{ href: "/settings/workspaces", label: "Workspaces & access" }] : []),
+    ...(isPlatformAdmin(session.role)
+      ? [
+          { href: "/settings/workspaces", label: "Workspaces & access" },
+          { href: "/settings/prompts", label: "Prompts" },
+        ]
+      : []),
   ];
   return (
     <WorkspaceShell tenantId={session.tenantId} section="Settings" tabs={tabs}>
