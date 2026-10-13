@@ -125,6 +125,13 @@ export async function generateVisuals(scope: ProjectScope, opts: { scheme: numbe
   return items.length;
 }
 
+/** Remove one piece's visual set. The copy stays; only the artboards go. */
+export async function deleteVisuals(scope: ProjectScope, contentItemId: string): Promise<number> {
+  return withTenantSession(scope, async (c) =>
+    (await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2", [contentItemId, scope.projectId])).rowCount ?? 0,
+  );
+}
+
 export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
   return withTenantSession(scope, async (c) =>
     (

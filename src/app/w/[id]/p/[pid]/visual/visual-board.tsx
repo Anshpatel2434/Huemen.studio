@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
-import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X } from "lucide-react";
-import { IconButton, SubmitButton } from "@/components/ui";
-import { generateVisualsAction } from "../pipeline-actions";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2 } from "lucide-react";
+import { AgentDots, IconButton, SubmitButton, useToast } from "@/components/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
+import { fileSlug, nodeToPngBlob, saveBlob, zipBlobs } from "@/lib/ui/png";
+import { deleteVisualsAction, generateVisualsAction } from "../pipeline-actions";
 import { Canvas, Artboard } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory } from "@/components/canvas-edit";
 import { patchContentAction } from "../content/actions";
@@ -95,6 +98,70 @@ export function VisualBoard(props: BoardProps) {
 
 function Board({ tenantId, projectId, brandName, items, palette, fonts, imageStyle, selectedId, initialScheme }: BoardProps) {
   const history = useCanvasHistory();
+  const router = useRouter();
+  const toast = useToast();
+
+  // Every artboard frame, by "<item>:<kind>[:<slide>]", so a click can export it.
+  const frames = useRef(new Map<string, HTMLDivElement>());
+  const frameRef = (key: string) => (el: HTMLDivElement | null) => {
+    if (el) frames.current.set(key, el);
+    else frames.current.delete(key);
+  };
+  const [busy, setBusy] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Item | null>(null);
+
+  /** One frame as a PNG at the channel's size. */
+  const exportOne = async (key: string, w: number, h: number, name: string) => {
+    const node = frames.current.get(key);
+    if (!node) return;
+    setBusy(key);
+    try {
+      saveBlob(await nodeToPngBlob(node, w, h), `${name}.png`);
+      toast(`Saved ${name}.png`);
+    } catch {
+      toast("Couldn't render that image. Try again.", "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** The whole set for a piece (post, quote card, every carousel frame) as one zip. */
+  const exportSet = async (i: Item, slides: Slide[]) => {
+    const fmt = formatByKey(i.format);
+    const base = `${fileSlug(brandName)}-${fileSlug(i.hook).slice(0, 32)}`;
+    setBusy(`${i.id}:set`);
+    try {
+      const files: { name: string; blob: Blob }[] = [];
+      const post = frames.current.get(`${i.id}:single`);
+      if (post) files.push({ name: `${base}-post-${fmt.frame.w}x${fmt.frame.h}.png`, blob: await nodeToPngBlob(post, fmt.frame.w, fmt.frame.h) });
+      const quote = frames.current.get(`${i.id}:quote`);
+      if (quote) files.push({ name: `${base}-quote-1080x1080.png`, blob: await nodeToPngBlob(quote, 1080, 1080) });
+      for (let k = 0; k < slides.length; k++) {
+        const f = frames.current.get(`${i.id}:carousel:${k}`);
+        if (f) files.push({ name: `${base}-carousel-${String(k + 1).padStart(2, "0")}-1080x1350.png`, blob: await nodeToPngBlob(f, 1080, 1350) });
+      }
+      if (!files.length) throw new Error("nothing to export");
+      saveBlob(await zipBlobs(files), `${base}-visuals.zip`);
+      toast(`Saved ${files.length} images as a zip`);
+    } catch {
+      toast("Couldn't render the set. Try again.", "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmRemove = async () => {
+    const i = removing;
+    if (!i) return;
+    setRemoving(null);
+    try {
+      await deleteVisualsAction(tenantId, projectId, i.id);
+      toast("Visuals removed");
+      router.refresh();
+    } catch {
+      toast("Couldn't remove those visuals.", "danger");
+    }
+  };
   const edit = useCallback((i: Item, next: { hook?: string; body?: string; cta?: string }, label: string) => {
     const prev = Object.fromEntries(Object.keys(next).map((k) => [k, i[k as "hook" | "body" | "cta"]]));
     history.push({ label, undo: () => patchContentAction(tenantId, projectId, i.id, prev), redo: () => patchContentAction(tenantId, projectId, i.id, next) });
@@ -196,10 +263,22 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                 const slides = slidesOf(i);
                 return (
                   <section key={i.id} data-canvas-bg="1" className={selectedId === i.id ? "outline outline-2 outline-accent outline-offset-[12px] rounded-xs" : ""}>
-                    <p className="label-mono text-ink-faint mb-4">{fmt.label} · {i.pillarName ?? "No pillar"} · {i.status}</p>
+                    <div className="flex items-center gap-3 mb-4" data-canvas-bg="1">
+                      <p className="label-mono text-ink-faint">{fmt.label} · {i.pillarName ?? "No pillar"} · {i.status}</p>
+                      <span className="flex-1" data-canvas-bg="1" />
+                      <button type="button" onClick={() => exportSet(i, slides)} disabled={busy !== null} className={btnClass("secondary", "sm")}>
+                        {busy === `${i.id}:set` ? <><AgentDots /> Rendering…</> : <><Download size={14} aria-hidden="true" /> Download set</>}
+                      </button>
+                      <IconButton label="Remove these visuals" onClick={() => setRemoving(i)}><Trash2 size={15} /></IconButton>
+                    </div>
                     <div className="flex gap-8 items-start" data-canvas-bg="1">
-                      <Artboard label="Post image" meta={fmt.frame.label} width={DISPLAY_W}>
-                        <Frame w={fmt.frame.w} h={fmt.frame.h} s={s}>
+                      <Artboard
+                        label="Post image"
+                        meta={fmt.frame.label}
+                        width={DISPLAY_W}
+                        actions={<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(`${i.id}:single`, fmt.frame.w, fmt.frame.h, `${fileSlug(brandName)}-post-${fmt.frame.w}x${fmt.frame.h}`)} />}
+                      >
+                        <Frame w={fmt.frame.w} h={fmt.frame.h} s={s} frameRef={frameRef(`${i.id}:single`)}>
                           <div className="h-full flex flex-col justify-between p-[9%]">
                             <span className="h-[3%] w-[14%] rounded-full" style={{ background: s.accent }} />
                             <div className="text-[1.45rem] leading-[1.12] font-medium" style={{ fontFamily: display, color: s.fg }}>
@@ -209,8 +288,13 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                           </div>
                         </Frame>
                       </Artboard>
-                      <Artboard label="Quote card" meta="1:1 · 1080×1080" width={DISPLAY_W}>
-                        <Frame w={1080} h={1080} s={{ ...s, bg: s.fg, fg: s.bg }}>
+                      <Artboard
+                        label="Quote card"
+                        meta="1:1 · 1080×1080"
+                        width={DISPLAY_W}
+                        actions={<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(`${i.id}:quote`, 1080, 1080, `${fileSlug(brandName)}-quote-1080x1080`)} />}
+                      >
+                        <Frame w={1080} h={1080} s={{ ...s, bg: s.fg, fg: s.bg }} frameRef={frameRef(`${i.id}:quote`)}>
                           <div className="h-full flex flex-col justify-center p-[10%]">
                             <span className="text-[3rem] leading-none" style={{ color: s.accent, fontFamily: accentFont }}>“</span>
                             <div className="text-[1.25rem] leading-snug italic" style={{ fontFamily: accentFont, color: s.bg }}>
@@ -220,13 +304,18 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                           </div>
                         </Frame>
                       </Artboard>
-                      <Artboard label="Carousel" meta={`${slides.length} frames · 1080×1350`} width={slides.length * 170 + (slides.length - 1) * 8 + 16}>
+                      <Artboard
+                        label="Carousel"
+                        meta={`${slides.length} frames · 1080×1350`}
+                        width={slides.length * 170 + (slides.length - 1) * 8 + 16}
+                        actions={<ExportButton label="Download all frames" busy={busy === `${i.id}:set`} onClick={() => exportSet(i, slides)} />}
+                      >
                         <div className="flex gap-2 p-2 bg-panel">
                           {slides.map((sl, k) => {
                             const alt = k % 2 === 1;
                             return (
                               <div key={k} className="w-[170px] shrink-0">
-                                <Frame w={1080} h={1350} s={alt ? { ...s, bg: s.fg, fg: s.bg } : s}>
+                                <Frame w={1080} h={1350} s={alt ? { ...s, bg: s.fg, fg: s.bg } : s} frameRef={frameRef(`${i.id}:carousel:${k}`)}>
                                   <div className="h-full flex flex-col justify-between p-[10%]">
                                     <span className="text-[0.55rem] tracking-[0.15em] font-medium" style={{ color: s.accent, fontFamily: "var(--font-mono)" }}>{k + 1}/{slides.length}</span>
                                     <div className={`${k === 0 ? "text-[0.95rem] font-medium" : "text-[0.72rem]"} leading-snug flex gap-1`} style={{ fontFamily: display, color: alt ? s.bg : s.fg }}>
@@ -256,12 +345,30 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
           </Canvas>
         )}
       </div>
+      <ConfirmModal
+        open={removing !== null}
+        title="Remove these visuals?"
+        confirmLabel="Remove visuals"
+        danger
+        onClose={() => setRemoving(null)}
+        onConfirm={confirmRemove}
+      >
+        The post image, quote card and carousel for this piece go. The copy stays, and you can generate them again with any scheme.
+      </ConfirmModal>
     </div>
   );
 }
 
-function Frame({ w, h, s, children }: { w: number; h: number; s: Scheme; children: React.ReactNode }) {
-  return <div style={{ aspectRatio: `${w} / ${h}`, background: s.bg, color: s.fg }} className="w-full overflow-hidden">{children}</div>;
+function ExportButton({ busy, onClick, label = "Download PNG" }: { busy: boolean; onClick: () => void; label?: string }) {
+  return (
+    <IconButton label={label} onClick={onClick} disabled={busy} className="opacity-0 group-hover/board:opacity-100 focus-visible:opacity-100 data-[busy=true]:opacity-100">
+      {busy ? <AgentDots /> : <Download size={14} />}
+    </IconButton>
+  );
+}
+
+function Frame({ w, h, s, children, frameRef }: { w: number; h: number; s: Scheme; children: React.ReactNode; frameRef?: (el: HTMLDivElement | null) => void }) {
+  return <div ref={frameRef} style={{ aspectRatio: `${w} / ${h}`, background: s.bg, color: s.fg }} className="w-full overflow-hidden">{children}</div>;
 }
 
 function Section({ id, icon: Icon, title, open, setOpen, children }: { id: string; icon: typeof Type; title: string; open: string | null; setOpen: (v: string | null) => void; children: React.ReactNode }) {
