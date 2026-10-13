@@ -7,6 +7,7 @@
  * Server-only.
  */
 import "server-only";
+import type { PoolClient } from "pg";
 import { withTenantSession } from "@/db/session";
 import type { ProjectScope } from "./projects";
 import { loadBrandContext } from "@/lib/context/context-loader";
@@ -136,6 +137,7 @@ export async function generateContent(
         [scope.tenantId, id, i, d.hook, d.body, d.cta, template.version, result.model],
       );
     }
+    await linkIdea(c, id, scope.projectId);
     return id;
   });
 }
@@ -274,6 +276,21 @@ export async function createContentItem(
        VALUES ($1,$2,0,$3,$4,$5,$6)`,
       [scope.tenantId, id, input.hook, input.body, input.cta, input.origin],
     );
+    await linkIdea(c, id, scope.projectId);
     return id;
   });
+}
+
+/**
+ * The piece that came out of an idea (brief §4.5: `converted_to_content_item_id`).
+ * A piece is started from an idea at Ideate, before any copy exists, so the
+ * link is written here, when the first copy lands, and never overwritten.
+ */
+async function linkIdea(c: PoolClient, contentItemId: string, projectId: string): Promise<void> {
+  await c.query(
+    `UPDATE ideas SET converted_to_content_item_id = $1, status = 'converted'
+      WHERE project_id IS NULL AND converted_to_content_item_id IS NULL
+        AND id = (SELECT idea_id FROM projects WHERE id = $2)`,
+    [contentItemId, projectId],
+  );
 }

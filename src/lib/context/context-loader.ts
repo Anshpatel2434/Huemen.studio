@@ -54,6 +54,12 @@ export async function loadBrandContext(
     const vi = (
       await c.query(`SELECT * FROM visual_identities WHERE brand_profile_id = $1 LIMIT 1`, [bp.id])
     ).rows[0];
+    // The offer designer's offers (§4.4) are workspace-level, like the brief.
+    const offers = (
+      await c.query<{ name: string; format: string | null; promise: string | null }>(
+        `SELECT name, format, promise FROM offers WHERE project_id IS NULL ORDER BY created_at LIMIT 8`,
+      )
+    ).rows;
 
     return buildBrandContext({
       language,
@@ -66,6 +72,7 @@ export async function loadBrandContext(
         niche: bp.niche,
         audience: bp.audience,
         offersSummary: bp.offers_summary,
+        offers,
       },
       // Fallback only: ignored by the builder when a pack is present.
       voiceGuide: vg && {

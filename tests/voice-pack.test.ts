@@ -15,6 +15,7 @@ import { appPool } from "@/db/pool";
 import { createProject, type ProjectScope } from "@/lib/data/projects";
 import { loadFoundation, saveFoundation } from "@/lib/data/foundation";
 import { loadBrandContext } from "@/lib/context/context-loader";
+import { CONTEXT_VERSION } from "@/lib/context/context-builder";
 import {
   addSamples, fewShotSamples, getOrCreatePack, listSamples, listVersions,
   loadPackForWorkspace, rescan, savePack,
@@ -257,7 +258,7 @@ describe("the one context builder", () => {
     }, "voice set");
 
     const ctx = await loadBrandContext(A, "en", "linkedin");
-    expect(ctx.version).toBe(4);
+    expect(ctx.version).toBe(CONTEXT_VERSION);
     expect(ctx.serialized).toContain("Finds the big idea in a small moment.");
     expect(ctx.serialized).toContain("Never call herself a thought leader.");
     expect(ctx.serialized).toContain("Why: If people think it");

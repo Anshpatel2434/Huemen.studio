@@ -34,7 +34,7 @@
  * check also carries their aspiration, so a draft aimed where they want to
  * sound isn't marked down for not matching their old writing.
  */
-export const CONTEXT_VERSION = 4;
+export const CONTEXT_VERSION = 5; // 5: saved offers are in the block
 
 /** What the context is for (spec 01 §3 load order). Undefined reads as "write". */
 export type ContextTask = "write" | "rewrite" | "check" | "reply";
@@ -53,6 +53,8 @@ export interface BrandProfileInput {
   niche?: string | null;
   audience?: Record<string, unknown> | null;
   offersSummary?: string | null;
+  /** The offer designer's saved offers (brief §4.4): reusable as context for pitch emails. */
+  offers?: { name: string; format?: string | null; promise?: string | null }[];
 }
 
 export interface VoiceGuideInput {
@@ -487,6 +489,14 @@ function serialize(input: BrandContextInput): string {
     );
   if (chapters.length) lines.push("Story arc:", ...chapters);
   if (nonEmpty(bp.offersSummary)) lines.push(`Offers: ${bp.offersSummary!.trim()}`);
+  const offers = (bp.offers ?? []).filter((o) => nonEmpty(o?.name));
+  if (offers.length) {
+    lines.push("What they sell (name the offer only where the piece asks for something):");
+    for (const o of offers) {
+      const bits = [nonEmpty(o.format) ? o.format!.trim() : "", nonEmpty(o.promise) ? o.promise!.trim() : ""].filter(Boolean);
+      lines.push(`  - ${o.name.trim()}${bits.length ? `: ${bits.join(". ")}` : ""}`);
+    }
+  }
 
   if (input.voicePack) lines.push("", ...serializeVoicePack(input.voicePack, input.platform, input.task ?? "write"));
   else {
