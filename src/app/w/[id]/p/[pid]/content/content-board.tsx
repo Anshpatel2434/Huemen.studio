@@ -6,6 +6,7 @@ import { Plus, X, Flag, Trash2, History, Wand2, PenLine, AlertTriangle, Globe, T
 import { Canvas, Artboard, type Device } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
 import { DraftModal } from "@/components/draft-modal";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { AgentDots, Badge, EmptyState, Avatar, IconButton, Segmented, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
@@ -95,13 +96,18 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     });
   };
 
-  const remove = useCallback((item: ContentItemView) => {
-    if (!confirm("Delete this piece and its history?")) return;
+  // Delete asks first, in the app's own dialog (never the browser's confirm()).
+  const [toDelete, setToDelete] = useState<ContentItemView | null>(null);
+  const remove = useCallback((item: ContentItemView) => setToDelete(item), []);
+  const confirmDelete = () => {
+    const item = toDelete;
+    if (!item) return;
+    setToDelete(null);
     deleteContentAction(tenantId, projectId, item.id).then(
-      () => { toast("Deleted"); select(null); },
+      () => { toast("Deleted"); select(null); router.refresh(); },
       () => toast("Couldn't delete that piece.", "danger"),
     );
-  }, [tenantId, projectId, toast, select]);
+  };
   useDeleteKey(selected ? () => remove(selected) : null);
 
   return (
@@ -177,8 +183,19 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
         </div>
       )}
 
-      {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} onClose={() => select(null)} />}
+      {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} onClose={() => select(null)} onDelete={() => remove(selected)} />}
       {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} onDone={(id) => select(id)} />}
+      <ConfirmModal
+        open={toDelete !== null}
+        title="Delete this piece?"
+        confirmLabel="Delete piece"
+        danger
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+      >
+        {toDelete?.hook ? <>“{toDelete.hook.slice(0, 80)}{toDelete.hook.length > 80 ? "…" : ""}” and its {toDelete.history.length} saved version{toDelete.history.length === 1 ? "" : "s"} go with it. </> : null}
+        This can&apos;t be undone.
+      </ConfirmModal>
     </>
   );
 }
@@ -222,8 +239,8 @@ function Marked({ text, words }: { text: string; words: string[] }) {
   return <>{text.split(re).map((part, i) => (ws.some((w) => w.toLowerCase() === part.toLowerCase()) ? <mark key={i} className="bg-accent-soft text-accent-ink rounded-xs px-0.5">{part}</mark> : <span key={i}>{part}</span>))}</>;
 }
 
-function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
-  tenantId: string; projectId: string; item: ContentItemView; pillars: { id: string; name: string }[]; dontWords: string[]; onClose: () => void;
+function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onDelete }: {
+  tenantId: string; projectId: string; item: ContentItemView; pillars: { id: string; name: string }[]; dontWords: string[]; onClose: () => void; onDelete: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -309,7 +326,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
       )}
 
       <div className="shrink-0 border-t border-hairline p-3 flex items-center gap-2">
-        <button onClick={() => { if (confirm("Delete this piece and its history?")) run("delete", async () => { await deleteContentAction(tenantId, projectId, item.id); onClose(); }, "Deleted"); }} className={btnClass("danger", "sm")} aria-label="Delete"><Trash2 size={14} /></button>
+        <button onClick={onDelete} disabled={pending} className={btnClass("danger", "sm")} aria-label="Delete piece" title="Delete piece"><Trash2 size={14} /></button>
         <span className="flex-1" />
         <button disabled={pending || !dirty} onClick={() => save("edited")} className={btnClass("secondary", "sm")}>{busy === "edited" ? <AgentDots /> : "Save"}</button>
         <button disabled={pending} onClick={() => save("approved")} className={btnClass("primary", "sm")}>{busy === "approved" ? <AgentDots /> : item.status === "approved" && !dirty ? "Approved" : "Approve"}</button>

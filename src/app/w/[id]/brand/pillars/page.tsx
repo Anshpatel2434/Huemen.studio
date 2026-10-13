@@ -36,7 +36,7 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
       <div className="absolute inset-0 min-[900px]:right-[280px]">
         <PillarMap tenantId={id} brandName={(ws?.name ?? "Your brand")} completeness={ctx.completeness} briefRows={briefRows} pillars={pillars} selectedId={typeof sp.pillar === "string" ? sp.pillar : null} />
       </div>
-      <StepPanel step={3} title="Pillars">
+      <StepPanel title="Pillars">
         {sp.generated && (
           <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> Pillars generated from your brief and answers. Rename, remove or add any before drafting.</p>
         )}

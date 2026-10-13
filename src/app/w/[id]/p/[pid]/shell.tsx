@@ -26,6 +26,7 @@ import { askAgent, type AgentReply } from "./agent-actions";
 import { AddPanel } from "./add-panel";
 import { renameProjectAction, duplicateProjectAction, archiveProjectAction, deleteProjectAction } from "../../project-actions";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 const STAGE_ICON: Record<Stage, typeof FileText> = { ideate: Lightbulb, content: PenLine, visual: Palette };
 const PLANNING = [
@@ -175,6 +176,7 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [name, setName] = useState(project.name);
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -199,7 +201,7 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
             <MenuItem href={`/w/${workspace.id}/usage`} icon={<BarChart3 size={15} aria-hidden="true" />}>Workspace usage</MenuItem>
             <MenuItem href="/settings" icon={<Settings size={15} aria-hidden="true" />}>Settings</MenuItem>
             <MenuSeparator />
-            <MenuItem onClick={() => { if (!pending && confirm(`Archive “${project.name}”? It disappears from the workspace.`)) start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); }); }} icon={<Archive size={15} aria-hidden="true" />}>Archive project</MenuItem>
+            <MenuItem onClick={() => { if (pending) return; setOpen(false); setArchiving(true); }} icon={<Archive size={15} aria-hidden="true" />}>Archive project</MenuItem>
             <MenuItem danger onClick={() => { if (pending) return; setOpen(false); setDeleting(true); }} icon={<Trash2 size={15} aria-hidden="true" />}>Delete project</MenuItem>
           </Menu>
         </>
@@ -220,6 +222,24 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
           onArchive={() => start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); })}
         />
       )}
+      <ConfirmModal
+        open={archiving}
+        title={`Archive “${project.name}”?`}
+        confirmLabel="Archive project"
+        pending={pending}
+        onClose={() => setArchiving(false)}
+        onConfirm={() => start(async () => {
+          try {
+            await archiveProjectAction(workspace.id, project.id);
+            router.push(`/w/${workspace.id}`);
+          } catch {
+            setArchiving(false);
+            toast("Couldn't archive the project. Try again.", "danger");
+          }
+        })}
+      >
+        It leaves the library and stops counting towards your pillars. You can restore it from Archived at any time.
+      </ConfirmModal>
       <Modal open={renaming} onClose={() => setRenaming(false)} title="Rename project">
         <div className="flex gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)} className="field" autoFocus />

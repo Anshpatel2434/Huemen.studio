@@ -11,6 +11,7 @@ import { patchContentAction } from "../content/actions";
 import { EmptyState } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { FORMATS, formatByKey } from "@/lib/content/formats";
+import { stepLabel } from "@/lib/projects/stages";
 
 type Item = { id: string; format: string; hook: string; body: string; cta: string; status: string; pillarName: string | null; scheme: number | null };
 type Scheme = { name: string; bg: string; fg: string; accent: string };
@@ -124,13 +125,13 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
       {(
         <aside aria-label="Style guide" className={`${details ? "flex" : "hidden"} min-[900px]:flex absolute min-[900px]:static inset-y-0 right-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[280px] shadow-[var(--shadow-overlay)] min-[900px]:shadow-none shrink-0 border-l border-hairline bg-paper flex-col min-h-0`}>
           <div className="min-h-10 shrink-0 flex items-center pl-3 pr-1 border-b border-hairline">
-            <span className="label-mono text-ink-faint flex-1">Step 4 · Visual · Style guide</span>
+            <span className="label-mono text-ink-faint flex-1">{stepLabel("visual")} · Visual · Style guide</span>
             <span className="min-[900px]:hidden"><IconButton label="Close style guide" onClick={() => setDetails(false)}><X size={17} /></IconButton></span>
           </div>
           <div className="flex-1 overflow-y-auto">
             {!palette.length && (
-              <Link href={`/w/${tenantId}/p/${projectId}/brief/edit#visual`} className="m-3 flex gap-2 bg-accent-soft rounded-md px-3 py-2.5 text-xs text-accent-ink">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" /> No brand palette yet, so these use the house colours. Add one in the brief →
+              <Link href={`/w/${tenantId}/brand/visual`} className="m-3 flex gap-2 bg-accent-soft rounded-md px-3 py-2.5 text-xs text-accent-ink">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" /> No brand palette yet, so these use the house colours. Add one in Brand core →
               </Link>
             )}
             <div className="p-3 grid grid-cols-2 gap-2">

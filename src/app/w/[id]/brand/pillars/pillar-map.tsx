@@ -7,6 +7,7 @@ import { FileText, Network, MoreHorizontal, Plus, Sparkles, Check, Circle, Light
 import { Canvas } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
 import { IconButton, Menu, MenuItem, MenuSeparator, useToast } from "@/components/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { formatByKey } from "@/lib/content/formats";
 import type { PillarView } from "@/lib/data/planning";
 import { createPillarAction, deletePillarAction, reorderPillarsAction, startFromPillarAction, updatePillarAction } from "./actions";
@@ -97,8 +98,13 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
     setAdding(false);
   };
 
-  const remove = useCallback(async (p: PillarView) => {
-    if (!confirm(`Delete “${p.name}”? Its content stays, just without a pillar.`)) return;
+  // Delete asks first, in the app's own dialog (never the browser's confirm()).
+  const [toDelete, setToDelete] = useState<PillarView | null>(null);
+  const remove = useCallback((p: PillarView) => setToDelete(p), []);
+  const confirmDelete = async () => {
+    const p = toDelete;
+    if (!p) return;
+    setToDelete(null);
     try {
       await deletePillarAction(tenantId, p.id);
       setSel(null);
@@ -106,7 +112,7 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
     } catch {
       toast("Couldn't delete that pillar.", "danger");
     }
-  }, [tenantId, toast]);
+  };
 
   const selected = ordered.find((p) => p.id === sel) ?? null;
   useDeleteKey(selected && !editName ? () => remove(selected) : null);
@@ -200,7 +206,16 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, sel
           </div>
         </div>
       </Canvas>
-
+      <ConfirmModal
+        open={toDelete !== null}
+        title={`Delete “${toDelete?.name ?? ""}”?`}
+        confirmLabel="Delete pillar"
+        danger
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+      >
+        Its content stays, just without a pillar. Ideas and calendar slots tagged to it keep their text too.
+      </ConfirmModal>
     </>
   );
 }

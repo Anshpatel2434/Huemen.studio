@@ -11,7 +11,10 @@ import { IconButton } from "@/components/ui";
  * leave no canvas, so it sits behind a "Details" button and opens over the
  * canvas, with a close button; nothing in it is dropped.
  */
-export function StepPanel({ step, title, children }: { step: number; title: string; children: ReactNode }) {
+export function StepPanel({ eyebrow, title, children }: {
+  /** What sits before the title in the header, e.g. "Step 2 of 3". Omit on workspace pages. */
+  eyebrow?: string; title: string; children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -24,11 +27,11 @@ export function StepPanel({ step, title, children }: { step: number; title: stri
         <SlidersHorizontal size={15} aria-hidden="true" /> Details
       </button>
       <aside
-        aria-label={`Step ${step}: ${title}`}
+        aria-label={eyebrow ? `${eyebrow}: ${title}` : title}
         className={`${open ? "flex" : "hidden"} min-[900px]:flex absolute top-0 right-0 bottom-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[280px] bg-paper border-l border-hairline flex-col shadow-[var(--shadow-overlay)] min-[900px]:shadow-none`}
       >
         <div className="min-h-10 shrink-0 flex items-center pl-3 pr-1 border-b border-hairline">
-          <span className="label-mono text-ink-faint flex-1">Step {step} · {title}</span>
+          <span className="label-mono text-ink-faint flex-1">{eyebrow ? `${eyebrow} · ${title}` : title}</span>
           <span className="min-[900px]:hidden"><IconButton label="Close details" onClick={() => setOpen(false)}><X size={17} /></IconButton></span>
         </div>
         <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-4">{children}</div>

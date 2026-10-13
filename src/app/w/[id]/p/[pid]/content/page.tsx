@@ -3,7 +3,7 @@ import { projectScope } from "@/lib/auth/workspace";
 import { listContent } from "@/lib/data/content";
 import { listPillars } from "@/lib/data/planning";
 import { loadBrandContext } from "@/lib/context/context-loader";
-import { stageIndex } from "@/lib/projects/stages";
+import { stageIndex, stepLabel } from "@/lib/projects/stages";
 import { LockedStep } from "@/components/locked-step";
 import { StepPanel, PanelSection } from "@/components/step-panel";
 import { SubmitButton } from "@/components/ui";
@@ -24,8 +24,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
   if (stageIndex(project.stage) < stageIndex("content")) {
     return (
       <LockedStep
-        step={2}
-        title="Content"
+        stage="content"
         needs="Say what this piece is about first: its format, its pillar and its angle."
         href={`${base}/ideate`}
         cta="Go to Ideate"
@@ -66,7 +65,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
         />
         )}
       </div>
-      <StepPanel step={3} title="Content">
+      <StepPanel eyebrow={stepLabel("content")} title="Content">
         {sp.generated && (
           <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> {String(sp.generated)} piece{sp.generated === "1" ? "" : "s"} drafted from your pillars.</p>
         )}
