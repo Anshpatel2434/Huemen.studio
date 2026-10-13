@@ -13,6 +13,11 @@
  */
 import "server-only";
 import { withTenantSession } from "@/db/session";
+import { runTask } from "@/lib/ai";
+import { calendarPlan } from "@/lib/ai/tasks";
+import { loadBrandContext } from "@/lib/context/context-loader";
+import { CALENDAR_DAYS, planSlots } from "@/lib/content/calendar-plan";
+import { FORMATS, formatByKey } from "@/lib/content/formats";
 import type { WorkspaceScope } from "./projects";
 
 // ---------------------------------------------------------------- pillars ---
@@ -224,6 +229,57 @@ export async function addCalendarEntry(
       [scope.tenantId, e.date, e.pillarId, e.channel || null, e.topic || null, e.hookAngle || null, e.cta || null],
     ),
   );
+}
+
+/**
+ * The 90-day generator (brief §4.2, P3-1). The skeleton (days, channels) is
+ * planned in code; one model call fills every slot from the pillars; the rows
+ * are written in one transaction so a failure leaves the calendar as it was.
+ * Days that already hold a slot are left alone, so running it twice adds
+ * nothing on top of a plan the person has already edited.
+ */
+export async function generateCalendar(
+  scope: WorkspaceScope,
+  opts: { start: string; perWeek: number; channels: string[] },
+): Promise<{ planned: number; skipped: number }> {
+  const pillars = await listPillars(scope);
+  const taken = await withTenantSession(scope, async (c) =>
+    (
+      await c.query<{ d: string }>(
+        `SELECT DISTINCT to_char(entry_date, 'YYYY-MM-DD') AS d FROM calendar_entries
+          WHERE project_id IS NULL AND entry_date BETWEEN $1::date AND $1::date + ${CALENDAR_DAYS - 1}`,
+        [opts.start],
+      )
+    ).rows.map((r) => r.d),
+  );
+  const all = planSlots({ ...opts });
+  const slots = planSlots({ ...opts, skip: new Set(taken) });
+  if (slots.length === 0) return { planned: 0, skipped: all.length };
+
+  const fmt = formatByKey(FORMATS.find((f) => f.channel === opts.channels[0])?.key ?? "linkedin_post");
+  const { slots: filled } = await runTask(scope, calendarPlan, {
+    context: await loadBrandContext(scope, "en", fmt.platform, "write"),
+    taskInput: [
+      ...pillars.map((p) => `Pillar: ${p.name}${p.description ? ` (${p.description})` : ""}`),
+      ...slots.map((s) => `Slot: ${s.slot} | ${s.label} | ${s.channel}`),
+    ].join("\n"),
+  });
+
+  const byName = new Map(pillars.map((p) => [p.name.toLowerCase(), p.id]));
+  const bySlot = new Map(filled.map((f) => [f.slot, f]));
+  await withTenantSession(scope, async (c) => {
+    for (const s of slots) {
+      const f = bySlot.get(s.slot);
+      if (!f) continue;
+      const pillarId = byName.get(f.pillar.trim().toLowerCase()) ?? null;
+      await c.query(
+        `INSERT INTO calendar_entries (tenant_id, project_id, entry_date, pillar_id, channel, topic, hook_angle, cta)
+         VALUES ($1,NULL,$2,$3,$4,$5,$6,$7)`,
+        [scope.tenantId, s.date, pillarId, s.channel, f.topic.trim() || null, f.hookAngle.trim() || null, f.cta.trim() || null],
+      );
+    }
+  });
+  return { planned: slots.length, skipped: all.length - slots.length };
 }
 
 export async function deleteCalendarEntry(scope: WorkspaceScope, id: string): Promise<void> {

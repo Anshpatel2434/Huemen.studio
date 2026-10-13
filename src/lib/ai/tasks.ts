@@ -365,8 +365,71 @@ export const voicePreview: TaskDef<{ text: string }> = {
   },
 };
 
+// ---- the 90-day calendar (brief §4.2, P3-1) ---------------------------------
+
+const Calendar = z.object({
+  slots: z.array(
+    z.object({
+      /** The slot number from the input; the date and channel stay code-owned. */
+      slot: z.number().int(),
+      /** A pillar name exactly as listed, or an empty string. */
+      pillar: z.string(),
+      topic: z.string(),
+      hookAngle: z.string(),
+      cta: z.string(),
+    }),
+  ),
+});
+export type CalendarPlan = z.infer<typeof Calendar>;
+
+const MOCK_HOOKS = [
+  "Open on the moment it went wrong",
+  "Start with the number nobody expects",
+  "A question the reader is already asking",
+  "Contrast what people assume with what happens",
+  "One line of the story, then the lesson",
+];
+const MOCK_CTAS = ["What would you add?", "Reply if this is you.", "Save this for the next time it comes up.", "Tell me where I'm wrong.", "Forward this to the one person who needs it."];
+const MOCK_TOPICS = [
+  "The mistake I see most often in",
+  "What nobody tells you about",
+  "A small moment that explains",
+  "The one rule I keep for",
+  "What changed my mind about",
+  "Why the obvious advice fails for",
+];
+
+export const calendarPlan: TaskDef<CalendarPlan> = {
+  key: "calendar_plan",
+  schema: Calendar,
+  template:
+    "You plan what a person publishes over the next three months, in their voice and from their own pillars. Each slot is one piece on a named day and channel. Rotate the pillars so none is forgotten, vary the angles so no two neighbouring slots feel alike, and keep every topic something they have an opinion on. Never plan a topic that needs a fact they have not given.",
+  contract: [
+    "Return slots: one entry per slot number listed in the input, in order, none missing and none invented.",
+    "Each has: slot (the number as given), pillar (a pillar name exactly as listed, or an empty string if none fits), topic (one line, in their words, not a headline formula), hookAngle (how the piece opens, under 12 words), cta (one line, or an empty string for a channel with no ask).",
+    "Fit the channel: a newsletter slot can carry a bigger idea than an X slot.",
+  ].join("\n"),
+  mock(input) {
+    const pillars = fields(input, "Pillar").map((p) => p.split(" (")[0].trim());
+    const slots = fields(input, "Slot").map((s) => Number(s.split("|")[0]));
+    return {
+      slots: slots.map((slot, i) => {
+        const pillar = pillars.length ? pillars[i % pillars.length] : "";
+        return {
+          slot,
+          pillar,
+          topic: `${MOCK_TOPICS[i % MOCK_TOPICS.length]} ${(pillar || "the work").toLowerCase()}`,
+          hookAngle: MOCK_HOOKS[i % MOCK_HOOKS.length],
+          cta: MOCK_CTAS[i % MOCK_CTAS.length],
+        };
+      }),
+    };
+  },
+};
+
 export const TASKS = {
   [topicProposals.key]: topicProposals,
+  [calendarPlan.key]: calendarPlan,
   [voiceJudge.key]: voiceJudge,
   [rewriteInVoice.key]: rewriteInVoice,
   [coWriteOutline.key]: coWriteOutline,

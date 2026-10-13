@@ -10,9 +10,10 @@ import { redirect } from "next/navigation";
 import { actionScope } from "@/lib/auth/workspace";
 import {
   addCalendarEntry, archiveIdea, captureIdea, createOffer, deleteCalendarEntry, deleteOffer,
-  getIdea, markIdeaStarted, setIdeaPillar,
+  generateCalendar, getIdea, markIdeaStarted, setIdeaPillar,
 } from "@/lib/data/planning";
 import { startPiece } from "@/lib/data/create";
+import { CALENDAR_CHANNELS } from "@/lib/content/calendar-plan";
 
 async function ctx(fd: FormData) {
   const t = String(fd.get("tenantId"));
@@ -76,6 +77,19 @@ export async function addCalendarEntryAction(fd: FormData) {
     cta: String(fd.get("cta") ?? ""),
   });
   refresh(t);
+}
+
+/** The 90-day plan. Returns what was planned and how many days were already taken. */
+export async function generateCalendarAction(
+  tenantId: string,
+  opts: { start: string; perWeek: number; channels: string[] },
+): Promise<{ planned: number; skipped: number }> {
+  const scope = await actionScope(tenantId);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.start)) throw new Error("bad start date");
+  const channels = opts.channels.filter((c) => CALENDAR_CHANNELS.some((k) => k.key === c));
+  const out = await generateCalendar(scope, { start: opts.start, perWeek: opts.perWeek, channels });
+  refresh(tenantId);
+  return out;
 }
 
 export async function deleteCalendarEntryAction(fd: FormData) {
