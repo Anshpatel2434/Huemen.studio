@@ -616,3 +616,22 @@ html.hu-cursor, html.hu-cursor * { cursor: none !important; }
     text-overflow: ellipsis;
   }
 }
+
+/* Ideate map: smooth tree lines that draw themselves in when a branch changes. */
+@layer components {
+  .hu-tree-line {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+  }
+  .hu-tree-line--on {
+    stroke: var(--ink);
+    stroke-width: 1.75;
+    animation: hu-tree-draw 700ms var(--ease-enter, ease-out) both;
+  }
+  @keyframes hu-tree-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @media (prefers-reduced-motion: reduce) { .hu-tree-line--on { animation: none; } }
+}
