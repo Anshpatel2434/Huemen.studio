@@ -204,7 +204,6 @@ export async function rewritePartOf(
       `Format: ${fmt.label}`,
       `Part kind: ${ask.part}`,
       `Instruction: ${ask.instruction.replace(/\n+/g, " ")}`,
-      context.guardrails.dontWords.length ? `Never use: ${context.guardrails.dontWords.join(", ")}` : "",
       "",
       "Part:",
       ask.text,

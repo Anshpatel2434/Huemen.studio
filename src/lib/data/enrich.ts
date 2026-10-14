@@ -140,7 +140,6 @@ export function previewInput(pack: VoicePack, niche: string): string {
     "Paragraph:",
     previewSource(niche),
     "",
-    pack.index.neverWords.length ? `Never use: ${pack.index.neverWords.join(", ")}` : "",
     dials.casual_formal ? `Casual to formal: ${dials.casual_formal}` : "",
     exclam?.allowed === false ? "Exclamation marks: never" : "",
     pack.index.sentenceLength.mean ? `Average sentence words: ${Math.round(pack.index.sentenceLength.mean)}` : "",

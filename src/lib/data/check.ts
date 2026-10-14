@@ -100,7 +100,6 @@ export async function scoreProject(scope: ProjectScope): Promise<void> {
 function judgeInput(text: string, neverWords: string[], platform?: string | null): string {
   return [
     platform ? `Platform: ${platform}` : "",
-    neverWords.length ? `Never use: ${neverWords.join(", ")}` : "",
     "",
     "Draft:",
     text.trim(),

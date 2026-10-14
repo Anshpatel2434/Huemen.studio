@@ -260,7 +260,8 @@ export async function generateCalendar(
   const { slots: filled } = await runTask(scope, calendarPlan, {
     context: await loadBrandContext(scope, "en", fmt.platform, "write"),
     taskInput: [
-      ...pillars.map((p) => `Pillar: ${p.name}${p.description ? ` (${p.description})` : ""}`),
+      // Names only: what each pillar means is in the context block (INV-2).
+      ...pillars.map((p) => `Pillar: ${p.name}`),
       ...slots.map((s) => `Slot: ${s.slot} | ${s.label} | ${s.channel}`),
     ].join("\n"),
   });

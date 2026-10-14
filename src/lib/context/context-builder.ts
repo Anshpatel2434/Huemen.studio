@@ -34,7 +34,7 @@
  * check also carries their aspiration, so a draft aimed where they want to
  * sound isn't marked down for not matching their old writing.
  */
-export const CONTEXT_VERSION = 6; // 6: the Visual Core and the person's beliefs are in the block
+export const CONTEXT_VERSION = 6; // 6: Visual Core, beliefs, pillars and strategy answers are in the block (no task input carries brand data)
 
 /** What the context is for (spec 01 §3 load order). Undefined reads as "write". */
 export type ContextTask = "write" | "rewrite" | "check" | "reply";
@@ -55,6 +55,10 @@ export interface BrandProfileInput {
   offersSummary?: string | null;
   /** The offer designer's saved offers (brief §4.4): reusable as context for pitch emails. */
   offers?: { name: string; format?: string | null; promise?: string | null }[];
+  /** The workspace's content pillars: every piece sits under one (INV-2: in the block, not in task inputs). */
+  pillars?: { name: string; description?: string | null }[];
+  /** Pre-workshop and onboarding strategy answers, as "key: answer" (migration 0008). */
+  strategyAnswers?: { key: string; answer: string }[];
 }
 
 export interface VoiceGuideInput {
@@ -497,6 +501,16 @@ function serialize(input: BrandContextInput): string {
         `  ${c.chapter ?? i + 1}. ${nonEmpty(c.title) ? c.title!.trim() + " — " : ""}${(c.body ?? "").trim()}`,
     );
   if (chapters.length) lines.push("Story arc:", ...chapters);
+  const pillars = (bp.pillars ?? []).filter((p) => nonEmpty(p?.name));
+  if (pillars.length) {
+    lines.push("Content pillars:");
+    for (const p of pillars) lines.push(`  - ${p.name.trim()}${nonEmpty(p.description) ? `: ${p.description!.trim()}` : ""}`);
+  }
+  const answers = (bp.strategyAnswers ?? []).filter((a) => nonEmpty(a?.answer));
+  if (answers.length) {
+    lines.push("Strategy answers:");
+    for (const a of answers) lines.push(`${a.key}: ${a.answer.trim()}`);
+  }
   if (nonEmpty(bp.offersSummary)) lines.push(`Offers: ${bp.offersSummary!.trim()}`);
   const offers = (bp.offers ?? []).filter((o) => nonEmpty(o?.name));
   if (offers.length) {

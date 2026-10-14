@@ -45,7 +45,6 @@ export function parsePillarLines(text: string): { name: string; description: str
 export async function generatePillars(scope: WorkspaceScope, opts: { count?: number; focus?: string } = {}): Promise<number> {
   const context = await loadBrandContext(scope);
   const template = await resolveTemplate(scope, "pillar_set");
-  const answers = (await loadBriefAnswers(scope)).map((a) => `${a.key}: ${a.answer}`).join("\n");
   const result = await generateText(scope, {
     templateKey: template.key,
     systemTemplate: template.body,
@@ -54,7 +53,7 @@ export async function generatePillars(scope: WorkspaceScope, opts: { count?: num
       `Propose ${opts.count ?? "3–5"} content pillars as "Name :: one-line description".`,
       `Count: ${opts.count ?? 5}`,
       opts.focus?.trim() ? `Focus: ${opts.focus.trim()}` : "",
-      `Strategy answers:\n${answers}`,
+      // The strategy answers are in the context block (INV-2).
     ].filter(Boolean).join("\n"),
     variants: 1,
     route: "strong",

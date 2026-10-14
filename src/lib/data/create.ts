@@ -56,7 +56,8 @@ export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boole
     ),
   ]);
   const taskInput = [
-    ...pillars.map((p) => `Pillar: ${p.name}${p.description ? ` (${p.description})` : ""}`),
+    // Names only: what each pillar means is in the context block (INV-2).
+    ...pillars.map((p) => `Pillar: ${p.name}`),
     ...recent.map((r) => `Recent: ${r}`),
     ...(opts.force ? pack.topicSuggestions.map((t) => `Recent: ${t.title}`) : []),
   ].join("\n");

@@ -62,6 +62,15 @@ export async function loadBrandContext(
       )
     ).rows;
 
+    // Pillars and strategy answers are brand data, so they ride in the block
+    // too; no module appends them to its own task input (INV-2).
+    const pillars = (
+      await c.query<{ name: string; description: string | null }>(
+        `SELECT name, description FROM pillars WHERE project_id IS NULL ORDER BY sort_order, created_at LIMIT 8`,
+      )
+    ).rows;
+    const strategyAnswers = ((bp.brief_answers ?? []) as { key: string; answer: string }[]).filter((a) => a?.answer?.trim());
+
     return buildBrandContext({
       language,
       voicePack,
@@ -74,6 +83,8 @@ export async function loadBrandContext(
         audience: bp.audience,
         offersSummary: bp.offers_summary,
         offers,
+        pillars,
+        strategyAnswers,
       },
       // Fallback only: ignored by the builder when a pack is present.
       voiceGuide: vg && {
