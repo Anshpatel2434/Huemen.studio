@@ -85,7 +85,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
             ))}
           </div>
           {conf && <p className="text-xs text-ink-muted mt-2">Voice core: <span className={conf.score < 70 ? "text-warn font-medium" : "font-medium"}>{conf.score}% confident</span>{conf.score < 70 ? ", still learning" : ""}</p>}
-          <p className="text-xs text-ink-muted mt-2 leading-relaxed">Double-click any text on the canvas to edit it in place. Drag a post by its label to move it to another pillar. Click a post for variants, steers and approval.</p>
+          <p className="text-xs text-ink-muted mt-2 leading-relaxed">Press Edit on any post to change it, ask for a change in your own words, or approve it. On the canvas you can also double-click text to edit it in place, and drag a post by its label to another pillar.</p>
         </PanelSection>
         {(() => {
           const checkItem = items.find((i) => i.id === (typeof sp.item === "string" ? sp.item : null)) ?? items[0];

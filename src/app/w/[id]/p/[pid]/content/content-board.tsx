@@ -159,6 +159,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                       width={WIDTH[device]}
                       selected={selected?.id === i.id}
                       onSelect={() => select(i.id)}
+                      onEdit={() => select(i.id)}
                       dimmed={dragId === i.id}
                       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", i.hook); setDragId(i.id); }}
                       onDragEnd={() => { setDragId(null); setOver(null); }}
@@ -258,6 +259,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
   const router = useRouter();
   const toast = useToast();
   const [hook, setHook] = useState(item.hook);
+  const [askText, setAskText] = useState("");
   const [body, setBody] = useState(item.body);
   const [cta, setCta] = useState(item.cta);
   const [pillarId, setPillarId] = useState(item.pillarId ?? "");
@@ -331,6 +333,14 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
                 </button>
               ))}
             </div>
+            {/* Ask for a change in your own words: the same steer, without a preset. */}
+            <form
+              className="hu-composer !p-2 !pl-3.5 !flex-row !items-center mt-2"
+              onSubmit={(e) => { e.preventDefault(); const ask = askText.trim(); if (!ask || pending) return; run("ask", () => steerAction(tenantId, projectId, item.id, ask), "New version added to history"); setAskText(""); }}
+            >
+              <input type="text" value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="Ask for a change: shorter, add a story, end on a question" aria-label="Ask for a change" />
+              <button type="submit" disabled={!askText.trim() || pending} className={`${btnClass("secondary", "sm")} shrink-0`}>{busy === "ask" ? <AgentDots /> : "Ask"}</button>
+            </form>
             <p className="text-xs text-ink-faint mt-1.5">The previous version stays in History.</p>
           </div>
           <p className="text-xs text-ink-faint" suppressHydrationWarning>Template v{item.promptVersion ?? "–"} · {new Date(item.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
