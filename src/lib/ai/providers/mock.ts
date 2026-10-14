@@ -6,14 +6,16 @@
  */
 import type { ZodType } from "zod";
 import { TASKS } from "../tasks";
+import { STREAM_SEPARATOR } from "../prompt";
 import type {
+  StreamingTextProvider,
+  TextStreamEvent,
   StructuredResult,
   ImageGenRequest,
   ImageGenResult,
   ImageProvider,
   TextGenRequest,
   TextGenResult,
-  TextProvider,
 } from "../types";
 
 function field(serialized: string, label: string): string {
@@ -52,8 +54,24 @@ function mockPillars(req: TextGenRequest): string {
   return out.slice(0, Math.max(1, Math.min(5, count))).join("\n");
 }
 
-export const mockTextProvider: TextProvider = {
+export const mockTextProvider: StreamingTextProvider = {
   name: "mock",
+  /**
+   * The stand-in streams the same drafts `generate` would return, a few
+   * characters at a time, so the canvas shows a draft being written exactly
+   * as it will with a real model. Paced like a fast model (~250 chars/s).
+   */
+  async *stream(req, model): AsyncIterable<TextStreamEvent> {
+    const out = await mockTextProvider.generate(req, model);
+    const text = out.variants.join(`\n${STREAM_SEPARATOR}\n`);
+    for (let i = 0; i < text.length; ) {
+      const n = 3 + ((i * 7) % 6);
+      yield { type: "delta", text: text.slice(i, i + n) };
+      i += n;
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    yield { type: "done", model, tokensIn: out.tokensIn, tokensOut: out.tokensOut };
+  },
   async generate(req: TextGenRequest, model: string): Promise<TextGenResult> {
     if (req.templateKey === "pillar_set") {
       const text = mockPillars(req);

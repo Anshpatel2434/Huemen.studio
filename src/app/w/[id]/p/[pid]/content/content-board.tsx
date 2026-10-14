@@ -11,7 +11,7 @@ import { AgentDots, Badge, EmptyState, Avatar, IconButton, Segmented, useToast }
 import { btnClass } from "@/components/btn";
 import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
 import type { ContentItemView } from "@/lib/data/content";
-import { deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
+import { askRewriteAction, deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
 
 const WIDTH: Record<Device, number> = { desktop: 520, tablet: 440, mobile: 360 };
 const STATUS_TONE = { draft: "neutral", edited: "dark", approved: "ok" } as const;
@@ -70,11 +70,20 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       .filter((c) => c.items.length > 0 || c.pillarId !== null || pillarFilter === c.key);
   }, [items, pillars, pillarFilter]);
 
-  const patch = useCallback((item: ContentItemView, next: Patch, label: string) => {
+  const patch = useCallback((item: ContentItemView, next: Patch, label: string, asked = false) => {
     const prev = Object.fromEntries(Object.keys(next).map((k) => [k, item[k as keyof Patch]])) as Patch;
-    history.push({ label, undo: () => patchContentAction(tenantId, projectId, item.id, prev), redo: () => patchContentAction(tenantId, projectId, item.id, next) });
-    return patchContentAction(tenantId, projectId, item.id, next);
+    // A rewrite the person asked for is the model's words, so it is not learned from.
+    const opts = { learn: !asked };
+    history.push({ label, undo: () => patchContentAction(tenantId, projectId, item.id, prev, opts), redo: () => patchContentAction(tenantId, projectId, item.id, next, opts) });
+    return patchContentAction(tenantId, projectId, item.id, next, opts);
   }, [history, tenantId, projectId]);
+
+  /** Select and instruct: the model's version of one part, committed by the canvas like an edit. */
+  const askFor = useCallback((item: ContentItemView, part: string) => async (instruction: string, current: string) => {
+    const r = await askRewriteAction(tenantId, projectId, item.id, { part, text: current, instruction });
+    if (!r.ok) throw new Error(r.error);
+    return r.text;
+  }, [tenantId, projectId]);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -160,7 +169,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                         </>
                       }
                     >
-                      <PostPreview item={i} brandName={brandName} dontWords={dontWords} onPatch={(next, label) => patch(i, next, label)} />
+                      <PostPreview item={i} brandName={brandName} dontWords={dontWords} onPatch={(next, label, asked) => patch(i, next, label, asked)} onAsk={(part) => askFor(i, part)} />
                     </Artboard>
                   ))}
                 </div>
@@ -184,7 +193,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       )}
 
       {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} onClose={() => select(null)} onDelete={() => remove(selected)} />}
-      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} onDone={(id) => select(id)} />}
+      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} />}
       <ConfirmModal
         open={toDelete !== null}
         title="Delete this piece?"
@@ -201,7 +210,11 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
 }
 
 /** Channel-shaped wireframe of the post: real copy, greyscale chrome. Copy is editable in place. */
-function PostPreview({ item, brandName, dontWords, onPatch }: { item: ContentItemView; brandName: string; dontWords: string[]; onPatch: (p: Patch, label: string) => Promise<unknown> }) {
+function PostPreview({ item, brandName, dontWords, onPatch, onAsk }: {
+  item: ContentItemView; brandName: string; dontWords: string[];
+  onPatch: (p: Patch, label: string, asked?: boolean) => Promise<unknown>;
+  onAsk: (part: string) => (instruction: string, current: string) => Promise<string>;
+}) {
   return (
     <div className="p-5">
       <div className="flex items-start gap-2.5">
@@ -213,15 +226,15 @@ function PostPreview({ item, brandName, dontWords, onPatch }: { item: ContentIte
         </div>
       </div>
       <div className="mt-3.5 text-[0.95rem] font-semibold leading-snug">
-        <EditableText value={item.hook} required label="Hook" display={<Marked text={item.hook} words={dontWords} />} onCommit={(hook) => onPatch({ hook }, "edit hook")} />
+        <EditableText value={item.hook} required label="Hook" display={<Marked text={item.hook} words={dontWords} />} onAsk={onAsk("Hook")} onCommit={(hook, _p, m) => onPatch({ hook }, m?.asked ? "rewrite hook" : "edit hook", m?.asked)} />
       </div>
       <div className="mt-2 text-[0.85rem] leading-relaxed text-ink/85">
-        <EditableText value={item.body} multiline label="Body" placeholder="Add body copy" display={<Marked text={item.body} words={dontWords} />} onCommit={(body) => onPatch({ body }, "edit body")} />
+        <EditableText value={item.body} multiline label="Body" placeholder="Add body copy" display={<Marked text={item.body} words={dontWords} />} onAsk={onAsk("Body")} onCommit={(body, _p, m) => onPatch({ body }, m?.asked ? "rewrite body" : "edit body", m?.asked)} />
       </div>
       <div className="mt-3 text-[0.85rem] font-medium flex gap-1">
         <span className="shrink-0">→</span>
         <div className="flex-1 min-w-0">
-          <EditableText value={item.cta} label="Call to action" placeholder="Add a call to action" display={<Marked text={item.cta} words={dontWords} />} onCommit={(cta) => onPatch({ cta }, "edit call to action")} />
+          <EditableText value={item.cta} label="Call to action" placeholder="Add a call to action" display={<Marked text={item.cta} words={dontWords} />} onAsk={onAsk("Call to action")} onCommit={(cta, _p, m) => onPatch({ cta }, m?.asked ? "rewrite call to action" : "edit call to action", m?.asked)} />
         </div>
       </div>
       <div className="grid grid-cols-4 mt-4 pt-2 border-t border-hairline text-ink-faint">

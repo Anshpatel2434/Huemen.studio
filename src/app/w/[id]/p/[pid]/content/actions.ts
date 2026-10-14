@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { actionProjectScope } from "@/lib/auth/workspace";
 import { getProject, unlockStage } from "@/lib/data/projects";
-import { deleteContent, generateContent, regenerateWithSteer, updateContent, applyVariant, patchContent, listContent } from "@/lib/data/content";
+import { deleteContent, generateContent, regenerateWithSteer, updateContent, applyVariant, patchContent, listContent, rewritePartOf } from "@/lib/data/content";
 import { judgeText, rewriteText, scoreContentItem, scoreProject } from "@/lib/data/check";
 import type { JudgeResult } from "@/lib/ai/tasks";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
@@ -99,10 +99,37 @@ export async function patchContentAction(
   projectId: string,
   itemId: string,
   patch: { hook?: string; body?: string; cta?: string; pillarId?: string | null },
+  opts: { learn?: boolean } = {},
 ) {
   const scope = await actionProjectScope(tenantId, projectId);
-  await learnFromEdit(scope, itemId, () => patchContent(scope, itemId, patch));
+  if (opts.learn === false) await patchContent(scope, itemId, patch);
+  else await learnFromEdit(scope, itemId, () => patchContent(scope, itemId, patch));
   await settle(scope, tenantId, projectId);
+}
+
+/**
+ * Select and instruct: one part of a piece (a hook, the body, a slide, the
+ * call to action), rewritten the way the person asked, in their voice. Only
+ * RETURNS the new text: the canvas commits it through the same edit path as
+ * typing (patchContentAction), so undo, the "edited" status and learning
+ * from edits all behave exactly as if they had typed it. The words are the
+ * model's, though, so the canvas marks the commit as not-to-learn-from.
+ */
+export async function askRewriteAction(
+  tenantId: string,
+  projectId: string,
+  itemId: string,
+  ask: { part: string; text: string; instruction: string },
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const instruction = ask.instruction.trim().slice(0, 300);
+  if (!instruction) return { ok: false, error: "Say what to change first." };
+  try {
+    const text = await rewritePartOf(scope, itemId, { part: ask.part.slice(0, 40), text: ask.text.slice(0, 4000), instruction });
+    return text ? { ok: true, text } : { ok: false, error: "That piece is gone." };
+  } catch (e) {
+    return { ok: false, error: userMessage(e) };
+  }
 }
 
 export async function deleteContentAction(tenantId: string, projectId: string, itemId: string) {

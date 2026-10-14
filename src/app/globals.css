@@ -484,6 +484,7 @@ textarea.field { resize: vertical; line-height: 1.55; }
 @keyframes dots { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 .fade-up { animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .fade-in { animation: fadeIn 0.2s ease both; }
+.fade-out { animation: fadeIn 0.6s ease reverse both; }
 .pop { animation: pop 0.16s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 

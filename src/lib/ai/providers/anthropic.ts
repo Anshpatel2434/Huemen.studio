@@ -28,7 +28,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { ProviderError } from "../errors";
-import type { StructuredResult, TextCallOptions, TextGenRequest, TextGenResult, TextProvider } from "../types";
+import type { StreamingTextProvider, StructuredResult, TextCallOptions, TextGenRequest, TextGenResult, TextStreamEvent } from "../types";
 import type { ZodType } from "zod";
 import type { AssembledPrompt } from "../prompt";
 
@@ -46,7 +46,7 @@ export interface AnthropicTextConfig {
 
 /** The slice of the SDK this provider uses — narrow, so tests can stub it. */
 export interface MessagesParser {
-  beta: { messages: { parse: Anthropic["beta"]["messages"]["parse"] } };
+  beta: { messages: { parse: Anthropic["beta"]["messages"]["parse"]; stream?: Anthropic["beta"]["messages"]["stream"] } };
 }
 
 function toProviderError(err: unknown): ProviderError {
@@ -76,9 +76,53 @@ export function anthropicTextProvider(
     ...(config.apiKey ? { apiKey: config.apiKey } : {}),
     timeout: config.timeoutMs,
   }),
-): TextProvider {
-  const provider: TextProvider = {
+): StreamingTextProvider {
+  const provider: StreamingTextProvider = {
     name: "anthropic",
+
+    /**
+     * A draft written live. Plain text, not structured output: half a JSON
+     * string can't be shown on a canvas. Same request shape otherwise (cache
+     * breakpoint, fallbacks, effort), and the same refusal and truncation
+     * checks, made on the final message once the stream ends.
+     */
+    async *stream(req, model, opts = {}): AsyncIterable<TextStreamEvent> {
+      if (!client.beta.messages.stream) throw new ProviderError("unknown", "This client cannot stream.");
+      try {
+        const s = client.beta.messages.stream({
+          model,
+          max_tokens: MAX_TOKENS,
+          ...(config.fallbacks === "default"
+            ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
+            : {}),
+          system: [{ type: "text", text: req.prompt.system, cache_control: { type: "ephemeral" } }],
+          messages: [{ role: "user", content: req.prompt.user }],
+          ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+        });
+        for await (const event of s) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            yield { type: "delta", text: event.delta.text };
+          }
+        }
+        const msg = await s.finalMessage();
+        if (msg.stop_reason === "refusal") {
+          throw new ProviderError("refusal", `The model declined this request (${msg.stop_details?.category ?? "unspecified"}).`);
+        }
+        if (msg.stop_reason === "max_tokens") throw new ProviderError("truncated", "The reply was cut off before it finished.");
+        const u = msg.usage;
+        yield {
+          type: "done",
+          model: msg.model,
+          tokensIn: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
+          tokensOut: u.output_tokens ?? 0,
+          // After a mid-stream fallback the deltas hold both models' text; the
+          // final message holds only what was kept.
+          text: msg.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(""),
+        };
+      } catch (err) {
+        throw toProviderError(err);
+      }
+    },
     async generate(
       req: TextGenRequest & { prompt: AssembledPrompt },
       model: string,

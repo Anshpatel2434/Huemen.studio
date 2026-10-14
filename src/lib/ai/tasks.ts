@@ -365,6 +365,62 @@ export const voicePreview: TaskDef<{ text: string }> = {
   },
 };
 
+// ---- select and instruct: one part of a piece, rewritten on request --------
+
+const Part = z.object({ text: z.string() });
+export type PartResult = z.infer<typeof Part>;
+
+const FILLER = /\b(really|very|just|actually|basically|simply|truly|quite|incredibly)\s+/gi;
+const firstUpper = (t: string) => t.replace(/^(\s*)([a-z])/, (_, a: string, b: string) => a + b.toUpperCase());
+const tidy = (t: string) => t.replace(/[ \t]{2,}/g, " ").replace(/ +([,.!?])/g, "$1").trim();
+
+/** The stand-in's rewrites: deterministic, and visibly what was asked for. */
+export function mockRewritePart(text: string, instruction: string, never: string[] = []): string {
+  const ask = instruction.toLowerCase();
+  let t = text.trim();
+  const sentences = (x: string) => x.match(/[^.!?\n]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [x];
+  if (/short|tight|cut|trim|brief|concise/.test(ask)) {
+    const ss = sentences(t);
+    t = ss.length > 1 ? ss[0] : t.split(/\s+/).slice(0, Math.max(4, Math.ceil(t.split(/\s+/).length * 0.6))).join(" ").replace(/[,;:]$/, "") + ".";
+  }
+  if (/punch|bold|strong|sharp/.test(ask)) {
+    t = sentences(t.replace(FILLER, ""))[0].replace(/[,;:]\s.*$/, "").replace(/[.!?]*$/, ".");
+  }
+  if (/contrarian|provocative|spicy|disagree/.test(ask)) t = `Unpopular opinion: ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+  if (/warm|friendl|kind|human/.test(ask)) t = `Honestly? ${t}`;
+  if (/question/.test(ask)) t = `${t.replace(/[.!?]+$/, "")}?`;
+  if (/formal|professional/.test(ask)) t = t.replace(/\b(\w+)'re\b/g, "$1 are").replace(/\bdon't\b/gi, "do not").replace(/\bit's\b/gi, "it is").replace(/\bI'm\b/g, "I am");
+  if (/casual|relaxed|conversational/.test(ask))
+    t = t.replace(/\bdo not\b/gi, (m) => (m[0] === "D" ? "Don't" : "don't")).replace(/\bit is\b/gi, (m) => (m[0] === "I" ? "It's" : "it's")).replace(/\bI am\b/g, "I'm");
+  if (/emoji/.test(ask) && !/no emoji/.test(ask)) t = `${t} ✨`;
+  if (/upper|caps/.test(ask)) t = t.toUpperCase();
+  // Anything else: a tighter, plainer version, so the change is always visible.
+  if (t === text.trim()) {
+    const first = sentences(t.replace(FILLER, ""))[0].replace(/^(so|well|okay|ok),?\s+/i, "");
+    const cut = first.split(/\s+(?:because|which|so that|and then)\s+|,\s+/i)[0].replace(/[.!?]*$/, ".");
+    const words = first.split(/\s+/);
+    t = cut !== first ? cut : words.length > 6 ? `${words.slice(0, Math.ceil(words.length * 0.7)).join(" ").replace(/[,;:]$/, "")}.` : `${first.replace(/[.!?]*$/, "")}!`;
+  }
+  for (const w of never) t = t.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b[,!]?`, "gi"), "");
+  return firstUpper(tidy(t)) || text;
+}
+
+export const rewritePart: TaskDef<PartResult> = {
+  key: "rewrite_part",
+  schema: Part,
+  template:
+    "You change one part of a piece the person is editing, the way they asked, in their voice. Change only that part. Keep their meaning and their facts unless the instruction says otherwise, and keep the rest of the piece in mind so the part still fits it.",
+  contract: [
+    "Return text: the new version of the part only, with no quotes, labels or commentary.",
+    "Keep it the same kind of thing: a hook stays one line, a slide stays one idea, a call to action stays one ask.",
+    "Do not add a fact, name, number or claim that is not in the piece or the brand context.",
+  ].join("\n"),
+  mock(input) {
+    const never = field(input, "Never use").split(",").map((w) => w.trim()).filter(Boolean);
+    return { text: mockRewritePart(block(input, "Part"), field(input, "Instruction"), never) };
+  },
+};
+
 // ---- the 90-day calendar (brief §4.2, P3-1) ---------------------------------
 
 const Calendar = z.object({
@@ -430,6 +486,7 @@ export const calendarPlan: TaskDef<CalendarPlan> = {
 export const TASKS = {
   [topicProposals.key]: topicProposals,
   [calendarPlan.key]: calendarPlan,
+  [rewritePart.key]: rewritePart,
   [voiceJudge.key]: voiceJudge,
   [rewriteInVoice.key]: rewriteInVoice,
   [coWriteOutline.key]: coWriteOutline,

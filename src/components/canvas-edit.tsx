@@ -9,9 +9,15 @@
  * - <CanvasHistory> + useCanvasHistory(): ⌘Z / ⌘⇧Z (Ctrl+Z / Ctrl+Y) undo and
  *   redo for inline edits, reorders and moves on the current canvas.
  * - useDeleteKey(): Delete / Backspace acts on the selected item.
+ * - Select and instruct: with `onAsk`, a single click on the text opens a small
+ *   box beside it ("make it punchier"). The model's rewrite is committed
+ *   through the same `onCommit` as typing, so it shows at once, saves in the
+ *   background and undoes with ⌘Z like any other edit.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { useToast } from "@/components/ui";
+import { createPortal } from "react-dom";
+import { ArrowUp, Sparkles } from "lucide-react";
+import { AgentDots, useToast } from "@/components/ui";
 
 // ------------------------------------------------------------ history ---
 
@@ -82,11 +88,11 @@ export function useDeleteKey(onDelete: (() => void) | null) {
 // ------------------------------------------------------- editable text ---
 
 export function EditableText({
-  value, onCommit, multiline = false, required = false, placeholder = "Double-click to edit", className = "", style, display, editing: editingProp, onEditingChange, label,
+  value, onCommit, multiline = false, required = false, placeholder = "Double-click to edit", className = "", style, display, editing: editingProp, onEditingChange, label, onAsk,
 }: {
   value: string;
-  /** Persist the new text. Throwing restores the old value. */
-  onCommit: (next: string, prev: string) => Promise<unknown>;
+  /** Persist the new text. Throwing restores the old value. `asked` marks a model rewrite, not typing. */
+  onCommit: (next: string, prev: string, meta?: { asked?: boolean }) => Promise<unknown>;
   multiline?: boolean;
   /** Empty text is not saved (names). */
   required?: boolean;
@@ -99,9 +105,14 @@ export function EditableText({
   editing?: boolean;
   onEditingChange?: (on: boolean) => void;
   label?: string;
+  /** Select and instruct: rewrite this text as asked. Resolves to the new text; throwing shows the message. */
+  onAsk?: (instruction: string, current: string) => Promise<string>;
 }) {
   const toast = useToast();
   const [own, setOwn] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [asking, setAsking] = useState<DOMRect | null>(null);
+  const [rewriting, setRewriting] = useState(false);
   const editing = editingProp ?? own;
   const setEditing = (on: boolean) => { setOwn(on); onEditingChange?.(on); };
   const [draft, setDraft] = useState(value);
@@ -131,6 +142,24 @@ export function EditableText({
     });
   };
 
+  const ask = async (instruction: string) => {
+    if (!onAsk) return;
+    setRewriting(true);
+    try {
+      const next = (await onAsk(instruction, shown)).trim();
+      setAsking(null);
+      if (!next || next === shown) return toast("That came back unchanged. Try saying it another way.");
+      const prev = shown;
+      setPending({ from: value, to: next });
+      await onCommit(next, prev, { asked: true }).catch((e) => { setPending(null); throw e; });
+      toast(`Rewritten. ${typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+"}Z undoes it.`);
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : "That didn't work. Try again.", "danger");
+    } finally {
+      setRewriting(false);
+    }
+  };
+
   if (editing) {
     return (
       <textarea
@@ -156,19 +185,114 @@ export function EditableText({
     );
   }
 
+  const open = () => { if (onAsk && anchor.current) setAsking(anchor.current.getBoundingClientRect()); };
+
   return (
-    <span
-      role="textbox"
-      aria-readonly
-      aria-label={label}
-      tabIndex={0}
-      title="Double-click to edit"
-      onDoubleClick={(e) => { e.stopPropagation(); begin(); }}
-      onKeyDown={(e) => { if (e.key === "Enter" && e.currentTarget === e.target) { e.preventDefault(); e.stopPropagation(); begin(); } }}
-      className={`${className} block cursor-text rounded-xs outline-none hover:ring-1 hover:ring-current/25 focus-visible:ring-2 focus-visible:ring-current/60 ${multiline ? "whitespace-pre-wrap" : ""}`}
-      style={style}
+    <>
+      <span
+        ref={anchor}
+        role="textbox"
+        aria-readonly
+        aria-label={label}
+        tabIndex={0}
+        title={onAsk ? "Click to ask for a change · double-click to edit" : "Double-click to edit"}
+        onClick={onAsk ? open : undefined}
+        onDoubleClick={(e) => { e.stopPropagation(); setAsking(null); begin(); }}
+        onKeyDown={(e) => {
+          if (e.currentTarget !== e.target) return;
+          if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); begin(); }
+          // "/" asks, like a command palette on the selection.
+          if (e.key === "/" && onAsk) { e.preventDefault(); e.stopPropagation(); open(); }
+        }}
+        className={`${className} block cursor-text rounded-xs outline-none hover:ring-1 hover:ring-current/25 focus-visible:ring-2 focus-visible:ring-current/60 ${asking ? "ring-2 ring-[var(--accent)]" : ""} ${rewriting ? "animate-pulse" : ""} ${multiline ? "whitespace-pre-wrap" : ""}`}
+        style={style}
+      >
+        {shown ? (display && shown === value ? display : shown) : <span className="opacity-45 italic">{placeholder}</span>}
+      </span>
+      {asking && onAsk && <AskBox rect={asking} label={label ?? "this"} busy={rewriting} onAsk={ask} onClose={() => !rewriting && setAsking(null)} />}
+    </>
+  );
+}
+
+// -------------------------------------------------- select and instruct ---
+
+const ASK_CHIPS = ["Shorter", "Punchier", "More contrarian", "Warmer", "As a question"];
+/** One box open at a time, across every canvas. */
+const ASK_EVENT = "huemen:ask-open";
+
+function AskBox({ rect, label, busy, onAsk, onClose }: {
+  rect: DOMRect; label: string; busy: boolean; onAsk: (instruction: string) => void; onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+  const id = useRef<string | null>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    id.current ??= Math.random().toString(36);
+    window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: id.current }));
+    const other = (e: Event) => { if ((e as CustomEvent).detail !== id.current) closeRef.current(); };
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) closeRef.current(); };
+    // The canvas pans and zooms under the box; it is anchored to where the text WAS, so it closes.
+    const moved = () => closeRef.current();
+    window.addEventListener(ASK_EVENT, other);
+    window.addEventListener("pointerdown", away, true);
+    window.addEventListener("wheel", moved, { passive: true });
+    window.addEventListener("resize", moved);
+    return () => {
+      window.removeEventListener(ASK_EVENT, other);
+      window.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("wheel", moved);
+      window.removeEventListener("resize", moved);
+    };
+  }, []);
+
+  const W = 340;
+  const below = rect.bottom + 8 + 120 < window.innerHeight;
+  const left = Math.max(8, Math.min(window.innerWidth - W - 8, rect.left));
+  const top = below ? rect.bottom + 8 : Math.max(8, rect.top - 128);
+  const send = (t: string) => { if (t.trim() && !busy) onAsk(t.trim()); };
+
+  return createPortal(
+    <div
+      ref={box}
+      role="dialog"
+      aria-label={`Ask for a change to ${label}`}
+      className="fixed pop bg-paper border border-hairline rounded-md shadow-[var(--shadow-overlay)] p-2.5 flex flex-col gap-2"
+      style={{ left, top, width: W, zIndex: "var(--z-modal)" }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
     >
-      {shown ? (display && shown === value ? display : shown) : <span className="opacity-45 italic">{placeholder}</span>}
-    </span>
+      <form
+        className="flex items-center gap-1.5"
+        onSubmit={(e) => { e.preventDefault(); send(text); }}
+      >
+        <Sparkles size={15} className="text-accent shrink-0 ml-1" aria-hidden="true" />
+        <input
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") onClose(); }}
+          placeholder={`Change this ${label.toLowerCase()}…`}
+          aria-label={`What to change in this ${label.toLowerCase()}`}
+          disabled={busy}
+          className="flex-1 min-w-0 min-h-10 bg-transparent outline-none text-sm px-1"
+        />
+        <button type="submit" disabled={busy || !text.trim()} aria-label="Rewrite" className="hu-iconbtn !w-9 !h-9 !min-h-9 bg-ink text-on-ink disabled:opacity-40">
+          {busy ? <AgentDots /> : <ArrowUp size={15} />}
+        </button>
+      </form>
+      <div className="flex flex-wrap gap-1">
+        {ASK_CHIPS.map((c) => (
+          <button key={c} type="button" disabled={busy} onClick={() => send(c)} className="h-8 px-2.5 rounded-full border border-line text-xs hover:bg-hover disabled:opacity-40">
+            {c}
+          </button>
+        ))}
+      </div>
+      <p className="text-[0.7rem] text-ink-faint px-1">{busy ? "Rewriting in your voice…" : "Applied straight to the canvas. Undo brings it back."}</p>
+    </div>,
+    document.body,
   );
 }

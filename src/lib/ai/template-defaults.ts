@@ -58,6 +58,7 @@ const FORMAT_ABOUT: Record<string, string> = {
 
 const TASK_META: Record<string, { label: string; about: string }> = {
   topic_proposals: { label: "Topic suggestions", about: "The three topics Create opens on, from the pillars." },
+  rewrite_part: { label: "Change this part", about: "Select-and-instruct on the canvas: one headline, line or slide, rewritten as asked." },
   calendar_plan: { label: "90-day calendar", about: "Fills each planned slot with a topic, hook angle and ask." },
   voice_judge: { label: "Voice check findings", about: "The line-by-line findings beside the deterministic score." },
   rewrite_in_voice: { label: "Rewrite in my voice", about: "The rewrite offered when a draft is off brand." },

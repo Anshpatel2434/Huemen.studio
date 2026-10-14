@@ -17,8 +17,8 @@ import { withTenantSession, type SessionScope } from "@/db/session";
 import type {
   ImageGenRequest,
   ImageProvider,
+  StreamingTextProvider,
   TextGenRequest,
-  TextProvider,
 } from "./types";
 import { mockImageProvider, mockTextProvider } from "./providers/mock";
 import { anthropicTextProvider } from "./providers/anthropic";
@@ -39,9 +39,9 @@ export { assemblePrompt } from "./prompt";
  * configuration error on the first call. Before this, AI_TEXT_PROVIDER=openai
  * silently produced mock copy — a deployment that looked configured and wasn't.
  */
-let _anthropic: TextProvider | null = null;
+let _anthropic: StreamingTextProvider | null = null;
 
-export function selectTextProvider(env: Env): TextProvider {
+export function selectTextProvider(env: Env): StreamingTextProvider {
   switch (env.AI_TEXT_PROVIDER) {
     case "mock":
       return mockTextProvider;
@@ -212,6 +212,64 @@ export async function generateText(
       contentItemId: req.contentItemId ?? null,
     });
     return result;
+  } catch (err) {
+    await logGeneration(scope, {
+      kind: "text",
+      model,
+      latencyMs: Date.now() - started,
+      status: logStatus(err),
+      error: err instanceof Error ? err.message : String(err),
+      contentItemId: req.contentItemId ?? null,
+    });
+    throw err;
+  }
+}
+
+/**
+ * A draft written live (brief §07: stream anything the user waits on). Same
+ * cap, provider selection, prompt assembly (INV-2) and logging as
+ * generateText; the prompt asks for plain text with STREAM_SEPARATOR between
+ * versions. No retry: once text has reached the screen, a second attempt
+ * would show the person two different drafts in one place. The log row is
+ * written when the stream ends, success or failure, before the caller saves.
+ */
+export async function* streamText(
+  scope: SessionScope,
+  req: TextGenRequest & { systemTemplate: string; contentItemId?: string | null },
+): AsyncGenerator<{ type: "delta"; text: string } | { type: "done"; text: string; model: string }> {
+  const env = getEnv();
+  const route = req.route ?? "strong";
+  let model = `${env.AI_TEXT_PROVIDER}-${route}`;
+  const started = Date.now();
+  let text = "";
+  try {
+    await enforceCap(scope, "text");
+    const provider = selectTextProvider(env);
+    model = resolveTextModel(env, route);
+    const prompt = assemblePrompt(req.systemTemplate, req.context, req.taskInput, {
+      templateKey: req.templateKey,
+      variants: req.variants,
+      stream: true,
+    });
+    for await (const ev of provider.stream({ ...req, prompt }, model, { effort: resolveEffort(env, route) })) {
+      if (ev.type === "delta") {
+        text += ev.text;
+        yield ev;
+        continue;
+      }
+      await logGeneration(scope, {
+        kind: "text",
+        model: ev.model,
+        tokensIn: ev.tokensIn,
+        tokensOut: ev.tokensOut,
+        latencyMs: Date.now() - started,
+        status: "ok",
+        contentItemId: req.contentItemId ?? null,
+      });
+      yield { type: "done", text: ev.text || text, model: ev.model };
+      return;
+    }
+    throw new ProviderError("unparseable", "The stream ended without finishing.");
   } catch (err) {
     await logGeneration(scope, {
       kind: "text",

@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { LiveDraftLayer } from "@/components/live-draft";
 import { projectScope } from "@/lib/auth/workspace";
 import { listContent } from "@/lib/data/content";
 import { listPillars } from "@/lib/data/planning";
@@ -49,6 +51,7 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           <WritePiece
             tenantId={id}
             projectId={pid}
+            pillarId={project.pillarId}
             topic={project.name}
             format={project.format}
             angle={project.angle}
@@ -67,6 +70,9 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           dontWords={ctx.guardrails.dontWords}
         />
         )}
+        <Suspense fallback={null}>
+          <LiveDraftLayer tenantId={id} projectId={pid} brandName={brandName} />
+        </Suspense>
       </div>
       <StepPanel eyebrow={stepLabel("content")} title="Content">
         {sp.generated && (

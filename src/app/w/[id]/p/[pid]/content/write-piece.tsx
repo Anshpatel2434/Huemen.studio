@@ -17,7 +17,8 @@ import { btnClass } from "@/components/btn";
 import { AgentDots, Alert } from "@/components/ui";
 import { FORMATS } from "@/lib/content/formats";
 import type { WorkMode } from "@/lib/voice/types";
-import { coWriteAction, ghostwriteAction, ownDraftAction } from "./actions";
+import { coWriteAction, ownDraftAction } from "./actions";
+import { liveDraftHref } from "@/components/live-draft";
 
 const MODES: { key: WorkMode; label: string; sub: string; icon: typeof PenLine }[] = [
   { key: "ghostwrite", label: "Draft it for me", sub: "A full draft in your voice. You edit.", icon: PenLine },
@@ -25,9 +26,10 @@ const MODES: { key: WorkMode; label: string; sub: string; icon: typeof PenLine }
   { key: "check", label: "I'll write it", sub: "You write it. We check it against your voice.", icon: ScanText },
 ];
 
-export function WritePiece({ tenantId, projectId, topic, format: initialFormat, angle, mode: initialMode, confidence }: {
+export function WritePiece({ tenantId, projectId, pillarId, topic, format: initialFormat, angle, mode: initialMode, confidence }: {
   tenantId: string;
   projectId: string;
+  pillarId: string | null;
   topic: string;
   format: string | null;
   angle: string | null;
@@ -41,16 +43,19 @@ export function WritePiece({ tenantId, projectId, topic, format: initialFormat, 
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const go = () => start(async () => {
+  const go = () => {
+    // Ghostwrite is written live on the canvas (components/live-draft).
+    if (mode === "ghostwrite") return router.push(liveDraftHref(`/w/${tenantId}/p/${projectId}`, { format, topic, pillarId }));
+    start(async () => {
     setError(null);
     const r =
-      mode === "ghostwrite" ? await ghostwriteAction(tenantId, projectId, { format, topic })
-      : mode === "cowrite" ? await coWriteAction(tenantId, projectId, { format, topic, angle })
+      mode === "cowrite" ? await coWriteAction(tenantId, projectId, { format, topic, angle })
       : await ownDraftAction(tenantId, projectId, { format, topic, text });
     if (!r.ok) return setError(r.error);
     router.replace(`/w/${tenantId}/p/${projectId}/content?item=${r.id}`);
     router.refresh();
-  });
+    });
+  };
 
   return (
     <div className="absolute inset-0 canvas-dots overflow-y-auto flex items-start sm:items-center justify-center p-4 sm:p-6">
