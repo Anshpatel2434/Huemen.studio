@@ -66,6 +66,7 @@
   --on-ink: #ffffff;            /* text on an --ink fill */
   --paper: #ffffff;             /* bg-surface */
   --ground: #f5f5f5;            /* bg-sunken — the canvas */
+  --canvas: #f1f0ee;            /* the editor's one working surface */
   --panel: #ffffff;             /* bg-raised */
   --field: #f5f5f5;
   --muted-surface: #f5f5f5;
@@ -116,6 +117,7 @@
   --on-ink: #0a0a0a;
   --paper: #151515;             /* bg-surface — panels, bars, cards */
   --ground: #0a0a0a;            /* bg-sunken — the canvas */
+  --canvas: #111111;
   --panel: #1e1e1e;             /* bg-raised */
   --field: #1e1e1e;
   --muted-surface: #262626;
@@ -164,6 +166,7 @@
     --on-ink: #0a0a0a;
     --paper: #151515;             /* bg-surface — panels, bars, cards */
     --ground: #0a0a0a;            /* bg-sunken — the canvas */
+  --canvas: #111111;
     --panel: #1e1e1e;             /* bg-raised */
     --field: #1e1e1e;
     --muted-surface: #262626;
@@ -213,6 +216,7 @@
   --color-ink-faint: var(--ink-faint);
   --color-paper: var(--paper);
   --color-ground: var(--ground);
+  --color-canvas: var(--canvas);
   --color-panel: var(--panel);
   --color-field: var(--field);
   --color-muted-surface: var(--muted-surface);
@@ -458,9 +462,9 @@ textarea.field { resize: vertical; line-height: 1.55; }
 
 /* Dotted canvas ground. */
 .canvas-dots {
-  background-color: var(--ground);
-  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
-  background-size: 22px 22px;
+  /* Plain, warm and quiet, like Relume's board: the work carries the contrast,
+     not a dot grid. (The class name is kept so every canvas picks it up.) */
+  background-color: var(--canvas);
 }
 
 /* Wireframe placeholder (greyscale structure). */

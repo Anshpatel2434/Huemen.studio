@@ -244,7 +244,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
       >
         <SlidersHorizontal size={15} aria-hidden="true" /> Design
       </button>
-      <aside aria-label="Design and style guide" className={`${details ? "flex" : "hidden"} min-[900px]:flex absolute min-[900px]:static inset-y-0 right-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[300px] shadow-[var(--shadow-overlay)] min-[900px]:shadow-none shrink-0 border-l border-hairline bg-paper flex-col min-h-0`}>
+      <aside aria-label="Design and style guide" className={`${details ? "flex" : "hidden"} min-[900px]:flex absolute min-[900px]:static inset-y-0 right-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mr-3 min-[900px]:mb-3 min-[900px]:rounded-2xl min-[900px]:border min-[900px]:shadow-[var(--shadow)] overflow-hidden shadow-[var(--shadow-overlay)] shrink-0 border-l border-hairline bg-paper flex-col min-h-0`}>
         <div className="min-h-10 shrink-0 flex items-center pl-3 pr-1 border-b border-hairline">
           <span className="label-mono text-ink-faint flex-1">{stepLabel("visual")} · Visual</span>
           <span className="min-[900px]:hidden"><IconButton label="Close design panel" onClick={() => setDetails(false)}><X size={17} /></IconButton></span>
