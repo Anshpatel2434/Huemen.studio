@@ -234,12 +234,13 @@ upload + questionnaire), context builder written + unit-tested.
     **retryable** UI state; input is saved (never lose a draft).
   - **Done when:** every call is logged; a forced failure shows a retryable state.
   - _2026-10-13:_ Every call logs, success and failure. OPEN: a failed draft is a toast, not a stored retryable state, and the request is not saved before the model call.
-- [!] **P2-4 — Streaming vs. queue policy.** Stream anything the user waits on;
+- [~] **P2-4 — Streaming vs. queue policy.** Stream anything the user waits on;
   **queue anything over ~10s**. Job queue with retries+backoff, dead-letter,
   visible job status in the UI.
   - **Done when:** single text gen streams; a long batch queues with visible
     progress and retained partial results on failure.
   - _2026-10-13:_ No queue, no streaming: generation runs in the request thread (`AI_TEXT_TIMEOUT_MS`). The `jobs` table and `QUEUE_DRIVER` exist unused. Parked, client to be told.
+  - _2026-10-14:_ Streaming built: single drafts are written live onto the canvas (NDJSON route, provider `stream()`). Queue still parked.
 - [ ] **P2-5 — Rate limiting on generation endpoints.** Per user **and** per
   tenant (§07). **Done when:** limits enforced + surfaced clearly when hit.
   - _2026-10-13:_ Not built. Only the hard usage cap (P3-9) bounds spend.
@@ -272,6 +273,7 @@ upload + questionnaire), context builder written + unit-tested.
 - [~] **P2-11 — Visual Studio in the same screen as copy.** Generate the post,
   then its visual **without navigating away**.
   - _2026-10-13:_ Visual is its own step (`/p/[pid]/visual`), one click from Content, not the same screen.
+  - _2026-10-14:_ Visual step now has layout options per artboard, live tweaks and ask-to-change on every text.
 - [~] **P2-12 — Output types.** Single-image LinkedIn/Instagram post, carousel
   frame set, quote card, announcement graphic.
   - _2026-10-13:_ Post image, quote card, carousel frames. No announcement graphic.
@@ -289,6 +291,7 @@ upload + questionnaire), context builder written + unit-tested.
 - [~] **P2-15 — Variants + correct export dimensions.** Regenerate, keep variants,
   download at correct per-channel export dimensions. Save to `image_assets`.
   - _2026-10-13:_ Download as PNG at the channel size, per artboard and as a zip per piece (13 Oct). Variants are not kept: a regenerate replaces the set.
+  - _2026-10-14:_ Layout variants (4/3/3) with side-by-side options; the chosen layouts and tweaks survive a regenerate.
 
 ### 2d. Client portal shell + isolation verified
 - [x] **P2-16 — Client portal shell.** Navigation + **workspace switcher for
