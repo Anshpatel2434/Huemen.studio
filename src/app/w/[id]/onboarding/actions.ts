@@ -27,7 +27,7 @@ import type { IngestedPiece } from "@/lib/voice/ingest";
 import type { Answer } from "@/lib/voice/answers";
 import type { DialKey, LanguageMix, Proof, Story, WorkMode } from "@/lib/voice/types";
 import {
-  pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveProofs, saveStories, suggestAnswers, type DialPick,
+  pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveBeliefs, saveProofs, saveStories, suggestAnswers, type DialPick,
 } from "@/lib/data/enrich";
 import { importFromUrl, WebImportError } from "@/lib/integrations/web";
 import { userMessage } from "@/lib/ai/errors";
@@ -317,6 +317,12 @@ export async function previewAction(tenantId: string) {
 export async function storiesAction(tenantId: string, stories: Story[]) {
   const { scope, actor } = await actionActor(tenantId);
   await saveStories(scope, actor, await requirePack(scope), stories);
+  refresh(tenantId);
+}
+
+export async function beliefsAction(tenantId: string, beliefs: string[]) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveBeliefs(scope, actor, await requirePack(scope), beliefs);
   refresh(tenantId);
 }
 

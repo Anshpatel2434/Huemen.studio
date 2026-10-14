@@ -34,7 +34,7 @@
  * check also carries their aspiration, so a draft aimed where they want to
  * sound isn't marked down for not matching their old writing.
  */
-export const CONTEXT_VERSION = 5; // 5: saved offers are in the block
+export const CONTEXT_VERSION = 6; // 6: the Visual Core and the person's beliefs are in the block
 
 /** What the context is for (spec 01 §3 load order). Undefined reads as "write". */
 export type ContextTask = "write" | "rewrite" | "check" | "reply";
@@ -70,6 +70,8 @@ export interface VisualIdentityInput {
   palette?: string[];
   fonts?: string[];
   imageStyleNotes?: string | null;
+  /** Colour use, layout, motifs and photo style (Visual Core, migration 0016). */
+  coreLines?: string[];
   aspectRatioDefaults?: Record<string, string> | null;
 }
 
@@ -99,6 +101,8 @@ export interface VoicePackInput {
   context?: { channel: string; tag: "measured" | "inferred"; lines: string[] } | null;
   samples?: { channel: string; body: string; note?: string }[];
   stories?: { title: string; body: string; lesson?: string }[];
+  /** Their point of view: beliefs a piece may argue from (M1). */
+  beliefs?: string[];
   proofs?: { claim: string; source?: string }[];
   influences?: { admire: string[]; avoid: string[] } | null;
   languages?: { primary: string; also: string[]; when?: string } | null;
@@ -416,6 +420,11 @@ function voiceIdentity(vp: VoicePackInput): string[] {
 /** Their material: what a draft may use and can't invent. */
 function voiceMaterial(vp: VoicePackInput): string[] {
   const out: string[] = [];
+  const beliefs = (vp.beliefs ?? []).filter(nonEmpty);
+  if (beliefs.length) {
+    out.push("What they believe (their point of view; argue from it, never against it):");
+    beliefs.forEach((b) => out.push(`  - ${b.trim()}`));
+  }
   const stories = (vp.stories ?? []).filter((s) => nonEmpty(s?.body));
   if (stories.length) {
     out.push("Stories they tell. Use one when it fits; keep its facts exactly as told:");
@@ -520,6 +529,7 @@ function serialize(input: BrandContextInput): string {
   if ((vi.palette ?? []).length) lines.push(`Palette: ${vi.palette!.join(", ")}`);
   if ((vi.fonts ?? []).length) lines.push(`Fonts: ${vi.fonts!.join(", ")}`);
   if (nonEmpty(vi.imageStyleNotes)) lines.push(`Image style: ${vi.imageStyleNotes!.trim()}`);
+  for (const l of vi.coreLines ?? []) lines.push(l);
   if (vi.aspectRatioDefaults && Object.keys(vi.aspectRatioDefaults).length)
     lines.push(`Aspect ratios: ${JSON.stringify(vi.aspectRatioDefaults)}`);
 

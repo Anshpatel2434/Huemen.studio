@@ -7,7 +7,7 @@ import { firstPieceStale, ingestStalled } from "@/lib/voice/lifecycle";
 import { PersistForm } from "@/components/persist";
 import { OnboardingDrafts } from "./draft";
 import { listSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
-import { loadBriefAnswers, loadFoundation } from "@/lib/data/foundation";
+import { loadBriefAnswers, loadFoundation, loadVisualIdentity } from "@/lib/data/foundation";
 import { listPillars } from "@/lib/data/planning";
 import { listContent } from "@/lib/data/content";
 import { checkText } from "@/lib/data/check";
@@ -22,7 +22,7 @@ import { CoreWatcher } from "@/components/core-watcher";
 import { listAssets } from "@/lib/data/assets";
 import { basisFrom } from "@/lib/data/enrich";
 import {
-  BrandImages, InfluencesEditor, LanguagesEditor, ProofsEditor, StoriesEditor, Suggestions, UrlImport, VoicePreview,
+  BrandImages, InfluencesEditor, LanguagesEditor, ProofsEditor, BeliefsEditor, StoriesEditor, Suggestions, UrlImport, VoicePreview,
 } from "./enrich-ui";
 import { btnClass } from "@/components/btn";
 import { SubmitButton, Badge } from "@/components/ui";
@@ -226,7 +226,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
 
   // ---- step 3 ------------------------------------------------------------------
   async function HueStep({ id, scope, justGenerated, carries }: { id: string; scope: Awaited<ReturnType<typeof workspaceScope>>["scope"]; justGenerated: boolean; carries: string }) {
-    const [f, pillars, answers, assets] = await Promise.all([loadFoundation(scope), listPillars(scope), loadBriefAnswers(scope), listAssets(scope)]);
+    const [f, pillars, answers, assets, visual] = await Promise.all([loadFoundation(scope), listPillars(scope), loadBriefAnswers(scope), listAssets(scope), loadVisualIdentity(scope)]);
     const logo = assets.find((a) => a.kind === "logo")?.url ?? null;
     const headshot = assets.find((a) => a.kind === "headshot")?.url ?? null;
     const saved = Object.fromEntries(answers.map((a) => [a.key, a.answer]));
@@ -265,9 +265,10 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             <p className="text-sm text-ink-muted mt-1">Your logo, your face, and your colours. Every visual is made from these; the first two colours are the ground and the accent.</p>
           </div>
           <BrandImages tenantId={id} logo={logo} headshot={headshot} />
-          <VisualForm tenantId={id} initial={{ palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes }} logoUrl={logo} />
+          <VisualForm tenantId={id} initial={{ palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes, core: visual.core }} logoUrl={logo} references={assets.filter((a) => a.kind === "reference_image")} back={`/w/${id}/onboarding?step=3`} />
         </div>
 
+        <BeliefsEditor tenantId={id} initial={pack!.identity.beliefs?.value ?? []} />
         <StoriesEditor tenantId={id} initial={pack!.identity.stories?.value ?? []} />
         <ProofsEditor tenantId={id} initial={pack!.identity.proofs?.value ?? []} />
 

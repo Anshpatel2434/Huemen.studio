@@ -17,6 +17,7 @@ import { fewShotSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { packToContextInput } from "@/lib/voice/context";
 import { buildBrandContext, type BrandContext, type ContextTask, type PlatformInput, type VoicePackInput } from "./context-builder";
 import { platformLines, platformRule } from "@/lib/voice/platforms";
+import { visualCoreLines } from "@/lib/visual/core";
 
 export async function loadBrandContext(
   scope: WorkspaceScope,
@@ -87,6 +88,7 @@ export async function loadBrandContext(
         palette: vi.palette ?? [],
         fonts: vi.fonts ?? [],
         imageStyleNotes: vi.image_style_notes,
+        coreLines: visualCoreLines(vi.core),
         aspectRatioDefaults: vi.aspect_ratio_defaults,
       },
     });

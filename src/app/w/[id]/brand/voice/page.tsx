@@ -23,6 +23,9 @@ import {
 } from "./actions";
 import { patternsFor } from "@/lib/data/patterns";
 import { learningLog } from "@/lib/data/learning";
+import { perceptionMirror } from "@/lib/voice/mirror";
+import { BeliefsEditor } from "../../onboarding/enrich-ui";
+import { loadFoundation } from "@/lib/data/foundation";
 import { LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
 
 export const metadata = { title: "Voice" };
@@ -86,6 +89,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
     sp.preview ? previewRescan(scope, pack.id) : Promise.resolve(null),
     learningLog(scope, pack.id),
   ]);
+  const niche = (await loadFoundation(scope)).niche;
+  const mirror = perceptionMirror(pack, samples.filter((s) => !s.excluded && s.visibility === "public" && s.kind === "corpus").map((s) => s.body), niche);
   const now = await requestTime();
   const state = coreState(pack, now);
   const due = rescanDue(pack, sinceScan, now);
@@ -271,6 +276,31 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             </Card>
           </div>
         )}
+
+        {/* Perception Mirror (M2): what you intend, against what your writing shows. */}
+        <Card label="Seen vs intended">
+          {mirror.length === 0 ? (
+            <p className="text-sm text-ink-faint">Set your dials and add some public writing, and this shows where the two differ.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-ink-faint"><th className="font-normal py-2 pr-4">Dimension</th><th className="font-normal py-2 pr-4">You intend</th><th className="font-normal py-2 pr-4">Your writing shows</th><th className="font-normal py-2">Read</th></tr></thead>
+              <tbody>
+                {mirror.map((r) => (
+                  <tr key={r.label} className="border-t border-hairline align-top">
+                    <td className="py-2.5 pr-4 font-medium">{r.label}</td>
+                    <td className="py-2.5 pr-4">{r.intended}</td>
+                    <td className="py-2.5 pr-4">{r.seen}</td>
+                    <td className={`py-2.5 ${r.gap === "wide" ? "text-danger" : r.gap === "small" ? "text-warn" : "text-ok"}`}>{r.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        <Card label="Your point of view">
+          <BeliefsEditor tenantId={id} initial={pack.identity.beliefs?.value ?? []} />
+        </Card>
 
         {/* The voice keeps learning from use (lib/voice/learn): approvals in your own words feed it. */}
         <Card label="Learning from you">

@@ -15,6 +15,7 @@ import { packToContextInput } from "@/lib/voice/context";
 import { tagged, type VoicePack } from "@/lib/voice/types";
 
 import type { FoundationForm } from "./foundation-types";
+import { cleanCore, type VisualCore } from "@/lib/visual/core";
 export type { FoundationForm };
 
 /**
@@ -340,6 +341,8 @@ export interface VisualIdentity {
   palette: string[];
   fonts: string[];
   imageStyleNotes: string;
+  /** Colour roles, layout, motifs, site and reference designs (lib/visual/core). */
+  core?: VisualCore;
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -347,7 +350,18 @@ const HEX = /^#[0-9a-f]{6}$/i;
 export async function loadVisualIdentity(scope: WorkspaceScope): Promise<VisualIdentity> {
   const f = await loadFoundation(scope);
   const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
-  return { palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes };
+  return { palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes, core: await loadVisualCore(scope) };
+}
+
+async function loadVisualCore(scope: WorkspaceScope): Promise<VisualCore> {
+  return withTenantSession(scope, async (c) =>
+    ((
+      await c.query<{ core: VisualCore }>(
+        `SELECT vi.core FROM visual_identities vi JOIN brand_profiles bp ON bp.id = vi.brand_profile_id
+          WHERE bp.project_id IS NULL ORDER BY bp.status='active' DESC, bp.updated_at DESC LIMIT 1`,
+      )
+    ).rows[0]?.core ?? {}),
+  );
 }
 
 /**
@@ -363,4 +377,17 @@ export async function saveVisualIdentity(scope: WorkspaceScope, v: VisualIdentit
     fonts: v.fonts.map((f) => f.trim()).filter(Boolean).slice(0, 4).join(", "),
     imageStyleNotes: v.imageStyleNotes.trim(),
   }, { voice: false });
+  // The rest of the Visual Core rides on the same row, written after the
+  // foundation writer has made sure the row exists.
+  if (v.core) {
+    const core = cleanCore(v.core);
+    await withTenantSession(scope, (c) =>
+      c.query(
+        `UPDATE visual_identities SET core = $1
+          WHERE id = (SELECT vi.id FROM visual_identities vi JOIN brand_profiles bp ON bp.id = vi.brand_profile_id
+                       WHERE bp.project_id IS NULL ORDER BY bp.status='active' DESC, bp.updated_at DESC LIMIT 1)`,
+        [JSON.stringify(core)],
+      ),
+    );
+  }
 }

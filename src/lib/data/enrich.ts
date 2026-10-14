@@ -175,6 +175,12 @@ export async function saveStories(scope: WorkspaceScope, actor: Actor, pack: Voi
   await writePack(scope, actor, pack, { identity: { ...pack.identity, stories: tagged(list, "ask") } }, `Saved ${list.length} ${list.length === 1 ? "story" : "stories"}.`);
 }
 
+/** Their point of view (M1): up to eight beliefs, one line each. */
+export async function saveBeliefs(scope: WorkspaceScope, actor: Actor, pack: VoicePack, beliefs: string[]) {
+  const list = [...new Set(beliefs.map((b) => clean(b, 240)).filter(Boolean))].slice(0, 8);
+  await writePack(scope, actor, pack, { identity: { ...pack.identity, beliefs: tagged(list, "ask") } }, `Saved ${list.length} ${list.length === 1 ? "belief" : "beliefs"}.`);
+}
+
 export async function saveProofs(scope: WorkspaceScope, actor: Actor, pack: VoicePack, proofs: Proof[]) {
   const list = proofs
     .map((p) => ({ claim: clean(p.claim, 300), source: clean(p.source, 160) || undefined }))

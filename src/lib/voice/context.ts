@@ -145,6 +145,7 @@ export function packToContextInput(
     samples: samples.map((s) => ({ channel: s.channel, body: s.body, note: s.kind === "benchmark" ? pack.onboarding.benchmarkNotes?.[s.id]?.note : undefined })),
     corpusPieces: pack.corpusStats.pieces,
     stories: pack.identity.stories?.value ?? [],
+    beliefs: pack.identity.beliefs?.value ?? [],
     proofs: pack.identity.proofs?.value ?? [],
     influences: pack.identity.influences?.value ?? null,
     languages: pack.identity.languages?.value

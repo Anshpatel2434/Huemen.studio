@@ -366,7 +366,7 @@ describe("closing the flow plan", () => {
     if (!dbReachable) return;
     const version = (await pack()).version;
     await saveVisualIdentity(W, { palette: ["#0A0A0A", "not a colour", "#ff3429"], fonts: ["Inter", " "], imageStyleNotes: " Real photos. " });
-    expect(await loadVisualIdentity(W)).toEqual({ palette: ["#0A0A0A", "#ff3429"], fonts: ["Inter"], imageStyleNotes: "Real photos." });
+    expect(await loadVisualIdentity(W)).toEqual({ palette: ["#0A0A0A", "#ff3429"], fonts: ["Inter"], imageStyleNotes: "Real photos.", core: {} });
     // A colour change is not a voice edit: no new voice version.
     expect((await pack()).version).toBe(version);
   });

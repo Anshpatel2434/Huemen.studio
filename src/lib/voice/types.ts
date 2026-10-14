@@ -111,6 +111,8 @@ export interface Identity {
    * by the identity lines of the context.
    */
   answers?: Record<string, string>;
+  /** Point of view (Layer 1, M1): what they believe that others in their field would argue with. */
+  beliefs?: Tagged<string[]>;
   /** Stories they tell often: their best material, which a draft can't invent. */
   stories?: Tagged<Story[]>;
   /** Facts they can stand behind: numbers, results, client wins. The only facts a draft may use. */
