@@ -4,6 +4,7 @@ import { Archivo, Instrument_Serif, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { PageTransition } from "@/components/page-transition";
 import { ThemeProvider } from "@/components/theme";
+import { StudioCursor } from "@/components/cursor";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 /*
@@ -30,6 +31,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <ThemeProvider initial={theme}>
           <PageTransition level="section">{children}</PageTransition>
         </ThemeProvider>
+        <StudioCursor />
       </body>
     </html>
   );

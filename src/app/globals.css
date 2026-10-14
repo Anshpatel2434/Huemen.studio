@@ -519,3 +519,41 @@ textarea.field { resize: vertical; line-height: 1.55; }
   * { animation: none !important; transition: none !important; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+
+/* ---- The pointer (components/cursor.tsx) -------------------------------------
+ * The art as plain CSS cursors first, so it is right before hydration and
+ * without JavaScript. Unlayered on purpose: it outranks the component layer's
+ * `cursor: pointer`. Then, while the live pointer runs (html.hu-cursor), the
+ * system cursor is hidden and the overlay draws it with Apple-style motion.
+ */
+html { cursor: url("/cursors/arrow.svg") 6 3, default; }
+a[href], button:not(:disabled), summary, [role="button"], [role="menuitem"], [role="menuitemradio"], [role="tab"],
+[role="radio"], [role="switch"], [role="option"], label[for], select:not(:disabled), .hu-card--interactive {
+  cursor: url("/cursors/hand.svg") 12 3, pointer;
+}
+html.hu-cursor, html.hu-cursor * { cursor: none !important; }
+
+.hu-pointer {
+  position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none;
+  opacity: 0; transition: opacity 0.16s ease; will-change: transform; transform-origin: 6px 3px;
+}
+.hu-pointer[data-visible="1"] { opacity: 1; }
+.hu-pointer > * { position: absolute; inset: 0; opacity: 0; transition: opacity 0.08s linear; user-select: none; }
+.hu-pointer[data-shape="arrow"] .hu-pointer__arrow,
+.hu-pointer[data-shape="hand"] .hu-pointer__hand,
+.hu-pointer[data-shape="text"] .hu-pointer__text { opacity: 1; }
+.hu-pointer[data-shape="hand"] { transform-origin: 12px 3px; }
+.hu-pointer[data-grab="closed"] .hu-pointer__hand { transform: rotate(-8deg) scale(0.94); }
+/* The I-beam: a hairline stem with serifs, white-haloed so it reads on any ground. */
+.hu-pointer__text {
+  left: 13px; right: auto; width: 2px; top: 4px; bottom: 4px; background: #111;
+  box-shadow: 0 0 0 1px #fff; border-radius: 1px;
+}
+.hu-pointer__text::before, .hu-pointer__text::after {
+  content: ""; position: absolute; left: -3px; width: 8px; height: 2px; background: #111;
+  box-shadow: 0 0 0 1px #fff; border-radius: 1px;
+}
+.hu-pointer__text::before { top: 0; }
+.hu-pointer__text::after { bottom: 0; }
+@media (prefers-reduced-motion: reduce) { .hu-pointer, .hu-pointer > * { transition: none; } }
