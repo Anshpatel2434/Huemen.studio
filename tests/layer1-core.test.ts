@@ -61,8 +61,8 @@ describe("beliefs and the Perception Mirror", () => {
       identity: { dials: tagged({ fun_serious: 2, casual_formal: 8 }, "ask"), carries: tagged("Clarity beats charisma", "ask") },
       index: { ...emptyIndex(), dials: {} },
       mechanics: {
-        punctuation: tagged({ exclamation: 0, emoji: 0, question: 0, ellipsis: 0, emDash: 0, colon: 0, semicolon: 0, parenthesis: 0 }, "measured"),
-        contractions: tagged(0.9, "measured"),
+        punctuation: tagged({ exclamation: 0, emoji: 0, question: 0, ellipsis: 0, emDash: 0, colon: 0, semicolon: 0, parenthesis: 0 }, "scan"),
+        contractions: tagged(0.9, "scan"),
       },
     } as unknown as VoicePack;
     const rows = perceptionMirror(pack, ["Clarity wins every time.", "A note about holidays."], "");
