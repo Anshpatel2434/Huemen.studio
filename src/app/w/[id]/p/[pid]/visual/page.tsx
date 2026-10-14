@@ -23,6 +23,7 @@ export default async function VisualPage({ params, searchParams }: PageProps<"/w
   // workspace; never the piece's own title, which is what a project is now.
   const brandName = pack?.displayName?.trim() || ws?.name || "Your brand";
   const schemeOf = new Map(visuals.map((v) => [v.contentItemId, v.scheme]));
+  const designOf = new Map(visuals.map((v) => [v.contentItemId, v.design]));
   const palette = f.palette.split(",").map((s) => s.trim()).filter((s) => /^#[0-9a-f]{3,8}$/i.test(s));
   const fonts = f.fonts.split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -31,7 +32,7 @@ export default async function VisualPage({ params, searchParams }: PageProps<"/w
       tenantId={id}
       projectId={pid}
       brandName={brandName}
-      items={items.map((i) => ({ id: i.id, format: i.format, hook: i.hook, body: i.body, cta: i.cta, status: i.status, pillarName: i.pillarName, scheme: schemeOf.get(i.id) ?? null }))}
+      items={items.map((i) => ({ id: i.id, format: i.format, hook: i.hook, body: i.body, cta: i.cta, status: i.status, pillarName: i.pillarName, scheme: schemeOf.get(i.id) ?? null, design: designOf.get(i.id) ?? null }))}
       palette={palette}
       fonts={fonts}
       imageStyle={f.imageStyleNotes}

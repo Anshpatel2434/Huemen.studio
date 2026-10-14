@@ -22,6 +22,7 @@ import { generateContent, listContent } from "./content";
 import { createPillar, listPillars } from "./planning";
 import { getProject, unlockStage, type ProjectScope, type WorkspaceScope } from "./projects";
 import { loadBriefAnswers } from "./foundation";
+import { parseDesign, type Design } from "@/lib/visual/design";
 
 /** Parse "Name :: description" lines (the pillar_set template's output shape). */
 export function parsePillarLines(text: string): { name: string; description: string }[] {
@@ -94,6 +95,8 @@ export interface VisualRow {
   contentItemId: string;
   kind: string;
   scheme: number;
+  /** Layouts and tweaks (lib/visual/design), the same on every row of a piece. */
+  design: Design;
   width: number;
   height: number;
   createdAt: string;
@@ -109,6 +112,15 @@ export async function generateVisuals(scope: ProjectScope, opts: { scheme: numbe
   if (items.length === 0) throw new Error("no content to design");
   await withTenantSession(scope, async (c) => {
     for (const it of items) {
+      // A regenerate redraws with a new scheme; the layouts and tweaks the
+      // person chose for this piece carry over.
+      const kept = (
+        await c.query<{ params: Record<string, unknown> }>(
+          "SELECT params FROM image_assets WHERE content_item_id=$1 AND project_id=$2 ORDER BY created_at LIMIT 1",
+          [it.id, scope.projectId],
+        )
+      ).rows[0]?.params;
+      const design = parseDesign(kept);
       await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2", [it.id, scope.projectId]);
       const f = formatByKey(it.format).frame;
       const rows: [string, number, number][] = [["single", f.w, f.h], ["quote_card", 1080, 1080], ["carousel_frame", 1080, 1350]];
@@ -116,13 +128,26 @@ export async function generateVisuals(scope: ProjectScope, opts: { scheme: numbe
         await c.query(
           `INSERT INTO image_assets (tenant_id, project_id, content_item_id, kind, prompt, model, params, aspect_ratio, width, height, status, created_by)
            VALUES ($1,$2,$3,$4,$5,'template',$6,$7,$8,$9,'ready',$10)`,
-          [scope.tenantId, scope.projectId, it.id, kind, it.hook, JSON.stringify({ scheme: opts.scheme }), `${w}:${h}`, w, h, scope.userId],
+          [scope.tenantId, scope.projectId, it.id, kind, it.hook, JSON.stringify({ scheme: opts.scheme, ...design }), `${w}:${h}`, w, h, scope.userId],
         );
       }
     }
   });
   await unlockStage(scope, "visual");
   return items.length;
+}
+
+/**
+ * Save how a piece's visuals are designed (layouts, tweaks), and optionally
+ * its scheme. Written onto every row of the piece. Returns false when the
+ * piece has no visuals in this project.
+ */
+export async function saveDesign(scope: ProjectScope, contentItemId: string, design: Design, scheme?: number): Promise<boolean> {
+  const clean = parseDesign(design);
+  const patch = scheme === undefined ? clean : { ...clean, scheme: Math.max(0, Math.floor(scheme)) };
+  return withTenantSession(scope, async (c) =>
+    ((await c.query("UPDATE image_assets SET params = params || $1::jsonb WHERE content_item_id=$2 AND project_id=$3", [JSON.stringify(patch), contentItemId, scope.projectId])).rowCount ?? 0) > 0,
+  );
 }
 
 /** Remove one piece's visual set. The copy stays; only the artboards go. */
@@ -145,6 +170,7 @@ export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
       contentItemId: r.content_item_id,
       kind: r.kind,
       scheme: Number(r.params?.scheme ?? 0),
+      design: parseDesign(r.params),
       width: r.width,
       height: r.height,
       createdAt: new Date(r.created_at).toISOString(),

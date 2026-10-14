@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { actionProjectScope } from "@/lib/auth/workspace";
-import { deleteVisuals, generateContentFromPillars, generatePillars, generateVisuals } from "@/lib/data/pipeline";
+import { deleteVisuals, generateContentFromPillars, generatePillars, generateVisuals, saveDesign } from "@/lib/data/pipeline";
+import type { Design } from "@/lib/visual/design";
 import { getProject } from "@/lib/data/projects";
 import { stageIndex } from "@/lib/projects/stages";
 
@@ -39,6 +40,14 @@ export async function generateContentAction(fd: FormData): Promise<void> {
   });
   revalidatePath(base, "layout");
   redirect(`${base}/content?generated=${n}`);
+}
+
+/** Layout choice and live tweaks for one piece's visuals (and its scheme, when given). */
+export async function saveDesignAction(tenantId: string, projectId: string, contentItemId: string, design: Design, scheme?: number): Promise<boolean> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const ok = await saveDesign(scope, contentItemId, design, scheme);
+  revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
+  return ok;
 }
 
 /** Remove one piece's visuals from the Visual step. Its copy is untouched. */
