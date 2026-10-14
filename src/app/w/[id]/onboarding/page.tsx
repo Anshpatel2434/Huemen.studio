@@ -87,10 +87,10 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
   if (!pack) {
     return (
       <div className="absolute inset-0 overflow-y-auto">
-        <div className="max-w-[760px] mx-auto px-6 py-12">
+        <div className="page py-12"><div className="max-w-3xl">
           <h1 className="text-3xl">A voice belongs to a person.</h1>
           <p className="text-ink-muted mt-2">Sign in as the person whose brand this is and their voice pack will be created for them.</p>
-        </div>
+        </div></div>
       </div>
     );
   }
@@ -145,7 +145,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
   return (
     <OnboardingDrafts prefix={`huemen:onb:${pack.id}`}>
     <div className="absolute inset-0 overflow-y-auto">
-      <div className={`${withPreview ? "max-w-[1200px]" : "max-w-[880px]"} mx-auto px-5 sm:px-8 py-8 flex flex-col gap-8`}>
+      <div className="page py-8 flex flex-col gap-8">
         <div className="flex flex-col gap-4">
           <p className="label-mono eyebrow">Onboarding · step {step + 1} of {STEPS.length}</p>
           <Stepper id={id} current={step} reached={reached} />
@@ -153,7 +153,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
 
         <CoreWatcher state={state} pieces={pack.corpusStats.pieces} />
 
-        <div className={withPreview ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-8 items-start" : ""}>
+        <div className={withPreview ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-10 items-start" : "max-w-4xl"}>
         <div className="flex flex-col gap-8 min-w-0">
 
         {step === 0 && brief && (

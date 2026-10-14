@@ -27,7 +27,7 @@ export default async function SettingsLayout({ children }: LayoutProps<"/setting
   return (
     <WorkspaceShell tenantId={session.tenantId} section="Settings" tabs={tabs}>
       <div className="absolute inset-0 overflow-y-auto">
-        <div className="max-w-[680px] mx-auto px-5 min-[900px]:px-8 py-10">{children}</div>
+        <div className="page py-10">{children}</div>
       </div>
     </WorkspaceShell>
   );

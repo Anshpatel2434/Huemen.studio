@@ -17,7 +17,7 @@ export default async function VisualPage({ params }: PageProps<"/w/[id]/brand/vi
       accent="hue."
       sub="The colours, fonts and image notes every visual is made from. Set once; every piece reads them."
     >
-      <section className="bg-paper border border-hairline rounded-md p-5">
+      <section className="border-t border-hairline pt-6">
         <VisualForm tenantId={id} initial={visual} />
       </section>
     </DocPage>

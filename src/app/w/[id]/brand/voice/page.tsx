@@ -27,7 +27,7 @@ export const metadata = { title: "Voice" };
 export const dynamic = "force-dynamic";
 
 const Card = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <section className="bg-paper border border-hairline rounded-md p-5">
+  <section className="border-t border-hairline pt-6">
     <p className="label-mono text-ink-faint mb-3">{label}</p>
     {children}
   </section>
@@ -67,7 +67,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   if (!pack) {
     return (
       <DocPage eyebrow="Brand core · Voice" title="No voice yet." accent="Let's build one." sub="A Voice Pack belongs to a person. Sign in as the person whose brand this is and it will be created for them.">
-        <div className="bg-paper border border-hairline rounded-md">
+        <div className="border-y border-hairline">
           <EmptyState icon={<Mic size={18} />} title="No pack on file" sub="Voice packs are created for the person whose writing they describe." />
         </div>
       </DocPage>

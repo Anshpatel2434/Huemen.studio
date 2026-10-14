@@ -240,8 +240,8 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-3);
-    border: 1px dashed var(--line);
-    border-radius: var(--radius-md);
+    /* Open, not boxed: an empty state is a quiet moment in the page, not a
+       dashed box inside a card inside a column. */
   }
   .hu-empty__art {
     width: 52px;
@@ -479,14 +479,10 @@
   .hu-tab:active,
   .hu-seg__item:active { background: var(--active); }
 
-  /* A clickable card lifts a hair on hover; it never moves under reduced motion. */
-  .hu-lift {
-    transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard);
-  }
+  /* A clickable card answers a hover with its border and shadow, never by
+     moving: things that move under the pointer read as jitter. */
+  .hu-lift { transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard); }
   .hu-lift:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
-  @media (prefers-reduced-motion: no-preference) {
-    .hu-lift:hover { transform: translateY(-2px); }
-  }
 
   /* Meters fill from empty when they appear, so the number reads as measured. */
   .hu-meter-fill { transform-origin: left center; animation: hu-meter-grow 700ms var(--ease-enter) both; }

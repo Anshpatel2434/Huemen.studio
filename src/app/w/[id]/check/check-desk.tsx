@@ -97,7 +97,7 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
       {codeFindings.length > 0 && <Findings items={codeFindings} />}
       {judging && <p className="text-sm text-ink-muted flex items-center gap-2"><AgentDots /> Reading it line by line</p>}
       {lineFindings.map((f) => (
-        <div key={f.line} className="border border-hairline rounded-md p-3.5 flex flex-col gap-2">
+        <div key={f.line} className="border-l-2 border-line-strong pl-3.5 py-1 flex flex-col gap-2">
           <p className="text-sm italic">“{f.line}”</p>
           <p className="text-sm text-ink-muted"><span className="font-medium text-ink">{f.attribute}.</span> {f.why}</p>
           {f.fix && (
@@ -124,30 +124,27 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
     <div className="absolute inset-0 overflow-y-auto min-[1100px]:overflow-hidden min-[1100px]:grid min-[1100px]:grid-cols-[minmax(0,1fr)_380px]">
       {/* The draft */}
       <div className="min-[1100px]:overflow-y-auto">
-        <div className="max-w-[760px] mx-auto px-5 sm:px-8 py-8 flex flex-col gap-5">
+        <div className="page py-8 flex flex-col gap-5">
           {intro}
-          <div className="bg-paper border border-hairline rounded-md flex flex-col focus-within:border-line-strong transition-colors">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 border-b border-hairline">
-              <label htmlFor="check-text" className="text-sm font-semibold">Your draft</label>
-              <label className="flex items-center gap-2 text-sm text-ink-muted">
-                For
-                <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="field !w-auto min-h-11">
-                  {Object.values(PLATFORM_RULES).map((p) => (
-                    <option key={p.key} value={p.key}>{p.label}{platforms.includes(p.key) ? "" : " (not set up)"}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+          {/* One open composer, no card-in-card: the words, then one bar of controls. */}
+          <div className="hu-composer max-w-[960px]">
+            <label htmlFor="check-text" className="sr-only">Your draft</label>
             <textarea
               id="check-text"
               rows={10}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              className="w-full resize-y bg-transparent !outline-none px-5 py-4 text-lg leading-relaxed min-h-[260px] placeholder:text-ink-faint"
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text.trim() && !checking) { e.preventDefault(); run(text); } }}
+              className="!text-lg !leading-relaxed min-h-[280px] !resize-y placeholder:text-ink-faint"
               placeholder="Paste a draft: one from here, one you wrote yourself, or one someone wrote for you."
             />
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 border-t border-hairline">
-              <p className="flex-1 basis-[34ch] flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-faint tabular-nums font-mono">
+            <div className="hu-composer__bar">
+              <select aria-label="Platform" value={platform} onChange={(e) => setPlatform(e.target.value)} className="shrink-0">
+                {Object.values(PLATFORM_RULES).map((p) => (
+                  <option key={p.key} value={p.key}>{p.label}{platforms.includes(p.key) ? "" : " (not set up)"}</option>
+                ))}
+              </select>
+              <p className="flex-1 basis-[28ch] flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-faint tabular-nums font-mono">
                 <span>{text.length.toLocaleString()} characters</span>
                 {rule?.maxChars && <span>· limit {rule.maxChars.toLocaleString()}</span>}
                 {rule?.visibleChars && <span>· {rule.visibleChars} show before “see more”</span>}
@@ -182,7 +179,7 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
 
       {/* Whose voice, and the verdict */}
       <aside aria-label="Your core and the verdict" className="border-t min-[1100px]:border-t-0 min-[1100px]:border-l border-hairline bg-paper min-[1100px]:overflow-y-auto">
-        <div className="px-5 sm:px-6 py-6 flex flex-col gap-6 max-w-[760px] mx-auto">
+        <div className="px-5 sm:px-6 py-6 flex flex-col gap-6">
           <section className="flex flex-col gap-3">
             <p className="label-mono text-ink-faint">Measured against</p>
             {core ? (

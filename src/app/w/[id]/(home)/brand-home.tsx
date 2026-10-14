@@ -47,7 +47,7 @@ export function BrandHome(props: BrandHomeProps) {
 
   return (
     <div className="absolute inset-0 overflow-y-auto">
-      <div className="max-w-[1180px] mx-auto px-5 min-[900px]:px-8 pt-8 pb-16 flex flex-col gap-8">
+      <div className="page pt-8 pb-16 flex flex-col gap-8">
         <header className="flex flex-wrap items-end gap-x-6 gap-y-4">
           <div className="flex-1 min-w-[16ch]">
             <p className="label-mono eyebrow">{workspaceName} · Brand home</p>
@@ -167,7 +167,7 @@ export function BrandHome(props: BrandHomeProps) {
                   <Link href={`${base}/plan/calendar`} className={btnClass("ghost", "sm")}>Calendar <ArrowUpRight size={15} aria-hidden="true" /></Link>
                 </div>
                 {upcoming.length ? (
-                  <ul className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md bg-paper">
+                  <ul className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
                     {upcoming.slice(0, 4).map((s) => (
                       <li key={s.id}>
                         <Start tenantId={tenantId} topic={s.topic ?? ""} pillar={s.pillarName} format={format}>

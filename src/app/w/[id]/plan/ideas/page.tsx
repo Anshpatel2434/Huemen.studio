@@ -20,20 +20,23 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
 
   return (
     <DocPage eyebrow={`${(ws?.name ?? "Your brand")} · Idea inbox`} title="Catch it now." accent="Shape it later." sub="Paste a thought; it's auto-tagged to the closest pillar. One click turns it into a new piece, ready to write.">
-      <form action={captureIdeaAction} className="bg-paper border border-hairline rounded-md p-3 flex gap-2 items-end shadow-[var(--shadow-sm)]">
+      <form action={captureIdeaAction} className="hu-composer max-w-4xl">
         <input type="hidden" name="tenantId" value={id} />
-        <textarea name="text" rows={2} required placeholder="e.g. The client who fired me taught me more than the ones who stayed" className="flex-1 resize-none bg-transparent outline-none text-sm px-1.5 py-1 placeholder:text-ink-faint" />
-        <SubmitButton pendingLabel="Saving…" size="sm">Capture</SubmitButton>
+        <textarea name="text" rows={3} required aria-label="New idea" placeholder="e.g. The client who fired me taught me more than the ones who stayed" />
+        <div className="hu-composer__bar">
+          <span className="text-xs text-ink-faint flex-1">{pillars.length ? `Tagged to the closest of your ${pillars.length} pillars as it lands.` : "Add pillars in Brand core and ideas are tagged to them."}</span>
+          <SubmitButton pendingLabel="Saving…" size="sm">Capture</SubmitButton>
+        </div>
       </form>
 
-      <div className="mt-8">
+      <div className="mt-10">
         <p className="label-mono text-ink-faint mb-3">Open · {open.length}</p>
         {open.length === 0 ? (
-          <div className="bg-paper border border-hairline rounded-md"><EmptyState icon={<Lightbulb size={18} />} title="Inbox zero" sub="Ideas you capture (or tell the agent “Idea: …”) land here." /></div>
+          <div className="max-w-4xl"><EmptyState bare icon={<Lightbulb size={18} />} title="Inbox zero" sub="Ideas you capture (or tell the agent “Idea: …”) land here." /></div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
             {open.map((i) => (
-              <div key={i.id} className="bg-paper border border-hairline rounded-md p-4 flex flex-col gap-3">
+              <div key={i.id} className="bg-field rounded-xl p-4 flex flex-col gap-3">
                 <p className="text-base leading-relaxed flex-1">{i.rawText}</p>
                 <form action={setIdeaPillarAction} className="flex items-center gap-2">
                   <input type="hidden" name="tenantId" value={id} />
@@ -68,7 +71,7 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
       {done.length > 0 && (
         <div className="mt-10 pb-10">
           <p className="label-mono text-ink-faint mb-3">Converted · {done.length}</p>
-          <div className="flex flex-col divide-y divide-[var(--hairline)] bg-paper border border-hairline rounded-md">
+          <div className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
             {done.map((i) => (
               <Link key={i.id} href={i.projectId ? `/w/${id}/p/${i.projectId}` : `/w/${id}`} className="flex items-center gap-3 px-4 h-12 hover:bg-panel text-sm">
                 <CheckCircle2 size={14} className="text-ok shrink-0" />

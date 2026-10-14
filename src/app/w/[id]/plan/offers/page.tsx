@@ -19,10 +19,10 @@ export default async function OffersPage({ params }: PageProps<"/w/[id]/plan/off
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
         <div className="flex flex-col gap-3">
           {offers.length === 0 ? (
-            <div className="bg-paper border border-hairline rounded-md"><EmptyState icon={<Package size={18} />} title="No offers yet" sub="Start with the one you already sell. Name it, say what it promises, list what's in the box." /></div>
+            <div><EmptyState icon={<Package size={18} />} title="No offers yet" sub="Start with the one you already sell. Name it, say what it promises, list what's in the box." /></div>
           ) : (
             offers.map((o) => (
-              <article key={o.id} className="bg-paper border border-hairline rounded-md p-5">
+              <article key={o.id} className="bg-field rounded-xl p-5">
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
                     <p className="label-mono text-ink-faint">{o.format || "Offer"}</p>
@@ -46,7 +46,7 @@ export default async function OffersPage({ params }: PageProps<"/w/[id]/plan/off
           )}
         </div>
 
-        <form action={createOfferAction} className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-3 xl:sticky xl:top-0">
+        <form action={createOfferAction} className="bg-field rounded-xl p-5 flex flex-col gap-3 xl:sticky xl:top-0">
           <input type="hidden" name="tenantId" value={id} />
           <p className="font-medium">New offer</p>
           <input name="name" required placeholder="Name, e.g. First 90 Days" className="field" />

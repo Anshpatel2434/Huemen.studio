@@ -18,7 +18,7 @@ function StepCard({ base, completeness, degraded, answered, pillars }: { base: s
   // Pillars belong to the workspace, so the question is whether any exist yet.
   const done = pillars > 0;
   return (
-    <div className="bg-paper border border-hairline rounded-md p-4">
+    <div className="bg-field rounded-xl p-4">
       <p className="label-mono text-ink-faint">Onboarding · Brief</p>
       <ul className="mt-3 flex flex-col gap-2 text-sm">
         <li className="flex items-center gap-2">{!degraded ? <CheckCircle2 size={14} className="text-ok" /> : <AlertTriangle size={14} className="text-warn" />} Brief {completeness}% complete</li>
@@ -75,7 +75,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
 
   return (
     <div className="h-full overflow-y-auto" id="brief-scroll">
-      <div className="max-w-[1080px] mx-auto px-8 py-10 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_240px] gap-12">
+      <div className="page py-10 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-12">
         <article className="min-w-0 max-w-[720px]">
           {/* Banner */}
           <div className="relative overflow-hidden bg-paper border border-hairline rounded-md px-6 py-5 flex items-center gap-4">
@@ -163,7 +163,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
                 <p className="label-mono text-ink-faint mb-2">Sample posts · {samples.length}</p>
                 <div className="grid gap-2">
                   {samples.slice(0, 5).map((s, i) => (
-                    <blockquote key={i} className="bg-paper border border-hairline rounded-md px-4 py-3 text-sm leading-relaxed text-ink-muted">“{s}”</blockquote>
+                    <blockquote key={i} className="bg-field rounded-xl px-4 py-3 text-sm leading-relaxed text-ink-muted">“{s}”</blockquote>
                   ))}
                 </div>
               </div>
@@ -196,7 +196,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
             {offers.length > 0 && (
               <div className="mt-3 grid gap-2">
                 {offers.map((o) => (
-                  <Link key={o.id} href={`${plan}/offers`} className="flex items-center justify-between bg-paper border border-hairline rounded-md px-4 h-11 hover:border-line text-sm">
+                  <Link key={o.id} href={`${plan}/offers`} className="flex items-center justify-between bg-field rounded-xl px-4 h-11 hover:opacity-80 transition-opacity text-sm">
                     <span>{o.name} {o.format && <span className="text-ink-faint">· {o.format}</span>}</span><ChevronRight size={15} className="text-ink-faint" />
                   </Link>
                 ))}
@@ -210,7 +210,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
             {assets.length ? (
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {assets.map((a) => (
-                  <div key={a.id} className="bg-paper border border-hairline rounded-md p-2">
+                  <div key={a.id} className="bg-field rounded-xl p-2">
                     {a.mime.startsWith("image/") ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={a.url} alt={a.kind} className="w-full h-20 object-contain rounded-sm bg-panel" />

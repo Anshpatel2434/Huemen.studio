@@ -33,7 +33,7 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
 
   return (
     <div className="absolute inset-0 overflow-y-auto">
-      <div className="max-w-[960px] mx-auto px-5 sm:px-8 py-8 flex flex-col gap-8">
+      <div className="page py-8 flex flex-col gap-8">
         <div className="flex flex-wrap items-end gap-x-8 gap-y-5">
           <div className="flex-1 min-w-[24ch]">
             <p className="label-mono eyebrow">Create</p>
@@ -42,7 +42,7 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
           </div>
           {/* §15.7: whose voice is in use is visible before anything is written. */}
           {core && (
-            <Link href={`/w/${id}/brand/voice`} className="flex items-center gap-3 bg-paper border border-hairline rounded-md px-4 py-3 hover:border-line-strong transition-colors">
+            <Link href={`/w/${id}/brand/voice`} className="flex items-center gap-3 bg-field rounded-full pl-2 pr-5 py-2 hover:opacity-80 transition-opacity">
               <Avatar seed={core.seed} label={core.name} size="md" />
               <span className="min-w-0">
                 <span className="block text-sm font-semibold">Writing as {core.name}</span>
@@ -71,19 +71,17 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
 
         <section className="flex flex-col gap-3">
           <h2 className="text-base">Something else</h2>
-          <form action={startPieceAction} className="bg-paper border border-hairline rounded-md p-4 flex flex-col sm:flex-row gap-3 sm:items-end">
+          <form action={startPieceAction} className="hu-composer max-w-4xl">
             <input type="hidden" name="tenantId" value={id} />
-            <label className="flex-1 min-w-0">
-              <span className="hu-label !flex mb-2">Topic</span>
-              <input name="topic" required placeholder="What's it about?" className="field" />
-            </label>
-            <label>
-              <span className="hu-label !flex mb-2">Format</span>
-              <select name="format" defaultValue={format ?? ""} className="field min-h-11">
+            <label htmlFor="create-topic" className="sr-only">Topic</label>
+            <input id="create-topic" type="text" name="topic" required placeholder="What's it about? A sentence is plenty." />
+            <div className="hu-composer__bar">
+              <select name="format" aria-label="Format" defaultValue={format ?? ""} className="shrink-0">
                 {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
               </select>
-            </label>
-            <button type="submit" className={btnClass("primary")}>Start</button>
+              <span className="flex-1" />
+              <button type="submit" className={btnClass("primary")}>Start</button>
+            </div>
           </form>
         </section>
 
@@ -91,7 +89,7 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
           <section className="flex flex-col gap-3 min-w-0">
             <h2 className="text-base flex items-center gap-2"><Lightbulb size={16} aria-hidden="true" /> From your ideas</h2>
             {open.length ? (
-              <ul className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md bg-paper">
+              <ul className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
                 {open.map((i) => (
                   <li key={i.id}>
                     <Start tenantId={id} topic={i.rawText.slice(0, 200)} pillar={i.pillarName} ideaId={i.id} format={format}>
@@ -111,7 +109,7 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
           <section className="flex flex-col gap-3 min-w-0">
             <h2 className="text-base flex items-center gap-2"><CalendarDays size={16} aria-hidden="true" /> Next two weeks</h2>
             {upcoming.length ? (
-              <ul className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md bg-paper">
+              <ul className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
                 {upcoming.map((s) => (
                   <li key={s.id}>
                     <Start tenantId={id} topic={s.topic ?? ""} pillar={s.pillarName} format={format}>

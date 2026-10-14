@@ -68,7 +68,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
       <form action={setIdeateAction} className="flex flex-col gap-6">
         <Hidden id={id} pid={pid} />
 
-        <section className="bg-paper border border-hairline rounded-md p-5">
+        <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">01 · Where does it go</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {FORMATS.map((f) => (
@@ -90,7 +90,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           </div>
         </section>
 
-        <section className="bg-paper border border-hairline rounded-md p-5">
+        <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">02 · Which pillar</p>
           {pillars.length === 0 ? (
             <p className="text-sm text-ink-faint">No pillars yet — this piece will be written from the brief alone.</p>
@@ -109,7 +109,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           )}
         </section>
 
-        <section className="bg-paper border border-hairline rounded-md p-5">
+        <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">03 · The angle</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {ANGLES.map((a) => (
@@ -147,7 +147,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           <p className="label-mono text-ink-faint mb-3">From your idea inbox</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {open.map((i) => (
-              <form key={i.id} action={setIdeateAction} className="bg-paper border border-hairline rounded-md p-4 flex flex-col gap-3">
+              <form key={i.id} action={setIdeateAction} className="bg-field rounded-xl p-4 flex flex-col gap-3">
                 <Hidden id={id} pid={pid} />
                 <input type="hidden" name="ideaId" value={i.id} />
                 <input type="hidden" name="topic" value={i.rawText} />
@@ -164,7 +164,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
       )}
 
       {open.length === 0 && (
-        <div className="mt-10 bg-paper border border-hairline rounded-md">
+        <div className="mt-10 border-y border-hairline">
           <EmptyState
             icon={<Lightbulb size={18} />}
             title="Nothing in the idea inbox"

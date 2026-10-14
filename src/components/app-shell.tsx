@@ -69,8 +69,8 @@ export function AppShell({ nav, section, tabs, actions, children }: {
 
   return (
     <ToastProvider>
-      <div className="h-dvh flex bg-ground">
-        <aside className="hidden min-[900px]:flex w-[264px] shrink-0 border-r border-hairline bg-paper flex-col" aria-label="Main">
+      <div className="h-dvh flex bg-paper">
+        <aside className="hidden min-[900px]:flex w-[264px] shrink-0 border-r border-hairline bg-ground flex-col" aria-label="Main">
           <Sidebar nav={nav} />
         </aside>
 

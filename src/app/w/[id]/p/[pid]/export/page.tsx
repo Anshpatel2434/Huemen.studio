@@ -24,7 +24,7 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
     <DocPage eyebrow={`${project.name} · Export`} title="Ship it" accent="clean." sub="Review brand health, then take the brief and content out as a PDF or as Markdown (Notion-compatible). Direct posting to LinkedIn or Instagram isn't part of v1." width={1000}>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
         <div className="flex flex-col gap-4 min-w-0">
-          <div className="bg-paper border border-hairline rounded-md p-5">
+          <div className="border-t border-hairline pt-6">
             <p className="font-medium">What goes out</p>
             <div className="mt-4 grid grid-cols-3 gap-3">
               {[["Brief", `${ctx.completeness}%`], ["Pieces", String(content.length)], ["Approved", String(approved.length)]].map(([k, v]) => (
@@ -42,7 +42,7 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
             </div>
           </div>
 
-          <div className="bg-paper border border-hairline rounded-md">
+          <div className="border-y border-hairline">
             <p className="font-medium px-5 pt-5">Pieces</p>
             {content.length === 0 ? (
               <p className="px-5 py-4 text-sm text-ink-muted">Nothing drafted yet. <Link href={`/w/${id}/p/${pid}/content`} className="underline">Go to Content</Link>.</p>
@@ -61,7 +61,7 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
           </div>
         </div>
 
-        <aside className="bg-paper border border-hairline rounded-md p-5 xl:sticky xl:top-0">
+        <aside className="bg-field rounded-xl p-5 xl:sticky xl:top-0">
           <div className="flex gap-1.5 mb-4">{[0, 1, 2].map((i) => <span key={i} className="h-1 flex-1 rounded-full bg-ink" />)}</div>
           <p className="font-medium">Review brand health</p>
           <p className="text-sm text-ink-muted mt-0.5">Built from the brief&apos;s own rules: completeness, voice guardrails, CTAs, pillars.</p>

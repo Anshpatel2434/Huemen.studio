@@ -557,3 +557,58 @@ html.hu-cursor, html.hu-cursor * { cursor: none !important; }
 .hu-pointer__text::before { top: 0; }
 .hu-pointer__text::after { bottom: 0; }
 @media (prefers-reduced-motion: reduce) { .hu-pointer, .hu-pointer > * { transition: none; } }
+
+
+/* ---- The page frame ----------------------------------------------------------
+ * Every non-canvas screen uses the room it has, like a design tool: one wide
+ * frame with a gutter that grows with the window, instead of a narrow column
+ * centred in empty space. Long reading lines are capped inside (max-w-2xl on
+ * prose), not by squeezing the whole page.
+ */
+@layer components {
+  .page {
+    width: 100%;
+    max-width: 1600px;
+    margin-inline: auto;
+    padding-inline: clamp(1.25rem, 3.2vw, 3.5rem);
+  }
+}
+
+/* The composer: the one place you type to make something (Ideas, Create,
+ * Check, an empty piece). A single soft surface with its actions inside it,
+ * the way a design tool's prompt bar reads, not a form in a card in a box. */
+@layer components {
+  .hu-composer {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: var(--shadow-sm);
+    padding: 14px 14px 10px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
+  }
+  .hu-composer:focus-within { border-color: color-mix(in srgb, var(--ink) 28%, transparent); box-shadow: var(--shadow); }
+  .hu-composer textarea, .hu-composer input[type="text"] {
+    width: 100%; background: transparent; border: 0; outline: none; resize: none;
+    font-size: 16px; line-height: 1.55; color: var(--ink); padding: 4px 0;
+  }
+  .hu-composer textarea::placeholder, .hu-composer input::placeholder { color: var(--ink-faint); }
+  .hu-composer__bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+}
+
+/* Selects sitting in a composer bar read as a small pill, not a form field. */
+@layer components {
+  .hu-composer__bar select {
+    width: auto;
+    min-height: 36px;
+    padding: 0 30px 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline);
+    background-color: var(--field);
+    font-size: 13px;
+    max-width: 210px;
+    text-overflow: ellipsis;
+  }
+}
