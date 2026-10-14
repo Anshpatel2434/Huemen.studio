@@ -28,7 +28,7 @@ marked "proposal module"; raise them before or alongside the key request.**
 
 ### Promised, not started (proposal modules)
 - 2026-10-13 · build team · **Image model** (P2-13): visuals are templated per the brief's own default; an AI image provider is a cost decision for the client and a provider choice for us. Decision pending.
-- 2026-10-13 · build team · **Strategy tools** (P3-2): niche validation, 3x3 positioning matrix, authority ladder, Q1 to Q4 plan. Not started.
+- 2026-10-14 · design system v1.0 · **Strategy tools** (P3-2): niche validation, 3x3 positioning matrix, authority ladder. **Won't build.** The design system makes positioning an explicit non-goal: the product holds a voice and checks against it, it does not decide what anyone stands for, and a positioning wizard or "find your niche" step promises what software cannot deliver. Where positioning needs work, the product says so and points at human help (the workshop). The Q1 to Q4 plan is a calendar question and stays open.
 - 2026-10-13 · build team · **AI offer designer** (P3-3): today a manual form; offers do reach prompts as context. Not started.
 - 2026-10-13 · build team · **Answer-first (AEO) page generator** (P3-4). Not started.
 - 2026-10-13 · build team · **Repurposing pipeline** (P3-6). Not started.

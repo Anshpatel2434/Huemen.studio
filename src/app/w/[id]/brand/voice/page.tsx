@@ -25,7 +25,6 @@ import { patternsFor } from "@/lib/data/patterns";
 import { learningLog } from "@/lib/data/learning";
 import { perceptionMirror } from "@/lib/voice/mirror";
 import { BeliefsEditor } from "../../onboarding/enrich-ui";
-import { loadFoundation } from "@/lib/data/foundation";
 import { LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
 
 export const metadata = { title: "Voice" };
@@ -89,8 +88,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
     sp.preview ? previewRescan(scope, pack.id) : Promise.resolve(null),
     learningLog(scope, pack.id),
   ]);
-  const niche = (await loadFoundation(scope)).niche;
-  const mirror = perceptionMirror(pack, samples.filter((s) => !s.excluded && s.visibility === "public" && s.kind === "corpus").map((s) => s.body), niche);
+  const mirror = perceptionMirror(pack);
   const now = await requestTime();
   const state = coreState(pack, now);
   const due = rescanDue(pack, sinceScan, now);
@@ -280,7 +278,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* Perception Mirror (M2): what you intend, against what your writing shows. */}
         <Card label="Seen vs intended">
           {mirror.length === 0 ? (
-            <p className="text-sm text-ink-faint">Set your dials and add some public writing, and this shows where the two differ.</p>
+            <p className="text-sm text-ink-faint">Set your tone dials and add some writing, and this shows where the tone you intend and the tone you write differ.</p>
           ) : (
             <table className="w-full text-sm">
               <thead><tr className="text-left text-ink-faint"><th className="font-normal py-2 pr-4">Dimension</th><th className="font-normal py-2 pr-4">You intend</th><th className="font-normal py-2 pr-4">Your writing shows</th><th className="font-normal py-2">Read</th></tr></thead>

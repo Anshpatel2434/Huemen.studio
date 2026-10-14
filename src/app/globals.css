@@ -606,7 +606,7 @@ html.hu-cursor, html.hu-cursor * { cursor: none !important; }
 @layer components {
   .hu-composer__bar select {
     width: auto;
-    min-height: 36px;
+    min-height: var(--tap-min);
     padding: 0 30px 0 14px;
     border-radius: 999px;
     border: 1px solid var(--hairline);

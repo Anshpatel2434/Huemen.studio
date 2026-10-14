@@ -56,7 +56,7 @@ describe("beliefs and the Perception Mirror", () => {
     const ctx = buildBrandContext({ voicePack: { beliefs: ["Most brand problems are clarity problems."] } as never });
     expect(ctx.serialized).toContain("Most brand problems are clarity problems.");
   });
-  it("names a wide gap between intended and seen, and position coverage", () => {
+  it("names a wide gap between intended and seen tone, and never scores positioning", () => {
     const pack = {
       identity: { dials: tagged({ fun_serious: 2, casual_formal: 8 }, "ask"), carries: tagged("Clarity beats charisma", "ask") },
       index: { ...emptyIndex(), dials: {} },
@@ -65,10 +65,8 @@ describe("beliefs and the Perception Mirror", () => {
         contractions: tagged(0.9, "scan"),
       },
     } as unknown as VoicePack;
-    const rows = perceptionMirror(pack, ["Clarity wins every time.", "A note about holidays."], "");
-    const fun = rows.find((r) => r.label === "Fun or serious")!;
-    expect(fun.gap).toBe("wide");
-    const pos = rows.find((r) => r.label === "On your position")!;
-    expect(pos.seen).toContain("50%");
+    const rows = perceptionMirror(pack);
+    expect(rows.find((r) => r.label === "Fun or serious")!.gap).toBe("wide");
+    expect(rows.some((r) => /position/i.test(r.label))).toBe(false);
   });
 });

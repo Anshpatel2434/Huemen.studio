@@ -85,7 +85,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
       <header className="min-h-16 shrink-0 flex flex-wrap items-center gap-x-3 px-3">
         <div className="flex-1 flex items-center gap-2 min-w-0 min-h-16">
           <FileMenu workspace={workspace} project={project} />
-          <Link href={`/w/${workspace.id}`} title={`Back to ${workspace.name}`} className="hidden md:inline-flex items-center min-h-10 px-3.5 rounded-lg bg-paper border border-hairline text-sm font-medium truncate max-w-[24ch] hover:border-line-strong transition-colors">{project.name}</Link>
+          <Link href={`/w/${workspace.id}`} title={`Back to ${workspace.name}`} className="hidden md:inline-flex items-center min-h-11 px-3.5 rounded-lg bg-paper border border-hairline text-sm font-medium truncate max-w-[24ch] hover:border-line-strong transition-colors">{project.name}</Link>
           <span className="md:hidden text-sm font-medium truncate">{project.name}</span>
           {aiMock && <span className="ml-1 shrink-0 hidden sm:inline-flex"><Badge tone="warn">Mock AI</Badge></span>}
         </div>
@@ -98,7 +98,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
               const open = i <= unlocked;
               const on = seg === s;
               const done = i < unlocked;
-              const cls = `flex items-center gap-1.5 min-h-10 px-3 sm:px-5 rounded-lg text-sm font-medium transition-colors ${on ? "bg-paper text-ink shadow-[var(--shadow-sm)]" : open ? "text-ink-muted hover:text-ink" : "text-ink-faint cursor-not-allowed"}`;
+              const cls = `flex items-center gap-1.5 min-h-11 px-3 sm:px-5 rounded-lg text-sm font-medium transition-colors ${on ? "bg-paper text-ink shadow-[var(--shadow-sm)]" : open ? "text-ink-muted hover:text-ink" : "text-ink-faint cursor-not-allowed"}`;
               // No step numbers and no padlocks: a finished step gets a tick,
               // a locked one is simply dimmed.
               const inner = (
@@ -180,7 +180,7 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
   const toast = useToast();
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} className="flex items-center gap-1 min-h-10 pl-1.5 pr-2 rounded-lg bg-paper border border-hairline hover:border-line-strong transition-colors" aria-label="File menu">
+      <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} className="flex items-center gap-1 min-h-11 pl-1.5 pr-2 rounded-lg bg-paper border border-hairline hover:border-line-strong transition-colors" aria-label="File menu">
         <LogoMark size={26} /> <ChevronDown size={15} className="text-ink-faint" aria-hidden="true" />
       </button>
       {open && (

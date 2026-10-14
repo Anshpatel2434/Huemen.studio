@@ -247,8 +247,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback((msg: string, tone: Tone = "success") => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg, tone }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === "danger" ? 6000 : 3200);
+    // An error never times out (design system §12): it stays until it is dismissed.
+    if (tone !== "danger") setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
   }, []);
+  const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
   return (
     <ToastCtx.Provider value={push}>
       {children}
@@ -259,6 +261,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               : t.tone === "success" ? <CheckCircle2 size={18} className="text-[var(--ok-line)]" aria-hidden="true" />
               : <Info size={18} aria-hidden="true" />}
             <span>{t.msg}</span>
+            {t.tone === "danger" && (
+              <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="hu-hit pointer-events-auto -mr-1 ml-1 w-7 h-7 rounded-sm flex items-center justify-center text-ink-faint hover:text-ink">
+                <X size={15} aria-hidden="true" />
+              </button>
+            )}
           </div>
         ))}
       </div>
