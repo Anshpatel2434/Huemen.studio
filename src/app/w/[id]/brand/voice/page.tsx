@@ -22,6 +22,8 @@ import {
   resolveSignatureAction, restoreVersionAction, saveSelfCheckAction, saveVoiceAction, setAntiSampleAction, setBenchmarkNoteAction,
 } from "./actions";
 import { patternsFor } from "@/lib/data/patterns";
+import { learningLog } from "@/lib/data/learning";
+import { LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
 
 export const metadata = { title: "Voice" };
 export const dynamic = "force-dynamic";
@@ -74,7 +76,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
     );
   }
 
-  const [samples, versions, proposals, learned, approved, sinceScan, preview] = await Promise.all([
+  const [samples, versions, proposals, learned, approved, sinceScan, preview, studio] = await Promise.all([
     listSamples(scope, pack.id, { includeExcluded: true }),
     listVersions(scope, pack.id, 8),
     listProposals(scope, pack.id),
@@ -82,6 +84,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
     approvedPieceCount(scope),
     approvedSince(scope, pack.scannedAt),
     sp.preview ? previewRescan(scope, pack.id) : Promise.resolve(null),
+    learningLog(scope, pack.id),
   ]);
   const now = await requestTime();
   const state = coreState(pack, now);
@@ -268,6 +271,30 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             </Card>
           </div>
         )}
+
+        {/* The voice keeps learning from use (lib/voice/learn): approvals in your own words feed it. */}
+        <Card label="Learning from you">
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink-muted max-w-[68ch]">
+              When you approve a piece you wrote, or rewrote at least {Math.round(LEARN_MIN_EDIT * 100)}% of, it joins your writing here and every {RELEARN_EVERY} such pieces your voice re-measures itself. Drafts approved as written don&apos;t count, so the voice never learns its own habits. A coach&apos;s approvals don&apos;t count either: only your words teach your voice.
+            </p>
+            {studio.total === 0 ? (
+              <p className="text-sm text-ink-faint">Nothing learned from the studio yet. Edit a draft until it sounds like you, then approve it.</p>
+            ) : (
+              <>
+                <p className="text-sm"><span className="num font-medium">{studio.total}</span> {studio.total === 1 ? "piece" : "pieces"} learned from the studio</p>
+                <ul className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
+                  {studio.pieces.map((p) => (
+                    <li key={p.id} className="flex items-center gap-3 py-2.5 text-sm">
+                      <span className="flex-1 min-w-0 truncate">{p.excerpt}</span>
+                      <span className="text-xs text-ink-faint num shrink-0">{p.words} words · {new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        </Card>
 
         <Card label="01 · Your writing">
           <div className="flex items-center gap-3 flex-wrap">

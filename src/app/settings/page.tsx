@@ -5,6 +5,9 @@ import { signOutAction } from "@/app/dashboard/actions";
 import { btnClass } from "@/components/btn";
 import { Avatar } from "@/components/ui";
 import { ThemePicker } from "@/components/theme";
+import { CanvasPicker } from "@/components/canvas-picker";
+import { cookies } from "next/headers";
+import { CANVAS_COOKIE, parseCanvasBg } from "@/lib/canvas-bg";
 
 export const metadata = { title: "Account" };
 
@@ -18,6 +21,7 @@ export default async function AccountPage() {
       c.query<{ name: string }>("SELECT name FROM tenants WHERE id=$1", [session.tenantId]),
     )
   ).rows[0]?.name;
+  const canvas = parseCanvasBg((await cookies()).get(CANVAS_COOKIE)?.value);
 
   return (
     <>
@@ -46,6 +50,11 @@ export default async function AccountPage() {
         <p className="font-medium">Appearance</p>
         <p className="text-sm text-ink-muted mt-0.5 mb-4">Switch between light and dark view any time; it applies instantly and is remembered on this device. Artboards and visuals always render light, like frames on a canvas.</p>
         <ThemePicker />
+      </section>
+      <section className="mt-4 bg-paper border border-hairline rounded-md p-6">
+        <p className="font-medium">Canvas</p>
+        <p className="text-sm text-ink-muted mt-0.5 mb-4">The background behind your pieces on the Content and Visual canvases. The grid moves and scales as you pan and zoom. Remembered on this device.</p>
+        <CanvasPicker initial={canvas} />
       </section>
       <section className="mt-4 bg-paper border border-hairline rounded-md p-6 flex items-center justify-between">
         <div>

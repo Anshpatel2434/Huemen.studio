@@ -117,7 +117,11 @@ export function Canvas({
   return (
     <div className="absolute inset-0 overflow-hidden canvas-dots select-none" ref={wrap}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-      style={{ cursor: dragging ? "grabbing" : panning ? "grab" : "default" }}
+      style={{
+        cursor: dragging ? "grabbing" : panning ? "grab" : "default",
+        // The background pattern follows pan and zoom (globals.css, canvas backgrounds).
+        ["--cv-x" as string]: `${pan.x}px`, ["--cv-y" as string]: `${pan.y}px`, ["--cv-z" as string]: zoom,
+      }}
       data-canvas-bg="1"
     >
       <div

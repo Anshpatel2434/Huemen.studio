@@ -615,6 +615,8 @@ export async function previewRescan(scope: SessionScope & { tenantId: string }, 
 export async function rescan(
   scope: SessionScope & { tenantId: string },
   packId: string,
+  /** What the version history says about this measure. */
+  note?: string,
 ): Promise<ScanResult> {
   const { pack, measurement, mechanics, index, contexts, measuredChannels, inferredChannels, changes } = await measurePack(scope, packId);
 
@@ -633,7 +635,7 @@ export async function rescan(
       `INSERT INTO voice_pack_versions (tenant_id, pack_id, version, snapshot, note, changed_by)
        VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (pack_id, version) DO NOTHING`,
       [scope.tenantId, packId, pack.version, JSON.stringify(pack),
-       `Re-scanned ${measurement.stats.pieces} pieces.`, scope.userId],
+       note ?? `Re-scanned ${measurement.stats.pieces} pieces.`, scope.userId],
     );
     await c.query(
       `UPDATE voice_packs

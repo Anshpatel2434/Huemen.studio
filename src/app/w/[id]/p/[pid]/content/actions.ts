@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { actionProjectScope } from "@/lib/auth/workspace";
+import { getSession } from "@/lib/auth";
+import { learnFromApproval } from "@/lib/data/learning";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { deleteContent, generateContent, regenerateWithSteer, updateContent, applyVariant, patchContent, listContent, rewritePartOf } from "@/lib/data/content";
 import { judgeText, rewriteText, scoreContentItem, scoreProject } from "@/lib/data/check";
@@ -90,7 +92,18 @@ export async function saveContentAction(
 ) {
   const scope = await actionProjectScope(tenantId, projectId);
   await learnFromEdit(scope, itemId, () => updateContent(scope, itemId, patch));
+  // Approval is where the voice learns: the owner's own words teach it, the
+  // model's words don't (lib/voice/learn). Best effort, like edit learning.
+  let learned: { learned: boolean; why: string; remeasured: boolean } | null = null;
+  if (patch.status === "approved") {
+    const session = await getSession();
+    if (session) {
+      const out = await learnFromApproval(scope, { userId: session.userId, role: session.role }, itemId).catch(() => null);
+      if (out) learned = { learned: out.learn, why: out.why, remeasured: out.remeasured };
+    }
+  }
   await settle(scope, tenantId, projectId);
+  return learned;
 }
 
 /** Inline canvas edits (Content and Visual boards). */

@@ -500,7 +500,9 @@ export interface CorpusStats {
 /** A corpus piece. `private` pieces never become few-shot samples (question 12). */
 export type SampleKind = "corpus" | "benchmark" | "anti_sample" | "unguarded" | "spoken";
 export type SampleSource =
-  | "paste" | "upload" | "export" | "url" | "voice_note" | "intake" | "connection";
+  | "paste" | "upload" | "export" | "url" | "voice_note" | "intake" | "connection"
+  /** An approved piece the owner wrote or rewrote in the studio (lib/voice/learn). */
+  | "studio";
 
 export interface VoiceSample {
   id: string;

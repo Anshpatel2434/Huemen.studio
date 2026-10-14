@@ -276,7 +276,20 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
     });
 
   const save = (status: "edited" | "approved") =>
-    run(status, () => saveContentAction(tenantId, projectId, item.id, { hook, body, cta, pillarId: pillarId || null, status }), status === "approved" ? "Approved" : "Saved");
+    start(async () => {
+      setBusy(status);
+      try {
+        const learned = await saveContentAction(tenantId, projectId, item.id, { hook, body, cta, pillarId: pillarId || null, status });
+        // Say what the voice took from it, so learning is never silent.
+        toast(
+          status !== "approved" ? "Saved"
+          : learned?.learned ? `Approved. Your voice learned from it: ${learned.why.toLowerCase()}${learned.remeasured ? " It re-measured itself." : ""}`
+          : "Approved",
+        );
+        router.refresh();
+      } catch { toast("That failed and was logged. Try again.", "danger"); }
+      setBusy(null);
+    });
 
   return (
     <aside className="absolute top-0 right-0 bottom-0 min-[900px]:top-1 min-[900px]:right-3 min-[900px]:bottom-3 min-[900px]:rounded-2xl min-[900px]:border overflow-hidden z-30 w-[min(360px,100%)] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">

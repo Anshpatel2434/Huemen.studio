@@ -635,3 +635,41 @@ html.hu-cursor, html.hu-cursor * { cursor: none !important; }
   @keyframes hu-tree-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
   @media (prefers-reduced-motion: reduce) { .hu-tree-line--on { animation: none; } }
 }
+
+/* Canvas backgrounds (Settings > Account > Canvas). The pattern follows the
+   canvas: Canvas sets --cv-x/--cv-y/--cv-z as you pan and zoom, so the grid
+   moves and scales with the work. The page-wide choice is <html data-canvas>;
+   a preview swatch names its own with data-canvas on itself. */
+.canvas-dots {
+  --cv-step: max(calc(24px * var(--cv-z, 1)), 10px);
+  --cv-fine: color-mix(in srgb, var(--ink) 7%, transparent);
+  --cv-bold: color-mix(in srgb, var(--ink) 13%, transparent);
+  background-position: var(--cv-x, 0px) var(--cv-y, 0px);
+}
+:root[data-canvas="dots"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="dots"] {
+  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.2px);
+  background-size: var(--cv-step) var(--cv-step);
+}
+:root[data-canvas="grid"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="grid"] {
+  background-image:
+    linear-gradient(to right, var(--cv-fine) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-fine) 1px, transparent 1px);
+  background-size: var(--cv-step) var(--cv-step);
+}
+:root[data-canvas="scaled"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="scaled"] {
+  background-image:
+    linear-gradient(to right, var(--cv-bold) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-bold) 1px, transparent 1px),
+    linear-gradient(to right, var(--cv-fine) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-fine) 1px, transparent 1px);
+  background-size:
+    calc(var(--cv-step) * 5) calc(var(--cv-step) * 5),
+    calc(var(--cv-step) * 5) calc(var(--cv-step) * 5),
+    var(--cv-step) var(--cv-step),
+    var(--cv-step) var(--cv-step);
+}
+:root[data-canvas="lines"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="lines"] {
+  background-image: linear-gradient(to bottom, var(--cv-fine) 1px, transparent 1px);
+  background-size: 100% calc(var(--cv-step) * 1.25);
+}
+.canvas-dots[data-canvas="plain"] { background-image: none; }
