@@ -10,7 +10,8 @@
  * user can read it back and tell us we got them wrong.
  */
 import type { VoicePackInput } from "@/lib/context/context-builder";
-import { LANGUAGES, type VoiceContext, type VoicePack, type VoiceSample } from "./types";
+import { DIAL_KEYS, DIAL_LABELS, LANGUAGES, type VoiceContext, type VoicePack, type VoiceSample } from "./types";
+import { deriveHardRules, deriveSelfCheck } from "./derive";
 
 const pctWord = (n: number): string => `${Math.round(n)}%`;
 
@@ -84,10 +85,12 @@ export function mechanicsLines(pack: VoicePack): string[] {
   const lex = (m.lexicon?.value ?? []).slice(0, 12);
   if (lex.length) out.push(`Words they reach for: ${lex.join(", ")}.`);
 
-  const sigs = (m.signaturePhrases?.value ?? []).slice(0, 5);
+  // The ones they confirmed come first: a phrase they use across email, posts
+  // and talks is theirs whether or not this scan counted it.
+  const sigs = [...new Set([...(pack.onboarding.patterns?.kept ?? []), ...(m.signaturePhrases?.value ?? []).map((s2) => s2.phrase)])].slice(0, 5);
   if (sigs.length)
     out.push(
-      `Signature phrases (at most ${pack.index.signaturePhraseMaxPerPiece} per piece, rotate them): ${sigs.map((s2) => `"${s2.phrase}"`).join(", ")}.`,
+      `Signature phrases (at most ${pack.index.signaturePhraseMaxPerPiece} per piece, rotate them): ${sigs.map((s2) => `"${s2}"`).join(", ")}.`,
     );
 
   const emphasis = m.emphasis?.value ?? [];
@@ -124,7 +127,8 @@ export function packToContextInput(
   const ctx = channel ? pack.contexts[channel] : undefined;
   return {
     voiceLine: pack.voiceLine,
-    hardRules: pack.hardRules,
+    // Their own three rules, or derived ones; the facts rule is always one (VOICE.md).
+    hardRules: deriveHardRules(pack),
     toneDescriptors: pack.identity.toneDescriptors?.value ?? [],
     personalityWords: pack.identity.personalityWords?.value ?? [],
     reader: pack.identity.reader?.value ?? null,
@@ -135,12 +139,13 @@ export function packToContextInput(
     neverWords: pack.index.neverWords?.length
       ? pack.index.neverWords
       : (pack.redPen.neverList?.value ?? []),
-    mustHaves: pack.redPen.mustHaves?.value ?? pack.index.mustHaves ?? [],
+    mustHaves: (pack.redPen.mustHaves?.value ?? pack.index.mustHaves ?? []).map(mustHaveLabel),
     mechanicsLines: mechanicsLines(pack),
     context: ctx ? { channel: ctx.channel, tag: ctx.tag, lines: contextLines(ctx) } : null,
-    samples: samples.map((s) => ({ channel: s.channel, body: s.body })),
+    samples: samples.map((s) => ({ channel: s.channel, body: s.body, note: s.kind === "benchmark" ? pack.onboarding.benchmarkNotes?.[s.id]?.note : undefined })),
     corpusPieces: pack.corpusStats.pieces,
     stories: pack.identity.stories?.value ?? [],
+    beliefs: pack.identity.beliefs?.value ?? [],
     proofs: pack.identity.proofs?.value ?? [],
     influences: pack.identity.influences?.value ?? null,
     languages: pack.identity.languages?.value
@@ -151,6 +156,65 @@ export function packToContextInput(
         }
       : null,
     preferences: (pack.identity.preferences?.value ?? []).map((p) => ({ chosen: p.chosen, over: p.over })),
+    ...identityInput(pack),
+    exceptions: (pack.redPen.exceptions?.value ?? []).map((e) => `${e.item} (${e.evidence})`),
+    selfCheck: pack.redPen.selfCheck?.value?.length ? pack.redPen.selfCheck.value : deriveSelfCheck(pack),
+    antiSample: pack.onboarding.antiSample ?? null,
+  };
+}
+
+/** Readable names for the must-have keys the scan derives (red-pen.md). */
+const MUST_HAVE_LABELS: Record<string, string> = {
+  closing_question: "a closing question",
+  one_fragment: "at least one short fragment",
+};
+export const mustHaveLabel = (k: string) => MUST_HAVE_LABELS[k] ?? k.replace(/_/g, " ");
+
+const QUADRANT_LABELS: Record<string, string> = {
+  reserved_expert: "Reserved Expert (formal, calm)",
+  dynamic_leader: "Dynamic Leader (formal, energetic)",
+  friendly_guide: "Friendly Guide (casual, calm)",
+  enthusiastic_friend: "Enthusiastic Friend (casual, energetic)",
+};
+
+/** The labelled answers that have no field of their own (A5, A6, B2, B4). */
+const NOTE_LABELS: Record<string, string> = {
+  A5: "How a stranger would read them",
+  A6: "What people say about how they write",
+  B2: "Voices they admire, and why",
+  B4: "At their best on the page they become",
+  E6: "Their whole work, said in one breath",
+};
+
+/** Everything identity.md holds, for the prompt (01 §3). */
+function identityInput(pack: VoicePack): Partial<VoicePackInput> {
+  const id = pack.identity;
+  const answers = id.answers ?? {};
+  const pick = (prefix: string) =>
+    Object.entries(answers)
+      .filter(([k, v]) => k.startsWith(`${prefix} · `) && v.trim())
+      .map(([k, v]) => ({ key: k.slice(prefix.length + 3), value: v.trim() }));
+  const dials = id.dials?.value ?? {};
+  return {
+    whatTheyDo: id.voiceParagraph?.value ?? null,
+    personaRoles: id.personaRoles?.value ?? [],
+    quadrant: id.quadrant?.value ? QUADRANT_LABELS[id.quadrant.value] ?? id.quadrant.value : null,
+    dials: DIAL_KEYS.filter((k) => typeof dials[k] === "number").map((k) => ({
+      left: DIAL_LABELS[k][0], right: DIAL_LABELS[k][1], value: dials[k] as number,
+    })),
+    dialsAspiration: id.dials?.confidence === "aspiration",
+    quadrantAspiration: id.quadrant?.confidence === "aspiration",
+    quadrantToday: id.quadrant?.measuredValue ? QUADRANT_LABELS[String(id.quadrant.measuredValue)] ?? null : null,
+    guarded: id.guarded?.value ?? null,
+    unguarded: id.unguarded?.value ?? null,
+    feelings: id.feeling30s || id.feeling5m || id.feeling20m
+      ? { skim: id.feeling30s?.value, read: id.feeling5m?.value, talk: id.feeling20m?.value }
+      : null,
+    roots: id.roots?.value ?? null,
+    languageNote: id.language?.value ?? null,
+    notes: Object.entries(NOTE_LABELS).filter(([q]) => answers[q]?.trim()).map(([q, label]) => ({ label, text: answers[q] })),
+    situations: pick("F3").map((s) => ({ moment: s.key, how: s.value })),
+    signOffs: pick("F5").map((s) => ({ place: s.key, text: s.value })),
   };
 }
 

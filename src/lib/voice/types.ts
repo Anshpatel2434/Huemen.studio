@@ -111,6 +111,8 @@ export interface Identity {
    * by the identity lines of the context.
    */
   answers?: Record<string, string>;
+  /** Point of view (Layer 1, M1): what they believe that others in their field would argue with. */
+  beliefs?: Tagged<string[]>;
   /** Stories they tell often: their best material, which a draft can't invent. */
   stories?: Tagged<Story[]>;
   /** Facts they can stand behind: numbers, results, client wins. The only facts a draft may use. */
@@ -219,7 +221,56 @@ export interface Mechanics {
   lexicon?: Tagged<string[]>;
   signaturePhrases?: Tagged<{ phrase: string; count: number }[]>;
   hashtags?: Tagged<{ count: number; casing: string; tags: string[] }>;
+  /** Share of pieces that end on a question (spec 06 §4 "Last lines"). */
+  closingQuestionPct?: Tagged<number>;
+  /** Emoji rate, which ones (public only) and where they sit. */
+  emoji?: Tagged<{ perPiece: number; top: string[]; position: "none" | "end" | "inline" }>;
+  /** Share of words in a non-Latin script, and the channels it appears in. */
+  languageMix?: Tagged<{ nonLatinPct: number; channels: string[] }>;
   fillInTemplate?: Tagged<string>;
+  /** Hand edits a re-scan must keep (see UserEdits). Never written by the scan. */
+  userEdits?: UserEdits;
+}
+
+const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
+
+/** Record a hand edit on the mechanics, for a patch. */
+export function withUserEdits(m: Mechanics, add: UserEdits): Mechanics {
+  const cur = m.userEdits ?? {};
+  return {
+    ...m,
+    userEdits: {
+      droppedPatterns: uniq([...(cur.droppedPatterns ?? []), ...(add.droppedPatterns ?? [])]),
+      addedOpeners: uniq([...(cur.addedOpeners ?? []), ...(add.addedOpeners ?? [])]),
+      addedLexicon: uniq([...(cur.addedLexicon ?? []), ...(add.addedLexicon ?? [])]).filter((w) => !(add.droppedLexicon ?? []).includes(w)),
+      droppedLexicon: uniq([...(cur.droppedLexicon ?? []), ...(add.droppedLexicon ?? [])]).filter((w) => !(add.addedLexicon ?? []).includes(w)),
+      keptSignatures: uniq([...(cur.keptSignatures ?? []), ...(add.keptSignatures ?? [])]),
+    },
+  };
+}
+
+/**
+ * Lay the person's hand edits over freshly measured mechanics: dropped
+ * openers and closers stay dropped, their own openers come first, and their
+ * lexicon additions and removals hold. Pure; used by every re-scan.
+ */
+export function applyUserEdits(measured: Mechanics, edits: UserEdits | undefined): Mechanics {
+  if (!edits) return measured;
+  const dropped = new Set((edits.droppedPatterns ?? []).map((s) => s.trim()));
+  const keep = <T extends { example: string }>(xs: T[]) => xs.filter((x) => !dropped.has(x.example.trim()));
+  const out: Mechanics = { ...measured, userEdits: edits };
+  if (measured.openers || edits.addedOpeners?.length) {
+    const own = (edits.addedOpeners ?? []).map((example) => ({ pattern: "Their own pick", example }));
+    const base = measured.openers ?? tagged<PatternExample[]>([], "edit");
+    out.openers = { ...base, value: [...own, ...keep(base.value).filter((o) => !own.some((x) => x.example === o.example))] };
+  }
+  if (measured.closers) out.closers = { ...measured.closers, value: keep(measured.closers.value) };
+  if (measured.lexicon || edits.addedLexicon?.length) {
+    const base = measured.lexicon ?? tagged<string[]>([], "edit");
+    const drop = new Set(edits.droppedLexicon ?? []);
+    out.lexicon = { ...base, value: uniq([...(edits.addedLexicon ?? []), ...base.value]).filter((w) => !drop.has(w)) };
+  }
+  return out;
 }
 
 // ---- contexts.md ------------------------------------------------------------
@@ -369,6 +420,44 @@ export interface Onboarding {
   pairs?: { basis: string; list: { dial: DialKey; left: string; right: string }[] };
   /** The live preview paragraph, rewritten in their voice; cached per pack version. */
   preview?: { version: number; text: string };
+  /**
+   * Phrases found across sources (lib/voice/patterns) and what was decided.
+   * Only phrases they have also said publicly are ever found, so this is safe
+   * on the onboarding state, which a coach can see.
+   */
+  patterns?: {
+    found?: { basis: string; everywhere: { phrase: string; pieces: number; channels: string[] }[] };
+    /** Phrases kept as signatures. They survive a re-scan. */
+    kept?: string[];
+    /** Phrases dismissed. */
+    dismissed?: string[];
+  };
+  /**
+   * G4: one public piece that is almost them but wrong, what's off about it,
+   * and (optionally) the fix. Teaches the edge of the voice (samples.md).
+   */
+  antiSample?: { sampleId?: string; text: string; off: string; fixed?: string };
+  /** G3: why each benchmark is them, by sample id. Drafted, then confirmed or edited. */
+  benchmarkNotes?: Record<string, { note: string; confirmed: boolean }>;
+}
+
+/**
+ * What the person changed by hand in the measured half of the pack. Kept on
+ * the mechanics themselves, so it travels with every save and every coach
+ * proposal, and a re-scan re-applies it: the scan never brings back what they
+ * dropped or drops what they added (spec 01 §6, 06 §4).
+ */
+export interface UserEdits {
+  /** Openers and closers they dropped (H4, "Tired of it"), by example text. */
+  droppedPatterns?: string[];
+  /** Openers they wrote themselves (E5). */
+  addedOpeners?: string[];
+  /** Words they added to their lexicon (E2). */
+  addedLexicon?: string[];
+  /** Lexicon words they removed. */
+  droppedLexicon?: string[];
+  /** Signature phrases they wrote themselves (E3). */
+  keptSignatures?: string[];
 }
 
 export interface TopicSuggestion {
@@ -413,7 +502,9 @@ export interface CorpusStats {
 /** A corpus piece. `private` pieces never become few-shot samples (question 12). */
 export type SampleKind = "corpus" | "benchmark" | "anti_sample" | "unguarded" | "spoken";
 export type SampleSource =
-  | "paste" | "upload" | "export" | "url" | "voice_note" | "intake" | "connection";
+  | "paste" | "upload" | "export" | "url" | "voice_note" | "intake" | "connection"
+  /** An approved piece the owner wrote or rewrote in the studio (lib/voice/learn). */
+  | "studio";
 
 export interface VoiceSample {
   id: string;

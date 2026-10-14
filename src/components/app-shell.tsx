@@ -36,7 +36,7 @@ export interface ShellNav {
   user: { email: string; role: string };
   isAdmin: boolean;
   starred: { id: string; name: string }[];
-  usage: { used: number; cap: number | null };
+  usage: { used: number; cap: number | null; soft?: number | null };
 }
 
 export interface ShellTab { href: string; label: string; exact?: boolean }
@@ -69,8 +69,8 @@ export function AppShell({ nav, section, tabs, actions, children }: {
 
   return (
     <ToastProvider>
-      <div className="h-dvh flex bg-ground">
-        <aside className="hidden min-[900px]:flex w-[264px] shrink-0 border-r border-hairline bg-paper flex-col" aria-label="Main">
+      <div className="h-dvh flex bg-paper">
+        <aside className="hidden min-[900px]:flex w-[264px] shrink-0 border-r border-hairline bg-ground flex-col" aria-label="Main">
           <Sidebar nav={nav} />
         </aside>
 
@@ -259,10 +259,14 @@ function Sidebar({ nav }: { nav: ShellNav }) {
       <Link href={`${home}/usage`} className="mt-3 shrink-0 flex items-center gap-2 border border-hairline rounded-md px-3 py-3 hover:border-line transition-colors">
         <span className="flex-1 min-w-0">
           <span className="block text-sm font-medium">AI this month</span>
-          <span className="block text-xs text-ink-faint mt-0.5"><span className="num">{usage.used}</span> generation{usage.used === 1 ? "" : "s"}{usage.cap ? <> of <span className="num">{usage.cap}</span></> : " · no cap set"}</span>
+          <span className="block text-xs text-ink-faint mt-0.5">
+            <span className="num">{usage.used}</span> generation{usage.used === 1 ? "" : "s"}{usage.cap ? <> of <span className="num">{usage.cap}</span></> : " · no cap set"}
+            {usage.cap && usage.used >= usage.cap ? <span className="block text-danger font-medium mt-0.5">Monthly cap reached</span>
+              : usage.soft && usage.used >= usage.soft ? <span className="block text-warn font-medium mt-0.5">Near the monthly cap</span> : null}
+          </span>
           {usage.cap ? (
             <span className="block h-1.5 rounded-full bg-active mt-2 overflow-hidden" role="progressbar" aria-label="AI used this month" aria-valuemin={0} aria-valuemax={usage.cap} aria-valuenow={usage.used}>
-              <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.min(100, (usage.used / usage.cap) * 100)}%` }} />
+              <span className={`block h-full rounded-full ${usage.used >= usage.cap ? "bg-danger" : usage.soft && usage.used >= usage.soft ? "bg-warn" : "bg-accent"}`} style={{ width: `${Math.min(100, (usage.used / usage.cap) * 100)}%` }} />
             </span>
           ) : null}
         </span>

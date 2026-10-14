@@ -6,7 +6,7 @@
  * wheel, or the zoom menu), fit-to-content, and the floating tool strip.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical } from "lucide-react";
+import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil } from "lucide-react";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
@@ -117,7 +117,11 @@ export function Canvas({
   return (
     <div className="absolute inset-0 overflow-hidden canvas-dots select-none" ref={wrap}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-      style={{ cursor: dragging ? "grabbing" : panning ? "grab" : "default" }}
+      style={{
+        cursor: dragging ? "grabbing" : panning ? "grab" : "default",
+        // The background pattern follows pan and zoom (globals.css, canvas backgrounds).
+        ["--cv-x" as string]: `${pan.x}px`, ["--cv-y" as string]: `${pan.y}px`, ["--cv-z" as string]: zoom,
+      }}
       data-canvas-bg="1"
     >
       <div
@@ -168,8 +172,13 @@ export function ToolBtn({ children, on, onClick, title }: { children: ReactNode;
 }
 
 /** Artboard frame label + white board, used on every canvas. */
-export function Artboard({ label, meta, width, children, selected, onSelect, actions, onDragStart, onDragEnd, dimmed }: {
+export function Artboard({ label, meta, width, children, selected, onSelect, onEdit, actions, onDragStart, onDragEnd, dimmed }: {
   label: string; meta?: string; width: number; children: ReactNode; selected?: boolean; onSelect?: () => void; actions?: ReactNode;
+  /**
+   * A plain, visible way in (design system: conventional patterns, nothing to
+   * discover): opens the piece's editor, the same as clicking the board.
+   */
+  onEdit?: () => void;
   /** Makes the label bar a drag handle (e.g. move a piece to another pillar). */
   onDragStart?: (e: React.DragEvent) => void; onDragEnd?: () => void; dimmed?: boolean;
 }) {
@@ -185,7 +194,19 @@ export function Artboard({ label, meta, width, children, selected, onSelect, act
         {onDragStart && <GripVertical size={13} className="-ml-1 text-ink-faint opacity-0 group-hover/board:opacity-100 shrink-0" />}
         <span className={`text-xs font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>
         {meta && <span className="text-xs text-ink-faint truncate">{meta}</span>}
-        <span className="ml-auto flex items-center gap-1">{actions}</span>
+        <span className="ml-auto flex items-center gap-1">
+          {actions}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={`ml-1 inline-flex items-center gap-1 h-6 px-2 rounded-full border text-xs font-medium transition-colors ${selected ? "bg-ink text-on-ink border-ink" : "bg-paper border-line text-ink hover:border-line-strong"}`}
+            >
+              <Pencil size={11} aria-hidden="true" /> Edit
+            </button>
+          )}
+        </span>
       </div>
       <div
         onClick={onSelect}

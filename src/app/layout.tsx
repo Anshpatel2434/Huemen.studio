@@ -4,7 +4,9 @@ import { Archivo, Instrument_Serif, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { PageTransition } from "@/components/page-transition";
 import { ThemeProvider } from "@/components/theme";
+import { StudioCursor } from "@/components/cursor";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
+import { CANVAS_COOKIE, parseCanvasBg } from "@/lib/canvas-bg";
 
 /*
  * The design system's documented fallbacks (§03), in place of the licensed GT
@@ -23,13 +25,16 @@ export const metadata: Metadata = {
 
 /** Appearance: follows the device by default (design system §04); light or dark from Settings. */
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+  const jar = await cookies();
+  const theme = parseTheme(jar.get(THEME_COOKIE)?.value);
+  const canvas = parseCanvasBg(jar.get(CANVAS_COOKIE)?.value);
   return (
-    <html lang="en" data-theme={theme} className={`${sans.variable} ${serif.variable} ${mono.variable} h-full`} suppressHydrationWarning>
+    <html lang="en" data-theme={theme} data-canvas={canvas} className={`${sans.variable} ${serif.variable} ${mono.variable} h-full`} suppressHydrationWarning>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider initial={theme}>
           <PageTransition level="section">{children}</PageTransition>
         </ThemeProvider>
+        <StudioCursor />
       </body>
     </html>
   );

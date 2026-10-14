@@ -1,42 +1,32 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Modal, AgentDots } from "@/components/ui";
+import { useState } from "react";
+import { Modal } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { FORMATS } from "@/lib/content/formats";
-import { draftAction } from "@/app/w/[id]/p/[pid]/content/actions";
+import { liveDraftHref } from "@/components/live-draft";
 
 /** Pick format → optional topic → pillar; context is injected server-side (§4.2). */
 export function DraftModal({
-  open, onClose, tenantId, projectId, pillars, defaultPillar, defaultTopic = "", defaultFormat = "linkedin_post", onDone,
+  open, onClose, tenantId, projectId, pillars, defaultPillar, defaultTopic = "", defaultFormat = "linkedin_post",
 }: {
   open: boolean; onClose: () => void; tenantId: string; projectId: string; pillars: { id: string; name: string }[];
-  defaultPillar?: string | null; defaultTopic?: string; defaultFormat?: string; onDone?: (id: string) => void;
+  defaultPillar?: string | null; defaultTopic?: string; defaultFormat?: string;
 }) {
   const router = useRouter();
   const [format, setFormat] = useState(defaultFormat);
   const [topic, setTopic] = useState(defaultTopic);
   const [pillar, setPillar] = useState<string>(defaultPillar ?? "");
-  const [error, setError] = useState("");
-  const [pending, start] = useTransition();
-
-  const submit = () =>
-    start(async () => {
-      setError("");
-      try {
-        const id = await draftAction(tenantId, projectId, { format, topic, pillarId: pillar || null });
-        onClose();
-        if (onDone) onDone(id);
-        else router.push(`/w/${tenantId}/p/${projectId}/content?item=${id}`);
-      } catch {
-        // Input is kept in the form — never lose a draft (brief §07).
-        setError("Generation failed and was logged. Your input is still here, so try again.");
-      }
-    });
+  // The draft is written live on the Content canvas (components/live-draft):
+  // this dialog only says what to write, then hands over.
+  const submit = () => {
+    onClose();
+    router.push(liveDraftHref(`/w/${tenantId}/p/${projectId}`, { format, topic, pillarId: pillar || null }));
+  };
 
   return (
-    <Modal open={open} onClose={() => !pending && onClose()} title="Draft from your brief" width={520}>
+    <Modal open={open} onClose={onClose} title="Draft from your brief" width={520}>
       <div className="flex flex-col gap-4">
         <div>
           <p className="text-sm font-medium mb-2">Format</p>
@@ -59,13 +49,10 @@ export function DraftModal({
             </select>
           </label>
         )}
-        <p className="text-xs text-ink-muted">No brand context to type: voice, story and guardrails come from the brief. You&apos;ll get two variants.</p>
-        {error && <p className="text-sm text-accent-ink">{error}</p>}
+        <p className="text-xs text-ink-muted">No brand context to type: voice, story and guardrails come from the brief. You&apos;ll watch two variants being written on the canvas.</p>
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} disabled={pending} className={btnClass("ghost")}>Cancel</button>
-          <button onClick={submit} disabled={pending} className={btnClass("primary")}>
-            {pending ? <><AgentDots /> Drafting…</> : "Draft 2 variants"}
-          </button>
+          <button onClick={onClose} className={btnClass("ghost")}>Cancel</button>
+          <button onClick={submit} className={btnClass("primary")}>Draft 2 variants</button>
         </div>
       </div>
     </Modal>

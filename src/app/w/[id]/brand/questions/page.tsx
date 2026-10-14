@@ -27,7 +27,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
   const pillarsDone = (await listPillars(scope)).length > 0;
 
   const Q = ({ q, n }: { q: (typeof questions)[number]; n: number }) => (
-    <label className="block bg-paper border border-hairline rounded-md p-4">
+    <label className="block bg-field rounded-xl p-4">
       <span className="flex items-baseline gap-2">
         <span className="label-mono text-ink-faint">{String(n).padStart(2, "0")}</span>
         <span className="text-base font-medium">{q.question}</span>
@@ -43,7 +43,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
 
   return (
     <div className="absolute inset-0 overflow-y-auto">
-      <div className="max-w-[1040px] mx-auto px-8 py-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] gap-10">
+      <div className="page py-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] gap-10">
         <div>
           <Link href={base} className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink"><ArrowLeft size={14} /> Brief</Link>
           <p className="label-mono text-ink-faint mt-5">Step 1 of 4 · Brief questions</p>
@@ -82,7 +82,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
         </div>
 
         <aside className="hidden lg:block">
-          <div className="sticky top-8 bg-paper border border-hairline rounded-md p-4">
+          <div className="sticky top-8 bg-field rounded-xl p-4">
             <p className="label-mono text-ink-faint">How the steps connect</p>
             <ol className="mt-3 flex flex-col gap-3 text-sm">
               {[

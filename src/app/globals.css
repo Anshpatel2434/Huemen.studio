@@ -66,6 +66,7 @@
   --on-ink: #ffffff;            /* text on an --ink fill */
   --paper: #ffffff;             /* bg-surface */
   --ground: #f5f5f5;            /* bg-sunken — the canvas */
+  --canvas: #f1f0ee;            /* the editor's one working surface */
   --panel: #ffffff;             /* bg-raised */
   --field: #f5f5f5;
   --muted-surface: #f5f5f5;
@@ -116,6 +117,7 @@
   --on-ink: #0a0a0a;
   --paper: #151515;             /* bg-surface — panels, bars, cards */
   --ground: #0a0a0a;            /* bg-sunken — the canvas */
+  --canvas: #111111;
   --panel: #1e1e1e;             /* bg-raised */
   --field: #1e1e1e;
   --muted-surface: #262626;
@@ -164,6 +166,7 @@
     --on-ink: #0a0a0a;
     --paper: #151515;             /* bg-surface — panels, bars, cards */
     --ground: #0a0a0a;            /* bg-sunken — the canvas */
+  --canvas: #111111;
     --panel: #1e1e1e;             /* bg-raised */
     --field: #1e1e1e;
     --muted-surface: #262626;
@@ -213,6 +216,7 @@
   --color-ink-faint: var(--ink-faint);
   --color-paper: var(--paper);
   --color-ground: var(--ground);
+  --color-canvas: var(--canvas);
   --color-panel: var(--panel);
   --color-field: var(--field);
   --color-muted-surface: var(--muted-surface);
@@ -458,9 +462,9 @@ textarea.field { resize: vertical; line-height: 1.55; }
 
 /* Dotted canvas ground. */
 .canvas-dots {
-  background-color: var(--ground);
-  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
-  background-size: 22px 22px;
+  /* Plain, warm and quiet, like Relume's board: the work carries the contrast,
+     not a dot grid. (The class name is kept so every canvas picks it up.) */
+  background-color: var(--canvas);
 }
 
 /* Wireframe placeholder (greyscale structure). */
@@ -484,6 +488,7 @@ textarea.field { resize: vertical; line-height: 1.55; }
 @keyframes dots { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 .fade-up { animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .fade-in { animation: fadeIn 0.2s ease both; }
+.fade-out { animation: fadeIn 0.6s ease reverse both; }
 .pop { animation: pop 0.16s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 
@@ -518,3 +523,153 @@ textarea.field { resize: vertical; line-height: 1.55; }
   * { animation: none !important; transition: none !important; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+
+/* ---- The pointer (components/cursor.tsx) -------------------------------------
+ * The art as plain CSS cursors first, so it is right before hydration and
+ * without JavaScript. Unlayered on purpose: it outranks the component layer's
+ * `cursor: pointer`. Then, while the live pointer runs (html.hu-cursor), the
+ * system cursor is hidden and the overlay draws it with Apple-style motion.
+ */
+html { cursor: url("/cursors/arrow.svg") 6 3, default; }
+a[href], button:not(:disabled), summary, [role="button"], [role="menuitem"], [role="menuitemradio"], [role="tab"],
+[role="radio"], [role="switch"], [role="option"], label[for], select:not(:disabled), .hu-card--interactive {
+  cursor: url("/cursors/hand.svg") 12 3, pointer;
+}
+html.hu-cursor, html.hu-cursor * { cursor: none !important; }
+
+.hu-pointer {
+  position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none;
+  opacity: 0; transition: opacity 0.16s ease; will-change: transform; transform-origin: 6px 3px;
+}
+.hu-pointer[data-visible="1"] { opacity: 1; }
+.hu-pointer > * { position: absolute; inset: 0; opacity: 0; transition: opacity 0.08s linear; user-select: none; }
+.hu-pointer[data-shape="arrow"] .hu-pointer__arrow,
+.hu-pointer[data-shape="hand"] .hu-pointer__hand,
+.hu-pointer[data-shape="text"] .hu-pointer__text { opacity: 1; }
+.hu-pointer[data-shape="hand"] { transform-origin: 12px 3px; }
+.hu-pointer[data-grab="closed"] .hu-pointer__hand { transform: rotate(-8deg) scale(0.94); }
+/* The I-beam: a hairline stem with serifs, white-haloed so it reads on any ground. */
+.hu-pointer__text {
+  left: 13px; right: auto; width: 2px; top: 4px; bottom: 4px; background: #111;
+  box-shadow: 0 0 0 1px #fff; border-radius: 1px;
+}
+.hu-pointer__text::before, .hu-pointer__text::after {
+  content: ""; position: absolute; left: -3px; width: 8px; height: 2px; background: #111;
+  box-shadow: 0 0 0 1px #fff; border-radius: 1px;
+}
+.hu-pointer__text::before { top: 0; }
+.hu-pointer__text::after { bottom: 0; }
+@media (prefers-reduced-motion: reduce) { .hu-pointer, .hu-pointer > * { transition: none; } }
+
+
+/* ---- The page frame ----------------------------------------------------------
+ * Every non-canvas screen uses the room it has, like a design tool: one wide
+ * frame with a gutter that grows with the window, instead of a narrow column
+ * centred in empty space. Long reading lines are capped inside (max-w-2xl on
+ * prose), not by squeezing the whole page.
+ */
+@layer components {
+  .page {
+    width: 100%;
+    max-width: 1600px;
+    margin-inline: auto;
+    padding-inline: clamp(1.25rem, 3.2vw, 3.5rem);
+  }
+}
+
+/* The composer: the one place you type to make something (Ideas, Create,
+ * Check, an empty piece). A single soft surface with its actions inside it,
+ * the way a design tool's prompt bar reads, not a form in a card in a box. */
+@layer components {
+  .hu-composer {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: var(--shadow-sm);
+    padding: 14px 14px 10px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color var(--motion-base) var(--ease-standard), box-shadow var(--motion-base) var(--ease-standard);
+  }
+  .hu-composer:focus-within { border-color: color-mix(in srgb, var(--ink) 28%, transparent); box-shadow: var(--shadow); }
+  .hu-composer textarea, .hu-composer input[type="text"] {
+    width: 100%; background: transparent; border: 0; outline: none; resize: none;
+    font-size: 16px; line-height: 1.55; color: var(--ink); padding: 4px 0;
+  }
+  .hu-composer textarea::placeholder, .hu-composer input::placeholder { color: var(--ink-faint); }
+  .hu-composer__bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+}
+
+/* Selects sitting in a composer bar read as a small pill, not a form field. */
+@layer components {
+  .hu-composer__bar select {
+    width: auto;
+    min-height: var(--tap-min);
+    padding: 0 30px 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline);
+    background-color: var(--field);
+    font-size: 13px;
+    max-width: 210px;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Ideate map: smooth tree lines that draw themselves in when a branch changes. */
+@layer components {
+  .hu-tree-line {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+  }
+  .hu-tree-line--on {
+    stroke: var(--ink);
+    stroke-width: 1.75;
+    animation: hu-tree-draw 700ms var(--ease-enter, ease-out) both;
+  }
+  @keyframes hu-tree-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @media (prefers-reduced-motion: reduce) { .hu-tree-line--on { animation: none; } }
+}
+
+/* Canvas backgrounds (Settings > Account > Canvas). The pattern follows the
+   canvas: Canvas sets --cv-x/--cv-y/--cv-z as you pan and zoom, so the grid
+   moves and scales with the work. The page-wide choice is <html data-canvas>;
+   a preview swatch names its own with data-canvas on itself. */
+.canvas-dots {
+  --cv-step: max(calc(24px * var(--cv-z, 1)), 10px);
+  --cv-fine: color-mix(in srgb, var(--ink) 7%, transparent);
+  --cv-bold: color-mix(in srgb, var(--ink) 13%, transparent);
+  background-position: var(--cv-x, 0px) var(--cv-y, 0px);
+}
+:root[data-canvas="dots"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="dots"] {
+  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.2px);
+  background-size: var(--cv-step) var(--cv-step);
+}
+:root[data-canvas="grid"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="grid"] {
+  background-image:
+    linear-gradient(to right, var(--cv-fine) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-fine) 1px, transparent 1px);
+  background-size: var(--cv-step) var(--cv-step);
+}
+:root[data-canvas="scaled"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="scaled"] {
+  background-image:
+    linear-gradient(to right, var(--cv-bold) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-bold) 1px, transparent 1px),
+    linear-gradient(to right, var(--cv-fine) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-fine) 1px, transparent 1px);
+  background-size:
+    calc(var(--cv-step) * 5) calc(var(--cv-step) * 5),
+    calc(var(--cv-step) * 5) calc(var(--cv-step) * 5),
+    var(--cv-step) var(--cv-step),
+    var(--cv-step) var(--cv-step);
+}
+:root[data-canvas="lines"] .canvas-dots:not([data-canvas]), .canvas-dots[data-canvas="lines"] {
+  background-image: linear-gradient(to bottom, var(--cv-fine) 1px, transparent 1px);
+  background-size: 100% calc(var(--cv-step) * 1.25);
+}
+.canvas-dots[data-canvas="plain"] { background-image: none; }

@@ -7,12 +7,16 @@
  * Server-only.
  */
 import "server-only";
+import type { PoolClient } from "pg";
 import { withTenantSession } from "@/db/session";
 import type { ProjectScope } from "./projects";
 import { loadBrandContext } from "@/lib/context/context-loader";
-import { generateText } from "@/lib/ai";
+import { generateText, runTask, streamText } from "@/lib/ai";
+import { rewritePart } from "@/lib/ai/tasks";
+import { splitStreamed } from "@/lib/ai/prompt";
 import { resolveTemplate } from "@/lib/ai/templates";
 import { findViolations, formatByKey, splitDraft } from "@/lib/content/formats";
+import { recordOpener } from "./voice-pack";
 
 export interface ContentVariant {
   id: string;
@@ -94,27 +98,40 @@ export async function listContent(scope: ProjectScope): Promise<ContentItemView[
   });
 }
 
-/** Generate 2–3 variants for a format; returns the new content_item id. */
-export async function generateContent(
-  scope: ProjectScope,
-  input: { format: string; topic?: string; pillarId?: string | null; variants?: number; ideaId?: string | null },
-): Promise<string> {
+type DraftInput = { format: string; topic?: string; pillarId?: string | null; variants?: number; ideaId?: string | null };
+
+/** Everything a draft needs before the model is called: the one context (INV-2), the template, the task. */
+async function prepareDraft(scope: ProjectScope, input: DraftInput) {
   const fmt = formatByKey(input.format);
   // The platform's rules and the person's own block for it (build step 2).
-  const context = await loadBrandContext(scope, "en", fmt.platform);
+  const context = await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write");
   const template = await resolveTemplate(scope, fmt.templateKey);
   const topic = (input.topic ?? "").trim();
+  return {
+    fmt,
+    template,
+    topic,
+    req: {
+      templateKey: template.key,
+      systemTemplate: template.body,
+      context,
+      taskInput: `Format: ${fmt.label}\nTopic: ${topic}`,
+      variants: Math.min(3, Math.max(2, input.variants ?? 2)),
+      route: (fmt.key === "hook_set" ? "cheap" : "strong") as "cheap" | "strong",
+    },
+  };
+}
 
-  const result = await generateText(scope, {
-    templateKey: template.key,
-    systemTemplate: template.body,
-    context,
-    taskInput: `Format: ${fmt.label}\nTopic: ${topic}`,
-    variants: Math.min(3, Math.max(2, input.variants ?? 2)),
-    route: fmt.key === "hook_set" ? "cheap" : "strong",
-  });
-
-  const drafts = result.variants.map(splitDraft);
+/** Store a finished draft: the piece (first version) and every version in its history. */
+async function saveDraft(
+  scope: ProjectScope,
+  input: DraftInput,
+  p: Awaited<ReturnType<typeof prepareDraft>>,
+  variants: string[],
+  model: string,
+): Promise<string> {
+  const drafts = variants.map(splitDraft).filter((d) => d.hook || d.body);
+  if (!drafts.length) throw new Error("The draft came back empty.");
   const first = drafts[0];
   return withTenantSession(scope, async (c) => {
     const id = (
@@ -123,8 +140,8 @@ export async function generateContent(
            (tenant_id, project_id, channel, format, topic, hook, body, cta, pillar_id, status,
             prompt_version, prompt_template_id, created_by)
          VALUES ($1,$12,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11) RETURNING id`,
-        [scope.tenantId, fmt.channel, fmt.key, topic || null, first.hook, first.body, first.cta,
-         input.pillarId || null, template.version, template.id, scope.userId, scope.projectId],
+        [scope.tenantId, p.fmt.channel, p.fmt.key, p.topic || null, first.hook, first.body, first.cta,
+         input.pillarId || null, p.template.version, p.template.id, scope.userId, scope.projectId],
       )
     ).rows[0].id;
     for (const [i, d] of drafts.entries()) {
@@ -132,11 +149,70 @@ export async function generateContent(
         `INSERT INTO content_generations
            (tenant_id, content_item_id, variant_index, hook, body, cta, prompt_version, model)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [scope.tenantId, id, i, d.hook, d.body, d.cta, template.version, result.model],
+        [scope.tenantId, id, i, d.hook, d.body, d.cta, p.template.version, model],
       );
     }
+    await linkIdea(c, id, scope.projectId);
     return id;
   });
+}
+
+/** Generate 2–3 variants for a format; returns the new content_item id. */
+export async function generateContent(scope: ProjectScope, input: DraftInput): Promise<string> {
+  const p = await prepareDraft(scope, input);
+  const result = await generateText(scope, p.req);
+  return saveDraft(scope, input, p, result.variants, result.model);
+}
+
+/**
+ * The same draft, written live (brief §07). Yields the text as it arrives;
+ * the last event names the saved piece. The piece is stored exactly as
+ * generateContent stores it, so streamed and one-shot drafts are the same
+ * thing in the library, the history and the export.
+ */
+export async function* streamContent(
+  scope: ProjectScope,
+  input: DraftInput,
+): AsyncGenerator<{ type: "delta"; text: string } | { type: "saved"; id: string }> {
+  const p = await prepareDraft(scope, input);
+  for await (const ev of streamText(scope, p.req)) {
+    if (ev.type === "delta") yield ev;
+    else yield { type: "saved", id: await saveDraft(scope, input, p, splitStreamed(ev.text), ev.model) };
+  }
+}
+
+/**
+ * Select and instruct (canvas): one part of a piece rewritten as asked. Reads
+ * the piece for context and the one brand context (INV-2); returns the new
+ * text and writes nothing, so the caller commits it like a typed edit.
+ */
+export async function rewritePartOf(
+  scope: ProjectScope,
+  itemId: string,
+  ask: { part: string; text: string; instruction: string },
+): Promise<string | null> {
+  const item = (
+    await withTenantSession(scope, (c) => c.query("SELECT * FROM content_items WHERE id=$1 AND project_id=$2", [itemId, scope.projectId]))
+  ).rows[0];
+  if (!item) return null;
+  const fmt = formatByKey(item.format);
+  const context = await loadBrandContext(scope, "en", fmt.platform, "rewrite");
+  const { text } = await runTask(scope, rewritePart, {
+    context,
+    contentItemId: itemId,
+    taskInput: [
+      `Format: ${fmt.label}`,
+      `Part kind: ${ask.part}`,
+      `Instruction: ${ask.instruction.replace(/\n+/g, " ")}`,
+      "",
+      "Part:",
+      ask.text,
+      "",
+      "Whole piece:",
+      [item.hook, item.body, item.cta ? `CTA: ${item.cta}` : ""].filter(Boolean).join("\n"),
+    ].join("\n"),
+  });
+  return text.trim().replace(/^["“]([\s\S]*)["”]$/, "$1");
 }
 
 /** Regenerate with a steer; keeps every previous version in history (§4.2). */
@@ -146,7 +222,7 @@ export async function regenerateWithSteer(scope: ProjectScope, itemId: string, s
   ).rows[0];
   if (!item) throw new Error("content item not found");
   const fmt = formatByKey(item.format);
-  const context = await loadBrandContext(scope, "en", fmt.platform);
+  const context = await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write");
   const template = await resolveTemplate(scope, fmt.templateKey);
   const result = await generateText(scope, {
     templateKey: template.key,
@@ -198,6 +274,9 @@ export async function updateContent(
       [patch.hook, patch.body, patch.cta, patch.pillarId, patch.status, itemId, scope.projectId],
     ),
   );
+  // An approved piece's opening joins the recent openers, so the check can say
+  // "you opened a recent piece the same way" (voice.json last_openers).
+  if (patch.status === "approved" && patch.hook.trim()) await recordOpener(scope, patch.hook);
 }
 
 /**
@@ -270,6 +349,21 @@ export async function createContentItem(
        VALUES ($1,$2,0,$3,$4,$5,$6)`,
       [scope.tenantId, id, input.hook, input.body, input.cta, input.origin],
     );
+    await linkIdea(c, id, scope.projectId);
     return id;
   });
+}
+
+/**
+ * The piece that came out of an idea (brief §4.5: `converted_to_content_item_id`).
+ * A piece is started from an idea at Ideate, before any copy exists, so the
+ * link is written here, when the first copy lands, and never overwritten.
+ */
+async function linkIdea(c: PoolClient, contentItemId: string, projectId: string): Promise<void> {
+  await c.query(
+    `UPDATE ideas SET converted_to_content_item_id = $1, status = 'converted'
+      WHERE project_id IS NULL AND converted_to_content_item_id IS NULL
+        AND id = (SELECT idea_id FROM projects WHERE id = $2)`,
+    [contentItemId, projectId],
+  );
 }

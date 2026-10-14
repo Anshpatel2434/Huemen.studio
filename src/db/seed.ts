@@ -174,10 +174,10 @@ async function main() {
     { tenantId: clientTenant, userId: clientUser, isPlatformAdmin: false },
     (c) =>
       c.query(
-        `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, status, voice_index, corpus_stats, identity)
-         VALUES ($1,$2,'default',$3,'active',$4,$5,$6)
+        `INSERT INTO voice_packs (tenant_id, user_id, slug, display_name, status, voice_index, corpus_stats, identity, onboarding)
+         VALUES ($1,$2,'default',$3,'active',$4,$5,$6,$7)
          ON CONFLICT (tenant_id, user_id, slug)
-         DO UPDATE SET voice_index = EXCLUDED.voice_index, corpus_stats = EXCLUDED.corpus_stats, identity = EXCLUDED.identity, status = 'active'`,
+         DO UPDATE SET voice_index = EXCLUDED.voice_index, corpus_stats = EXCLUDED.corpus_stats, identity = EXCLUDED.identity, status = 'active', onboarding = EXCLUDED.onboarding`,
         [
           clientTenant,
           clientUser,
@@ -185,8 +185,22 @@ async function main() {
           JSON.stringify({ neverWords: ["synergy", "leverage", "guru", "game-changing", "revolutionise"] }),
           JSON.stringify({ pieces: 12, words: 3400, channels: ["linkedin"] }),
           JSON.stringify({ toneDescriptors: { value: ["Direct", "Warm", "Contrarian", "Evidence-led"], source: "ask", confidence: "inferred" } }),
+          // The demo client is the FINISHED workspace: it opens on the studio with
+          // its pieces, not in onboarding. fresh@client.test is the one that walks
+          // the flow from zero.
+          JSON.stringify({ step: 4, welcomedAt: "2026-09-01T09:00:00.000Z", completedAt: "2026-09-01T09:30:00.000Z", writeFor: ["linkedin"] }),
         ],
       ),
+  );
+
+  // Demo caps (brief §4.6): a soft warning and a hard stop, so the usage meter
+  // and the admin page have something to show. Admin-editable in Settings.
+  await withTenantSession(admin, (c) =>
+    c.query(
+      `INSERT INTO tenant_usage_caps (tenant_id, monthly_text_soft, monthly_text_hard, monthly_image_soft, monthly_image_hard, updated_by)
+       VALUES ($1, 150, 200, 100, 150, $2) ON CONFLICT (tenant_id) DO NOTHING`,
+      [clientTenant, adminUser],
+    ),
   );
 
   // Global prompt templates (tenant_id NULL).

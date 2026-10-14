@@ -43,7 +43,7 @@ export function PageSkeleton({ variant = "doc", label = "Loading", contained = f
   }
   const body =
     variant === "home" ? (
-      <div className="max-w-[1180px] mx-auto px-5 min-[900px]:px-8 pt-8 pb-16 flex flex-col gap-8">
+      <div className="page pt-8 pb-16 flex flex-col gap-8">
         <Heading />
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-8 items-start">
           <div className="flex flex-col gap-4 lg:order-2"><Card className="h-[300px]" lines={4} /><Card lines={2} /></div>
@@ -70,7 +70,7 @@ export function PageSkeleton({ variant = "doc", label = "Loading", contained = f
         {[0, 1, 2].map((i) => <Card key={i} className="w-[240px] h-[300px] hidden sm:block first:block" lines={5} />)}
       </div>
     ) : (
-      <div className="max-w-[880px] mx-auto px-5 sm:px-8 py-10 flex flex-col gap-8">
+      <div className="page py-10 flex flex-col gap-8">
         <Heading />
         <Card className="h-[180px]" lines={3} />
         <Card className="h-[220px]" lines={4} />

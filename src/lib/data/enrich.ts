@@ -140,7 +140,6 @@ export function previewInput(pack: VoicePack, niche: string): string {
     "Paragraph:",
     previewSource(niche),
     "",
-    pack.index.neverWords.length ? `Never use: ${pack.index.neverWords.join(", ")}` : "",
     dials.casual_formal ? `Casual to formal: ${dials.casual_formal}` : "",
     exclam?.allowed === false ? "Exclamation marks: never" : "",
     pack.index.sentenceLength.mean ? `Average sentence words: ${Math.round(pack.index.sentenceLength.mean)}` : "",
@@ -173,6 +172,12 @@ export async function saveStories(scope: WorkspaceScope, actor: Actor, pack: Voi
     .filter((s) => s.title && s.body)
     .slice(0, 8);
   await writePack(scope, actor, pack, { identity: { ...pack.identity, stories: tagged(list, "ask") } }, `Saved ${list.length} ${list.length === 1 ? "story" : "stories"}.`);
+}
+
+/** Their point of view (M1): up to eight beliefs, one line each. */
+export async function saveBeliefs(scope: WorkspaceScope, actor: Actor, pack: VoicePack, beliefs: string[]) {
+  const list = [...new Set(beliefs.map((b) => clean(b, 240)).filter(Boolean))].slice(0, 8);
+  await writePack(scope, actor, pack, { identity: { ...pack.identity, beliefs: tagged(list, "ask") } }, `Saved ${list.length} ${list.length === 1 ? "belief" : "beliefs"}.`);
 }
 
 export async function saveProofs(scope: WorkspaceScope, actor: Actor, pack: VoicePack, proofs: Proof[]) {

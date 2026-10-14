@@ -7,12 +7,12 @@ import { firstPieceStale, ingestStalled } from "@/lib/voice/lifecycle";
 import { PersistForm } from "@/components/persist";
 import { OnboardingDrafts } from "./draft";
 import { listSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
-import { loadBriefAnswers, loadFoundation } from "@/lib/data/foundation";
+import { loadBriefAnswers, loadFoundation, loadVisualIdentity } from "@/lib/data/foundation";
 import { listPillars } from "@/lib/data/planning";
 import { listContent } from "@/lib/data/content";
 import { checkText } from "@/lib/data/check";
 import { getProject } from "@/lib/data/projects";
-import { benchmarkPicks, confidence, confirmCards, estimateDials } from "@/lib/voice/derive";
+import { benchmarkPicks, clip, confidence, confirmCards, estimateDials } from "@/lib/voice/derive";
 import { corpusLevel, type DialKey } from "@/lib/voice/types";
 import { QUESTIONS, questionById } from "@/lib/voice/questions";
 import { coreState, prefill } from "@/lib/voice/lifecycle";
@@ -22,12 +22,15 @@ import { CoreWatcher } from "@/components/core-watcher";
 import { listAssets } from "@/lib/data/assets";
 import { basisFrom } from "@/lib/data/enrich";
 import {
-  BrandImages, InfluencesEditor, LanguagesEditor, ProofsEditor, StoriesEditor, Suggestions, UrlImport, VoicePreview,
+  BrandImages, InfluencesEditor, LanguagesEditor, ProofsEditor, BeliefsEditor, StoriesEditor, Suggestions, UrlImport, VoicePreview,
 } from "./enrich-ui";
 import { btnClass } from "@/components/btn";
 import { SubmitButton, Badge } from "@/components/ui";
 import { BrandCoreCard } from "@/components/composites";
 import { AboutStep, BackStep, ConfirmStep, PayoffStep, QuestionField, SamplesStep } from "./steps";
+import { GmailCard, type GmailCardState } from "./gmail-card";
+import { importedEmailCount, listConnections, unavailableReason } from "@/lib/data/connections";
+import { ownsVoice } from "@/lib/data/training";
 import { hueAction } from "./actions";
 
 export const metadata = { title: "Set up your voice" };
@@ -84,10 +87,10 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
   if (!pack) {
     return (
       <div className="absolute inset-0 overflow-y-auto">
-        <div className="max-w-[760px] mx-auto px-6 py-12">
+        <div className="page py-12"><div className="max-w-3xl">
           <h1 className="text-3xl">A voice belongs to a person.</h1>
           <p className="text-ink-muted mt-2">Sign in as the person whose brand this is and their voice pack will be created for them.</p>
-        </div>
+        </div></div>
       </div>
     );
   }
@@ -121,13 +124,28 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
   };
   const CORE = ["A2", "A3", "C1", "C2", "D1", "D2", "D7", "E1"];
 
+  // Sent email, read once: only for the person whose voice this is, only once
+  // Google is set up for this app, and only when they ticked "Sent email" as a
+  // source (spec 06 §1: "scan only what the user ticks").
+  let gmail: GmailCardState | null = null;
+  if (
+    step === 1 && !unavailableReason("gmail") && (pack.onboarding.sources ?? []).includes("email")
+    && ownsVoice({ userId: session.userId, role: session.role }, pack)
+  ) {
+    const google = (await listConnections(scope)).find((c) => c.provider === "google");
+    const emailPieces = await importedEmailCount(scope, pack.id);
+    gmail = google?.status === "connected" && google.granted.includes("gmail")
+      ? { kind: "ready", prompted: sp.connected === "google" && sp.cap === "gmail" }
+      : emailPieces > 0 ? { kind: "done", pieces: emailPieces } : { kind: "connect" };
+  }
+
   // The live preview needs something to work from; "About you" has nothing yet.
   const withPreview = step >= 1 && step < 4;
 
   return (
     <OnboardingDrafts prefix={`huemen:onb:${pack.id}`}>
     <div className="absolute inset-0 overflow-y-auto">
-      <div className={`${withPreview ? "max-w-[1200px]" : "max-w-[880px]"} mx-auto px-5 sm:px-8 py-8 flex flex-col gap-8`}>
+      <div className="page py-8 flex flex-col gap-8">
         <div className="flex flex-col gap-4">
           <p className="label-mono eyebrow">Onboarding · step {step + 1} of {STEPS.length}</p>
           <Stepper id={id} current={step} reached={reached} />
@@ -135,7 +153,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
 
         <CoreWatcher state={state} pieces={pack.corpusStats.pieces} />
 
-        <div className={withPreview ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-8 items-start" : ""}>
+        <div className={withPreview ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-10 items-start" : "max-w-4xl"}>
         <div className="flex flex-col gap-8 min-w-0">
 
         {step === 0 && brief && (
@@ -156,7 +174,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             words={pack.corpusStats.words}
             level={corpusLevel(pack.corpusStats)}
             canRecord={canRecord}
-            links={<UrlImport tenantId={id} />}
+            links={<>{gmail && <GmailCard tenantId={id} state={gmail} error={typeof sp.error === "string" ? sp.error : undefined} />}<UrlImport tenantId={id} /></>}
             stalled={ingestStalled(pack.onboarding.scan, Date.now())}
           />
         )}
@@ -208,7 +226,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
 
   // ---- step 3 ------------------------------------------------------------------
   async function HueStep({ id, scope, justGenerated, carries }: { id: string; scope: Awaited<ReturnType<typeof workspaceScope>>["scope"]; justGenerated: boolean; carries: string }) {
-    const [f, pillars, answers, assets] = await Promise.all([loadFoundation(scope), listPillars(scope), loadBriefAnswers(scope), listAssets(scope)]);
+    const [f, pillars, answers, assets, visual] = await Promise.all([loadFoundation(scope), listPillars(scope), loadBriefAnswers(scope), listAssets(scope), loadVisualIdentity(scope)]);
     const logo = assets.find((a) => a.kind === "logo")?.url ?? null;
     const headshot = assets.find((a) => a.kind === "headshot")?.url ?? null;
     const saved = Object.fromEntries(answers.map((a) => [a.key, a.answer]));
@@ -247,9 +265,10 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             <p className="text-sm text-ink-muted mt-1">Your logo, your face, and your colours. Every visual is made from these; the first two colours are the ground and the accent.</p>
           </div>
           <BrandImages tenantId={id} logo={logo} headshot={headshot} />
-          <VisualForm tenantId={id} initial={{ palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes }} logoUrl={logo} />
+          <VisualForm tenantId={id} initial={{ palette: csv(f.palette), fonts: csv(f.fonts), imageStyleNotes: f.imageStyleNotes, core: visual.core }} logoUrl={logo} references={assets.filter((a) => a.kind === "reference_image")} back={`/w/${id}/onboarding?step=3`} />
         </div>
 
+        <BeliefsEditor tenantId={id} initial={pack!.identity.beliefs?.value ?? []} />
         <StoriesEditor tenantId={id} initial={pack!.identity.stories?.value ?? []} />
         <ProofsEditor tenantId={id} initial={pack!.identity.proofs?.value ?? []} />
 
@@ -305,7 +324,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
     const draft = first ? (await listContent({ ...scope, projectId: first.id }))[0] ?? null : null;
     const own = live.filter((s) => s.visibility === "public").sort((a, b) => b.wordCount - a.wordCount)[0];
     const ownCheck = own ? await checkText(scope, own.body, own.channel) : null;
-    const draftCheck = draft ? await checkText(scope, [draft.hook, draft.body, draft.cta].filter(Boolean).join("\n\n"), first?.channel ?? "linkedin") : null;
+    const draftCheck = draft ? await checkText(scope, [draft.hook, draft.body, draft.cta].filter(Boolean).join("\n\n"), first?.channel ?? "linkedin", { copyCheck: true }) : null;
     const words = (p.identity.personalityWords?.value ?? []).map((w) => w.word);
     return (
       <PayoffStep
@@ -337,13 +356,13 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         }}
         missing={conf.missing}
         confidence={conf.score}
-        first={first && { id: first.id, name: first.name, hook: draft?.hook ?? null, body: draft?.body ?? null, cta: draft?.cta ?? null, score: draftCheck?.score ?? null, band: draftCheck?.band ?? null }}
+        first={first && { id: first.id, name: first.name, hook: draft?.hook ?? null, body: draft?.body ?? null, cta: draft?.cta ?? null, score: draftCheck?.score ?? null, band: draftCheck?.band ?? null, fixes: (draftCheck?.issues ?? []).slice(0, 3).map((i) => i.message) }}
         firstState={
           p.onboarding.firstPiece?.state === "writing" && !firstPieceStale(p.onboarding.firstPiece, Date.now()) ? "writing"
           : p.onboarding.firstPiece?.state === "writing" || p.onboarding.firstPiece?.state === "failed" ? "failed"
           : null
         }
-        ownCheck={own && ownCheck ? { excerpt: own.body.split("\n")[0].slice(0, 160), score: ownCheck.score, band: ownCheck.band, issues: ownCheck.issues.slice(0, 3).map((i) => i.message) } : null}
+        ownCheck={own && ownCheck ? { excerpt: clip(own.body.split("\n")[0], 160), score: ownCheck.score, band: ownCheck.band, issues: ownCheck.issues.slice(0, 3).map((i) => i.message) } : null}
       />
     );
   }

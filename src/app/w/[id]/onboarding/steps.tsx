@@ -18,10 +18,10 @@ import { btnClass } from "@/components/btn";
 import { AgentDots, Badge, Alert } from "@/components/ui";
 import { ScoreMeter } from "@/components/composites";
 import {
-  SOURCE_GROUPS, ingestLinkedIn, ingestText, ingestWhatsApp, stripEmail, type IngestedPiece,
+  SOURCE_GROUPS, ingestLinkedIn, ingestText, ingestWhatsApp, splitPieces, stripEmail, type IngestedPiece,
 } from "@/lib/voice/ingest";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
-import { DEFAULT_FOLLOW_UP, isGeneric, type Question } from "@/lib/voice/questions";
+import { DEFAULT_FOLLOW_UP, isGeneric, OTHER, type Question } from "@/lib/voice/questions";
 import { WORDS, MIN_PICKS, MAX_PICKS, groupPicks } from "@/lib/voice/words";
 import { DIAL_KEYS, DIAL_LABELS, WORK_MODES, type DialKey, type WorkMode } from "@/lib/voice/types";
 import type { ConfirmCard } from "@/lib/voice/derive";
@@ -196,6 +196,15 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
           label: f.name,
           source: s.key === "linkedin" || s.key === "whatsapp" ? "export" : "upload",
           run: async () => {
+            // PDF and Word are read on the server; the words come back like a paste.
+            if (/\.(pdf|docx)$/i.test(f.name)) {
+              const body = new FormData();
+              body.append("file", f);
+              const res = await fetch(`/w/${tenantId}/onboarding/extract`, { method: "POST", body });
+              const out = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+              if (!res.ok || !out.text) return { pieces: [], summary: out.error ?? "That file couldn't be read." };
+              return ingestText(out.text, s.channel, vis);
+            }
             const text = await f.text();
             if (s.key === "linkedin" && f.name.toLowerCase().endsWith(".csv")) return ingestLinkedIn(text);
             if (s.key === "whatsapp") return ingestWhatsApp(text, waName);
@@ -217,9 +226,10 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
           label: `${s.label} (pasted)`,
           source: "paste",
           run: async () => {
-            // A paste separates pieces with a blank line; emails are stripped
-            // of quoted replies and signatures before anything is sent.
-            const parts = s.key === "email" ? paste.split(/^\s*---\s*$/m).map(stripEmail) : paste.split(/\n\s*\n/);
+            // Pieces are separated by a --- line or two blank lines (one blank
+            // line is a paragraph); emails are stripped of quoted replies,
+            // signatures and footers before anything is sent.
+            const parts = s.key === "email" ? splitPieces(paste).map(stripEmail) : splitPieces(paste);
             const bodies = parts.map((p) => p.trim()).filter(Boolean);
             return {
               pieces: bodies.map((body) => ({ body, channel: s.channel, visibility: vis as "public" | "private", kind: "corpus" as const })),
@@ -264,7 +274,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-3xl">Add your <span className="serif-accent">writing.</span></h1>
-        <p className="text-ink-muted mt-2 max-w-[62ch]">Real writing is most of what makes a draft sound like you. Pick where you write, then add some of it. Uploads and pastes only for now: nothing is read from an account.</p>
+        <p className="text-ink-muted mt-2 max-w-[62ch]">Real writing is most of what makes a draft sound like you. Pick where you write, then add some of it. Upload or paste it here. Nothing is read from an account unless you connect one.</p>
       </div>
 
       {resuming && (
@@ -293,7 +303,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
         )}
         <p className="text-sm text-ink-muted flex items-start gap-2 bg-field rounded-sm px-3 py-2.5">
           <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-          We'll read only what you pick, to learn how you sound. We never train shared models on your writing, and you can remove any source any time. From email and chat we keep only what you wrote; other people's words are removed before anything is stored, and your private writing is measured but never quoted in a draft.
+          We&apos;ll read only what you pick, to learn how you sound. We never train shared models on your writing, and you can remove any source any time. From email and chat we keep only what you wrote; other people&apos;s words are removed before anything is stored, and your private writing is measured but never quoted in a draft.
         </p>
       </Section>
 
@@ -335,7 +345,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
                   <input
                     type="file"
                     multiple
-                    accept={s.key === "linkedin" ? ".csv,.txt,.md" : s.key === "spoken" ? ".txt,.md,.vtt,.srt" : ".txt,.md"}
+                    accept={s.key === "linkedin" ? ".csv,.txt,.md" : s.key === "whatsapp" ? ".txt" : s.key === "spoken" ? ".txt,.md,.vtt,.srt,.pdf,.docx" : ".txt,.md,.pdf,.docx"}
                     className="sr-only"
                     onChange={(e) => {
                       const list = Array.from(e.target.files ?? []);
@@ -358,7 +368,7 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
                     rows={3}
                     value={pastes[s.key] ?? ""}
                     onChange={(e) => setPastes({ ...pastes, [s.key]: e.target.value })}
-                    placeholder={s.key === "email" ? "Paste sent emails. Separate each with a line of ---" : "Or paste. A blank line starts a new piece."}
+                    placeholder={s.key === "email" ? "Paste sent emails. Separate each with a line of ---" : "Or paste. Put a line with --- between pieces."}
                     className="field text-sm"
                     aria-label={`Paste ${s.label}`}
                   />
@@ -665,6 +675,13 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
   const shortKeys = q.prompts ?? keys ?? [];
   const [shorts, setShorts, shortsDraft] = useStepDraft<Record<string, string>>(`q:${q.id}:shorts`, {});
   const [followed, setFollowed] = useState(false);
+  const [otherText, setOtherText] = useState("");
+  const [sayText, setSayText] = useState("");
+  const [dose, setDose] = useState(5);
+  // Only a recorded answer becomes a spoken sample (05 Part 1 rule 3).
+  const [recorded, setRecorded] = useState(false);
+  const [compass, setCompass] = useState<{ today?: string; want?: string }>({});
+  const [framing, setFraming] = useState<Record<string, string>>({});
   // An unsaved answer that came back after a reload opens the box, not the summary.
   const restored = valueDraft.restored || chipsDraft.restored || shortsDraft.restored;
   const editing = editingState || restored;
@@ -673,7 +690,9 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
     runSave(key, async () => { await fn(); valueDraft.discard(); chipsDraft.discard(); shortsDraft.discard(); });
   const saved = done.includes(q.id) || (answered && !followed);
   const empty =
-    q.format === "chips" || q.format === "multi" ? chips.length === 0
+    q.format === "compass" ? !compass.today
+    : q.format === "framing" ? !chips.some((t) => (framing[t] ?? "").trim() || (t === OTHER && (framing[otherText.trim()] ?? "").trim()))
+    : q.format === "chips" || q.format === "multi" ? chips.length === 0
     : q.format === "shorts" ? !Object.values(shorts).some((v) => v.trim())
     : !value.trim();
 
@@ -706,13 +725,27 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
     );
   }
 
+  const withOther = (v: string) => (v === OTHER ? (otherText.trim() ? `Other: ${otherText.trim()}` : "") : q.sayWhich?.includes(v) ? (sayText.trim() ? `${v.replace(/\s*\(say which\)$/, "")}: ${sayText.trim()}` : "") : v);
+  const multiPicks = () => chips.map(withOther).filter(Boolean);
+
   const submit = () => {
-    if (q.format === "chips" || q.format === "multi") return run(q.id, () => answerAction(tenantId, q.id, chips));
+    if (q.format === "compass") return run(q.id, () => answerAction(tenantId, q.id, { today: compass.today ?? "", want: compass.want ?? compass.today ?? "" }));
+    if (q.format === "framing") {
+      const picked = Object.fromEntries(Object.entries(framing).filter(([t, v]) => chips.includes(t) && v.trim()));
+      return run(q.id, () => answerAction(tenantId, q.id, picked));
+    }
+    if (q.format === "multi" && q.dial) return run(q.id, () => answerAction(tenantId, q.id, { picks: multiPicks().join("; "), dose: String(dose) }));
+    if (q.format === "chips" || q.format === "multi") return run(q.id, () => answerAction(tenantId, q.id, multiPicks()));
     if (q.format === "shorts") return run(q.id, () => answerAction(tenantId, q.id, shortKeys.length ? shorts : (shorts._ ?? "")));
+    if (q.format === "mcq") return run(q.id, () => answerAction(tenantId, q.id, withOther(value)));
     // One follow-up for a generic answer, once (file 05, Part 1, rule 4).
     if (q.format === "open" && isGeneric(value) && !followed) { setFollowed(true); return; }
-    run(q.id, () => answerAction(tenantId, q.id, value));
+    run(q.id, () => answerAction(tenantId, q.id, value, { spoken: recorded }));
   };
+
+  const options = [...(q.options ?? []), ...(q.other ? [OTHER] : [])];
+  const atMax = q.max != null && chips.length >= q.max;
+  const needsText = (o: string) => o === OTHER || (q.sayWhich ?? []).includes(o);
 
   return (
     <div className="flex flex-col gap-2 border-t border-hairline pt-4 first:border-0 first:pt-0">
@@ -723,14 +756,48 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
       <RestoredNote on={restored && !done.includes(q.id)} />
       {q.format === "mcq" && q.options && (
         <div className="flex flex-col gap-1.5" role="radiogroup" aria-labelledby={`q-${q.id}-label`}>
-          {q.options.map((o) => <Choice key={o} radio on={value === o} onToggle={() => setValue(o)}>{o}</Choice>)}
+          {options.map((o) => <Choice key={o} radio on={value === o} onToggle={() => setValue(o)}>{o}</Choice>)}
         </div>
       )}
-      {q.format === "multi" && q.options && (
+      {(q.format === "multi" || q.format === "framing") && q.options && (
         <div className="flex flex-col gap-1.5" role="group" aria-labelledby={`q-${q.id}-label`}>
-          {q.options.map((o) => <Choice key={o} on={chips.includes(o)} onToggle={() => setChips(chips.includes(o) ? chips.filter((c) => c !== o) : [...chips, o])}>{o}</Choice>)}
+          {options.map((o) => (
+            <div key={o} className="flex flex-col gap-1.5">
+              <Choice on={chips.includes(o)} onToggle={() => setChips(chips.includes(o) ? chips.filter((c) => c !== o) : atMax ? chips : [...chips, o])}>{o}</Choice>
+              {q.format === "framing" && chips.includes(o) && o !== OTHER && (
+                <input value={framing[o] ?? ""} onChange={(e) => setFraming({ ...framing, [o]: e.target.value })} placeholder={`How should ${o.toLowerCase()} be framed?`} aria-label={`How ${o} should be framed`} className="field ml-8 max-w-[calc(100%-2rem)]" />
+              )}
+            </div>
+          ))}
+          {q.max != null && <p className="text-xs text-ink-faint">Up to {q.max}.</p>}
         </div>
       )}
+      {((q.format === "mcq" && needsText(value)) || ((q.format === "multi" || q.format === "framing") && chips.some(needsText))) && (
+        <input
+          value={value === OTHER || chips.includes(OTHER) ? otherText : sayText}
+          onChange={(e) => (value === OTHER || chips.includes(OTHER) ? setOtherText(e.target.value) : setSayText(e.target.value))}
+          placeholder={value === OTHER || chips.includes(OTHER) ? "Type it" : "Say which"}
+          aria-label={value === OTHER || chips.includes(OTHER) ? "Your own answer" : "Say which"}
+          className="field max-w-md"
+        />
+      )}
+      {q.format === "framing" && chips.includes(OTHER) && otherText.trim() && (
+        <input value={framing[otherText.trim()] ?? ""} onChange={(e) => setFraming({ ...framing, [otherText.trim()]: e.target.value })} placeholder={`How should ${otherText.trim().toLowerCase()} be framed?`} aria-label="How your own topic should be framed" className="field max-w-md" />
+      )}
+      {q.dial && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm text-ink-muted">{q.dial.ask}</span>
+          <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={q.dial.ask}>
+            <span className="text-xs text-ink-faint mr-1">{q.dial.left}</span>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <button key={n} type="button" role="radio" aria-checked={dose === n} onClick={() => setDose(n)}
+                className={`w-11 h-11 rounded-full border text-sm num ${dose === n ? "bg-ink text-on-ink border-ink" : "border-line hover:border-ink"}`}>{n}</button>
+            ))}
+            <span className="text-xs text-ink-faint ml-1">{q.dial.right}</span>
+          </div>
+        </div>
+      )}
+      {q.format === "compass" && <Compass value={compass} onChange={setCompass} />}
       {q.format === "shorts" && (
         <div className="flex flex-col gap-2">
           {(shortKeys.length ? shortKeys : ["_"]).map((k) => (
@@ -756,8 +823,9 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
       {(q.format === "open" || q.format === "short") && (
         <textarea id={`q-${q.id}`} rows={q.format === "short" ? 2 : 3} value={value} onChange={(e) => setValue(e.target.value)} className="field" />
       )}
-      {q.spoken && (q.format === "open" || q.format === "short") && (
-        <VoiceRecorder tenantId={tenantId} enabled={canRecord} onText={(t) => setValue((v) => (v.trim() ? `${v.trim()}\n\n${t}` : t))} />
+      {/* Every open question accepts a voice note (05 Part 1 rule 3); only a recorded answer is kept as a spoken sample. */}
+      {q.format === "open" && (
+        <VoiceRecorder tenantId={tenantId} enabled={canRecord} onText={(t) => { setRecorded(true); setValue((v) => (v.trim() ? `${v.trim()}\n\n${t}` : t)); }} />
       )}
       {followed && !done.includes(q.id) && (
         <p className="text-sm text-warn flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {q.followUp ?? DEFAULT_FOLLOW_UP} Save again to keep it as it is.</p>
@@ -765,8 +833,50 @@ export function QuestionField({ tenantId, q, initial = "", answered = false, key
       <div className="flex items-center gap-3">
         <button type="button" disabled={pending || empty} onClick={submit} className={btnClass("secondary", "sm")}>Save</button>
         {saved && <span className="text-sm text-ok flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved</span>}
-        {q.spoken && <span className="text-xs text-ink-faint">A long answer is also kept as a spoken sample.</span>}
+        {q.format === "open" && canRecord && <span className="text-xs text-ink-faint">A recorded answer is also kept as a spoken sample.</span>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * C3, the compass (05): two dots on a 2×2, where they are today and where they
+ * want to be. Formal/calm on one axis, casual/energetic on the other.
+ */
+const QUADRANTS = [
+  { key: "reserved_expert", label: "Reserved Expert", sub: "Formal and calm" },
+  { key: "dynamic_leader", label: "Dynamic Leader", sub: "Formal and energetic" },
+  { key: "friendly_guide", label: "Friendly Guide", sub: "Casual and calm" },
+  { key: "enthusiastic_friend", label: "Enthusiastic Friend", sub: "Casual and energetic" },
+] as const;
+
+function Compass({ value, onChange }: { value: { today?: string; want?: string }; onChange: (v: { today?: string; want?: string }) => void }) {
+  const placing: "today" | "want" = !value.today ? "today" : "want";
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-ink-muted">
+        {placing === "today" ? "First, tap where you are today." : "Now tap where you want to be. Tap the same square if it's where you are."}
+      </p>
+      <div className="grid grid-cols-2 gap-2 max-w-md" role="group" aria-label="Personality compass">
+        {QUADRANTS.map((q) => {
+          const today = value.today === q.key;
+          const want = value.want === q.key;
+          return (
+            <button key={q.key} type="button"
+              onClick={() => onChange(placing === "today" ? { today: q.key } : { ...value, want: q.key })}
+              aria-pressed={today || want}
+              className={`min-h-24 rounded-md border p-3 text-left flex flex-col gap-1 ${today || want ? "border-ink bg-field" : "border-line hover:border-ink"}`}>
+              <span className="text-sm font-medium">{q.label}</span>
+              <span className="text-xs text-ink-faint">{q.sub}</span>
+              <span className="flex gap-1.5 mt-auto">
+                {today && <span className="label-mono text-ink">Today</span>}
+                {want && <span className="label-mono text-accent">Want</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {value.today && <button type="button" onClick={() => onChange({})} className={`${btnClass("ghost", "sm")} self-start`}>Start again</button>}
     </div>
   );
 }
@@ -811,7 +921,7 @@ export function PayoffStep(props: {
   };
   missing: string[];
   confidence: number;
-  first: { id: string; name: string; hook: string | null; body: string | null; cta: string | null; score: number | null; band: string | null } | null;
+  first: { id: string; name: string; hook: string | null; body: string | null; cta: string | null; score: number | null; band: string | null; fixes: string[] } | null;
   /** The first piece is still being written (a reload mid-write), or that write died. */
   firstState: "writing" | "failed" | null;
   ownCheck: { excerpt: string; score: number; band: string; issues: string[] } | null;
@@ -847,8 +957,8 @@ export function PayoffStep(props: {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-3xl">Here's how you <span className="serif-accent">sound.</span></h1>
-        <p className="text-ink-muted mt-2 max-w-[62ch]">Your voice mirror, a first piece written in it, and a check on something you've already written. Edit anything that's wrong; every change trains the core.</p>
+        <h1 className="text-3xl">Here&apos;s how you <span className="serif-accent">sound.</span></h1>
+        <p className="text-ink-muted mt-2 max-w-[62ch]">Your voice mirror, a first piece written in it, and a check on something you&apos;ve already written. Edit anything that&apos;s wrong; every change trains the core.</p>
       </div>
 
       {props.confidence < 70 && (
@@ -891,11 +1001,17 @@ export function PayoffStep(props: {
               {props.first.cta && <p className="mt-3 text-ink-muted">{props.first.cta}</p>}
             </div>
             {props.first.score != null && <ScoreMeter score={props.first.score} band={band(props.first.band)} />}
+            {props.first.fixes.length > 0 && (
+              <div className="text-sm">
+                <p className="font-medium mb-1">{props.first.fixes.length === 1 ? "One fix" : `${props.first.fixes.length} fixes`} to make it more you</p>
+                <ul className="flex flex-col gap-1.5 text-ink-muted">{props.first.fixes.map((f) => <li key={f} className="flex gap-2"><Circle size={8} className="mt-2 shrink-0 fill-current" aria-hidden="true" /> {f}</li>)}</ul>
+              </div>
+            )}
             <p className="text-sm text-ink-muted">Not quite you? <Link href={`/w/${tenantId}/p/${props.first.id}/content`} className="text-accent underline underline-offset-2">Edit it</Link>. Edits you repeat become rules you approve.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <label htmlFor="own-first" className="text-sm">You chose to write it yourself. Write or paste it here and we'll check it against your voice.</label>
+            <label htmlFor="own-first" className="text-sm">You chose to write it yourself. Write or paste it here and we&apos;ll check it against your voice.</label>
             <textarea id="own-first" rows={6} value={own} onChange={(e) => setOwn(e.target.value)} className="field" />
             <button type="button" disabled={pending || !own.trim()} onClick={() => start(async () => { await ownDraftForFirstPieceAction(tenantId, own); setOwn(""); router.refresh(); })} className={`${btnClass("primary", "sm")} self-start`}>Check it</button>
           </div>
@@ -908,7 +1024,7 @@ export function PayoffStep(props: {
           {props.ownCheck.issues.length ? (
             <ul className="flex flex-col gap-1.5 text-sm">{props.ownCheck.issues.map((i) => <li key={i} className="flex gap-2"><Circle size={8} className="mt-2 shrink-0 fill-current" aria-hidden="true" /> {i}</li>)}</ul>
           ) : (
-            <p className="text-sm text-ink-muted">Nothing to flag. That's what your voice looks like to the check.</p>
+            <p className="text-sm text-ink-muted">Nothing to flag. That&apos;s what your voice looks like to the check.</p>
           )}
         </Section>
       )}

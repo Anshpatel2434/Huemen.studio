@@ -22,7 +22,7 @@ import { DIAL_LABELS, LANGUAGES, type DialKey, type LanguageKey, type LanguageMi
 import { uploadAssetAction } from "@/app/w/[id]/brand/actions";
 import {
   finishIngestAction, importUrlAction, influencesAction, languagesAction, pairsAction, picksAction, previewAction,
-  proofsAction, storiesAction, suggestionsAction,
+  beliefsAction, proofsAction, storiesAction, suggestionsAction,
 } from "./actions";
 import { useStepDraft } from "./draft";
 
@@ -267,7 +267,7 @@ export function UrlImport({ tenantId }: { tenantId: string }) {
     let total = 0;
     for (const url of urls) {
       setBusy(url);
-      const r = await importUrlAction(tenantId, url);
+      const r = await importUrlAction(tenantId, url, mine);
       if (r.ok) {
         total += r.value.added;
         out.push({ url, ok: true, text: `${r.value.note}${r.value.found > r.value.added ? ` ${r.value.found - r.value.added} already on file.` : ""}` });
@@ -519,5 +519,29 @@ export function BrandImages({ tenantId, logo, headshot }: { tenantId: string; lo
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <p className="text-xs text-ink-faint flex items-center gap-1">Visuals use them. Your headshot is only used in your own visuals. <ArrowRight size={11} aria-hidden="true" /> Colours can come from your logo below.</p>
     </div>
+  );
+}
+
+/** Point of view (Layer 1, M1): what they believe that others in their field would argue with. */
+export function BeliefsEditor({ tenantId, initial }: { tenantId: string; initial: string[] }) {
+  const router = useRouter();
+  const [text, setText] = useStepDraft("beliefs", initial.join("\n"));
+  const [saved, setSaved] = useState(false);
+  const [pending, start] = useTransition();
+  return (
+    <Box title="What you believe" sub="Your point of view: the things you'd argue for that others in your field wouldn't. One per line. Drafts argue from these, never against them.">
+      <textarea
+        rows={4}
+        value={text}
+        onChange={(e) => { setSaved(false); setText(e.target.value); }}
+        placeholder={"Most brand problems are clarity problems.\nConsistency beats virality."}
+        aria-label="What you believe, one per line"
+        className="field"
+      />
+      <div className="flex items-center gap-3">
+        <button type="button" disabled={pending} onClick={() => start(async () => { await beliefsAction(tenantId, text.split("\n")); setSaved(true); router.refresh(); })} className={btnClass("secondary", "sm")}>Save beliefs</button>
+        <Saved on={saved} />
+      </div>
+    </Box>
   );
 }

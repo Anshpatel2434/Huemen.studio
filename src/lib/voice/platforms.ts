@@ -21,6 +21,10 @@ export interface PlatformRule {
   maxChars: number | null;
   /** Characters visible before the platform truncates. null = no cut. */
   visibleChars: number | null;
+  /** Lines visible before "see more", where the platform cuts by line too. */
+  visibleLines?: number;
+  /** Email: the subject shows roughly this many characters [min, max]. */
+  subjectChars?: [number, number];
   maxHashtags: number | null;
   /** Formatting the platform actually understands. */
   formatting: "plain" | "markdown" | "whatsapp" | "slack";
@@ -33,7 +37,8 @@ export const PLATFORM_RULES: Record<string, PlatformRule> = {
     label: "LinkedIn post",
     maxChars: 3000,
     visibleChars: 210,
-    maxHashtags: 5,
+    visibleLines: 3,
+    maxHashtags: null,
     formatting: "plain",
     norms: [
       "The hook has to land in the first two or three lines, before 'see more'.",
@@ -64,7 +69,7 @@ export const PLATFORM_RULES: Record<string, PlatformRule> = {
     label: "X",
     maxChars: 280,
     visibleChars: null,
-    maxHashtags: 2,
+    maxHashtags: null,
     formatting: "plain",
     norms: ["One idea per post. Longer arguments become a thread."],
   },
@@ -73,7 +78,7 @@ export const PLATFORM_RULES: Record<string, PlatformRule> = {
     label: "Threads",
     maxChars: 500,
     visibleChars: null,
-    maxHashtags: 1,
+    maxHashtags: null,
     formatting: "plain",
     norms: ["Conversational. Lighter than LinkedIn."],
   },
@@ -90,10 +95,30 @@ export const PLATFORM_RULES: Record<string, PlatformRule> = {
     key: "email",
     label: "Email",
     maxChars: null,
-    visibleChars: 60,
+    visibleChars: null,
+    subjectChars: [40, 60],
     maxHashtags: 0,
     formatting: "plain",
     norms: ["The subject says what it is about.", "One ask per email where possible."],
+  },
+  // Working values, less settled than the others: re-check before launch.
+  facebook: {
+    key: "facebook",
+    label: "Facebook post",
+    maxChars: 63206,
+    visibleChars: 480,
+    maxHashtags: 3,
+    formatting: "plain",
+    norms: ["The first few lines show before 'See more'; land the point there.", "Conversational. Questions that invite a reply do well."],
+  },
+  youtube_community: {
+    key: "youtube_community",
+    label: "YouTube community post",
+    maxChars: null,
+    visibleChars: null,
+    maxHashtags: 3,
+    formatting: "plain",
+    norms: ["Short and direct: an update, a question or a poll for people who already watch.", "Talks to the audience the way the videos do."],
   },
   whatsapp: {
     key: "whatsapp",
@@ -136,6 +161,27 @@ export const PLATFORM_RULES: Record<string, PlatformRule> = {
   },
 };
 
+/**
+ * Spec 07: "keep these numbers in config, because platforms change them". Any
+ * rule can be overridden without a code change through PLATFORM_RULES_OVERRIDES,
+ * a JSON object keyed by platform, e.g. {"x":{"maxChars":25000}}. Read on the
+ * server only (the variable is not exposed to the browser), where every limit
+ * that matters is enforced.
+ */
+function applyOverrides(): void {
+  const raw = typeof process !== "undefined" ? process.env?.PLATFORM_RULES_OVERRIDES : undefined;
+  if (!raw) return;
+  try {
+    const o = JSON.parse(raw) as Record<string, Partial<PlatformRule>>;
+    for (const [k, v] of Object.entries(o)) {
+      if (PLATFORM_RULES[k] && v && typeof v === "object") PLATFORM_RULES[k] = { ...PLATFORM_RULES[k], ...v, key: k };
+    }
+  } catch {
+    console.error("[platforms] PLATFORM_RULES_OVERRIDES is not valid JSON; using the built-in rules.");
+  }
+}
+applyOverrides();
+
 export const PLATFORM_KEYS = Object.keys(PLATFORM_RULES);
 
 export function platformRule(key: string | undefined): PlatformRule | null {
@@ -165,7 +211,9 @@ export function platformLines(rule: PlatformRule): string[] {
   const out: string[] = [];
   if (rule.maxChars != null) out.push(`At most ${rule.maxChars} characters in total.`);
   if (rule.visibleChars != null)
-    out.push(`Only the first ${rule.visibleChars} characters show before the cut; the opening has to land inside them.`);
+    out.push(`Only the first ${rule.visibleChars} characters${rule.visibleLines ? ` (about ${rule.visibleLines} lines)` : ""} show before the cut; the opening has to land inside them.`);
+  if (rule.subjectChars)
+    out.push(`Start with a subject line of ${rule.subjectChars[0]}–${rule.subjectChars[1]} characters that says what it is about, then a blank line, then the email.`);
   if (rule.maxHashtags === 0) out.push("No hashtags.");
   else if (rule.maxHashtags != null) out.push(`At most ${rule.maxHashtags} hashtags.`);
   if (rule.formatting === "whatsapp") out.push("Formatting: *bold*, _italic_, ~strike~ only. No markdown headers.");

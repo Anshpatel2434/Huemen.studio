@@ -25,7 +25,7 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
 
   return (
     <DocPage back={`/w/${id}`} backLabel="Projects" eyebrow="Usage" title="Usage" accent="this month." sub="Every model call is logged before it returns. Provider costs are billed to the account owner, so runaway usage shows up here." width={1000}>
-      <div className="bg-paper border border-hairline rounded-md p-5">
+      <div className="border-t border-hairline pt-6">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {stats.map(([k, v]) => (
             <div key={k}>
@@ -36,7 +36,7 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
         </div>
       </div>
 
-      <div className="mt-4 bg-paper border border-hairline rounded-md p-5">
+      <div className="mt-4 border-t border-hairline pt-6">
         <div className="flex items-center justify-between">
           <p className="font-medium">Generations · last 14 days</p>
           <span className="text-xs text-ink-faint">peak {max}</span>
@@ -53,7 +53,7 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
       </div>
 
       <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 pb-10">
-        <div className="bg-paper border border-hairline rounded-md p-5">
+        <div className="border-t border-hairline pt-6">
           <p className="font-medium">Caps</p>
           {u.caps.textHard || u.caps.textSoft ? (
             <div className="mt-4">
@@ -65,7 +65,7 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
             <p className="text-sm text-ink-muted mt-2">No caps set for this workspace. Admins set a soft warning and a hard stop per workspace. Usage resets {resetLabel}.</p>
           )}
         </div>
-        <div className="bg-paper border border-hairline rounded-md p-5">
+        <div className="border-t border-hairline pt-6">
           <p className="font-medium">Recent calls</p>
           {u.recent.length === 0 ? (
             <p className="text-sm text-ink-muted mt-2">No generations yet.</p>

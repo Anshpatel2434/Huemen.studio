@@ -12,6 +12,8 @@ import {
   loadFoundation, saveBriefAnswers, saveFoundation, saveVisualIdentity, type FoundationForm, type VisualIdentity,
 } from "@/lib/data/foundation";
 import { uploadAsset, type AssetKind } from "@/lib/data/assets";
+import { safeGet } from "@/lib/integrations/web";
+import { extractSiteBrand, type SiteBrand } from "@/lib/visual/core";
 import { generatePillars } from "@/lib/data/pipeline";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { parseIntake, mergeIntake } from "@/lib/intake/parse";
@@ -88,4 +90,22 @@ export async function answerQuestionsAction(fd: FormData): Promise<void> {
 export async function saveVisualAction(tenantId: string, v: VisualIdentity): Promise<void> {
   await saveVisualIdentity(await actionScope(tenantId), v);
   revalidatePath(`/w/${tenantId}`, "layout");
+}
+
+/**
+ * Read a brand off its own website (Obello-style onboarding): the home page
+ * and up to three of its stylesheets, fetched on the server behind the SSRF
+ * guard (lib/integrations/web), parsed in lib/visual/core. Nothing is saved
+ * here: the person sees what was found and keeps what they want.
+ */
+export async function readSiteBrandAction(tenantId: string, url: string): Promise<{ ok: true; value: SiteBrand & { url: string } } | { ok: false; error: string }> {
+  await actionScope(tenantId);
+  try {
+    const page = await safeGet(/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`);
+    const first = extractSiteBrand(page.body, [], page.url);
+    const css = await Promise.all(first.stylesheets.map((s) => safeGet(s).then((r) => r.body).catch(() => "")));
+    return { ok: true, value: { ...extractSiteBrand(page.body, css, page.url), url: page.url } };
+  } catch {
+    return { ok: false, error: "Couldn't read that site. Check the address, or set your hue by hand." };
+  }
 }

@@ -22,6 +22,22 @@ export class AiConfigError extends Error {
   }
 }
 
+/**
+ * The workspace's monthly hard cap is reached (brief §4.6, TASKS P3-9). Raised
+ * BEFORE the provider is called, so a runaway workspace costs nothing more;
+ * logged like every other failed call, so it shows in usage.
+ */
+export class UsageCapError extends Error {
+  constructor(
+    public readonly kind: "text" | "image",
+    public readonly used: number,
+    public readonly cap: number,
+  ) {
+    super(`Monthly ${kind} cap reached: ${used} of ${cap}`);
+    this.name = "UsageCapError";
+  }
+}
+
 export type ProviderErrorKind =
   | "timeout"
   | "rate_limit"
@@ -52,6 +68,7 @@ export class ProviderError extends Error {
  */
 export function userMessage(e: unknown): string {
   if (e instanceof AiConfigError) return "Drafting isn't switched on for this workspace yet. Your admin can turn it on.";
+  if (e instanceof UsageCapError) return `This workspace has used its ${e.cap} generations for the month. Your admin can raise the cap in Settings.`;
   if (e instanceof ProviderError) {
     switch (e.kind) {
       case "timeout": return "That took too long and was stopped. Try again.";

@@ -34,7 +34,7 @@ export async function WorkspaceShell({ tenantId, section, tabs, actions, childre
           user: { email: session.email, role: session.role },
           isAdmin: isPlatformAdmin(session.role),
           starred: projects.filter((p) => p.starred).map((p) => ({ id: p.id, name: p.name })),
-          usage: { used: usage.textThisMonth + usage.imagesThisMonth, cap: usage.caps.textHard },
+          usage: { used: usage.textThisMonth + usage.imagesThisMonth, cap: usage.caps.textHard, soft: usage.caps.textSoft },
         }}
         section={section}
         tabs={tabs}

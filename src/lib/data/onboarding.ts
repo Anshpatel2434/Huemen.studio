@@ -21,9 +21,9 @@ import { addSamples, listSamples, loadPackForWorkspace, rescan, type NewSample }
 import { writePack, type Actor } from "./training";
 import { loadFoundation, saveFoundation } from "./foundation";
 import { applyAnswer, applyDials, type Answer } from "@/lib/voice/answers";
-import { confirmCards, estimateDials } from "@/lib/voice/derive";
+import { confirmCards, draftBenchmarkNote, estimateDials } from "@/lib/voice/derive";
 import type { IngestedPiece } from "@/lib/voice/ingest";
-import { tagged } from "@/lib/voice/types";
+import { tagged, withUserEdits } from "@/lib/voice/types";
 import {
   MEASURED_CONTEXT_MINIMUM,
   type DialKey,
@@ -32,6 +32,11 @@ import {
   type VoicePack,
   type WorkMode,
 } from "@/lib/voice/types";
+
+const MARK_NAMES: Record<string, string> = {
+  emDash: "Em dash", ellipsis: "Ellipsis", exclamation: "Exclamation mark", semicolon: "Semicolon",
+  emoji: "Emoji", parentheses: "Parentheses", question: "Question mark",
+};
 
 export async function requirePack(scope: WorkspaceScope): Promise<VoicePack> {
   const pack = await loadPackForWorkspace(scope);
@@ -171,9 +176,11 @@ export async function setNeverWords(scope: WorkspaceScope, actor: Actor, pack: V
 export async function dropOpener(scope: WorkspaceScope, actor: Actor, pack: VoicePack, example: string): Promise<void> {
   const openers = pack.mechanics.openers;
   if (!openers) return;
+  // Recorded as a hand edit too, so the next re-scan doesn't bring it back.
+  const mechanics = withUserEdits(pack.mechanics, { droppedPatterns: [example] });
   await writePack(
     scope, actor, pack,
-    { mechanics: { ...pack.mechanics, openers: { ...openers, value: openers.value.filter((o) => o.example !== example) } } },
+    { mechanics: { ...mechanics, openers: { ...openers, value: openers.value.filter((o) => o.example !== example) } } },
     "Dropped an opener.",
   );
 }
@@ -193,12 +200,17 @@ export async function answer(
   pack: VoicePack,
   questionId: string,
   value: Answer,
+  opts: { spoken?: boolean } = {},
 ): Promise<void> {
-  const { patch, spokenSample } = applyAnswer(pack, questionId, value);
+  const { patch, spokenSample } = applyAnswer(pack, questionId, value, opts);
   if (Object.keys(patch).length) await writePack(scope, actor, pack, patch, `Answered ${questionId}.`);
   if (spokenSample) {
-    // A spoken answer is also how they sound (file 05, Part 1, rule 3).
-    await addSamples(scope, pack.id, [{ body: spokenSample, channel: "spoken", kind: "spoken", source: "voice_note", visibility: "public" }]);
+    // A spoken answer is also how they sound (file 05, Part 1, rule 3). The
+    // guard-down party answer is their unguarded voice (samples.md).
+    await addSamples(scope, pack.id, [{
+      body: spokenSample, channel: "spoken", kind: questionId === "C2" ? "unguarded" : "spoken",
+      source: "voice_note", visibility: "public",
+    }]);
   }
   await updateOnboarding(scope, pack, { answered: [questionId] });
 }
@@ -252,13 +264,31 @@ export async function resolveCard(
     const rule = pack.index.punctuation[mark];
     if (option === "drop") {
       await writePack(scope, actor, pack, { index: { ...pack.index, punctuation: { ...pack.index.punctuation, [mark]: { ...rule, allowed: false } } } }, `Dropped the ${mark} habit.`);
-    } else if (mark === "ellipsis" || mark === "emDash") {
-      // Kept: a proven habit beats the universal watch-list for this person.
-      await writePack(scope, actor, pack, { index: { ...pack.index, punctuation: { ...pack.index.punctuation, [mark]: { ...rule, allowed: true } } } }, `Kept the ${mark} habit.`);
+    } else {
+      // Kept: a proven habit beats the universal watch-list for this person,
+      // recorded as a red-pen exception with the evidence (red-pen.md).
+      const rate = pack.mechanics.punctuation?.value?.[mark as keyof NonNullable<VoicePack["mechanics"]["punctuation"]>["value"]];
+      const item = `${MARK_NAMES[mark] ?? mark} allowed`;
+      const exceptions = [
+        ...(pack.redPen.exceptions?.value ?? []).filter((e) => e.item !== item),
+        { item, evidence: rate != null ? `about ${rate} a piece in their own writing` : "a habit in their own writing" },
+      ];
+      await writePack(
+        scope, actor, pack,
+        {
+          index: { ...pack.index, punctuation: { ...pack.index.punctuation, [mark]: { ...rule, allowed: true } } },
+          redPen: { ...pack.redPen, exceptions: tagged(exceptions, "scan", "measured") },
+        },
+        `Kept the ${mark} habit.`,
+      );
     }
   } else if (card.kind === "H4" && dropItems.length) {
     const drop = new Set(dropItems.flatMap((d) => d.split(",")));
-    const mech = pack.mechanics;
+    const dropped = [
+      ...(pack.mechanics.openers?.value ?? []).filter((_, i) => drop.has(`o${i}`)),
+      ...(pack.mechanics.closers?.value ?? []).filter((_, i) => drop.has(`c${i}`)),
+    ].map((x) => x.example);
+    const mech = withUserEdits(pack.mechanics, { droppedPatterns: dropped });
     const openers = (mech.openers?.value ?? []).filter((_, i) => !drop.has(`o${i}`));
     const closers = (mech.closers?.value ?? []).filter((_, i) => !drop.has(`c${i}`));
     await writePack(
@@ -287,7 +317,47 @@ export async function setBenchmarks(scope: WorkspaceScope, pack: VoicePack, samp
       [pack.id, sampleIds.slice(0, 3)],
     );
   });
-  await updateOnboarding(scope, pack, { answered: ["G2"] });
+  // G3 in Core: a note for each pick is drafted now, from what the piece does;
+  // the person confirms or rewrites it on the Voice page.
+  const picked = (await listSamples(scope, pack.id)).filter((s) => sampleIds.slice(0, 3).includes(s.id) && s.visibility === "public");
+  const notes = { ...(pack.onboarding.benchmarkNotes ?? {}) };
+  for (const s of picked) if (!notes[s.id]) notes[s.id] = { note: draftBenchmarkNote(s.body), confirmed: false };
+  await updateOnboarding(scope, pack, { answered: ["G2"], benchmarkNotes: notes });
+}
+
+/** G3: why a benchmark is them, in their own words. */
+export async function setBenchmarkNote(scope: WorkspaceScope, pack: VoicePack, sampleId: string, note: string): Promise<void> {
+  const notes = { ...(pack.onboarding.benchmarkNotes ?? {}), [sampleId]: { note: note.trim().slice(0, 300), confirmed: true } };
+  await updateOnboarding(scope, pack, { benchmarkNotes: notes, answered: ["G3"] });
+}
+
+/**
+ * G4: the one piece that doesn't sound like them, and what's off about it.
+ * It becomes the anti-sample (samples.md) and stops shaping the measured
+ * voice. Public pieces only: the anti-sample is quoted in prompts.
+ */
+export async function setAntiSample(
+  scope: WorkspaceScope,
+  pack: VoicePack,
+  v: { sampleId: string; off: string; fixed?: string },
+): Promise<void> {
+  const sample = (await listSamples(scope, pack.id, { includeExcluded: true })).find((s) => s.id === v.sampleId && s.visibility === "public");
+  if (!sample || !v.off.trim()) return;
+  const before = pack.onboarding.antiSample?.sampleId;
+  await withTenantSession(scope, async (c) => {
+    // The previous anti-sample counts as their writing again.
+    if (before && before !== sample.id)
+      await c.query(`UPDATE voice_samples SET kind = 'corpus', excluded = false, exclusion_reason = NULL WHERE id = $1 AND pack_id = $2 AND kind = 'anti_sample'`, [before, pack.id]);
+    await c.query(
+      `UPDATE voice_samples SET kind = 'anti_sample', excluded = true, exclusion_reason = 'Not like me (anti-sample)' WHERE id = $1 AND pack_id = $2`,
+      [sample.id, pack.id],
+    );
+  });
+  await updateOnboarding(scope, pack, {
+    antiSample: { sampleId: sample.id, text: sample.body.slice(0, 600), off: v.off.trim().slice(0, 300), fixed: v.fixed?.trim().slice(0, 600) || undefined },
+    answered: ["G4"],
+  });
+  await rescan(scope, pack.id);
 }
 
 export async function setWorkMode(scope: WorkspaceScope, actor: Actor, pack: VoicePack, mode: WorkMode): Promise<void> {

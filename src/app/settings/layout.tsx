@@ -17,12 +17,17 @@ export default async function SettingsLayout({ children }: LayoutProps<"/setting
     { href: "/settings", label: "Account", exact: true },
     { href: "/settings/connections", label: "Connections" },
     { href: "/settings/usage", label: "AI usage" },
-    ...(isPlatformAdmin(session.role) ? [{ href: "/settings/workspaces", label: "Workspaces & access" }] : []),
+    ...(isPlatformAdmin(session.role)
+      ? [
+          { href: "/settings/workspaces", label: "Workspaces & access" },
+          { href: "/settings/prompts", label: "Prompts" },
+        ]
+      : []),
   ];
   return (
     <WorkspaceShell tenantId={session.tenantId} section="Settings" tabs={tabs}>
       <div className="absolute inset-0 overflow-y-auto">
-        <div className="max-w-[680px] mx-auto px-5 min-[900px]:px-8 py-10">{children}</div>
+        <div className="page py-10">{children}</div>
       </div>
     </WorkspaceShell>
   );

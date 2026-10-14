@@ -8,7 +8,7 @@ Code: `src/lib/integrations/*` (providers, OAuth, importers), `src/lib/data/conn
 
 | Capability | Scope | Reads | Kept as | Google/LinkedIn review |
 |---|---|---|---|---|
-| Sent email | `gmail.readonly` | Sent mail, last 2 years, up to 200 per run. Body only: quotes, forwards and signatures stripped. Messages under 25 words are skipped. | **Private**: measured, never quoted | **Restricted**: verification plus annual security assessment (CASA) |
+| Sent email | `gmail.readonly` | The whole sent folder, last 2 years, up to 2,000 messages, **read once**. Body only: quotes, forwards and signatures stripped. Messages under 25 words are skipped. Never the inbox. | **Private**: measured, never quoted | **Restricted**: fine for up to 100 invited people in Testing mode; public launch needs verification plus an annual security assessment (CASA) |
 | Docs and Slides | `drive.file` + Google Picker | Only the files the person picks. Exported as plain text and capped at 3,000 words. | Public if they tick "Published", otherwise private | None |
 | Calendar | `calendar.events.readonly` | Next 60 days: title, date, short description. **Never attendees.** | Chosen events become ideas, not writing | Sensitive: verification, no assessment |
 | YouTube captions | `youtube.force-ssl` | Captions from up to 10 of the person's latest videos on their own channel: uploaded captions first, automatic ones otherwise. `captions.download` costs 200 quota units, so one run reads at most 10. | Public, spoken | Sensitive: verification. **Check this scope's current classification on Google's list before submitting.** |
@@ -24,6 +24,7 @@ Each capability asks for its scopes only when the person switches it on. Connect
 - **OAuth state is signed** (HMAC with `AUTH_SECRET`), expires in 10 minutes, and is bound to a nonce in an httpOnly cookie. Google also uses PKCE. The callback checks the signed-in person is the one who started the connection.
 - **No duplicates.** Each imported piece carries its provider id (`gmail:…`, `drive:…`, `linkedin:…`), unique per voice pack.
 - **Disconnect** withdraws access at the provider, deletes the tokens, and, if the person chooses, removes everything that connection brought in, then re-measures.
+- **Gmail is read once, then let go.** The browser pages through the sent folder (100 messages per server call, so there's no long request and no job queue; a progress bar shows the real count). When the read finishes, everything is measured and the Google connection is withdrawn, unless the same connection also serves Docs, Calendar or YouTube. Google withdraws a grant whole, so disconnecting would cut those off too. The email stays as part of the voice, and **Settings › Connections › Remove them** deletes all of it (found by its `gmail:` id) and re-measures.
 - **Tenant-consistent.** A sample can only reference a connection in its own workspace (composite foreign key, tested).
 
 ## Links (no connection needed)
@@ -45,9 +46,15 @@ The server fetches what a person typed, so `src/lib/integrations/web.ts` guards 
 5. **Credentials → Create credentials → API key.** Restrict it to the Picker API and to the app's domains (HTTP referrers). Put it in `GOOGLE_PICKER_API_KEY`. The project number (Dashboard → Project info) goes in `GOOGLE_PROJECT_NUMBER`.
 6. Generate `CONNECTIONS_KEY` once and keep it safe. Losing it means everyone reconnects; leaking it means rotating it, which also means everyone reconnects.
 
-**Before verification:** leave the app in **Testing** and add each person as a test user (up to 100). That's enough for a pilot with Sahil's clients. In Testing mode Google expires refresh tokens after 7 days, so people reconnect weekly. The page handles that and says "Reconnect".
+**Launch in Testing mode (the Gmail route that needs no assessment).** Leave the app in **Testing** and, for each new client, add their Gmail address under **OAuth consent screen → Test users** before they reach "Add samples". That allows up to 100 people. What they'll notice:
 
-**For public launch:** submit for verification. Docs alone needs none. Calendar needs standard verification. **Gmail needs restricted-scope verification plus a CASA assessment by a Google-approved lab, renewed yearly.** Budget weeks and a fee. If Gmail isn't wanted at launch, leave it off; the rest still works.
+- Google shows a "Google hasn't verified this app" screen. They click **Advanced → Go to Huemen Studio**. Warn them in the welcome email.
+- Refresh tokens expire after 7 days. That doesn't matter for Gmail, which is read once straight after connecting and then withdrawn. Docs, Calendar and YouTube would need a weekly "Reconnect"; the page handles it.
+- A person who isn't on the test-user list gets Google's "access blocked" page. Add them and they try again.
+
+In onboarding step 2 the person clicks **Sign in with Google**, approves, and lands back on the same step with the read already running. That's one click on our side.
+
+**Past 100 people, or to remove the warning:** submit for verification. Docs alone needs none. Calendar needs standard verification. **Gmail needs restricted-scope verification plus a CASA assessment by a Google-approved lab, renewed yearly.** Budget weeks and a fee.
 
 ## LinkedIn: one-time setup
 

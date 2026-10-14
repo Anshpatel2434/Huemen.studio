@@ -19,6 +19,7 @@ import { generatePillars } from "@/lib/data/pipeline";
 import { proposeTopics, startPiece, ownDraft, coWrite } from "@/lib/data/create";
 import { generateContent, listContent } from "@/lib/data/content";
 import { firstPieceStale } from "@/lib/voice/lifecycle";
+import { scoreProject } from "@/lib/data/check";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { formatByKey, FORMATS } from "@/lib/content/formats";
 import { saveBriefAnswers } from "@/lib/data/foundation";
@@ -26,7 +27,7 @@ import type { IngestedPiece } from "@/lib/voice/ingest";
 import type { Answer } from "@/lib/voice/answers";
 import type { DialKey, LanguageMix, Proof, Story, WorkMode } from "@/lib/voice/types";
 import {
-  pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveProofs, saveStories, suggestAnswers, type DialPick,
+  pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveBeliefs, saveProofs, saveStories, suggestAnswers, type DialPick,
 } from "@/lib/data/enrich";
 import { importFromUrl, WebImportError } from "@/lib/integrations/web";
 import { userMessage } from "@/lib/ai/errors";
@@ -111,9 +112,9 @@ export async function voiceNotesAction(tenantId: string, notes: string[]) {
 
 // ---- step 2: confirm your voice ----------------------------------------------
 
-export async function answerAction(tenantId: string, questionId: string, value: Answer) {
+export async function answerAction(tenantId: string, questionId: string, value: Answer, opts: { spoken?: boolean } = {}) {
   const { scope, actor } = await actionActor(tenantId);
-  await answer(scope, actor, await requirePack(scope), questionId, value);
+  await answer(scope, actor, await requirePack(scope), questionId, value, { spoken: !!opts.spoken });
   refresh(tenantId);
 }
 
@@ -206,6 +207,8 @@ export async function firstPieceAction(tenantId: string): Promise<string> {
       await generateContent(p, { format, topic: topicTitle, pillarId });
     }
     // "Check mine" makes no draft: the person writes, and the check reads it.
+    // Scored now, so the dashboard card shows the same band the payoff did.
+    await scoreProject(p).catch(() => undefined);
     await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "done", at: new Date().toISOString() } });
   } catch (e) {
     await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "failed", at: new Date().toISOString() } });
@@ -244,6 +247,7 @@ export async function ownDraftForFirstPieceAction(tenantId: string, text: string
   if (!projectId || !text.trim()) return;
   const format = FORMATS.find((f) => f.platform === (pack.onboarding.writeFor?.[0] ?? "linkedin"))?.key ?? "linkedin_post";
   await ownDraft({ ...scope, projectId }, { format: formatByKey(format).key, topic: "", text });
+  await scoreProject({ ...scope, projectId }).catch(() => undefined);
   refresh(tenantId);
 }
 
@@ -316,6 +320,12 @@ export async function storiesAction(tenantId: string, stories: Story[]) {
   refresh(tenantId);
 }
 
+export async function beliefsAction(tenantId: string, beliefs: string[]) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveBeliefs(scope, actor, await requirePack(scope), beliefs);
+  refresh(tenantId);
+}
+
 export async function proofsAction(tenantId: string, proofs: Proof[]) {
   const { scope, actor } = await actionActor(tenantId);
   await saveProofs(scope, actor, await requirePack(scope), proofs);
@@ -338,9 +348,11 @@ export async function languagesAction(tenantId: string, v: LanguageMix) {
  * Their own writing from links: a website, blog, Substack, Medium or a podcast
  * feed with transcripts. One link at a time so the page can show progress.
  */
-export async function importUrlAction(tenantId: string, url: string) {
+export async function importUrlAction(tenantId: string, url: string, ownWriting: boolean) {
   const { scope } = await actionActor(tenantId);
   return attempt(async () => {
+    // The tick box is the consent; the server holds the line, not the button.
+    if (ownWriting !== true) throw new WebImportError("Tick the box to confirm this is your own writing first.");
     const pack = await requirePack(scope);
     const { pieces, note } = await importFromUrl(url);
     const added = await addSamples(

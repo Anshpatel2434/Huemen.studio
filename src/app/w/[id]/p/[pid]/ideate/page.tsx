@@ -4,22 +4,18 @@ import { projectScope } from "@/lib/auth/workspace";
 import { listIdeas, listPillars } from "@/lib/data/planning";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { FORMATS } from "@/lib/content/formats";
+import { ANGLES } from "@/lib/content/angles";
 import { DocPage } from "@/components/doc-page";
 import { EmptyState, SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { setIdeateAction } from "./actions";
+import { IdeateTree } from "./ideate-tree";
+import { loadFoundation } from "@/lib/data/foundation";
+import { loadPackForWorkspace } from "@/lib/data/voice-pack";
+import { coreCardFacts } from "@/lib/voice/core-card";
 
 export const metadata = { title: "Ideate" };
 
-/** The angles a piece can take. The same list the batch generator draws on. */
-const ANGLES = [
-  "The mistake most people make",
-  "A story from the work",
-  "A simple framework",
-  "What I'd do differently",
-  "Where I disagree with the field",
-  "What the work has taught me",
-];
 
 /**
  * Step 1 of a piece: what is this one about?
@@ -32,21 +28,19 @@ const ANGLES = [
 export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/ideate">) {
   const { id, pid } = await params;
   const { scope, project } = await projectScope(id, pid);
-  const [pillars, ideas, ctx] = await Promise.all([
+  const [pillars, ideas, ctx, foundation, pack] = await Promise.all([
     listPillars(scope),
     listIdeas(scope),
     loadBrandContext(scope),
+    loadFoundation(scope),
+    loadPackForWorkspace(scope),
   ]);
+  const facts = pack ? coreCardFacts(pack, new Date().getTime()) : null;
+  const topic = project.name.startsWith("Untitled") ? "" : project.name;
   const base = `/w/${id}/p/${pid}`;
   const open = ideas.filter((i) => i.status === "new").slice(0, 6);
   const ready = pillars.length > 0 && !ctx.degraded;
 
-  const Hidden = () => (
-    <>
-      <input type="hidden" name="tenantId" value={id} />
-      <input type="hidden" name="projectId" value={pid} />
-    </>
-  );
 
   return (
     <DocPage
@@ -71,12 +65,14 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
         </div>
       )}
 
-      <form action={setIdeateAction} className="flex flex-col gap-6">
-        <Hidden />
+      {/* The questions on the left, and beside them the map of what they build. */}
+      <div className="grid grid-cols-1 min-[1400px]:grid-cols-[minmax(0,620px)_minmax(0,1fr)] gap-x-14 gap-y-12 items-start">
+      <form id="ideate-form" action={setIdeateAction} className="flex flex-col gap-6 min-w-0">
+        <Hidden id={id} pid={pid} />
 
-        <section className="bg-paper border border-hairline rounded-md p-5">
+        <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">01 · Where does it go</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {FORMATS.map((f) => (
               <label
                 key={f.key}
@@ -96,7 +92,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           </div>
         </section>
 
-        <section className="bg-paper border border-hairline rounded-md p-5">
+        <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">02 · Which pillar</p>
           {pillars.length === 0 ? (
             <p className="text-sm text-ink-faint">No pillars yet — this piece will be written from the brief alone.</p>
@@ -115,7 +111,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           )}
         </section>
 
-        <section className="bg-paper border border-hairline rounded-md p-5">
+        <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">03 · The angle</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {ANGLES.map((a) => (
@@ -133,7 +129,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
             <span className="label-mono text-ink-faint">What it&apos;s about</span>
             <input
               name="topic"
-              defaultValue={project.name.startsWith("Untitled") ? "" : project.name}
+              defaultValue={topic}
               placeholder="One line. e.g. Why your first 90 days as a manager decide everything"
               className="field mt-1.5"
             />
@@ -148,13 +144,32 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
         </div>
       </form>
 
+      <div className="min-[1400px]:sticky min-[1400px]:top-6 min-w-0">
+        <IdeateTree
+          formId="ideate-form"
+          core={{
+            name: facts?.name ?? "Your voice",
+            confidence: facts?.confidence ?? 0,
+            voiceLine: pack?.voiceLine ?? "",
+            tones: facts?.attributes ?? [],
+            samples: pack?.corpusStats.pieces ?? 0,
+            stories: pack?.identity.stories?.value?.length ?? 0,
+            proofs: pack?.identity.proofs?.value?.length ?? 0,
+          }}
+          brief={{ niche: foundation.niche, audience: foundation.audience, positioning: foundation.positioning }}
+          pillars={pillars.map((p) => ({ id: p.id, name: p.name }))}
+          initial={{ format: project.format ?? "linkedin_post", pillarId: project.pillarId ?? "", angle: project.angle ?? "", topic }}
+        />
+      </div>
+      </div>
+
       {open.length > 0 && (
         <section className="mt-10">
           <p className="label-mono text-ink-faint mb-3">From your idea inbox</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {open.map((i) => (
-              <form key={i.id} action={setIdeateAction} className="bg-paper border border-hairline rounded-md p-4 flex flex-col gap-3">
-                <Hidden />
+              <form key={i.id} action={setIdeateAction} className="bg-field rounded-xl p-4 flex flex-col gap-3">
+                <Hidden id={id} pid={pid} />
                 <input type="hidden" name="ideaId" value={i.id} />
                 <input type="hidden" name="topic" value={i.rawText} />
                 {i.pillarId && <input type="hidden" name="pillarId" value={i.pillarId} />}
@@ -170,7 +185,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
       )}
 
       {open.length === 0 && (
-        <div className="mt-10 bg-paper border border-hairline rounded-md">
+        <div className="mt-10 border-y border-hairline">
           <EmptyState
             icon={<Lightbulb size={18} />}
             title="Nothing in the idea inbox"
@@ -179,5 +194,15 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
         </div>
       )}
     </DocPage>
+  );
+}
+
+/** The workspace and project every form on this page acts in. */
+function Hidden({ id, pid }: { id: string; pid: string }) {
+  return (
+    <>
+      <input type="hidden" name="tenantId" value={id} />
+      <input type="hidden" name="projectId" value={pid} />
+    </>
   );
 }

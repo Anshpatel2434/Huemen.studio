@@ -6,14 +6,16 @@
  */
 import type { ZodType } from "zod";
 import { TASKS } from "../tasks";
+import { STREAM_SEPARATOR } from "../prompt";
 import type {
+  StreamingTextProvider,
+  TextStreamEvent,
   StructuredResult,
   ImageGenRequest,
   ImageGenResult,
   ImageProvider,
   TextGenRequest,
   TextGenResult,
-  TextProvider,
 } from "../types";
 
 function field(serialized: string, label: string): string {
@@ -34,10 +36,22 @@ const HOOKS = [
 ];
 
 /** "Name :: description" lines built from the strategy answers + brief. */
+/**
+ * The stand-in reads what the real model reads: brand data comes from the
+ * context block, never from the task input (INV-2). The tasks' stand-ins look
+ * for a "Never use:" line, so it is supplied here from the context's guardrails.
+ */
+function withContextHints(req: TextGenRequest): string {
+  const never = req.context.guardrails.dontWords;
+  if (!never.length || /^Never use: /m.test(req.taskInput)) return req.taskInput;
+  return `Never use: ${never.join(", ")}\n${req.taskInput}`;
+}
+
 function mockPillars(req: TextGenRequest): string {
   const s = req.context.serialized;
   const niche = field(s, "Niche") || "your field";
-  const ans = (k: string) => req.taskInput.match(new RegExp(`^${k}: (.+)$`, "m"))?.[1]?.trim() ?? "";
+  // Strategy answers are in the context block (INV-2), one "key: answer" per line.
+  const ans = (k: string) => s.match(new RegExp(`^${k}: (.+)$`, "m"))?.[1]?.trim() ?? "";
   const clip = (t: string) => (t.length > 70 ? `${t.slice(0, 67)}…` : t);
   const out: string[] = [];
   const focus = req.taskInput.match(/^Focus: (.+)$/m)?.[1]?.trim();
@@ -52,8 +66,24 @@ function mockPillars(req: TextGenRequest): string {
   return out.slice(0, Math.max(1, Math.min(5, count))).join("\n");
 }
 
-export const mockTextProvider: TextProvider = {
+export const mockTextProvider: StreamingTextProvider = {
   name: "mock",
+  /**
+   * The stand-in streams the same drafts `generate` would return, a few
+   * characters at a time, so the canvas shows a draft being written exactly
+   * as it will with a real model. Paced like a fast model (~250 chars/s).
+   */
+  async *stream(req, model): AsyncIterable<TextStreamEvent> {
+    const out = await mockTextProvider.generate(req, model);
+    const text = out.variants.join(`\n${STREAM_SEPARATOR}\n`);
+    for (let i = 0; i < text.length; ) {
+      const n = 3 + ((i * 7) % 6);
+      yield { type: "delta", text: text.slice(i, i + n) };
+      i += n;
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    yield { type: "done", model, tokensIn: out.tokensIn, tokensOut: out.tokensOut };
+  },
   async generate(req: TextGenRequest, model: string): Promise<TextGenResult> {
     if (req.templateKey === "pillar_set") {
       const text = mockPillars(req);
@@ -106,7 +136,7 @@ export const mockTextProvider: TextProvider = {
     if (!task) throw new Error(`No stand-in answer for task "${req.templateKey}".`);
     // Validated like a real reply, so a stand-in can never pass a shape the
     // real provider would fail.
-    const data = schema.parse(task.mock(req.taskInput));
+    const data = schema.parse(task.mock(withContextHints(req)));
     return { data, model, tokensIn: req.context.serialized.length + req.taskInput.length, tokensOut: JSON.stringify(data).length };
   },
 };

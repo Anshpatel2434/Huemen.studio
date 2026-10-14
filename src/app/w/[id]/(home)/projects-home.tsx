@@ -93,7 +93,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
       <div className="flex-1 overflow-y-auto">
         {rescanDays != null && setupStep == null && view !== "archived" && (
           <section className="border-b border-hairline bg-field">
-            <div className="max-w-[1180px] mx-auto px-5 py-3 flex flex-wrap items-center gap-3">
+            <div className="page py-3 flex flex-wrap items-center gap-3">
               <p className="flex-1 min-w-0 text-sm">It&apos;s been {rescanDays} days since we measured your writing, and you&apos;ve published since. A fresh look keeps drafts close to how you sound now.</p>
               <Link href={`/w/${tenantId}/brand/voice?preview=1#remeasure`} className={btnClass("secondary", "sm")}>See what would change</Link>
             </div>
@@ -101,7 +101,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
         )}
         {justFinished && view !== "archived" && (
           <section role="status" className="border-b border-hairline bg-ok-soft">
-            <div className="max-w-[1180px] mx-auto px-5 py-4 flex flex-wrap items-center gap-3">
+            <div className="page py-4 flex flex-wrap items-center gap-3">
               <CheckCircle2 size={17} className="text-ok shrink-0" aria-hidden="true" />
               <p className="flex-1 min-w-0 text-sm">
                 <span className="font-medium">You&apos;re set up.</span>
@@ -113,7 +113,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
         )}
         {setupStep != null && view !== "archived" && (
           <section className="border-b border-hairline bg-accent-soft">
-            <div className="max-w-[1180px] mx-auto px-5 py-4 flex flex-wrap items-center gap-3">
+            <div className="page py-4 flex flex-wrap items-center gap-3">
               <p className="flex-1 min-w-0 text-sm">
                 <span className="font-medium">Set up your voice</span>
                 <span className="text-ink-muted"> · step {setupStep + 1} of 5. Until it&apos;s done, drafts won&apos;t sound much like you.</span>
@@ -125,7 +125,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
         {/* AI banner */}
         {hero && view !== "archived" && (
           <section className="relative border-b border-hairline bg-panel">
-            <div className="max-w-[1180px] mx-auto px-5 py-7">
+            <div className="page py-7">
               <div className="flex items-center gap-2">
                 <h2 className="text-lg">Describe the brand and <span className="serif-accent">start the brief</span></h2>
                 <span className="h-5 px-1.5 rounded-sm bg-paper text-xs font-medium flex items-center gap-1"><Sparkles size={10} /> AI</span>
@@ -136,7 +136,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
           </section>
         )}
 
-        <div className="max-w-[1180px] mx-auto px-5 py-5">
+        <div className="page py-5">
           {/* Tabs + filters */}
           <div className="flex items-end gap-1 flex-wrap border-b border-hairline">
             <Tabs
@@ -166,7 +166,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
           </div>
 
           {shown.length === 0 ? (
-            <div className="mt-8 bg-paper border border-hairline rounded-md max-w-xl mx-auto">
+            <div className="mt-8  max-w-xl mx-auto">
               <EmptyState
                 icon={view === "archived" ? <Archive size={18} /> : <FolderOpen size={18} />}
                 title={view === "archived" ? "Nothing archived" : q || filtered ? "No projects match" : "No projects yet"}
@@ -179,7 +179,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
               {shown.map((p) => <ProjectCard key={p.id} p={p} tenantId={tenantId} archived={view === "archived"} />)}
             </div>
           ) : (
-            <div className="mt-4 bg-paper border border-hairline rounded-md overflow-hidden">
+            <div className="mt-4 border-y border-hairline overflow-hidden">
               <div className="grid grid-cols-[minmax(0,1fr)_120px_90px_140px_40px] px-4 h-9 items-center text-xs text-ink-faint border-b border-hairline">
                 <span>Name</span><span>Step</span><span>Voice</span><span>Last edited</span><span />
               </div>

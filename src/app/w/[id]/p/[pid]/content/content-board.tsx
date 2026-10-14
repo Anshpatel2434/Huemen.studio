@@ -6,11 +6,12 @@ import { Plus, X, Flag, Trash2, History, Wand2, PenLine, AlertTriangle, Globe, T
 import { Canvas, Artboard, type Device } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
 import { DraftModal } from "@/components/draft-modal";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { AgentDots, Badge, EmptyState, Avatar, IconButton, Segmented, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
 import type { ContentItemView } from "@/lib/data/content";
-import { deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
+import { askRewriteAction, deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
 
 const WIDTH: Record<Device, number> = { desktop: 520, tablet: 440, mobile: 360 };
 const STATUS_TONE = { draft: "neutral", edited: "dark", approved: "ok" } as const;
@@ -69,11 +70,20 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       .filter((c) => c.items.length > 0 || c.pillarId !== null || pillarFilter === c.key);
   }, [items, pillars, pillarFilter]);
 
-  const patch = useCallback((item: ContentItemView, next: Patch, label: string) => {
+  const patch = useCallback((item: ContentItemView, next: Patch, label: string, asked = false) => {
     const prev = Object.fromEntries(Object.keys(next).map((k) => [k, item[k as keyof Patch]])) as Patch;
-    history.push({ label, undo: () => patchContentAction(tenantId, projectId, item.id, prev), redo: () => patchContentAction(tenantId, projectId, item.id, next) });
-    return patchContentAction(tenantId, projectId, item.id, next);
+    // A rewrite the person asked for is the model's words, so it is not learned from.
+    const opts = { learn: !asked };
+    history.push({ label, undo: () => patchContentAction(tenantId, projectId, item.id, prev, opts), redo: () => patchContentAction(tenantId, projectId, item.id, next, opts) });
+    return patchContentAction(tenantId, projectId, item.id, next, opts);
   }, [history, tenantId, projectId]);
+
+  /** Select and instruct: the model's version of one part, committed by the canvas like an edit. */
+  const askFor = useCallback((item: ContentItemView, part: string) => async (instruction: string, current: string) => {
+    const r = await askRewriteAction(tenantId, projectId, item.id, { part, text: current, instruction });
+    if (!r.ok) throw new Error(r.error);
+    return r.text;
+  }, [tenantId, projectId]);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -95,13 +105,18 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     });
   };
 
-  const remove = useCallback((item: ContentItemView) => {
-    if (!confirm("Delete this piece and its history?")) return;
+  // Delete asks first, in the app's own dialog (never the browser's confirm()).
+  const [toDelete, setToDelete] = useState<ContentItemView | null>(null);
+  const remove = useCallback((item: ContentItemView) => setToDelete(item), []);
+  const confirmDelete = () => {
+    const item = toDelete;
+    if (!item) return;
+    setToDelete(null);
     deleteContentAction(tenantId, projectId, item.id).then(
-      () => { toast("Deleted"); select(null); },
+      () => { toast("Deleted"); select(null); router.refresh(); },
       () => toast("Couldn't delete that piece.", "danger"),
     );
-  }, [tenantId, projectId, toast, select]);
+  };
   useDeleteKey(selected ? () => remove(selected) : null);
 
   return (
@@ -144,6 +159,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                       width={WIDTH[device]}
                       selected={selected?.id === i.id}
                       onSelect={() => select(i.id)}
+                      onEdit={() => select(i.id)}
                       dimmed={dragId === i.id}
                       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", i.hook); setDragId(i.id); }}
                       onDragEnd={() => { setDragId(null); setOver(null); }}
@@ -154,7 +170,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                         </>
                       }
                     >
-                      <PostPreview item={i} brandName={brandName} dontWords={dontWords} onPatch={(next, label) => patch(i, next, label)} />
+                      <PostPreview item={i} brandName={brandName} dontWords={dontWords} onPatch={(next, label, asked) => patch(i, next, label, asked)} onAsk={(part) => askFor(i, part)} />
                     </Artboard>
                   ))}
                 </div>
@@ -177,14 +193,29 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
         </div>
       )}
 
-      {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} onClose={() => select(null)} />}
-      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} onDone={(id) => select(id)} />}
+      {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} onClose={() => select(null)} onDelete={() => remove(selected)} />}
+      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} />}
+      <ConfirmModal
+        open={toDelete !== null}
+        title="Delete this piece?"
+        confirmLabel="Delete piece"
+        danger
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+      >
+        {toDelete?.hook ? <>“{toDelete.hook.slice(0, 80)}{toDelete.hook.length > 80 ? "…" : ""}” and its {toDelete.history.length} saved version{toDelete.history.length === 1 ? "" : "s"} go with it. </> : null}
+        This can&apos;t be undone.
+      </ConfirmModal>
     </>
   );
 }
 
 /** Channel-shaped wireframe of the post: real copy, greyscale chrome. Copy is editable in place. */
-function PostPreview({ item, brandName, dontWords, onPatch }: { item: ContentItemView; brandName: string; dontWords: string[]; onPatch: (p: Patch, label: string) => Promise<unknown> }) {
+function PostPreview({ item, brandName, dontWords, onPatch, onAsk }: {
+  item: ContentItemView; brandName: string; dontWords: string[];
+  onPatch: (p: Patch, label: string, asked?: boolean) => Promise<unknown>;
+  onAsk: (part: string) => (instruction: string, current: string) => Promise<string>;
+}) {
   return (
     <div className="p-5">
       <div className="flex items-start gap-2.5">
@@ -196,15 +227,15 @@ function PostPreview({ item, brandName, dontWords, onPatch }: { item: ContentIte
         </div>
       </div>
       <div className="mt-3.5 text-[0.95rem] font-semibold leading-snug">
-        <EditableText value={item.hook} required label="Hook" display={<Marked text={item.hook} words={dontWords} />} onCommit={(hook) => onPatch({ hook }, "edit hook")} />
+        <EditableText value={item.hook} required label="Hook" display={<Marked text={item.hook} words={dontWords} />} onAsk={onAsk("Hook")} onCommit={(hook, _p, m) => onPatch({ hook }, m?.asked ? "rewrite hook" : "edit hook", m?.asked)} />
       </div>
       <div className="mt-2 text-[0.85rem] leading-relaxed text-ink/85">
-        <EditableText value={item.body} multiline label="Body" placeholder="Add body copy" display={<Marked text={item.body} words={dontWords} />} onCommit={(body) => onPatch({ body }, "edit body")} />
+        <EditableText value={item.body} multiline label="Body" placeholder="Add body copy" display={<Marked text={item.body} words={dontWords} />} onAsk={onAsk("Body")} onCommit={(body, _p, m) => onPatch({ body }, m?.asked ? "rewrite body" : "edit body", m?.asked)} />
       </div>
       <div className="mt-3 text-[0.85rem] font-medium flex gap-1">
         <span className="shrink-0">→</span>
         <div className="flex-1 min-w-0">
-          <EditableText value={item.cta} label="Call to action" placeholder="Add a call to action" display={<Marked text={item.cta} words={dontWords} />} onCommit={(cta) => onPatch({ cta }, "edit call to action")} />
+          <EditableText value={item.cta} label="Call to action" placeholder="Add a call to action" display={<Marked text={item.cta} words={dontWords} />} onAsk={onAsk("Call to action")} onCommit={(cta, _p, m) => onPatch({ cta }, m?.asked ? "rewrite call to action" : "edit call to action", m?.asked)} />
         </div>
       </div>
       <div className="grid grid-cols-4 mt-4 pt-2 border-t border-hairline text-ink-faint">
@@ -222,12 +253,13 @@ function Marked({ text, words }: { text: string; words: string[] }) {
   return <>{text.split(re).map((part, i) => (ws.some((w) => w.toLowerCase() === part.toLowerCase()) ? <mark key={i} className="bg-accent-soft text-accent-ink rounded-xs px-0.5">{part}</mark> : <span key={i}>{part}</span>))}</>;
 }
 
-function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
-  tenantId: string; projectId: string; item: ContentItemView; pillars: { id: string; name: string }[]; dontWords: string[]; onClose: () => void;
+function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onDelete }: {
+  tenantId: string; projectId: string; item: ContentItemView; pillars: { id: string; name: string }[]; dontWords: string[]; onClose: () => void; onDelete: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [hook, setHook] = useState(item.hook);
+  const [askText, setAskText] = useState("");
   const [body, setBody] = useState(item.body);
   const [cta, setCta] = useState(item.cta);
   const [pillarId, setPillarId] = useState(item.pillarId ?? "");
@@ -246,10 +278,23 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
     });
 
   const save = (status: "edited" | "approved") =>
-    run(status, () => saveContentAction(tenantId, projectId, item.id, { hook, body, cta, pillarId: pillarId || null, status }), status === "approved" ? "Approved" : "Saved");
+    start(async () => {
+      setBusy(status);
+      try {
+        const learned = await saveContentAction(tenantId, projectId, item.id, { hook, body, cta, pillarId: pillarId || null, status });
+        // Say what the voice took from it, so learning is never silent.
+        toast(
+          status !== "approved" ? "Saved"
+          : learned?.learned ? `Approved. Your voice learned from it: ${learned.why.toLowerCase()}${learned.remeasured ? " It re-measured itself." : ""}`
+          : "Approved",
+        );
+        router.refresh();
+      } catch { toast("That failed and was logged. Try again.", "danger"); }
+      setBusy(null);
+    });
 
   return (
-    <aside className="absolute top-0 right-0 bottom-0 z-30 w-[min(360px,100%)] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
+    <aside className="absolute top-0 right-0 bottom-0 min-[900px]:top-1 min-[900px]:right-3 min-[900px]:bottom-3 min-[900px]:rounded-2xl min-[900px]:border overflow-hidden z-30 w-[min(360px,100%)] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
       <div className="min-h-14 shrink-0 flex items-center gap-2 pl-4 pr-2 border-b border-hairline">
         <span className="text-sm font-semibold flex-1 truncate">{formatByKey(item.format).label}</span>
         <Segmented
@@ -288,6 +333,14 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
                 </button>
               ))}
             </div>
+            {/* Ask for a change in your own words: the same steer, without a preset. */}
+            <form
+              className="hu-composer !p-2 !pl-3.5 !flex-row !items-center mt-2"
+              onSubmit={(e) => { e.preventDefault(); const ask = askText.trim(); if (!ask || pending) return; run("ask", () => steerAction(tenantId, projectId, item.id, ask), "New version added to history"); setAskText(""); }}
+            >
+              <input type="text" value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="Ask for a change: shorter, add a story, end on a question" aria-label="Ask for a change" />
+              <button type="submit" disabled={!askText.trim() || pending} className={`${btnClass("secondary", "sm")} shrink-0`}>{busy === "ask" ? <AgentDots /> : "Ask"}</button>
+            </form>
             <p className="text-xs text-ink-faint mt-1.5">The previous version stays in History.</p>
           </div>
           <p className="text-xs text-ink-faint" suppressHydrationWarning>Template v{item.promptVersion ?? "–"} · {new Date(item.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
@@ -309,7 +362,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
       )}
 
       <div className="shrink-0 border-t border-hairline p-3 flex items-center gap-2">
-        <button onClick={() => { if (confirm("Delete this piece and its history?")) run("delete", async () => { await deleteContentAction(tenantId, projectId, item.id); onClose(); }, "Deleted"); }} className={btnClass("danger", "sm")} aria-label="Delete"><Trash2 size={14} /></button>
+        <button onClick={onDelete} disabled={pending} className={btnClass("danger", "sm")} aria-label="Delete piece" title="Delete piece"><Trash2 size={14} /></button>
         <span className="flex-1" />
         <button disabled={pending || !dirty} onClick={() => save("edited")} className={btnClass("secondary", "sm")}>{busy === "edited" ? <AgentDots /> : "Save"}</button>
         <button disabled={pending} onClick={() => save("approved")} className={btnClass("primary", "sm")}>{busy === "approved" ? <AgentDots /> : item.status === "approved" && !dirty ? "Approved" : "Approve"}</button>

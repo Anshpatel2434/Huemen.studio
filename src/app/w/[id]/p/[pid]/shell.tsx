@@ -14,7 +14,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import {
   ChevronDown, FileText, Network, PenLine, Palette, Share2, Download, Lightbulb, CalendarDays,
-  Package, ArrowUp, Check, Lock, Copy, ChevronRight, Layers, ArrowLeft, Pencil, Files, Flag, BarChart3, Plus, WandSparkles, X, Settings, Archive, Trash2,
+  Package, ArrowUp, Check, Lock, Copy, Layers, ArrowLeft, Pencil, Files, Flag, BarChart3, Plus, WandSparkles, X, Settings, Archive, Trash2,
   ScanText,
 } from "lucide-react";
 import { LogoMark, Modal, AgentDots, Badge, Avatar, IconButton, Menu, MenuItem, MenuSeparator, ToastProvider, useToast } from "@/components/ui";
@@ -26,6 +26,7 @@ import { askAgent, type AgentReply } from "./agent-actions";
 import { AddPanel } from "./add-panel";
 import { renameProjectAction, duplicateProjectAction, archiveProjectAction, deleteProjectAction } from "../../project-actions";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 const STAGE_ICON: Record<Stage, typeof FileText> = { ideate: Lightbulb, content: PenLine, visual: Palette };
 const PLANNING = [
@@ -78,71 +79,68 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
   if (seg === "intake") return <>{children}</>;
 
   return (
-    <div className="h-screen flex flex-col">
-      <header className="min-h-14 shrink-0 flex flex-wrap items-center gap-x-3 px-2 border-b border-hairline bg-paper">
-        <div className="flex-1 flex items-center gap-2 min-w-0 min-h-14">
+    // One warm canvas from edge to edge (Relume): the bar, the tools and the
+    // panels float on it as white pieces, so nothing frames the work.
+    <div className="h-screen flex flex-col bg-canvas">
+      <header className="min-h-16 shrink-0 flex flex-wrap items-center gap-x-3 px-3">
+        <div className="flex-1 flex items-center gap-2 min-w-0 min-h-16">
           <FileMenu workspace={workspace} project={project} />
-          <nav aria-label="Breadcrumb" className="min-w-0">
-            <ol className="hu-crumbs">
-              <li className="hidden md:flex"><Link href={`/w/${workspace.id}`} className="truncate max-w-[18ch]">{workspace.name}</Link></li>
-              <li className="hidden md:flex sep" aria-hidden="true">/</li>
-              <li className="min-w-0 flex"><span aria-current="page">{project.name}</span></li>
-            </ol>
-          </nav>
+          <Link href={`/w/${workspace.id}`} title={`Back to ${workspace.name}`} className="hidden md:inline-flex items-center min-h-11 px-3.5 rounded-lg bg-paper border border-hairline text-sm font-medium truncate max-w-[24ch] hover:border-line-strong transition-colors">{project.name}</Link>
+          <span className="md:hidden text-sm font-medium truncate">{project.name}</span>
           {aiMock && <span className="ml-1 shrink-0 hidden sm:inline-flex"><Badge tone="warn">Mock AI</Badge></span>}
         </div>
 
-        <nav className="flex items-center justify-center order-last w-full border-t border-hairline py-1 sm:order-none sm:w-auto sm:border-0 sm:py-0" aria-label="Steps">
-          {STAGES.map((s, i) => {
-            const Icon = STAGE_ICON[s];
-            const open = i <= unlocked;
-            const on = seg === s;
-            const done = i < unlocked;
-            const cls = `flex items-center gap-1.5 min-h-11 px-3 sm:px-4 rounded-full text-sm font-medium transition-colors ${on ? "bg-ink text-on-ink" : open ? "text-ink hover:bg-hover" : "text-ink-faint cursor-not-allowed"}`;
-            // No step numbers and no padlocks: the step icon carries it, a
-            // finished step gets a tick, and a locked one is simply dimmed.
-            const inner = (
-              <>
-                {done && !on ? <Check size={15} className="text-ok" aria-hidden="true" /> : <Icon size={15} aria-hidden="true" />}
-                {STAGE_LABEL[s]}
-              </>
-            );
-            return (
-              <div key={s} className="flex items-center">
-                {i > 0 && <ChevronRight size={15} className="text-ink-faint mx-0.5 hidden sm:block" aria-hidden="true" />}
-                {open ? <Link href={`${base}/${s}`} aria-current={on ? "page" : undefined} className={cls}>{inner}</Link> : <span className={cls} aria-disabled="true" title={`Finish ${STAGE_LABEL[STAGES[i - 1]]} first`}>{inner}</span>}
-              </div>
-            );
-          })}
+        {/* The steps as one segmented control, like Sitemap / Wireframe / Style Guide / Design. */}
+        <nav className="flex items-center justify-center order-last w-full pb-2 sm:order-none sm:w-auto sm:pb-0" aria-label="Steps">
+          <div className="flex items-center gap-0.5 p-1 rounded-xl bg-active">
+            {STAGES.map((s, i) => {
+              const Icon = STAGE_ICON[s];
+              const open = i <= unlocked;
+              const on = seg === s;
+              const done = i < unlocked;
+              const cls = `flex items-center gap-1.5 min-h-11 px-3 sm:px-5 rounded-lg text-sm font-medium transition-colors ${on ? "bg-paper text-ink shadow-[var(--shadow-sm)]" : open ? "text-ink-muted hover:text-ink" : "text-ink-faint cursor-not-allowed"}`;
+              // No step numbers and no padlocks: a finished step gets a tick,
+              // a locked one is simply dimmed.
+              const inner = (
+                <>
+                  {done && !on ? <Check size={15} className="text-ok" aria-hidden="true" /> : <Icon size={15} aria-hidden="true" />}
+                  {STAGE_LABEL[s]}
+                </>
+              );
+              return open
+                ? <Link key={s} href={`${base}/${s}`} aria-current={on ? "page" : undefined} className={cls}>{inner}</Link>
+                : <span key={s} className={cls} aria-disabled="true" title={`Finish ${STAGE_LABEL[STAGES[i - 1]]} first`}>{inner}</span>;
+            })}
+          </div>
         </nav>
 
-        <div className="sm:flex-1 flex items-center justify-end gap-1.5">
+        <div className="sm:flex-1 flex items-center justify-end gap-2">
           <div className="hidden lg:flex -space-x-1.5 mr-1">
             {members.slice(0, 3).map((m) => (
-              <Avatar key={m.email} seed={m.email} label={m.email} size="sm" className="!w-6 !h-6 text-[0.55rem] ring-2 ring-paper" />
-
+              <Avatar key={m.email} seed={m.email} label={m.email} size="sm" className="!w-8 !h-8 text-[0.6rem] ring-2 ring-[var(--canvas)]" />
             ))}
           </div>
-          <button onClick={() => setShare(true)} className={`${btnClass("secondary", "sm")} max-sm:!px-3`}><Share2 size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Share</span></button>
-          <Link href={`${base}/export`} className={`${btnClass("primary", "sm")} max-sm:!px-3`}><Download size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Export</span></Link>
+          <button onClick={() => setShare(true)} className={`${btnClass("secondary", "sm")} !rounded-lg max-sm:!px-3`}><Share2 size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Share</span></button>
+          <Link href={`${base}/export`} className={`${btnClass("primary", "sm")} !rounded-lg max-sm:!px-3`}><Download size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Export</span></Link>
         </div>
       </header>
 
       <div className="flex-1 flex min-h-0 relative">
-        {/* Tool rail (Relume/Figma): each icon opens its panel; click again to close. */}
-        <nav className="w-14 shrink-0 border-r border-hairline bg-paper flex flex-col items-center py-2 gap-2" aria-label="Tools">
-          <RailBtn on={leftTab === "layers"} shown={asked} onClick={() => pick("layers")} label="Layers"><Layers size={18} /></RailBtn>
-          <RailBtn on={leftTab === "add"} shown={asked} onClick={() => pick("add")} label="Add"><Plus size={19} /></RailBtn>
-          <RailBtn on={leftTab === "agent"} shown={asked} onClick={() => pick("agent")} label="Agent"><WandSparkles size={18} /></RailBtn>
+        {/* Floating tools: white squares on the canvas; each opens its panel, click again to close. */}
+        <nav className="w-[72px] shrink-0 flex flex-col items-center pt-1 pb-3 gap-2.5" aria-label="Tools">
+          <RailBtn on={leftTab === "layers"} shown={asked} onClick={() => pick("layers")} label="Layers"><Layers size={19} /></RailBtn>
+          <RailBtn on={leftTab === "add"} shown={asked} onClick={() => pick("add")} label="Add"><Plus size={20} /></RailBtn>
+          <RailBtn on={leftTab === "agent"} shown={asked} onClick={() => pick("agent")} label="Agent"><WandSparkles size={19} /></RailBtn>
           <span className="flex-1" />
-          <ThemeToggle />
-          <Link href="/settings" className="hu-iconbtn" title="Settings" aria-label="Settings"><Settings size={18} aria-hidden="true" /></Link>
+          <ThemeToggle className="!w-11 !h-11 !rounded-xl !bg-paper border border-hairline hover:border-line-strong" />
+          <Link href="/settings" className="w-11 h-11 rounded-xl bg-paper border border-hairline flex items-center justify-center text-ink hover:border-line-strong transition-colors" title="Settings" aria-label="Settings"><Settings size={18} aria-hidden="true" /></Link>
         </nav>
         {leftTab && (
-          <aside className={`${asked ? "flex" : "hidden min-[900px]:flex"} absolute inset-y-0 left-14 z-30 w-[min(300px,calc(100%-3.5rem))] shadow-[var(--shadow-overlay)] min-[900px]:static min-[900px]:z-auto min-[900px]:w-[260px] min-[900px]:shadow-none shrink-0 border-r border-hairline bg-paper flex-col min-h-0`}>
-            <div className="min-h-12 shrink-0 flex items-center pl-4 pr-1.5 border-b border-hairline">
-              <span className="text-sm font-semibold flex-1">{leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"}</span>
-              <IconButton label="Close panel" onClick={() => setLeftTab(null)}><X size={17} /></IconButton>
+          // A floating card beside the tools; on a phone it opens over the canvas.
+          <aside className={`${asked ? "flex" : "hidden min-[900px]:flex"} absolute top-1 bottom-3 left-[72px] z-30 w-[min(300px,calc(100%-5.5rem))] min-[900px]:static min-[900px]:z-auto min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mb-3 shrink-0 rounded-2xl border border-hairline bg-paper shadow-[var(--shadow)] flex-col min-h-0 overflow-hidden`}>
+            <div className="min-h-14 shrink-0 flex items-center pl-5 pr-2">
+              <span className="text-lg font-medium flex-1">{leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"}</span>
+              <IconButton label="Close panel" onClick={() => setLeftTab(null)}><X size={18} /></IconButton>
             </div>
             {leftTab === "layers" ? (
               <LayersPanel base={base} seg={seg} unlocked={unlocked} layers={layers} brief={brief} />
@@ -153,7 +151,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
             )}
           </aside>
         )}
-        <main className="flex-1 min-w-0 relative bg-ground">
+        <main className="flex-1 min-w-0 relative">
           <PageTransition level="page">{children}</PageTransition>
         </main>
       </div>
@@ -167,7 +165,7 @@ function RailBtn({ children, on, shown, onClick, label }: { children: ReactNode;
   // On a phone the panel is hidden until asked for, so only look pressed then.
   const pressed = on ? (shown ? "!bg-accent-soft !text-accent-ink" : "min-[900px]:!bg-accent-soft min-[900px]:!text-accent-ink") : "";
   return (
-    <button onClick={onClick} title={label} aria-label={label} aria-pressed={on} className={`hu-iconbtn !w-10 !h-10 !rounded-sm ${pressed}`}>{children}</button>
+    <button onClick={onClick} title={label} aria-label={label} aria-pressed={on} className={`w-11 h-11 rounded-xl bg-paper border flex items-center justify-center transition-colors ${on ? "border-accent" : "border-hairline hover:border-line-strong"} ${pressed}`}>{children}</button>
   );
 }
 
@@ -175,14 +173,15 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [name, setName] = useState(project.name);
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} className="flex items-center gap-1 min-h-11 px-1.5 rounded-sm hover:bg-hover" aria-label="File menu">
-        <LogoMark size={28} /> <ChevronDown size={15} className="text-ink-faint" aria-hidden="true" />
+      <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} className="flex items-center gap-1 min-h-11 pl-1.5 pr-2 rounded-lg bg-paper border border-hairline hover:border-line-strong transition-colors" aria-label="File menu">
+        <LogoMark size={26} /> <ChevronDown size={15} className="text-ink-faint" aria-hidden="true" />
       </button>
       {open && (
         <>
@@ -199,7 +198,7 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
             <MenuItem href={`/w/${workspace.id}/usage`} icon={<BarChart3 size={15} aria-hidden="true" />}>Workspace usage</MenuItem>
             <MenuItem href="/settings" icon={<Settings size={15} aria-hidden="true" />}>Settings</MenuItem>
             <MenuSeparator />
-            <MenuItem onClick={() => { if (!pending && confirm(`Archive “${project.name}”? It disappears from the workspace.`)) start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); }); }} icon={<Archive size={15} aria-hidden="true" />}>Archive project</MenuItem>
+            <MenuItem onClick={() => { if (pending) return; setOpen(false); setArchiving(true); }} icon={<Archive size={15} aria-hidden="true" />}>Archive project</MenuItem>
             <MenuItem danger onClick={() => { if (pending) return; setOpen(false); setDeleting(true); }} icon={<Trash2 size={15} aria-hidden="true" />}>Delete project</MenuItem>
           </Menu>
         </>
@@ -220,6 +219,24 @@ function FileMenu({ workspace, project }: { workspace: { id: string; name: strin
           onArchive={() => start(async () => { await archiveProjectAction(workspace.id, project.id); router.push(`/w/${workspace.id}`); })}
         />
       )}
+      <ConfirmModal
+        open={archiving}
+        title={`Archive “${project.name}”?`}
+        confirmLabel="Archive project"
+        pending={pending}
+        onClose={() => setArchiving(false)}
+        onConfirm={() => start(async () => {
+          try {
+            await archiveProjectAction(workspace.id, project.id);
+            router.push(`/w/${workspace.id}`);
+          } catch {
+            setArchiving(false);
+            toast("Couldn't archive the project. Try again.", "danger");
+          }
+        })}
+      >
+        It leaves the library and stops counting towards your pillars. You can restore it from Archived at any time.
+      </ConfirmModal>
       <Modal open={renaming} onClose={() => setRenaming(false)} title="Rename project">
         <div className="flex gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)} className="field" autoFocus />

@@ -6,6 +6,7 @@ import {
   assignCoach,
   createWorkspace,
   inviteUser,
+  setUsageCaps,
   setWorkspaceStatus,
 } from "@/lib/data/admin";
 import type { Role } from "@/lib/auth/types";
@@ -34,6 +35,22 @@ export async function assignCoachAction(formData: FormData) {
     String(formData.get("coachUserId")),
   );
   revalidatePath("/settings/workspaces");
+}
+
+export async function setCapsAction(formData: FormData) {
+  const session = await requireSession();
+  const num = (k: string) => {
+    const v = String(formData.get(k) ?? "").trim();
+    return v === "" ? null : Number(v);
+  };
+  await setUsageCaps(session, String(formData.get("tenantId")), {
+    textSoft: num("textSoft"),
+    textHard: num("textHard"),
+    imageSoft: num("imageSoft"),
+    imageHard: num("imageHard"),
+  });
+  revalidatePath("/settings/workspaces");
+  revalidatePath("/w", "layout");
 }
 
 export async function setStatusAction(formData: FormData) {

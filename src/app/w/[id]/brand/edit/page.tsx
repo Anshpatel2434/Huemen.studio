@@ -26,7 +26,7 @@ function Field({ name, label, defaultValue, placeholder, rows, hint }: { name: s
 
 function Card({ id, title, sub, children }: { id: string; title: string; sub: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="bg-paper border border-hairline rounded-md p-6 scroll-mt-6">
+    <section id={id} className="border-t border-hairline pt-6 scroll-mt-6">
       <p className="font-medium">{title}</p>
       <p className="text-sm text-ink-muted mt-0.5 mb-5">{sub}</p>
       <div className="flex flex-col gap-4">{children}</div>
@@ -42,7 +42,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-[760px] mx-auto px-8 py-8">
+      <div className="page py-8">
         <Link href={`/w/${id}/brand`} className="inline-flex items-center gap-1.5 min-h-11 text-sm text-ink-muted hover:text-ink"><ArrowLeft size={15} aria-hidden="true" /> Brief</Link>
         <h1 className="text-3xl mt-3">Edit the brief. <span className="serif-accent">Once.</span></h1>
         <p className="text-ink-muted mt-2 text-sm">This is the context every post and image is generated from. The studio degrades on purpose when it&apos;s thin.</p>
@@ -94,7 +94,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
           </div>
         </PersistForm>
 
-        <section id="assets" className="mt-6 mb-16 bg-paper border border-hairline rounded-md p-6 scroll-mt-6">
+        <section id="assets" className="mt-6 mb-16 border-t border-hairline pt-6 scroll-mt-6">
           <p className="font-medium">Brand assets</p>
           <p className="text-sm text-ink-muted mt-0.5 mb-4">Logos, fonts and reference images. PNG, JPG, WebP, SVG or font files, max 5 MB.</p>
           <form action={uploadAssetAction} className="flex flex-wrap items-center gap-2">

@@ -25,11 +25,35 @@ export interface AssembledPrompt {
 }
 
 /**
+ * Between versions in a STREAMED draft. Structured output can't be shown as
+ * it is written (half a JSON string is not a draft), so a streamed draft is
+ * plain text with this line between versions; `splitStreamed` reads it back.
+ */
+export const STREAM_SEPARATOR = "=====";
+
+export function splitStreamed(text: string): string[] {
+  return text
+    .split(new RegExp(`^\\s*${STREAM_SEPARATOR}\\s*$`, "m"))
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+/**
  * What each template's reply must look like, matched to the code that parses
  * it. `variants` is how many distinct versions to write; the provider returns
  * them as separate strings, and each string must satisfy the contract alone.
  */
-function contractFor(templateKey: string, variants: number): string {
+function contractFor(templateKey: string, variants: number, stream = false): string {
+  if (stream) {
+    // Read by splitStreamed, then splitDraft per version.
+    return [
+      `Write ${variants} distinct ${variants === 1 ? "version" : "versions"}. Make them genuinely different in angle or opening, not rewordings of one another.`,
+      `Write them one after another as plain text. Between two versions, put a line containing only ${STREAM_SEPARATOR}. No JSON, no headings, no numbering, nothing before the first version.`,
+      "Each version: the first line is the hook, then the body, and the last line is the call to action starting with \"CTA: \" (leave it out only if the format has no ask).",
+      "Write in the person's voice as described in the brand context. Never copy a sentence from their samples.",
+      "Never invent a fact, name, number, client or credential. Where one is needed and not in the brand context, write [placeholder] and keep going.",
+    ].join("\n");
+  }
   if (templateKey === "pillar_set") {
     // Read by parsePillarLines (lib/data/pipeline).
     return [
@@ -55,7 +79,7 @@ export function assemblePrompt(
   systemTemplate: string,
   context: BrandContext,
   taskInput: string,
-  opts: { templateKey: string; variants?: number; contract?: string },
+  opts: { templateKey: string; variants?: number; contract?: string; stream?: boolean },
 ): AssembledPrompt {
   const system = [
     systemTemplate.trim(),
@@ -71,7 +95,7 @@ export function assemblePrompt(
     "</task>",
     "",
     "<output>",
-    opts.contract ?? contractFor(opts.templateKey, Math.max(1, opts.variants ?? 1)),
+    opts.contract ?? contractFor(opts.templateKey, Math.max(1, opts.variants ?? 1), opts.stream),
     "</output>",
   ].join("\n");
 
