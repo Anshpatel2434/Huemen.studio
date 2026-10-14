@@ -20,6 +20,7 @@ import {
   type ArtboardKind, type Design, type Tweaks,
 } from "@/lib/visual/design";
 import { CarouselFrames, PostImage, QuoteCard, schemesFrom, type Fonts, type RenderText } from "./visual-layouts";
+import { lookCheck, type LookResult } from "@/lib/visual/look-check";
 
 type Item = {
   id: string; format: string; hook: string; body: string; cta: string; status: string; pillarName: string | null;
@@ -339,6 +340,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                   <section key={i.id} data-canvas-bg="1" onPointerDownCapture={() => setFocusId(i.id)} className={`rounded-xs ${isFocus ? "outline outline-2 outline-accent outline-offset-[14px]" : ""}`}>
                     <div className="flex items-center gap-3 mb-4" data-canvas-bg="1">
                       <p className="label-mono text-ink-faint">{fmt.label} · {i.pillarName ?? "No pillar"} · {i.status}</p>
+                      <LookBadge result={lookCheck({ palette, fonts, scheme: s, tweaks: d.tweaks, headline: i.hook })} />
                       <span className="flex-1" data-canvas-bg="1" />
                       <button type="button" onClick={() => setOptions({ item: i, kind: "post" })} className={btnClass("secondary", "sm")}>
                         <LayoutGrid size={14} aria-hidden="true" /> Show me options
@@ -566,5 +568,33 @@ function Section({ id, icon: Icon, title, open, setOpen, children }: { id: strin
       </button>
       {on && <div className="px-3 pb-4 fade-in">{children}</div>}
     </div>
+  );
+}
+
+const LOOK_LABEL = { on: "On brand", drift: "Drifting", off: "Off brand" } as const;
+const LOOK_DOT = { on: "bg-[var(--ok-line)]", drift: "bg-[var(--warn-line)]", off: "bg-[var(--danger-line)]" } as const;
+
+/**
+ * Hue Check, "On-brand look?" (lib/visual/look-check): the score and band,
+ * shape plus word plus colour, with what it measured one click away. Like the
+ * voice check it never blocks a download.
+ */
+function LookBadge({ result }: { result: LookResult }) {
+  return (
+    <details className="relative" onPointerDown={(e) => e.stopPropagation()}>
+      <summary className="list-none cursor-pointer inline-flex items-center gap-2 min-h-11 px-3 rounded-full border border-line bg-paper text-sm hover:border-line-strong">
+        <span className={`w-2 h-2 rounded-full ${LOOK_DOT[result.band]}`} aria-hidden="true" />
+        Look <span className="num font-medium">{result.score}</span> · {LOOK_LABEL[result.band]}
+      </summary>
+      <div className="absolute left-0 top-12 w-80 z-20 bg-paper border border-hairline rounded-xl shadow-[var(--shadow-lg)] p-4 flex flex-col gap-2.5">
+        <p className="label-mono text-ink-faint">On-brand look</p>
+        {result.findings.map((f, n) => (
+          <p key={n} className="text-sm flex gap-2">
+            <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${LOOK_DOT[f.verdict]}`} aria-hidden="true" />
+            <span><span className="sr-only">{LOOK_LABEL[f.verdict]}: </span>{f.text}</span>
+          </p>
+        ))}
+      </div>
+    </details>
   );
 }
