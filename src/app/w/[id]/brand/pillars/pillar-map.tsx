@@ -284,6 +284,8 @@ function PillarCard({ p, base, selected, dragging, editingName, onEditingName, o
         </div>
         <button onClick={onDraft} className="flex items-center justify-center gap-1.5 min-h-11 rounded-full border border-dashed border-line text-sm text-ink-muted hover:border-line-strong hover:text-ink"><Plus size={14} aria-hidden="true" /> Draft content</button>
         <button onClick={onDraft} className="flex items-center justify-center gap-1.5 min-h-11 rounded-full text-sm text-ink-muted hover:bg-hover hover:text-ink"><Sparkles size={14} aria-hidden="true" /> Ask AI</button>
+        {/* Its own connected map: what it's made from, and what grows from it. */}
+        <Link href={`${base}/brand/pillars/${p.id}`} onClick={(e) => e.stopPropagation()} className="flex items-center justify-center gap-1.5 min-h-11 rounded-full border border-line text-sm font-medium hover:border-line-strong"><Network size={14} aria-hidden="true" /> See how it connects</Link>
       </div>
       <div className="px-3 h-8 border-t border-hairline flex items-center text-xs text-ink-faint">{p.contentCount} piece{p.contentCount === 1 ? "" : "s"}</div>
     </div>

@@ -4,6 +4,7 @@ import { projectScope } from "@/lib/auth/workspace";
 import { listIdeas, listPillars } from "@/lib/data/planning";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { FORMATS } from "@/lib/content/formats";
+import { ANGLES } from "@/lib/content/angles";
 import { DocPage } from "@/components/doc-page";
 import { EmptyState, SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
@@ -15,15 +16,6 @@ import { coreCardFacts } from "@/lib/voice/core-card";
 
 export const metadata = { title: "Ideate" };
 
-/** The angles a piece can take. The same list the batch generator draws on. */
-const ANGLES = [
-  "The mistake most people make",
-  "A story from the work",
-  "A simple framework",
-  "What I'd do differently",
-  "Where I disagree with the field",
-  "What the work has taught me",
-];
 
 /**
  * Step 1 of a piece: what is this one about?

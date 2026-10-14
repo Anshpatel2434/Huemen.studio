@@ -327,3 +327,49 @@ export async function createOffer(
 export async function deleteOffer(scope: WorkspaceScope, id: string): Promise<void> {
   await withTenantSession(scope, (c) => c.query("DELETE FROM offers WHERE id=$1 AND project_id IS NULL", [id]));
 }
+
+// ---- one pillar, connected (Brand core › Pillars › a pillar) -----------------------
+
+export interface PillarDetail {
+  pillar: { id: string; name: string; description: string | null };
+  ideas: { id: string; text: string; status: string }[];
+  slots: { id: string; date: string; topic: string | null; channel: string | null }[];
+  pieces: { id: string; projectId: string | null; hook: string; status: string; format: string }[];
+}
+
+/**
+ * Everything that grows from one pillar: the ideas tagged to it, its calendar
+ * slots (upcoming first) and the pieces written under it. RLS-scoped like
+ * every read; a pillar from another workspace reads as null.
+ */
+export async function pillarDetail(scope: WorkspaceScope, pillarId: string): Promise<PillarDetail | null> {
+  return withTenantSession(scope, async (c) => {
+    const p = (
+      await c.query<{ id: string; name: string; description: string | null }>(
+        `SELECT id, name, description FROM pillars WHERE id = $1 AND project_id IS NULL`,
+        [pillarId],
+      )
+    ).rows[0];
+    if (!p) return null;
+    const ideas = (
+      await c.query<{ id: string; raw_text: string; status: string }>(
+        `SELECT id, raw_text, status FROM ideas WHERE pillar_id = $1 AND status <> 'archived' ORDER BY created_at DESC LIMIT 6`,
+        [pillarId],
+      )
+    ).rows.map((r) => ({ id: r.id, text: r.raw_text, status: r.status }));
+    const slots = (
+      await c.query<{ id: string; entry_date: string; topic: string | null; channel: string | null }>(
+        `SELECT id, to_char(entry_date, 'YYYY-MM-DD') AS entry_date, topic, channel FROM calendar_entries
+          WHERE pillar_id = $1 ORDER BY (entry_date < current_date), entry_date LIMIT 6`,
+        [pillarId],
+      )
+    ).rows.map((r) => ({ id: r.id, date: r.entry_date, topic: r.topic, channel: r.channel }));
+    const pieces = (
+      await c.query<{ id: string; project_id: string | null; hook: string | null; status: string; format: string }>(
+        `SELECT id, project_id, hook, status, format FROM content_items WHERE pillar_id = $1 ORDER BY created_at DESC LIMIT 6`,
+        [pillarId],
+      )
+    ).rows.map((r) => ({ id: r.id, projectId: r.project_id, hook: r.hook ?? "", status: r.status, format: r.format }));
+    return { pillar: p, ideas, slots, pieces };
+  });
+}
