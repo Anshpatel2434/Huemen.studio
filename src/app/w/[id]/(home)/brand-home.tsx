@@ -20,6 +20,8 @@ import { Proposals, ProposalsLoading, Start } from "../create/proposals";
 import { SuggestOthers } from "../create/suggest-others";
 import { HomeActions, NewProjectButton } from "./home-actions";
 import { BandPill, ago, type Project } from "./project-bits";
+import { GettingStarted } from "./getting-started";
+import type { GuideSection } from "@/lib/data/getting-started";
 
 export interface BrandHomeProps {
   tenantId: string;
@@ -36,6 +38,8 @@ export interface BrandHomeProps {
   setupStep: number | null;
   rescanDays: number | null;
   justFinished: boolean;
+  /** Getting started, once onboarding is done; `open` shows the window on arrival. */
+  guide?: { sections: GuideSection[]; open: boolean } | null;
 }
 
 const Eyebrow = ({ children }: { children: React.ReactNode }) => <p className="label-mono text-ink-faint">{children}</p>;
@@ -62,9 +66,10 @@ export function BrandHome(props: BrandHomeProps) {
             Your voice is in every piece from here, and your first one is below.
           </Alert>
         )}
+        {props.guide && <GettingStarted tenantId={tenantId} sections={props.guide.sections} open={props.guide.open} />}
         {props.setupStep != null && (
-          <Alert tone="info" title="Set up your voice" action={<Link href={`${base}/onboarding?step=${props.setupStep}`} className={btnClass("primary", "sm")}>{props.setupStep > 0 ? "Carry on" : "Start"}</Link>}>
-            Step {props.setupStep + 1} of 5. Until it&apos;s done, drafts won&apos;t sound much like you.
+          <Alert tone="info" title="Set up your voice" action={<Link href={`${base}/onboarding`} className={btnClass("primary", "sm")}>{props.setupStep > 0 ? "Carry on" : "Start"}</Link>}>
+            Step {props.setupStep + 1} of 7. Until it&apos;s done, drafts won&apos;t sound much like you.
           </Alert>
         )}
         {props.rescanDays != null && props.setupStep == null && (

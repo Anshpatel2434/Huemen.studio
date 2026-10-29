@@ -116,9 +116,9 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
             <div className="page py-4 flex flex-wrap items-center gap-3">
               <p className="flex-1 min-w-0 text-sm">
                 <span className="font-medium">Set up your voice</span>
-                <span className="text-ink-muted"> · step {setupStep + 1} of 5. Until it&apos;s done, drafts won&apos;t sound much like you.</span>
+                <span className="text-ink-muted"> · step {setupStep + 1} of 7. Until it&apos;s done, drafts won&apos;t sound much like you.</span>
               </p>
-              <Link href={`/w/${tenantId}/onboarding?step=${setupStep}`} className={btnClass("primary", "sm")}>{setupStep > 0 ? "Carry on" : "Start"}</Link>
+              <Link href={`/w/${tenantId}/onboarding`} className={btnClass("primary", "sm")}>{setupStep > 0 ? "Carry on" : "Start"}</Link>
             </div>
           </section>
         )}

@@ -55,6 +55,7 @@ export async function updateOnboarding(scope: WorkspaceScope, pack: VoicePack, p
     resolvedCards: union(cur.resolvedCards, patch.resolvedCards),
     // Never move the stepper backwards by accident.
     step: Math.max(cur.step ?? 1, patch.step ?? 1),
+    ...(cur.screen != null || patch.screen != null ? { screen: Math.max(cur.screen ?? 0, patch.screen ?? 0) } : {}),
   };
   await withTenantSession(scope, (c) =>
     c.query(`UPDATE voice_packs SET onboarding = $1 WHERE id = $2`, [JSON.stringify(next), pack.id]),

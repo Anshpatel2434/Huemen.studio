@@ -19,7 +19,7 @@ import {
   CAROUSEL_LAYOUTS, DEFAULT_DESIGN, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, sameDesign,
   type ArtboardKind, type Design, type Tweaks,
 } from "@/lib/visual/design";
-import { CarouselFrames, PostImage, QuoteCard, schemesFrom, type Fonts, type RenderText } from "./visual-layouts";
+import { CarouselFrames, PostImage, QuoteCard, schemesFrom, type Fonts, type RenderText, type Scheme } from "./visual-layouts";
 import { lookCheck, type LookResult } from "@/lib/visual/look-check";
 
 type Item = {
@@ -56,6 +56,10 @@ function patchForSlide(i: Item, slide: Slide, text: string): { hook?: string; bo
 }
 
 const DISPLAY_W = 300;
+/** Relume's Wireframe view: the same layouts and real words, before any colour. */
+const WIRE: Scheme = { name: "Wireframe", bg: "#FFFFFF", fg: "#1F1F1F", accent: "#BDBDBD" };
+const WIRE_FONTS: Fonts = { display: "var(--font-sans)", accent: "var(--font-sans)" };
+
 const KIND_LABEL: Record<ArtboardKind, string> = { post: "Post image", quote: "Quote card", carousel: "Carousel" };
 
 type BoardProps = {
@@ -142,6 +146,10 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
   const designed = items.filter((i) => i.scheme !== null);
   const undesigned = items.length - designed.length;
   const ordered = [...designed].sort((x, y) => (x.status === "approved" ? -1 : 0) - (y.status === "approved" ? -1 : 0));
+  // Wireframe shows every piece laid out; Design shows the ones generated in a scheme.
+  const [view, setView] = useState<"wireframe" | "design">(designed.length ? "design" : "wireframe");
+  const wire = view === "wireframe" || designed.length === 0;
+  const shown = wire ? [...ordered, ...items.filter((i) => i.scheme === null)] : ordered;
   const [focusId, setFocusId] = useState<string | null>(selectedId);
   const focus = ordered.find((i) => i.id === focusId) ?? ordered[0] ?? null;
 
@@ -321,7 +329,20 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
       </aside>
 
       <div className="flex-1 relative min-w-0">
-        {designed.length === 0 ? (
+        {items.length > 0 && (
+          <div className="absolute top-3 left-3 z-20 flex items-center gap-3" onPointerDown={(e) => e.stopPropagation()}>
+            <div className="hu-seg bg-paper border border-hairline shadow-[var(--shadow-sm)]" role="radiogroup" aria-label="Canvas view">
+              <button type="button" role="radio" aria-checked={wire} onClick={() => setView("wireframe")} className="hu-seg__item">Wireframe</button>
+              <button type="button" role="radio" aria-checked={!wire} disabled={!designed.length} title={designed.length ? undefined : "Generate visuals first"} onClick={() => setView("design")} className="hu-seg__item disabled:opacity-45">Design</button>
+            </div>
+            {!designed.length && (
+              <p className="text-sm bg-paper border border-hairline rounded-full px-4 min-h-10 inline-flex items-center shadow-[var(--shadow-sm)]">
+                Laid out, not designed yet. Pick a scheme on the right and press Generate visuals.
+              </p>
+            )}
+          </div>
+        )}
+        {items.length === 0 ? (
           <div className="absolute inset-0 canvas-dots flex items-center justify-center p-6">
             <div className="bg-paper border border-hairline rounded-md max-w-md w-full shadow-[var(--shadow)]">
               <EmptyState icon={<ImageIcon size={18} />} title="No visuals generated yet" sub="Pick a scheme on the right and generate. Each piece gets a post image, quote card and carousel with real text over brand colours." action={<Link href={`/w/${tenantId}/p/${projectId}/content`} className={btnClass("secondary")}>Back to Content</Link>} />
@@ -329,9 +350,11 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
           </div>
         ) : (
           <Canvas>
-            <div className="flex flex-col gap-16 p-4" data-canvas-bg="1">
-              {ordered.map((i) => {
+            <div className="flex flex-col gap-16 p-4 pt-16" data-canvas-bg="1">
+              {shown.map((i) => {
                 const fmt = formatByKey(i.format);
+                const sc = wire ? WIRE : s;
+                const fp = wire ? WIRE_FONTS : fontPair;
                 const slides = slidesOf(i);
                 const d = designOf(i);
                 const text = textFor(i, slides);
@@ -340,15 +363,20 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                   <section key={i.id} data-canvas-bg="1" onPointerDownCapture={() => setFocusId(i.id)} className={`rounded-xs ${isFocus ? "outline outline-2 outline-accent outline-offset-[14px]" : ""}`}>
                     <div className="flex items-center gap-3 mb-4" data-canvas-bg="1">
                       <p className="label-mono text-ink-faint">{fmt.label} · {i.pillarName ?? "No pillar"} · {i.status}</p>
-                      <LookBadge result={lookCheck({ palette, fonts, scheme: s, tweaks: d.tweaks, headline: i.hook })} />
+                      {wire ? (i.scheme === null && <span className="label-mono text-ink-faint">· not designed yet</span>) : <LookBadge result={lookCheck({ palette, fonts, scheme: s, tweaks: d.tweaks, headline: i.hook })} />}
                       <span className="flex-1" data-canvas-bg="1" />
                       <button type="button" onClick={() => setOptions({ item: i, kind: "post" })} className={btnClass("secondary", "sm")}>
                         <LayoutGrid size={14} aria-hidden="true" /> Show me options
                       </button>
-                      <button type="button" onClick={() => exportSet(i, slides)} disabled={busy !== null} className={btnClass("secondary", "sm")}>
-                        {busy === `${i.id}:set` ? <><AgentDots /> Rendering…</> : <><Download size={14} aria-hidden="true" /> Download set</>}
-                      </button>
-                      <IconButton label="Remove these visuals" onClick={() => setRemoving(i)}><Trash2 size={15} /></IconButton>
+                      {/* Downloads and removal belong to designed pieces, not wireframes. */}
+                      {!wire && (
+                        <>
+                          <button type="button" onClick={() => exportSet(i, slides)} disabled={busy !== null} className={btnClass("secondary", "sm")}>
+                            {busy === `${i.id}:set` ? <><AgentDots /> Rendering…</> : <><Download size={14} aria-hidden="true" /> Download set</>}
+                          </button>
+                          <IconButton label="Remove these visuals" onClick={() => setRemoving(i)}><Trash2 size={15} /></IconButton>
+                        </>
+                      )}
                     </div>
                     <div className="flex gap-8 items-start" data-canvas-bg="1">
                       <Artboard
@@ -357,7 +385,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                         width={DISPLAY_W}
                         actions={<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(`${i.id}:single`, fmt.frame.w, fmt.frame.h, `${fileSlug(brandName)}-post-${fmt.frame.w}x${fmt.frame.h}`)} />}
                       >
-                        <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={s} t={d.tweaks} fonts={fontPair} brand={brandName} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} />
+                        <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={sc} t={d.tweaks} fonts={fp} brand={brandName} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} />
                       </Artboard>
                       <Artboard
                         label={`Quote card · ${QUOTE_LAYOUTS.find((l) => l.key === d.layouts.quote)?.label}`}
@@ -365,7 +393,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                         width={DISPLAY_W}
                         actions={<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(`${i.id}:quote`, 1080, 1080, `${fileSlug(brandName)}-quote-1080x1080`)} />}
                       >
-                        <QuoteCard layout={d.layouts.quote} s={s} t={d.tweaks} fonts={fontPair} brand={brandName} text={text} frameRef={frameRef(`${i.id}:quote`)} />
+                        <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} text={text} frameRef={frameRef(`${i.id}:quote`)} />
                       </Artboard>
                       <Artboard
                         label={`Carousel · ${CAROUSEL_LAYOUTS.find((l) => l.key === d.layouts.carousel)?.label}`}
@@ -377,9 +405,9 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                           layout={d.layouts.carousel}
                           slides={slides.map((x) => x.text)}
                           ctaIndex={slides.findIndex((x) => x.src.kind === "cta")}
-                          s={s}
+                          s={sc}
                           t={d.tweaks}
-                          fonts={fontPair}
+                          fonts={fp}
                           frameWidth={170}
                           text={text}
                           frameRef={(k) => frameRef(`${i.id}:carousel:${k}`)}

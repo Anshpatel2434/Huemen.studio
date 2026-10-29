@@ -3,7 +3,10 @@ import { workspaceScope } from "@/lib/auth/workspace";
 import { loadVisualIdentity } from "@/lib/data/foundation";
 import { listAssets } from "@/lib/data/assets";
 import { DocPage } from "@/components/doc-page";
-import { VisualForm } from "@/components/visual-form";
+import { StyleGuide } from "@/components/style-guide";
+import { loadPackForWorkspace } from "@/lib/data/voice-pack";
+import { listProjects } from "@/lib/data/projects";
+import { getWorkspace } from "@/lib/data/workspaces";
 import { btnClass } from "@/components/btn";
 import { TEMPLATE_KIT } from "@/lib/visual/core";
 
@@ -18,18 +21,22 @@ export const metadata = { title: "Visual" };
 export default async function VisualPage({ params }: PageProps<"/w/[id]/brand/visual">) {
   const { id } = await params;
   const { scope } = await workspaceScope(id);
-  const [visual, assets] = await Promise.all([loadVisualIdentity(scope), listAssets(scope)]);
-  const logo = assets.find((a) => a.kind === "logo")?.url ?? visual.core?.site?.logo ?? null;
+  const [visual, assets, pack, projects, ws] = await Promise.all([
+    loadVisualIdentity(scope), listAssets(scope), loadPackForWorkspace(scope), listProjects(scope), getWorkspace(scope),
+  ]);
+  // The preview is written in their own words: their name and a real first line.
+  const brandName = pack && !pack.displayName.includes("@") ? pack.displayName : ws?.name ?? "Your brand";
+  const hook = projects.find((p) => p.firstHook)?.firstHook ?? "Say the specific thing, not the safe thing.";
   return (
     <DocPage
-      eyebrow="Brand core · Visual core"
+      eyebrow="Brand core · Style guide"
       title="Your"
       accent="hue."
       sub="Colours and what each is for, fonts, layout, motifs and the designs that look like you. Set once; every visual reads them."
       action={<a href={`/w/${id}/brand/visual/tokens`} className={btnClass("secondary", "sm")}><Download size={14} aria-hidden="true" /> Download tokens (JSON)</a>}
     >
       <section className="border-t border-hairline pt-6">
-        <VisualForm tenantId={id} initial={visual} logoUrl={logo} references={assets.filter((a) => a.kind === "reference_image")} back={`/w/${id}/brand/visual`} />
+        <StyleGuide tenantId={id} initial={visual} references={assets.filter((a) => a.kind === "reference_image").map((a) => ({ id: a.id, url: a.url }))} brandName={brandName} hook={hook} />
       </section>
       <section className="border-t border-hairline pt-6 mt-10">
         <p className="label-mono text-ink-faint mb-3">The template kit</p>

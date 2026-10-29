@@ -383,6 +383,12 @@ export const WORK_MODES: { key: WorkMode; label: string; sub: string }[] = [
 export interface Onboarding {
   /** 1 Add samples · 2 Confirm your voice · 3 Set your hue · 4 First draft. */
   step?: number;
+  /** The short flow's furthest screen (lib/onboarding/screens). */
+  screen?: number;
+  /** What the first screen read off their website, offered as defaults on the next ones. */
+  site?: { url: string; title: string; description: string; palette: string[]; fonts: string[]; logo: string | null; at: string };
+  /** When the Getting started window was first dismissed, so it opens itself only once. */
+  guideSeenAt?: string;
   /**
    * When "About you" (the step before 1) was saved: their name and the brief's
    * three basics. Until it is set, onboarding opens there.

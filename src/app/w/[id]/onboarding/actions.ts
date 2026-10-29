@@ -29,7 +29,13 @@ import type { DialKey, LanguageMix, Proof, Story, WorkMode } from "@/lib/voice/t
 import {
   pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveBeliefs, saveProofs, saveStories, suggestAnswers, type DialPick,
 } from "@/lib/data/enrich";
-import { importFromUrl, WebImportError } from "@/lib/integrations/web";
+import { importFromUrl, safeGet, WebImportError } from "@/lib/integrations/web";
+import { decodeEntities } from "@/lib/integrations/text";
+import { extractSiteBrand } from "@/lib/visual/core";
+import { loadVisualIdentity, saveVisualIdentity } from "@/lib/data/foundation";
+import { listAssets } from "@/lib/data/assets";
+import { listPillars } from "@/lib/data/planning";
+import { LEGACY_STEP, screenIndex, type ScreenKey } from "@/lib/onboarding/screens";
 import { userMessage } from "@/lib/ai/errors";
 
 const refresh = (t: string) => revalidatePath(`/w/${t}`, "layout");
@@ -189,6 +195,9 @@ export async function firstPieceAction(tenantId: string): Promise<string> {
   let projectId = o.firstProjectId ?? null;
   let topicTitle = projectId ? (await getProject(scope, projectId))?.name ?? "" : "";
   if (!projectId) {
+    // The short flow asks nothing about pillars up front; the first piece still
+    // comes from one, made from the brief and the writing.
+    if (!(await listPillars(scope)).length) await generatePillars(scope).catch(() => 0);
     const [topic] = await proposeTopics(scope);
     topicTitle = topic?.title ?? "What I'd tell myself starting out";
     projectId = await startPiece(scope, { topic: topicTitle, format, pillarName: topic?.pillar });
@@ -362,4 +371,116 @@ export async function importUrlAction(tenantId: string, url: string, ownWriting:
     );
     return { added, found: pieces.length, note };
   });
+}
+
+// ---- the short flow (one question per screen) ----------------------------------
+
+/**
+ * Move to a screen and record it as reached. The old step is kept in step
+ * with it, so the dashboard gate and older links still agree.
+ */
+export async function advanceAction(tenantId: string, to: ScreenKey) {
+  const { scope } = await actionActor(tenantId);
+  await updateOnboarding(scope, await requirePack(scope), { screen: screenIndex(to), step: LEGACY_STEP[to] });
+  refresh(tenantId);
+  redirect(`/w/${tenantId}/onboarding?s=${to}`);
+}
+
+const meta = (html: string, key: string) =>
+  new RegExp(`<meta[^>]+(?:name|property)=["']${key}["'][^>]*content=["']([^"']*)["']`, "i").exec(html)?.[1]
+  ?? new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:name|property)=["']${key}["']`, "i").exec(html)?.[1]
+  ?? "";
+/**
+ * A site's colours, ordered the way a palette is read: the lightest first (the
+ * ground visuals sit on), then the most colourful (the accent), then the rest.
+ */
+function groundFirst(palette: string[]): string[] {
+  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const light = (h: string) => rgb(h).reduce((a, b) => a + b, 0);
+  const chroma = (h: string) => Math.max(...rgb(h)) - Math.min(...rgb(h));
+  if (palette.length < 2) return palette;
+  const ground = [...palette].sort((a, b) => light(b) - light(a))[0];
+  const accent = palette.filter((c) => c !== ground).sort((a, b) => chroma(b) - chroma(a))[0];
+  return [ground, accent, ...palette.filter((c) => c !== ground && c !== accent)];
+}
+const tidy = (s: string) => decodeEntities(s).replace(/\s+/g, " ").trim();
+
+/**
+ * Screen 1: read their website. The home page and up to three stylesheets,
+ * fetched behind the SSRF guard. The name and one-line description become the
+ * defaults on the next two screens; colours and fonts go into the hue when it
+ * has none yet (the Look screen shows them to change).
+ */
+export async function siteAction(tenantId: string, url: string) {
+  const { scope } = await actionActor(tenantId);
+  return attempt(async () => {
+    const raw = url.trim();
+    if (!raw) throw new WebImportError("Add your website first.");
+    let page;
+    try {
+      page = await safeGet(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    } catch {
+      throw new WebImportError("We couldn't open that site. Check the address, or carry on without it.");
+    }
+    const first = extractSiteBrand(page.body, [], page.url);
+    const css = await Promise.all(first.stylesheets.map((s) => safeGet(s).then((r) => r.body).catch(() => "")));
+    const brand = extractSiteBrand(page.body, css, page.url);
+    const titleTag = /<title[^>]*>([^<]*)<\/title>/i.exec(page.body)?.[1] ?? "";
+    // "Jane Doe | Coaching" or "Home - Acme": keep the part that names them.
+    const title = tidy(meta(page.body, "og:site_name") || titleTag).split(/\s[|–—-]\s/).filter((p) => !/^home$/i.test(p.trim()))[0]?.trim().slice(0, 80) ?? "";
+    const description = tidy(meta(page.body, "og:description") || meta(page.body, "description")).slice(0, 240);
+    const site = { url: page.url, title, description, palette: groundFirst(brand.palette), fonts: brand.fonts, logo: brand.logo, at: new Date().toISOString() };
+    await updateOnboarding(scope, await requirePack(scope), { site });
+    const v = await loadVisualIdentity(scope);
+    await saveVisualIdentity(scope, {
+      ...v,
+      palette: v.palette.length ? v.palette : site.palette,
+      fonts: v.fonts.length ? v.fonts : brand.fonts,
+      core: { ...(v.core ?? {}), site: { url: page.url, logo: brand.logo, at: site.at } },
+    });
+    refresh(tenantId);
+    return site;
+  });
+}
+
+/** Screen 2: their name and what they do. A blank field keeps what the brief had. */
+export async function nameAction(tenantId: string, v: { name: string; niche: string }) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveAbout(scope, actor, await requirePack(scope), { name: v.name, niche: v.niche, audience: "", offers: "", positioning: "" });
+  await advanceAction(tenantId, "audience");
+}
+
+/** Screen 3: who it's for, what they offer, and (optionally) why them. */
+export async function audienceAction(tenantId: string, v: { audience: string; offers: string; positioning: string }) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveAbout(scope, actor, await requirePack(scope), { name: "", niche: "", ...v });
+  await advanceAction(tenantId, "writing");
+}
+
+/**
+ * Screen 5: the first two colours (ground and accent). The rest of the palette,
+ * fonts and notes stay as they are; every design uploaded is a reference.
+ */
+export async function lookAction(tenantId: string, colours: string[]) {
+  const { scope } = await actionActor(tenantId);
+  const v = await loadVisualIdentity(scope);
+  const ok = colours.filter((c) => /^#[0-9a-f]{6}$/i.test(c));
+  const palette = [...ok, ...v.palette.filter((c) => !ok.some((o) => o.toLowerCase() === c.toLowerCase()))].slice(0, 8);
+  const references = (await listAssets(scope)).filter((a) => a.kind === "reference_image").map((a) => a.id);
+  await saveVisualIdentity(scope, { ...v, palette, core: { ...(v.core ?? {}), references } });
+  await advanceAction(tenantId, "words");
+}
+
+/** Screen 6: the words that sound like them (C5). */
+export async function wordsAction(tenantId: string, picks: string[]) {
+  const { scope, actor } = await actionActor(tenantId);
+  await answer(scope, actor, await requirePack(scope), "C5", picks, { spoken: false });
+  await advanceAction(tenantId, "draft");
+}
+
+/** The Getting started window opens itself once; after that it waits on the home page. */
+export async function guideSeenAction(tenantId: string) {
+  const { scope } = await actionActor(tenantId);
+  const pack = await requirePack(scope);
+  if (!pack.onboarding.guideSeenAt) await updateOnboarding(scope, pack, { guideSeenAt: new Date().toISOString() });
 }

@@ -8,7 +8,7 @@ import { finishLaterAction } from "./actions";
 import { isOwnSetup } from "./gate";
 
 /**
- * Onboarding: built once per person, in five visible steps (design system §14).
+ * Onboarding: built once per person, seven short screens (short-flow.tsx).
  *
  * While it's the way into someone's own studio it keeps a focused frame: no
  * sidebar and no link back to a library they haven't reached yet; "Finish

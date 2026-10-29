@@ -450,6 +450,8 @@ function useSaver() {
   return { pending, done, run };
 }
 
+export type ConfirmPart = "cards" | "suggestions" | "dials" | "words" | "questions" | "influences" | "languages" | "benchmarks";
+
 export function ConfirmStep(props: {
   tenantId: string;
   cards: ConfirmCard[];
@@ -468,8 +470,12 @@ export function ConfirmStep(props: {
   candidates: { id: string; text: string; channel: string }[];
   benchmarks: string[];
   questions: Question[];
+  /** Getting started shows one part at a time, without the step's heading and footer. */
+  parts?: ConfirmPart[];
 }) {
   const { tenantId } = props;
+  const show = (p: ConfirmPart) => !props.parts || props.parts.includes(p);
+  const embedded = !!props.parts;
   const { pending, done, run } = useSaver();
   const prefix = useDraftPrefix();
   const [unsaved, setUnsaved] = useState<number | null>(null);
@@ -477,39 +483,43 @@ export function ConfirmStep(props: {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-3xl">Confirm your <span className="serif-accent">voice.</span></h1>
-        <p className="text-ink-muted mt-2 max-w-[62ch]">Some of this we measured; some only you can tell us. Every answer saves on its own, so do as much as you like and come back for the rest.</p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-3xl">Confirm your <span className="serif-accent">voice.</span></h1>
+          <p className="text-ink-muted mt-2 max-w-[62ch]">Some of this we measured; some only you can tell us. Every answer saves on its own, so do as much as you like and come back for the rest.</p>
+        </div>
+      )}
 
-      {props.cards.length > 0 && (
+      {show("cards") && props.cards.length > 0 && (
         <Section title="What we found" sub="Up to three things the measurements raised. The rest wait for later.">
           {props.cards.map((c) => <CardView key={c.id} tenantId={tenantId} card={c} />)}
         </Section>
       )}
 
-      {props.suggestions}
+      {show("suggestions") && <div key="suggestions" className="contents">{props.suggestions}</div>}
 
-      <ThisOrThat tenantId={tenantId} done={props.answered.includes("C4")}>
-        <Dials tenantId={tenantId} dials={props.dials} estimated={props.estimated} />
-      </ThisOrThat>
+      {show("dials") && (
+        <ThisOrThat tenantId={tenantId} done={props.answered.includes("C4")}>
+          <Dials tenantId={tenantId} dials={props.dials} estimated={props.estimated} />
+        </ThisOrThat>
+      )}
 
-      <Words tenantId={tenantId} longlist={props.longlist} fourWords={props.fourWords} />
+      {show("words") && <Words tenantId={tenantId} longlist={props.longlist} fourWords={props.fourWords} />}
 
-      <Section title="Your reader and your lines" sub="Answers save one at a time. A short or very general answer gets one follow-up, once.">
+      {show("questions") && props.questions.length > 0 && <Section title={embedded ? "In your own words" : "Your reader and your lines"} sub="Answers save one at a time. A short or very general answer gets one follow-up, once.">
         {props.questions.map((q) => (
           <QuestionField key={q.id} tenantId={tenantId} q={q} initial={props.current[q.id] ?? ""} answered={props.answered.includes(q.id) || done.includes(q.id)} prefill={props.prefills[q.id]} canRecord={props.canRecord} />
         ))}
-      </Section>
+      </Section>}
 
-      <InfluencesEditor tenantId={tenantId} initial={props.influences} />
-      <LanguagesEditor tenantId={tenantId} initial={props.languages} />
+      {show("influences") && <InfluencesEditor tenantId={tenantId} initial={props.influences} />}
+      {show("languages") && <LanguagesEditor tenantId={tenantId} initial={props.languages} />}
 
-      {props.candidates.length >= 3 && (
+      {show("benchmarks") && props.candidates.length >= 3 && (
         <Benchmarks tenantId={tenantId} candidates={props.candidates} initial={props.benchmarks} />
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
+      {!embedded && <div className="flex flex-wrap items-center gap-3">
         <BackStep tenantId={tenantId} to={1} label="Your writing" />
         <button
           type="button"
@@ -526,7 +536,7 @@ export function ConfirmStep(props: {
         >
           {moving ? <AgentDots /> : null} {unsaved ? "Continue anyway" : "Continue to set your hue"}
         </button>
-      </div>
+      </div>}
       {unsaved != null && unsaved > 0 && (
         <p role="alert" className="text-sm text-warn flex items-start gap-1.5 -mt-3">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />

@@ -5,7 +5,8 @@ import { listProjects } from "@/lib/data/projects";
 import { getWorkspace } from "@/lib/data/workspaces";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { approvedSince } from "@/lib/data/training";
-import { resumeStep } from "@/lib/data/onboarding";
+import { resumeScreen } from "@/lib/onboarding/screens";
+import { gettingStarted } from "@/lib/data/getting-started";
 import { listCalendar, listIdeas } from "@/lib/data/planning";
 import { loadUsage } from "@/lib/data/insights";
 import { FORMATS } from "@/lib/content/formats";
@@ -33,7 +34,7 @@ export default async function WorkspaceHome({ params, searchParams }: PageProps<
   // Every way in (invite, sign-in link, /dashboard) lands here first, so this
   // is the one place a client who hasn't set up their voice is sent to do it.
   if (mustOnboard(session, pack, id, jar.get(LATER_COOKIE)?.value)) {
-    redirect(`/w/${id}/onboarding?step=${resumeStep(pack!.onboarding)}`);
+    redirect(`/w/${id}/onboarding`);
   }
   const now = await requestTime();
   const [ws, projects, sinceScan] = await Promise.all([
@@ -46,7 +47,7 @@ export default async function WorkspaceHome({ params, searchParams }: PageProps<
     tenantId: id,
     workspaceName: ws?.name ?? "Workspace",
     showWhatsNew: jar.get("huemen_seen_projects")?.value !== "1",
-    setupStep: pack && !pack.onboarding.completedAt ? resumeStep(pack.onboarding) : null,
+    setupStep: pack && !pack.onboarding.completedAt ? resumeScreen(pack.onboarding) : null,
     rescanDays: due?.due ? due.days : null,
     justFinished: ready === "1" && !!pack?.onboarding.completedAt,
   };
@@ -70,8 +71,11 @@ export default async function WorkspaceHome({ params, searchParams }: PageProps<
     loadUsage(scope),
   ]);
   const platform = pack?.onboarding.writeFor?.[0] ?? "linkedin";
+  // Getting started: opens itself once (right after the first piece), then waits as a card.
+  const guide = pack?.onboarding.completedAt ? await gettingStarted(scope, pack) : null;
   const props: BrandHomeProps = {
     ...shared,
+    guide: guide && { sections: guide, open: shared.justFinished || !pack!.onboarding.guideSeenAt },
     now,
     projects,
     core: pack ? coreCardFacts(pack, now) : null,
