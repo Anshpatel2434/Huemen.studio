@@ -11,18 +11,18 @@
  */
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import {
   ChevronDown, FileText, Network, PenLine, Palette, Share2, Download, Lightbulb, CalendarDays,
-  Package, ArrowUp, Check, Lock, Copy, Layers, ArrowLeft, Pencil, Files, Flag, BarChart3, Plus, WandSparkles, X, Settings, Archive, Trash2,
+  Package, Check, Lock, Copy, Layers, ArrowLeft, Pencil, Files, Flag, BarChart3, Plus, WandSparkles, X, Settings, Archive, Trash2,
   ScanText,
 } from "lucide-react";
-import { LogoMark, Modal, AgentDots, Badge, Avatar, IconButton, Menu, MenuItem, MenuSeparator, ToastProvider, useToast } from "@/components/ui";
+import { LogoMark, Modal, Badge, Avatar, IconButton, Menu, MenuItem, MenuSeparator, ToastProvider, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { PageTransition } from "@/components/page-transition";
 import { ThemeToggle } from "@/components/theme";
 import { STAGES, STAGE_LABEL, stageIndex, type Stage } from "@/lib/projects/stages";
-import { askAgent, type AgentReply } from "./agent-actions";
+import { AgentPanel } from "./agent-panel";
 import { AddPanel } from "./add-panel";
 import { renameProjectAction, duplicateProjectAction, archiveProjectAction, deleteProjectAction } from "../../project-actions";
 import { DeleteProjectModal } from "@/components/delete-project-modal";
@@ -298,84 +298,6 @@ function LayersPanel({ base, seg, unlocked, layers, brief }: { base: string; seg
             );
           })
         )}
-      </div>
-    </div>
-  );
-}
-
-type Msg = { role: "agent" | "me"; text: string; tasks?: AgentReply["tasks"] };
-
-function AgentPanel({ workspaceId, projectId, degraded, completeness }: { workspaceId: string; projectId: string; degraded: boolean; completeness: number }) {
-  const router = useRouter();
-  const [msgs, setMsgs] = useState<Msg[]>([
-    { role: "agent", text: degraded ? `This brief is ${completeness}% complete. I can draft, but it will read generic until the brief is filled in.` : "Brief loaded. Ask me to draft a post, add a pillar, capture an idea, or tell you what's missing." },
-  ]);
-  const [draft, setDraft] = useState("");
-  const [pending, start] = useTransition();
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, pending]);
-
-  const send = () => {
-    const text = draft.trim();
-    if (!text || pending) return;
-    setMsgs((m) => [...m, { role: "me", text }]);
-    setDraft("");
-    start(async () => {
-      try {
-        const r = await askAgent(workspaceId, projectId, text);
-        setMsgs((m) => [...m, { role: "agent", text: r.text, tasks: r.tasks }]);
-        router.refresh();
-      } catch {
-        setMsgs((m) => [...m, { role: "agent", text: "That didn't go through. Your message is back in the box, so try again." }]);
-        setDraft(text);
-      }
-    });
-  };
-
-  return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3" role="log" aria-live="polite" aria-label="Assistant conversation">
-        {msgs.map((m, i) =>
-          m.role === "me" ? (
-            <div key={i} className="self-end max-w-[90%] bg-field rounded-md px-2.5 py-1.5 text-sm fade-up">{m.text}</div>
-          ) : (
-            <div key={i} className="text-sm leading-relaxed fade-up">
-              <p>{m.text}</p>
-              {m.tasks && m.tasks.length > 0 && (
-                <div className="mt-2 flex flex-col gap-1.5">
-                  <p className="text-xs text-ink-faint">Carried out {m.tasks.length} task{m.tasks.length > 1 ? "s" : ""}</p>
-                  {m.tasks.map((t, j) => {
-                    const card = (
-                      <span className="flex items-center gap-2 border border-hairline rounded-md px-2 py-1.5 hover:border-line">
-                        <span className="w-6 h-6 rounded-sm bg-field flex items-center justify-center shrink-0"><Check size={12} /></span>
-                        <span className="min-w-0"><span className="block text-xs font-medium truncate">{t.label}</span>{t.detail && <span className="block text-xs text-ink-faint truncate">{t.detail}</span>}</span>
-                      </span>
-                    );
-                    return t.href ? <Link key={j} href={t.href}>{card}</Link> : <div key={j}>{card}</div>;
-                  })}
-                </div>
-              )}
-            </div>
-          ),
-        )}
-        {pending && <div role="status" className="flex items-center gap-2 bg-accent-soft text-accent-ink rounded-md px-2.5 py-2 text-xs font-medium fade-in"><AgentDots /> Working from your brief…</div>}
-        <div ref={endRef} />
-      </div>
-      <div className="p-2.5 border-t border-hairline">
-        <div className="bg-panel border border-hairline rounded-md focus-within:border-ink">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            rows={3}
-            placeholder="Ask Huemen…"
-            className="w-full resize-none bg-transparent px-2.5 pt-2 text-sm outline-none placeholder:text-ink-faint"
-          />
-          <div className="flex justify-end px-1.5 pb-1.5">
-            <button onClick={send} disabled={!draft.trim() || pending} className="hu-iconbtn !bg-ink !text-on-ink hover:opacity-90 disabled:!bg-active disabled:!text-ink-faint" aria-label="Send"><ArrowUp size={17} aria-hidden="true" /></button>
-          </div>
-        </div>
-        <p className="text-xs text-ink-faint text-center mt-1.5">Powered by this project&apos;s brief</p>
       </div>
     </div>
   );

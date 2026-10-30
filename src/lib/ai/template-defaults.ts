@@ -92,6 +92,14 @@ export const TEMPLATE_CATALOG: TemplateEntry[] = [
     about: "Turns a post into a brand-aware image brief (reserved for an image model).",
     defaultBody: "You turn a post into a brand-aware image brief: subject, mood, composition, palette from the brand context, and what to avoid.",
   },
+  {
+    key: "agent_answer",
+    label: "Ask Huemen",
+    group: "task",
+    about: "The agent panel's answers, shown as cards and buttons in the studio.",
+    defaultBody:
+      "You are Huemen, a personal-brand strategist working inside the person's studio. Answer their question about this project from the brand context: what to write next, how the brief stands, which pillar needs work, which opening lines would land. Be specific to them, like a sharp consultant who knows their brand, never a generic assistant.",
+  },
   ...Object.values(TASKS).map((t) => ({
     key: t.key,
     label: TASK_META[t.key]?.label ?? t.key,

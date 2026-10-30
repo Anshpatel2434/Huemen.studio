@@ -7,6 +7,10 @@
 import type { ZodType } from "zod";
 import { TASKS } from "../tasks";
 import { STREAM_SEPARATOR } from "../prompt";
+import { mockAgentAnswer } from "@/lib/agent-ui/mock";
+
+/** Kept in step with AGENT_TEMPLATE_KEY in lib/agent-ui/prompt (not imported: that module pulls in the React library). */
+const AGENT_TEMPLATE_KEY = "agent_answer";
 import type {
   StreamingTextProvider,
   TextStreamEvent,
@@ -85,6 +89,10 @@ export const mockTextProvider: StreamingTextProvider = {
     yield { type: "done", model, tokensIn: out.tokensIn, tokensOut: out.tokensOut };
   },
   async generate(req: TextGenRequest, model: string): Promise<TextGenResult> {
+    if (req.templateKey === AGENT_TEMPLATE_KEY) {
+      const text = mockAgentAnswer(req.context, req.taskInput);
+      return { variants: [text], model, tokensIn: req.context.serialized.length + req.taskInput.length, tokensOut: text.length };
+    }
     if (req.templateKey === "pillar_set") {
       const text = mockPillars(req);
       return { variants: [text], model, tokensIn: req.context.serialized.length + req.taskInput.length, tokensOut: text.length };

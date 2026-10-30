@@ -79,10 +79,22 @@ export function assemblePrompt(
   systemTemplate: string,
   context: BrandContext,
   taskInput: string,
-  opts: { templateKey: string; variants?: number; contract?: string; stream?: boolean },
+  opts: {
+    templateKey: string;
+    variants?: number;
+    contract?: string;
+    stream?: boolean;
+    /**
+     * A long, fixed output spec (the agent's component language). It sits in
+     * the system part, between the template and the brand context, so it is
+     * cached with them instead of being paid for on every call.
+     */
+    systemContract?: string;
+  },
 ): AssembledPrompt {
   const system = [
     systemTemplate.trim(),
+    ...(opts.systemContract ? ["", "<output_language>", opts.systemContract.trim(), "</output_language>"] : []),
     "",
     "<brand_context>",
     context.serialized,

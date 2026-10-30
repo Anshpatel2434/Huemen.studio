@@ -235,7 +235,14 @@ export async function generateText(
  */
 export async function* streamText(
   scope: SessionScope,
-  req: TextGenRequest & { systemTemplate: string; contentItemId?: string | null },
+  req: TextGenRequest & {
+    systemTemplate: string;
+    contentItemId?: string | null;
+    /** Replaces the draft contract, for a stream that is not a draft (the agent's answers). */
+    contract?: string;
+    /** A fixed output spec placed in the cached system part (see assemblePrompt). */
+    systemContract?: string;
+  },
 ): AsyncGenerator<{ type: "delta"; text: string } | { type: "done"; text: string; model: string }> {
   const env = getEnv();
   const route = req.route ?? "strong";
@@ -250,6 +257,8 @@ export async function* streamText(
       templateKey: req.templateKey,
       variants: req.variants,
       stream: true,
+      contract: req.contract,
+      systemContract: req.systemContract,
     });
     for await (const ev of provider.stream({ ...req, prompt }, model, { effort: resolveEffort(env, route) })) {
       if (ev.type === "delta") {
