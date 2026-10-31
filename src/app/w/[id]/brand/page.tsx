@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Pencil, Sparkles, AlertTriangle, FileImage, ChevronRight, CheckCircle2 } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { loadBriefAnswers, loadFoundation } from "@/lib/data/foundation";
+import { loadPackForWorkspace } from "@/lib/data/voice-pack";
+import { voiceAttributes } from "@/lib/voice/core-card";
 import { getWorkspace } from "@/lib/data/workspaces";
 import { listPillars } from "@/lib/data/planning";
 import { loadBrandContext } from "@/lib/context/context-loader";
@@ -51,10 +53,13 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
   const { id } = await params;
   const { saved } = await searchParams;
   const { scope } = await workspaceScope(id);
-  const [f, ctx, assets, offers, answers, pillars, ws] = await Promise.all([
+  const [f, ctx, assets, offers, answers, pillars, ws, pack] = await Promise.all([
     loadFoundation(scope), loadBrandContext(scope), listAssets(scope), listOffers(scope),
-    loadBriefAnswers(scope), listPillars(scope), getWorkspace(scope),
+    loadBriefAnswers(scope), listPillars(scope), getWorkspace(scope), loadPackForWorkspace(scope),
   ]);
+  // The brief's own tone field, or the words picked in onboarding, which are
+  // what most people actually set.
+  const tone = f.tone || (pack ? voiceAttributes(pack).join(", ").toLowerCase() : "");
   const base = `/w/${id}/brand`;
   const plan = `/w/${id}/plan`;
   const edit = `${base}/edit`;
@@ -151,7 +156,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
               </Link>
             </div>
             <ul className="mt-3 list-disc pl-5 space-y-2 text-base leading-[1.65] text-ink/90">
-              <li><span className="font-medium">Tone:</span> {f.tone || <span className="text-ink-faint">not set</span>}{f.readingLevel && <span className="text-ink-muted"> · reading level {f.readingLevel}</span>}</li>
+              <li><span className="font-medium">Tone:</span> {tone || <span className="text-ink-faint">not set</span>}{f.readingLevel && <span className="text-ink-muted"> · reading level {f.readingLevel}</span>}</li>
               <li><span className="font-medium">Use:</span> {csv(f.doWords).length ? csv(f.doWords).join(", ") : <span className="text-ink-faint">no do-words</span>}</li>
               <li>
                 <span className="font-medium">Never use:</span>{" "}

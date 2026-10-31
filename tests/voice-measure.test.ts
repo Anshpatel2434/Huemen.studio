@@ -151,6 +151,23 @@ describe("checkDraft", () => {
     expect(forRohan.issues.map((i) => i.code)).toContain("punctuation_unused");
   });
 
+  it("costs a repeated break more than a single slip, so bad copy can reach off brand", () => {
+    const onceIndex = { ...EMPTY_INDEX, punctuation: { exclamation: { allowed: false } } } as typeof EMPTY_INDEX;
+    const once = checkDraft("A clean line. One slip here!", onceIndex);
+    const thrice = checkDraft("Wow! Really! Yes!", onceIndex);
+    expect(thrice.score).toBeLessThan(once.score);
+    const hit = thrice.issues.find((i) => i.code === "punctuation_unused")!;
+    expect(hit.weight).toBe(3);
+    // Plural reads properly, and the mark has a name rather than its key.
+    expect(hit.message).toContain("exclamation marks");
+  });
+
+  it("names the question mark instead of printing its key", () => {
+    const r = checkDraft("Is this on brand?", { ...EMPTY_INDEX, punctuation: { question: { allowed: false } } } as typeof EMPTY_INDEX);
+    const hit = r.issues.find((i) => i.code === "punctuation_unused")!;
+    expect(hit.message).toBe("You don't use the question mark. This draft has 1.");
+  });
+
   it("catches a word on the personal never-list", () => {
     const r = checkDraft("We should leverage the team's strengths.", {
       ...EMPTY_INDEX,

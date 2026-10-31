@@ -9,7 +9,7 @@ import { Pool } from "pg";
 import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
 import { createProject, type ProjectScope } from "@/lib/data/projects";
-import { generateContent, listContent, updateContent } from "@/lib/data/content";
+import { generateContent, listContent, updateContent, regenerateWithSteer } from "@/lib/data/content";
 import { learnFromApproval, learningLog } from "@/lib/data/learning";
 import { listVersions, loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { learnDecision, ownShare, relearnDue, similarity, LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
@@ -107,6 +107,22 @@ describe("learning in the database", () => {
     const log = await learningLog(A, pack.id);
     expect(log.total).toBe(RELEARN_EVERY);
     expect((await listVersions(A, pack.id, 5)).some((v) => /Learned from \d+ pieces/.test(v.note ?? ""))).toBe(true);
+  });
+
+  it("keeps what you typed when a regenerate replaces it (brief §07)", async () => {
+    if (!dbReachable) return;
+    const id = await generateContent(A, { format: "linkedin_post", topic: "handing work over" });
+    const before = (await listContent(A)).find((i) => i.id === id)!;
+    const mine = "I wrote this line myself and it must survive the next draft.";
+    await updateContent(A, id, { hook: mine, body: before.body ?? "", cta: before.cta ?? "", pillarId: null, status: "edited" });
+
+    await regenerateWithSteer(A, id, "Shorter");
+
+    const after = (await listContent(A)).find((i) => i.id === id)!;
+    expect(after.hook).not.toBe(mine);                                  // the steer did replace it
+    expect(after.history.some((h) => h.hook === mine)).toBe(true);      // and it is recoverable
+    const edit = after.history.find((h) => h.hook === mine)!;
+    expect(edit.model).toBeNull();                                      // marked as yours, not ours
   });
 
   it("a coach's approval doesn't teach the client's voice", async () => {

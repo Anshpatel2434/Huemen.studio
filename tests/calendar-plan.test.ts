@@ -40,7 +40,18 @@ describe("calendar_plan stand-in", () => {
     const out = calendarPlan.schema.parse(calendarPlan.mock(input));
     expect(out.slots.map((s) => s.slot)).toEqual([1, 2, 3]);
     expect(out.slots.map((s) => s.pillar)).toEqual(["Delegation", "Hiring", "Delegation"]);
-    expect(out.slots[0].topic).toMatch(/delegation/);
+    // The pillar is named beside the line, keeping its own capitals, rather
+    // than lower-cased into the sentence ("…most often in delegation").
+    expect(out.slots[0].topic).toContain("(Delegation)");
     expect(out.slots[0].hookAngle).not.toBe(out.slots[1].hookAngle);
+  });
+
+  it("gives a full quarter distinct topics, not six on a loop", () => {
+    const slots = planSlots({ start: "2026-01-05", perWeek: 3, channels: ["linkedin", "newsletter"] });
+    const input = ["Pillar: Delegation", "Pillar: Hiring", ...slots.map((s) => `Slot: ${s.slot} | ${s.label} | ${s.channel}`)].join("\n");
+    const out = calendarPlan.schema.parse(calendarPlan.mock(input));
+    expect(out.slots.length).toBe(slots.length);
+    expect(out.slots.length).toBeGreaterThan(30);
+    expect(new Set(out.slots.map((s) => s.topic)).size).toBe(out.slots.length);
   });
 });

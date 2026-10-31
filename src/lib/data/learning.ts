@@ -43,9 +43,13 @@ export async function learnFromApproval(scope: ProjectScope, actor: Actor, itemI
       )
     ).rows[0];
     if (!item) return null;
+    // Only what the model wrote. History also holds the versions a person
+    // typed (model IS NULL, kept so an edit survives the next generation);
+    // counting those as "generated" would make every edit look like our words
+    // and stop the pack learning from it.
     const generated = (
       await c.query<{ hook: string | null; body: string | null; cta: string | null }>(
-        `SELECT hook, body, cta FROM content_generations WHERE content_item_id = $1`,
+        `SELECT hook, body, cta FROM content_generations WHERE content_item_id = $1 AND model IS NOT NULL`,
         [itemId],
       )
     ).rows.map(text);

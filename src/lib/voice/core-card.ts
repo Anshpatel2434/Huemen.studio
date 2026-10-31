@@ -21,6 +21,21 @@ export interface CoreCardFacts {
   stats: { label: string; value: string }[];
 }
 
+/**
+ * The words shown on the core card, in the order we trust them: the measured
+ * tone, then the four words someone kept, then the longlist they tapped in
+ * onboarding. Without the last two, picking twelve words produced a card that
+ * said nothing back.
+ */
+export function voiceAttributes(pack: VoicePack): string[] {
+  const id = pack.identity;
+  const tone = id.toneDescriptors?.value ?? [];
+  if (tone.length) return tone.slice(0, 5);
+  const kept = (id.personalityWords?.value ?? []).map((w) => w.word);
+  if (kept.length) return kept.slice(0, 5);
+  return (id.personalityLonglist?.value ?? []).slice(0, 5);
+}
+
 export function coreCardFacts(pack: VoicePack, now: number): CoreCardFacts {
   const conf = confidence(pack);
   const words = pack.corpusStats.words;
@@ -34,7 +49,7 @@ export function coreCardFacts(pack: VoicePack, now: number): CoreCardFacts {
     subtitle: `${channels[0] ? channels.join(", ") + " · " : ""}core v${pack.version}${measured}`,
     trained: conf.trained,
     state: coreState(pack, now),
-    attributes: (pack.identity.toneDescriptors?.value ?? []).slice(0, 5),
+    attributes: voiceAttributes(pack),
     confidence: conf.score,
     missing: conf.missing,
     stats: [

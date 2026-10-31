@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
-import { Plus, X, Flag, Trash2, History, Wand2, PenLine, AlertTriangle, Globe, ThumbsUp, MessageCircle, Repeat2, Send } from "lucide-react";
+import { Plus, X, Flag, Trash2, History, Wand2, PenLine, Pencil, AlertTriangle, Globe, ThumbsUp, MessageCircle, Repeat2, Send } from "lucide-react";
 import { Canvas, Artboard, type Device } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
 import { DraftModal } from "@/components/draft-modal";
@@ -351,7 +351,12 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
             <div key={g.id} className="border border-hairline rounded-md p-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <History size={12} className="text-ink-faint" />
-                <span className="text-xs text-ink-muted flex-1">{g.steer ? `Steer: ${g.steer}` : `Variant ${g.variantIndex + 1}`} · {g.model}</span>
+                <span className="text-xs text-ink-muted flex-1">
+                  {/* A version with no model is one you typed, not one we wrote. */}
+                  {g.model
+                    ? <>{g.steer ? `Steer: ${g.steer}` : `Variant ${g.variantIndex + 1}`} · {g.model}</>
+                    : <><Pencil size={11} className="inline mb-0.5 mr-1" aria-hidden="true" />{g.steer || "Edited by you"}</>}
+                </span>
                 <button disabled={pending} onClick={() => run("v" + g.id, () => applyVariantAction(tenantId, projectId, item.id, g.id), "Variant applied")} className="text-xs font-medium hover:text-accent-ink">Use</button>
               </div>
               <p className="text-sm font-medium">{g.hook}</p>

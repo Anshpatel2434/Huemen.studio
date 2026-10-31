@@ -37,11 +37,18 @@ export function Canvas({
   const fit = useCallback(() => {
     const w = wrap.current, s = stage.current;
     if (!w || !s) return;
-    const sw = s.scrollWidth, sh = s.scrollHeight;
-    const z = Math.min(1, (w.clientWidth - 80) / sw, (w.clientHeight - 120) / sh);
-    const zz = Math.max(0.2, Math.round(z * 100) / 100);
+    // On a phone the artboards sit side by side, so fitting all of them put the
+    // whole set at 20% and nothing could be read. Narrow screens fit the FIRST
+    // artboard instead and pan to the rest.
+    const narrow = w.clientWidth < 900;
+    const first = s.querySelector<HTMLElement>("[data-artboard]");
+    const gutter = narrow ? 24 : 80;
+    const sw = narrow && first ? first.offsetWidth : s.scrollWidth;
+    const sh = narrow && first ? first.offsetHeight : s.scrollHeight;
+    const z = Math.min(1, (w.clientWidth - gutter) / sw, (w.clientHeight - (narrow ? 96 : 120)) / sh);
+    const zz = Math.max(narrow ? 0.35 : 0.2, Math.round(z * 100) / 100);
     setZoom(zz);
-    setPan({ x: Math.max(40, (w.clientWidth - sw * zz) / 2), y: 48 });
+    setPan({ x: Math.max(narrow ? 12 : 40, (w.clientWidth - sw * zz) / 2), y: narrow ? 24 : 48 });
   }, []);
 
   useLayoutEffect(() => {
@@ -183,7 +190,9 @@ export function Artboard({ label, meta, width, children, selected, onSelect, onE
   onDragStart?: (e: React.DragEvent) => void; onDragEnd?: () => void; dimmed?: boolean;
 }) {
   return (
-    <div className={`shrink-0 group/board transition-opacity ${dimmed ? "opacity-40" : ""}`} style={{ width }}>
+    // data-artboard lets the canvas fit one board on a narrow screen without
+    // guessing at the wrapper depth around it.
+    <div data-artboard className={`shrink-0 group/board transition-opacity ${dimmed ? "opacity-40" : ""}`} style={{ width }}>
       <div
         className={`flex items-center gap-2 mb-2 h-6 px-0.5 ${onDragStart ? "cursor-grab active:cursor-grabbing" : ""}`}
         draggable={!!onDragStart}

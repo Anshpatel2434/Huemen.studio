@@ -57,7 +57,13 @@ export function BrandHome(props: BrandHomeProps) {
             <p className="label-mono eyebrow">{workspaceName} · Brand home</p>
             <h1 className="text-3xl mt-2">Write the <span className="serif-accent">next one.</span></h1>
           </div>
-          <HomeActions tenantId={tenantId} projects={projects.map((p) => ({ id: p.id, name: p.name }))} showWhatsNew={props.showWhatsNew && !props.justFinished} />
+          {/* One window greets you at a time: the guide wins, and What's new
+              waits for the next visit rather than stacking underneath it. */}
+          <HomeActions
+            tenantId={tenantId}
+            projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+            showWhatsNew={props.showWhatsNew && !props.justFinished && !props.guide?.open}
+          />
         </header>
 
         {/* What needs doing first: finishing setup, the welcome, or a re-measure. */}

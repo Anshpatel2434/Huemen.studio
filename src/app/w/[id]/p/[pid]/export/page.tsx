@@ -16,6 +16,7 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
   const { scope, project } = await projectScope(id, pid);
   const [ctx, content, pillars] = await Promise.all([loadBrandContext(scope), listContent(scope), listPillars(scope)]);
   const { checks, score } = brandHealth(ctx, content, pillars);
+  const open = checks.filter((c) => !c.ok).length;
   const approved = content.filter((c) => c.status === "approved");
   const firstFlagged = content.find((c) => c.violations.length || !c.cta.trim());
   const fixHref = ctx.degraded ? `/w/${id}/p/${pid}/brief/edit` : firstFlagged ? `/w/${id}/p/${pid}/content?item=${firstFlagged.id}` : `/w/${id}/p/${pid}/content`;
@@ -87,7 +88,13 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
             </span>
             <div>
               <p className="text-sm font-medium">{score >= 80 ? "Ready to export" : score >= 40 ? "Safe to export, worth a pass" : "Fix the brief first"}</p>
-              <p className="text-xs text-ink-muted mt-0.5">{score >= 80 ? "On-brand and complete." : "Flagged items are listed above."}</p>
+              {/* Only claim "complete" when every check actually passed: the
+                  brief can be well short of finished at a score of 80. */}
+              <p className="text-xs text-ink-muted mt-0.5">
+                {open === 0
+                  ? "Every check passed."
+                  : `${open} ${open === 1 ? "check is" : "checks are"} still open, listed above.`}
+              </p>
             </div>
           </div>
         </aside>

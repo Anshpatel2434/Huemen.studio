@@ -60,6 +60,21 @@ const MOCK_ANGLES = [
   "A small moment that explains",
 ];
 
+/**
+ * Subjects the stand-in openings attach to. Crossed with MOCK_TOPICS they give
+ * enough distinct lines to fill a quarter without repeating, which is what a
+ * real plan has to do.
+ */
+const MOCK_SUBJECTS = [
+  "the first ninety days",
+  "hiring your replacement",
+  "the meeting nobody needed",
+  "saying no to good work",
+  "the feedback that landed",
+  "being the newest person in the room",
+  "what the numbers left out",
+];
+
 export const topicProposals: TaskDef<TopicProposals> = {
   key: "topic_proposals",
   schema: Topics,
@@ -76,7 +91,9 @@ export const topicProposals: TaskDef<TopicProposals> = {
     while (picked.length < 3) picked.push(picked[picked.length - 1]);
     return {
       topics: picked.map((p, i) => ({
-        title: `${MOCK_ANGLES[i]} ${p.toLowerCase()}`,
+        // A pillar name is a label, not a noun phrase: "…explains Origin story"
+        // reads as a bug. Keep the pillar beside the line, not inside it.
+        title: `${MOCK_ANGLES[i]} ${MOCK_SUBJECTS[i % MOCK_SUBJECTS.length]}`,
         why: `Stand-in suggestion from your "${p}" pillar.`,
         pillar: pillars.length ? p : "",
       })),
@@ -447,12 +464,12 @@ const MOCK_HOOKS = [
 ];
 const MOCK_CTAS = ["What would you add?", "Reply if this is you.", "Save this for the next time it comes up.", "Tell me where I'm wrong.", "Forward this to the one person who needs it."];
 const MOCK_TOPICS = [
-  "The mistake I see most often in",
+  "The mistake I see most often with",
   "What nobody tells you about",
   "A small moment that explains",
-  "The one rule I keep for",
+  "The one rule I keep about",
   "What changed my mind about",
-  "Why the obvious advice fails for",
+  "Why the obvious advice fails on",
 ];
 
 export const calendarPlan: TaskDef<CalendarPlan> = {
@@ -464,6 +481,7 @@ export const calendarPlan: TaskDef<CalendarPlan> = {
     "Return slots: one entry per slot number listed in the input, in order, none missing and none invented.",
     "Each has: slot (the number as given), pillar (a pillar name exactly as listed, or an empty string if none fits), topic (one line, in their words, not a headline formula), hookAngle (how the piece opens, under 12 words), cta (one line, or an empty string for a channel with no ask).",
     "Fit the channel: a newsletter slot can carry a bigger idea than an X slot.",
+    "Every topic must be different from every other one in the plan. A quarter of repeats is not a plan, so do not reuse a topic, and do not reach the same idea twice by rewording it.",
   ].join("\n"),
   mock(input) {
     const pillars = fields(input, "Pillar").map((p) => p.split(" (")[0].trim());
@@ -471,10 +489,14 @@ export const calendarPlan: TaskDef<CalendarPlan> = {
     return {
       slots: slots.map((slot, i) => {
         const pillar = pillars.length ? pillars[i % pillars.length] : "";
+        // Pair each opening with a different subject rather than cycling one
+        // list, so a stand-in plan reads like 38 pieces and not six on repeat.
+        const opener = MOCK_TOPICS[i % MOCK_TOPICS.length];
+        const subject = MOCK_SUBJECTS[Math.floor(i / MOCK_TOPICS.length) % MOCK_SUBJECTS.length];
         return {
           slot,
           pillar,
-          topic: `${MOCK_TOPICS[i % MOCK_TOPICS.length]} ${(pillar || "the work").toLowerCase()}`,
+          topic: `${opener} ${subject}${pillar ? ` (${pillar})` : ""}`,
           hookAngle: MOCK_HOOKS[i % MOCK_HOOKS.length],
           cta: MOCK_CTAS[i % MOCK_CTAS.length],
         };

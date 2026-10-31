@@ -8,7 +8,7 @@
  */
 import Link from "next/link";
 import {
-  createContext, useCallback, useContext, useEffect, useRef, useState, useId,
+  createContext, useCallback, useContext, useEffect, useRef, useState, useId, useSyncExternalStore,
   type InputHTMLAttributes, type ReactNode, type ReactElement, cloneElement, isValidElement,
 } from "react";
 import { createPortal, useFormStatus } from "react-dom";
@@ -77,11 +77,22 @@ export function Panel({ children, className = "" }: { children: ReactNode; class
 // hueFor lives in a plain module so server components can colour by seed too.
 export { hueFor };
 
+/**
+ * One pair of letters for a name, wherever a name is shown: the first letter of
+ * the first two words ("Priya Nair" → PN), falling back to the first two
+ * letters of a single word ("priya@…" → PR).
+ */
+export function initialsOf(name: string): string {
+  const words = name.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return (words[0] ?? "").slice(0, 2).toUpperCase() || "—";
+}
+
 export function Avatar({
   seed, label, size = "md", square = false, className = "",
 }: { seed: string; label?: string; size?: "sm" | "md" | "lg"; square?: boolean; className?: string }) {
   const s = { sm: "w-7 h-7 text-[0.62rem]", md: "w-9 h-9 text-sm", lg: "w-14 h-14 text-lg" }[size];
-  const initials = (label ?? seed).replace(/[^a-zA-Z0-9]/g, "").slice(0, 2).toUpperCase() || "—";
+  const initials = initialsOf(label ?? seed);
   return (
     <span aria-hidden="true" className={`${s} ${square ? "rounded-sm" : "rounded-full"} inline-flex items-center justify-center font-semibold text-white shrink-0 ${className}`} style={{ background: hueFor(seed) }}>
       {initials}
@@ -166,6 +177,10 @@ if (typeof document !== "undefined") {
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** Mount detection: the store never changes, so this only separates server
+ *  (false) from client (true). No state is set in an effect. */
+const subscribeNever = () => () => {};
+
 /**
  * Modal (§13). Focus moves in, is held inside while open (the one intentional
  * trap, §17), and returns to whatever opened it. Escape and the backdrop close.
@@ -178,6 +193,11 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: {
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // The dialog lives in a portal, which the server cannot render. Waiting for
+  // the mount keeps the server's HTML and the first client render identical
+  // (both nothing), so a modal that opens on load — the Getting started guide —
+  // doesn't fail hydration and make React rebuild the page around it.
+  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
   // Callers pass a fresh onClose each render; read the latest without
   // re-running the effect (which would move focus about while open).
   const closeRef = useRef(onClose);
@@ -200,7 +220,7 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: {
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); if (opener?.isConnected) opener.focus(); };
   }, [open]);
-  if (!open || typeof document === "undefined") return null;
+  if (!open || !mounted) return null;
   // Portalled to <body>: an ancestor with a transform (the page transition)
   // would otherwise turn `fixed` into "fixed to that box", and clip the dialog.
   return createPortal(

@@ -234,6 +234,9 @@ export async function regenerateWithSteer(scope: ProjectScope, itemId: string, s
   });
   const d = splitDraft(result.variants[0]);
   await withTenantSession(scope, async (c) => {
+    // Whatever is on the piece now — including an edit typed since the last
+    // generation — becomes a version before the steer replaces it.
+    await snapshotCurrent(scope, c, itemId);
     const next = (
       await c.query<{ n: number }>(
         "SELECT coalesce(max(variant_index),-1)+1 AS n FROM content_generations WHERE content_item_id=$1",
@@ -263,17 +266,57 @@ export async function applyVariant(scope: ProjectScope, itemId: string, generati
   });
 }
 
+/**
+ * Keep what is on the piece right now as a version, so nothing a person typed
+ * can be lost by the next generation (brief §07). A row with no model is a
+ * human edit; history labels it that way and it can be restored like any
+ * variant. Skipped when the text already matches the newest version, so
+ * re-saving the same words doesn't pile up entries.
+ */
+async function snapshotCurrent(scope: ProjectScope, c: PoolClient, itemId: string): Promise<void> {
+  const item = (
+    await c.query<{ hook: string | null; body: string | null; cta: string | null; prompt_version: number | null }>(
+      "SELECT hook, body, cta, prompt_version FROM content_items WHERE id=$1 AND project_id=$2",
+      [itemId, scope.projectId],
+    )
+  ).rows[0];
+  if (!item || !(item.hook || item.body)) return;
+  const last = (
+    await c.query<{ hook: string | null; body: string | null; cta: string | null }>(
+      "SELECT hook, body, cta FROM content_generations WHERE content_item_id=$1 ORDER BY variant_index DESC LIMIT 1",
+      [itemId],
+    )
+  ).rows[0];
+  if (last && last.hook === item.hook && last.body === item.body && last.cta === item.cta) return;
+  const next = (
+    await c.query<{ n: number }>(
+      "SELECT coalesce(max(variant_index),-1)+1 AS n FROM content_generations WHERE content_item_id=$1",
+      [itemId],
+    )
+  ).rows[0].n;
+  await c.query(
+    `INSERT INTO content_generations
+       (tenant_id, content_item_id, variant_index, steer, hook, body, cta, prompt_version, model)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL)`,
+    [scope.tenantId, itemId, next, EDIT_STEER, item.hook, item.body, item.cta, item.prompt_version],
+  );
+}
+
+/** Marks a history row as something a person typed rather than a generation. */
+export const EDIT_STEER = "Edited by you";
+
 export async function updateContent(
   scope: ProjectScope,
   itemId: string,
   patch: { hook: string; body: string; cta: string; pillarId: string | null; status: "draft" | "edited" | "approved" },
 ): Promise<void> {
-  await withTenantSession(scope, (c) =>
-    c.query(
+  await withTenantSession(scope, async (c) => {
+    await c.query(
       `UPDATE content_items SET hook=$1, body=$2, cta=$3, pillar_id=$4, status=$5 WHERE id=$6 AND project_id=$7`,
       [patch.hook, patch.body, patch.cta, patch.pillarId, patch.status, itemId, scope.projectId],
-    ),
-  );
+    );
+    await snapshotCurrent(scope, c, itemId);
+  });
   // An approved piece's opening joins the recent openers, so the check can say
   // "you opened a recent piece the same way" (voice.json last_openers).
   if (patch.status === "approved" && patch.hook.trim()) await recordOpener(scope, patch.hook);

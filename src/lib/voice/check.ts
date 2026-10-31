@@ -28,6 +28,13 @@ export interface VoiceIssue {
   message: string;
   /** The offending text, where there is one, so the UI can highlight it. */
   excerpt?: string;
+  /**
+   * How many times this was broken. The cost scales with it (capped), so a
+   * draft with three exclamation marks in a voice that uses none scores below
+   * one that slipped once — without a single finding swallowing the whole
+   * score.
+   */
+  weight?: number;
 }
 
 /**
@@ -173,12 +180,26 @@ const COST: Record<IssueSeverity, number> = { error: 20, warning: 10, note: 4 };
 /** Punctuation marks the check can speak about, with the name the user uses. */
 const MARK_NAMES: Partial<Record<keyof PunctuationRates, string>> = {
   emDash: "em dash",
+  enDash: "en dash",
+  spacedHyphen: "spaced hyphen",
   ellipsis: "ellipsis",
   exclamation: "exclamation mark",
+  question: "question mark",
+  stackedQuestion: "run of question marks",
   semicolon: "semicolon",
+  colon: "colon",
+  quotes: "quotation mark",
+  brackets: "square bracket",
   emoji: "emoji",
   parentheses: "parentheses",
 };
+
+/** "em dash" → "em dashes"; the few irregulars are spelled out. */
+function plural(name: string, n: number): string {
+  if (n === 1) return name;
+  if (name === "parentheses" || name === "ellipsis" || name === "emoji") return name;
+  return name.endsWith("h") || name.endsWith("s") ? `${name}es` : `${name}s`;
+}
 
 function findPhrase(haystack: string, needle: string): string | undefined {
   const i = haystack.toLowerCase().indexOf(needle.toLowerCase());
@@ -250,7 +271,10 @@ export function checkDraft(
       issues.push({
         code: "punctuation_unused",
         severity: "warning",
-        message: `You don't use the ${name}. This draft has ${used}.`,
+        // Breaking a habit once is a slip; breaking it repeatedly is a
+        // different voice, and `weight` makes the score say so.
+        weight: used,
+        message: `You don't use the ${plural(name, used)}. This draft has ${used}.`,
       });
     } else if (rule.allowed && rule.perPostMax != null && used > rule.perPostMax) {
       issues.push({
@@ -343,9 +367,12 @@ export function checkDraft(
       issues.push({ code: "missing_must", severity: "note", message: "You usually drop in one very short line." });
   }
 
+  // A repeated break costs more than a single one, up to three times the base,
+  // so a draft that breaks one habit three times can reach "off brand" where
+  // before every finding cost the same and nothing realistic ever did.
   const score = Math.max(
     0,
-    issues.reduce((s, i) => s - COST[i.severity], 100),
+    issues.reduce((s, i) => s - COST[i.severity] * Math.min(3, Math.max(1, i.weight ?? 1)), 100),
   );
   return { score, band: bandFor(score), issues };
 }

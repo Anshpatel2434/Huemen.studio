@@ -200,6 +200,11 @@ export const ANTI_AI_PHRASES = [
   "navigate the landscape", "at the end of the day", "testament to",
   "a myriad of", "seamlessly", "robust solution", "leverage synergies",
   "embark on a journey", "in conclusion", "the bottom line is",
+  // The launch-announcement register. Each spelling is listed in full, because
+  // a finding quotes the phrase back and a stem would read as a typo.
+  "thrilled to announce", "excited to announce", "game-changing",
+  "revolutionise", "revolutionize", "revolutionary", "unlock your",
+  "elevate your", "take it to the next level", "true potential",
 ];
 
 /**

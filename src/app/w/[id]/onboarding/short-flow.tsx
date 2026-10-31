@@ -652,7 +652,15 @@ export function WordsScreen({ tenantId, saved }: { tenantId: string; saved: stri
       actions={
         <>
           <Go label="Continue" busy={moving && "Saving"} disabled={!enough} onClick={() => go(async () => { await wordsAction(tenantId, picks); })}
-            note={<span className="tabular-nums">{picks.length} of {MIN_PICKS} to {MAX_PICKS} picked</span>} />
+            note={
+              /* Say what to do next, not "13 of 12 to 15 picked", which reads
+                 like a broken fraction once you are past the minimum. */
+              <span className="tabular-nums">
+                {picks.length < MIN_PICKS
+                  ? `${picks.length} picked · ${MIN_PICKS - picks.length} to go`
+                  : `${picks.length} picked`}
+              </span>
+            } />
           <Skip tenantId={tenantId} to="draft" />
         </>
       }
