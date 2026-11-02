@@ -10,6 +10,9 @@ import {
   setWorkspaceStatus,
 } from "@/lib/data/admin";
 import type { Role } from "@/lib/auth/types";
+import { signLink } from "@/lib/auth/tokens";
+import { getEnv } from "@/lib/env";
+import { sendAuthMail } from "@/lib/mail";
 
 export async function createWorkspaceAction(formData: FormData) {
   const session = await requireSession();
@@ -18,12 +21,27 @@ export async function createWorkspaceAction(formData: FormData) {
   revalidatePath("/settings/workspaces");
 }
 
+/**
+ * Invite someone and email them the link. If the email can't be sent, the
+ * invite still stands and its link stays on this page to copy and send by hand.
+ */
 export async function inviteUserAction(formData: FormData) {
   const session = await requireSession();
   const tenantId = String(formData.get("tenantId"));
-  const email = String(formData.get("email") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const role = String(formData.get("role")) as Role;
-  if (email) await inviteUser(session, tenantId, email, role);
+  if (email) {
+    const invited = await inviteUser(session, tenantId, email, role);
+    if (invited?.status === "invited") {
+      await sendAuthMail({
+        to: email,
+        subject: `You're invited to ${invited.workspace} on Huemen.studio`,
+        link: `${getEnv().APP_URL}/invite/${signLink("invite", invited.userId, "invited")}`,
+        lines: [`You've been invited to ${invited.workspace} on Huemen.studio.`, "Accept the invite to set up your account. The link works for 7 days."],
+        action: "Accept the invite",
+      }).catch((e) => console.error(`[invite] email to ${email} not sent: ${e instanceof Error ? e.message : e}`));
+    }
+  }
   revalidatePath("/settings/workspaces");
 }
 

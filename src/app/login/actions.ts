@@ -1,29 +1,24 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { devSignIn } from "@/lib/auth";
+import { startSession } from "@/lib/auth";
 import { safeNext, signLink } from "@/lib/auth/tokens";
-import { findAccountByEmail, getAccount, markSignedIn, type AccountRow } from "@/lib/data/auth";
+import { findAccountByEmail, getAccount, markSignedIn } from "@/lib/data/auth";
 import { getEnv } from "@/lib/env";
 import { sendAuthMail } from "@/lib/mail";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Start a session for an account that has passed every check. */
-async function startSession(a: AccountRow): Promise<void> {
-  await devSignIn({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
-  await markSignedIn(a.id);
-}
-
 /**
- * DEV-ONLY one-click sign-in for seeded accounts. The managed auth provider
- * replaces this entirely (brief §02, §05).
+ * DEV-ONLY one-click sign-in for seeded accounts (AUTH_DRIVER=dev). In
+ * production everyone signs in with the emailed one-time link below.
  */
 export async function signInAs(formData: FormData): Promise<void> {
   if (getEnv().AUTH_DRIVER !== "dev") throw new Error("dev sign-in disabled");
   const a = await getAccount(String(formData.get("userId")));
   if (!a || a.status !== "active") redirect("/login?e=noinvite");
-  await startSession(a);
+  await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
+  await markSignedIn(a.id);
   redirect(safeNext(formData.get("next")));
 }
 
@@ -46,12 +41,19 @@ export async function signInWithEmail(formData: FormData): Promise<void> {
 
   const token = signLink("signin", a.id, a.lastSeen);
   const link = `${getEnv().APP_URL}/auth/verify?${new URLSearchParams({ token, ...(next !== "/dashboard" ? { next } : {}) })}`;
-  await sendAuthMail({
-    to: a.email,
-    subject: "Your Huemen.studio sign-in link",
-    link,
-    lines: [`Sign in to ${a.tenantName}.`, "This link works once and expires in 15 minutes."],
-  });
+  let sent = true;
+  try {
+    await sendAuthMail({
+      to: a.email,
+      subject: "Your Huemen.studio sign-in link",
+      link,
+      lines: [`Sign in to ${a.tenantName}.`, "This link works once and expires in 15 minutes."],
+      action: "Sign in",
+    });
+  } catch {
+    sent = false;
+  }
+  if (!sent) redirect(`/login?${q({ e: "mailfail", email })}`);
   // The dev driver has no mailbox, so the page shows the link as a "dev inbox".
   const dev: Record<string, string> = getEnv().AUTH_DRIVER === "dev" ? { dev: token } : {};
   redirect(`/login/check-email?${q({ email: a.email, ...dev })}`);

@@ -31,6 +31,7 @@ export default async function WorkspacesAdminPage() {
   if (!isPlatformAdmin(session.role)) redirect("/settings");
   const [workspaces, coaches, caps] = await Promise.all([listWorkspaces(session), listCoaches(session), listCaps(session)]);
   const appUrl = getEnv().APP_URL;
+  const emailsSent = getEnv().MAIL_PROVIDER !== "log";
   const members = await listMembers(workspaces.map((w) => w.id));
   const usage = new Map(
     await Promise.all(
@@ -97,7 +98,7 @@ export default async function WorkspacesAdminPage() {
                         {m.status === "invited" && (
                           <div className="min-w-0">
                             <CopyField value={`${appUrl}/invite/${signLink("invite", m.id, "invited")}`} />
-                            <p className="text-xs text-ink-faint mt-1">Invite link, valid 7 days. Send it to {m.email}; opening it lets them accept and join.</p>
+                            <p className="text-xs text-ink-faint mt-1">{emailsSent ? `Emailed to ${m.email}. If it hasn't arrived, copy the link and send it yourself; it's valid 7 days.` : `Invite link, valid 7 days. Send it to ${m.email}; opening it lets them accept and join.`}</p>
                           </div>
                         )}
                       </li>

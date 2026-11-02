@@ -81,19 +81,28 @@ export async function inviteUser(
   tenantId: string,
   email: string,
   role: Role,
-): Promise<void> {
+): Promise<{ userId: string; status: string; workspace: string } | null> {
   const scope = scopeOf(session);
-  // Invite = create the user record in 'invited' state. Email delivery is wired
-  // with the managed auth provider (v1 is email-invite only).
-  await withTenantSession(scope, (c) =>
-    c.query(
+  // Invite = create the user record in 'invited' state; the caller emails the
+  // invite link (v1 is email-invite only). Inviting an address twice returns
+  // the existing record, so the email can be sent again.
+  const row = await withTenantSession(scope, async (c) => {
+    await c.query(
       `INSERT INTO users (tenant_id, email, role, status, invited_by)
        VALUES ($1,$2,$3,'invited',$4)
        ON CONFLICT (tenant_id, email) DO NOTHING`,
       [tenantId, email, role, scope.userId],
-    ),
-  );
+    );
+    return (
+      await c.query<{ id: string; status: string; workspace: string }>(
+        `SELECT u.id, u.status, t.name AS workspace FROM users u JOIN tenants t ON t.id = u.tenant_id
+          WHERE u.tenant_id = $1 AND u.email = $2`,
+        [tenantId, email],
+      )
+    ).rows[0];
+  });
   await audit(scope, tenantId, "user.invite", { email, role });
+  return row ? { userId: row.id, status: row.status, workspace: row.workspace } : null;
 }
 
 export async function assignCoach(

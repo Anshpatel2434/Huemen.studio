@@ -1,8 +1,8 @@
 /**
- * Auth (brief §05). v1 target is a MANAGED provider with org/tenant + role
- * claims; this dev adapter is a signed cookie so the app runs locally without
- * external accounts. Swap the adapter (getSession/signIn) for the managed
- * provider at integration time — the rest of the app depends only on `Session`.
+ * Auth (brief §05): a signed, httpOnly session cookie. People prove who they
+ * are with a one-time link sent to their email (lib/auth/tokens, lib/mail);
+ * AUTH_DRIVER=dev adds one-click sign-in for seeded accounts and shows links
+ * on screen, for local work only. The rest of the app depends only on `Session`.
  *
  * Email-invite flow only in v1. No public sign-up (brief §02).
  *
@@ -61,9 +61,12 @@ export async function requireSession(): Promise<Session> {
   return s;
 }
 
-/** Dev-only: establish a session for a seeded user. Managed provider replaces this. */
-export async function devSignIn(session: Session): Promise<void> {
-  if (getEnv().AUTH_DRIVER !== "dev") throw new Error("devSignIn disabled");
+/**
+ * Start a session for an account that has already proved who it is: a valid
+ * one-time sign-in link, an accepted invite, or (dev only, gated by its
+ * caller) the one-click sign-in for seeded accounts.
+ */
+export async function startSession(session: Session): Promise<void> {
   const jar = await cookies();
   jar.set(COOKIE, encode(session), {
     httpOnly: true,

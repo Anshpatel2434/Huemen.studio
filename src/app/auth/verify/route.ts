@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { devSignIn } from "@/lib/auth";
+import { startSession } from "@/lib/auth";
 import { safeNext, verifyLink } from "@/lib/auth/tokens";
 import { getAccount, markSignedIn } from "@/lib/data/auth";
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   // A sign-in since this link was issued (including this link, once) retires it.
   if (check.version !== a.lastSeen) return fail("used", a.email);
 
-  await devSignIn({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
+  await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
   await markSignedIn(a.id);
   return NextResponse.redirect(new URL(next, url));
 }

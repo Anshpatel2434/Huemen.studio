@@ -23,9 +23,17 @@ const schema = z.object({
   DATABASE_ADMIN_URL: z.string().min(1),
   DATABASE_APP_PASSWORD: z.string().min(1),
 
-  // Auth
+  // Auth. "dev": one-click sign-in for seeded accounts and links shown on screen.
+  // "email": one-time sign-in links and invites sent by email (production).
+  // "managed" is the old name for "email" and still accepted.
   AUTH_SECRET: z.string().min(16),
-  AUTH_DRIVER: z.enum(["dev", "managed"]).default("dev"),
+  AUTH_DRIVER: z.preprocess((v) => (v === "managed" ? "email" : v), z.enum(["dev", "email"]).default("dev")),
+
+  // Outbound email (sign-in links, invites). "log" writes them to the server log.
+  MAIL_PROVIDER: z.preprocess(blankIsUnset, z.enum(["log", "resend"]).default("log")),
+  RESEND_API_KEY: z.preprocess(blankIsUnset, z.string().optional()),
+  /** The sender, e.g. "Huemen.studio <studio@yourdomain.com>", on a domain verified with the provider. */
+  MAIL_FROM: z.preprocess(blankIsUnset, z.string().optional()),
 
   // Storage
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
@@ -88,11 +96,28 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
+/**
+ * Settings that are each valid but don't work together. Email sign-in with no
+ * way to send the email would let nobody in, so it stops the app at start-up
+ * instead of failing on the first sign-in.
+ */
+export function configProblems(env: Env): string[] {
+  const out: string[] = [];
+  if (env.AUTH_DRIVER === "email" && env.MAIL_PROVIDER === "log") {
+    out.push("AUTH_DRIVER=email sends sign-in links by email: set MAIL_PROVIDER=resend (MAIL_PROVIDER=log only writes them to the server log).");
+  }
+  if (env.MAIL_PROVIDER === "resend") {
+    if (!env.RESEND_API_KEY) out.push("MAIL_PROVIDER=resend needs RESEND_API_KEY.");
+    if (!env.MAIL_FROM) out.push('MAIL_PROVIDER=resend needs MAIL_FROM, e.g. "Huemen.studio <studio@yourdomain.com>" on a verified domain.');
+  }
+  return out;
+}
+
 let cached: Env | null = null;
 
-export function getEnv(): Env {
-  if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+/** Validate a set of variables (process.env, or a test's own). Throws with every problem listed. */
+export function parseEnv(source: Record<string, string | undefined>): Env {
+  const parsed = schema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
@@ -102,6 +127,12 @@ export function getEnv(): Env {
         `Copy .env.example to .env and fill in the values.`,
     );
   }
-  cached = parsed.data;
+  const problems = configProblems(parsed.data);
+  if (problems.length) throw new Error(`Invalid environment configuration:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
+  return parsed.data;
+}
+
+export function getEnv(): Env {
+  cached ??= parseEnv(process.env);
   return cached;
 }
