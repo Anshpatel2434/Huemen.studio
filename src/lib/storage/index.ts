@@ -3,7 +3,8 @@
  * URLs are scoped + short-lived (INV-1). Feature code uses `storage()` and
  * `tenantKey()`; it never builds a raw key or a public URL.
  *
- * Dev uses the local-disk driver; production swaps to S3 via env.
+ * Dev uses the local-disk driver; production sets STORAGE_DRIVER=s3 (./s3:
+ * AWS S3, Supabase Storage or R2). Both serve reads through /api/storage.
  *
  * Server-only.
  */
@@ -11,6 +12,7 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { getEnv } from "@/lib/env";
 import { localDriver } from "./local";
+import { s3Driver } from "./s3";
 import type { StorageDriver } from "./types";
 
 /** Build a tenant-prefixed storage key. Never store an object without one. */
@@ -44,19 +46,35 @@ export function verifySignature(key: string, token: string): boolean {
   return expected === mac;
 }
 
+/** A short-lived link to read one object through /api/storage, whichever driver holds it. */
+export function appSignedUrl(key: string, ttlSeconds?: number): string {
+  const ttl = ttlSeconds ?? getEnv().STORAGE_SIGNED_URL_TTL_SECONDS;
+  return `${getEnv().APP_URL}/api/storage/${encodeURI(key)}?token=${signKey(key, Date.now() + ttl * 1000)}`;
+}
+
 let _driver: StorageDriver | null = null;
 export function storage(): StorageDriver {
   if (_driver) return _driver;
-  switch (getEnv().STORAGE_DRIVER) {
+  const env = getEnv();
+  switch (env.STORAGE_DRIVER) {
     case "local":
       _driver = localDriver();
       break;
     case "s3":
-      throw new Error("S3 driver not wired yet — add src/lib/storage/s3.ts");
-    default:
-      _driver = localDriver();
+      // configProblems (lib/env) has already refused to start without these.
+      _driver = s3Driver(
+        {
+          bucket: env.STORAGE_S3_BUCKET!,
+          region: env.STORAGE_S3_REGION!,
+          accessKeyId: env.STORAGE_S3_ACCESS_KEY_ID!,
+          secretAccessKey: env.STORAGE_S3_SECRET_ACCESS_KEY!,
+          endpoint: env.STORAGE_S3_ENDPOINT || undefined,
+        },
+        appSignedUrl,
+      );
+      break;
   }
-  return _driver;
+  return _driver!;
 }
 
 export type { StorageDriver } from "./types";

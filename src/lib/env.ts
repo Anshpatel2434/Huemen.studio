@@ -106,6 +106,10 @@ export function configProblems(env: Env): string[] {
   if (env.AUTH_DRIVER === "email" && env.MAIL_PROVIDER === "log") {
     out.push("AUTH_DRIVER=email sends sign-in links by email: set MAIL_PROVIDER=resend (MAIL_PROVIDER=log only writes them to the server log).");
   }
+  if (env.STORAGE_DRIVER === "s3") {
+    const missing = (["STORAGE_S3_BUCKET", "STORAGE_S3_REGION", "STORAGE_S3_ACCESS_KEY_ID", "STORAGE_S3_SECRET_ACCESS_KEY"] as const).filter((k) => !env[k]);
+    if (missing.length) out.push(`STORAGE_DRIVER=s3 needs ${missing.join(", ")} (and STORAGE_S3_ENDPOINT for Supabase Storage or R2).`);
+  }
   if (env.MAIL_PROVIDER === "resend") {
     if (!env.RESEND_API_KEY) out.push("MAIL_PROVIDER=resend needs RESEND_API_KEY.");
     if (!env.MAIL_FROM) out.push('MAIL_PROVIDER=resend needs MAIL_FROM, e.g. "Huemen.studio <studio@yourdomain.com>" on a verified domain.');
