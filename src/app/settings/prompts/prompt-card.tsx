@@ -6,7 +6,8 @@ import { History, Pencil } from "lucide-react";
 import { AgentDots, Badge, Modal, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import type { TemplateEntry } from "@/lib/ai/template-defaults";
-import { saveTemplateAction } from "./actions";
+import { removeOverrideAction, saveTemplateAction } from "./actions";
+import { Select } from "@/components/select";
 
 type Version = { id: string; tenantId: string | null; version: number; body: string; createdAt: string; createdBy: string | null; workspaceName: string | null };
 
@@ -47,6 +48,18 @@ export function PromptCard({ entry, versions, workspaces }: { entry: TemplateEnt
       }
     });
 
+  const dropOverride = () =>
+    start(async () => {
+      try {
+        await removeOverrideAction({ key: entry.key, tenantId: scope });
+        setOpen(false);
+        toast("That workspace follows the global template again");
+        router.refresh();
+      } catch {
+        toast("Couldn't remove the override.", "danger");
+      }
+    });
+
   const overriddenIn = Array.from(new Map(overrides.map((o) => [o.tenantId, o.workspaceName])).values());
 
   return (
@@ -76,6 +89,9 @@ export function PromptCard({ entry, versions, workspaces }: { entry: TemplateEnt
         width={720}
         footer={
           <>
+            {scope && overrides.some((o) => o.tenantId === scope) && (
+              <button type="button" onClick={dropOverride} disabled={pending} className={`${btnClass("ghost")} mr-auto`}>Use the global template here</button>
+            )}
             <button type="button" onClick={() => setOpen(false)} disabled={pending} className={btnClass("secondary")}>Cancel</button>
             <button type="button" onClick={save} disabled={pending || !body.trim()} className={btnClass("primary")}>
               {pending ? <><AgentDots /> Saving…</> : `Save as v${(scope ? (overrides.filter((o) => o.tenantId === scope)[0]?.version ?? 0) : (current?.version ?? 0)) + 1}`}
@@ -87,10 +103,12 @@ export function PromptCard({ entry, versions, workspaces }: { entry: TemplateEnt
           {workspaces.length > 0 && (
             <label className="block">
               <span className="hu-label !flex mb-2">Applies to</span>
-              <select value={scope} onChange={(e) => pick(e.target.value)} className="field">
-                <option value="">Every workspace (global)</option>
-                {workspaces.map((w) => <option key={w.id} value={w.id}>Only {w.name}{overrides.some((o) => o.tenantId === w.id) ? " (has an override)" : ""}</option>)}
-              </select>
+              <Select
+                value={scope}
+                onChange={pick}
+                label="Applies to"
+                options={[{ value: "", label: "Every workspace (global)" }, ...workspaces.map((w) => ({ value: w.id, label: `Only ${w.name}${overrides.some((o) => o.tenantId === w.id) ? " (has an override)" : ""}` }))]}
+              />
             </label>
           )}
           <label className="block">

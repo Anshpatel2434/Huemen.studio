@@ -160,7 +160,9 @@ const logStatus = (err: unknown): "error" | "timeout" =>
  * The hard stop (brief §4.6: a soft warning and a hard stop, admin-set). Runs
  * before the provider is reached. Successful calls this month are counted
  * against the cap; failed ones cost nothing and are not. No cap row, or a
- * null hard cap, means unlimited: the admin page says so in as many words.
+ * null hard cap, means unlimited (the admin page says so); 0 switches that
+ * kind of generation off. Every query names the workspace, so the count is
+ * right even under a scope that can see more than one.
  */
 export async function enforceCap(scope: SessionScope, kind: "text" | "image"): Promise<void> {
   if (!scope.tenantId) return;
@@ -173,13 +175,14 @@ export async function enforceCap(scope: SessionScope, kind: "text" | "image"): P
   });
   const col = kind === "text" ? "monthly_text_hard" : "monthly_image_hard";
   const row = await withTenantSession(scope, async (c) => {
-    const cap = (await c.query<{ hard: number | null }>(`SELECT ${col} AS hard FROM tenant_usage_caps LIMIT 1`)).rows[0];
-    if (!cap?.hard) return null;
+    const cap = (await c.query<{ hard: number | null }>(`SELECT ${col} AS hard FROM tenant_usage_caps WHERE tenant_id = $1`, [scope.tenantId])).rows[0];
+    if (cap?.hard == null) return null;
     const used = (
       await c.query<{ n: number }>(
         kind === "text"
-          ? `SELECT count(*)::int AS n FROM generation_logs WHERE kind='text' AND status='ok' AND created_at >= date_trunc('month', now())`
-          : `SELECT coalesce(sum(image_count),0)::int AS n FROM generation_logs WHERE kind='image' AND status='ok' AND created_at >= date_trunc('month', now())`,
+          ? `SELECT count(*)::int AS n FROM generation_logs WHERE tenant_id = $1 AND kind='text' AND status='ok' AND created_at >= date_trunc('month', now())`
+          : `SELECT coalesce(sum(image_count),0)::int AS n FROM generation_logs WHERE tenant_id = $1 AND kind='image' AND status='ok' AND created_at >= date_trunc('month', now())`,
+        [scope.tenantId],
       )
     ).rows[0].n;
     return { used, cap: cap.hard };
@@ -257,6 +260,7 @@ export async function* streamText(
   let model = `${env.AI_TEXT_PROVIDER}-${route}`;
   const started = Date.now();
   let text = "";
+  let logged = false;
   try {
     await enforceCap(scope, "text");
     const provider = selectTextProvider(env);
@@ -274,6 +278,7 @@ export async function* streamText(
         yield ev;
         continue;
       }
+      logged = true;
       await logGeneration(scope, {
         kind: "text",
         model: ev.model,
@@ -288,6 +293,7 @@ export async function* streamText(
     }
     throw new ProviderError("unparseable", "The stream ended without finishing.");
   } catch (err) {
+    logged = true;
     await logGeneration(scope, {
       kind: "text",
       model,
@@ -297,6 +303,20 @@ export async function* streamText(
       contentItemId: req.contentItemId ?? null,
     });
     throw err;
+  } finally {
+    // The reader went away mid-stream (tab closed, connection dropped): the
+    // generator is closed without an error, so neither branch above ran. The
+    // model was still called, so the call is still written down.
+    if (!logged) {
+      await logGeneration(scope, {
+        kind: "text",
+        model,
+        latencyMs: Date.now() - started,
+        status: "error",
+        error: `Stopped before it finished: the page was closed after ${text.length} characters.`,
+        contentItemId: req.contentItemId ?? null,
+      }).catch(() => {});
+    }
   }
 }
 
@@ -414,6 +434,9 @@ export async function transcribe(scope: SessionScope, audio: Blob, filename: str
   const started = Date.now();
   let model = `${env.AI_TRANSCRIBE_PROVIDER}:transcribe`;
   try {
+    // A transcription is a paid model call like any other: same per-minute
+    // limit and monthly cap, checked before the audio leaves the server.
+    await enforceCap(scope, "text");
     const t = selectTranscriber(env);
     if (!t) throw new AiConfigError("Voice notes need transcription switched on (AI_TRANSCRIBE_PROVIDER).");
     const out = await t.transcribe(audio, filename);

@@ -3,6 +3,9 @@
 import { redirect } from "next/navigation";
 import { withTenantSession } from "@/db/session";
 import { verifyQuestionnaireToken } from "@/lib/invite/token";
+import { takeHit } from "@/lib/ratelimit";
+import { RateLimitError } from "@/lib/ai/errors";
+import { addSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
 
 /**
  * Public questionnaire submission. The token authorises writing ONLY the named
@@ -14,11 +17,25 @@ import { verifyQuestionnaireToken } from "@/lib/invite/token";
  * which is the one the studio, onboarding pre-fill and every prompt read.
  * They fill what is empty and never overwrite what the person or their coach
  * has already written: a questionnaire is a first draft, not the last word.
+ *
+ * The link is public, so it is limited: it expires (lib/invite/token), stops
+ * when the workspace is archived, and takes 20 submissions an hour.
  */
 export async function submitQuestionnaire(formData: FormData): Promise<void> {
   const token = String(formData.get("token") ?? "");
   const tenantId = verifyQuestionnaireToken(token);
   if (!tenantId) throw new Error("invalid or expired questionnaire link");
+  const scope = { tenantId, userId: null, isPlatformAdmin: false };
+  const live = await withTenantSession({ ...scope, isPlatformAdmin: true }, (c) =>
+    c.query("SELECT 1 FROM tenants WHERE id = $1 AND status = 'active'", [tenantId]),
+  );
+  if (!live.rowCount) throw new Error("invalid or expired questionnaire link");
+  try {
+    await takeHit(scope, "questionnaire", { perTenant: 20, windowSeconds: 3600 });
+  } catch (e) {
+    if (e instanceof RateLimitError) redirect(`/q/${token}?busy=1`);
+    throw e;
+  }
 
   const g = (k: string) => String(formData.get(k) ?? "").trim();
   const answers = {
@@ -33,7 +50,7 @@ export async function submitQuestionnaire(formData: FormData): Promise<void> {
     samplePosts: g("samples").split("\n").map((s) => s.trim()).filter(Boolean),
   };
 
-  await withTenantSession({ tenantId, userId: null, isPlatformAdmin: false }, async (c) => {
+  await withTenantSession(scope, async (c) => {
     const bp = (
       await c.query(`SELECT * FROM brand_profiles WHERE project_id IS NULL ORDER BY status='active' DESC, updated_at DESC LIMIT 1`)
     ).rows[0];
@@ -82,6 +99,13 @@ export async function submitQuestionnaire(formData: FormData): Promise<void> {
         ]);
     }
   });
+
+  // Once the workspace writes in a Voice Pack, the voice guide above is only a
+  // fallback the builder ignores, so the posts go into the pack's corpus too.
+  if (answers.samplePosts.length) {
+    const pack = await loadPackForWorkspace(scope);
+    if (pack) await addSamples(scope, pack.id, answers.samplePosts.map((body) => ({ body, source: "intake" as const, visibility: "public" as const })));
+  }
 
   redirect(`/q/${token}?done=1`);
 }

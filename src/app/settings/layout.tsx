@@ -21,6 +21,7 @@ export default async function SettingsLayout({ children }: LayoutProps<"/setting
       ? [
           { href: "/settings/workspaces", label: "Workspaces & access" },
           { href: "/settings/prompts", label: "Prompts" },
+          { href: "/settings/audit", label: "Audit log" },
         ]
       : []),
   ];

@@ -1,24 +1,50 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import {
+  AdminError,
   assignCoach,
   createWorkspace,
   inviteUser,
+  renameWorkspace,
+  setMemberAccess,
+  setMemberRole,
   setUsageCaps,
+  setWorkspaceAccent,
   setWorkspaceStatus,
+  unassignCoach,
 } from "@/lib/data/admin";
 import type { Role } from "@/lib/auth/types";
 import { signLink } from "@/lib/auth/tokens";
 import { getEnv } from "@/lib/env";
 import { sendAuthMail } from "@/lib/mail";
 
+const PAGE = "/settings/workspaces";
+
+/**
+ * Run an admin change. A refusal (AdminError) comes back to the page as a
+ * message; anything else is a real failure and is thrown.
+ */
+async function run(fn: () => Promise<unknown>) {
+  let refused: string | null = null;
+  try {
+    await fn();
+  } catch (e) {
+    if (!(e instanceof AdminError)) throw e;
+    refused = e.message;
+  }
+  revalidatePath(PAGE);
+  if (refused) redirect(`${PAGE}?e=${encodeURIComponent(refused)}`);
+}
+
+const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+
 export async function createWorkspaceAction(formData: FormData) {
   const session = await requireSession();
-  const name = String(formData.get("name") ?? "").trim();
-  if (name) await createWorkspace(session, name);
-  revalidatePath("/settings/workspaces");
+  const name = str(formData, "name");
+  if (name) await run(() => createWorkspace(session, name));
 }
 
 /**
@@ -27,10 +53,11 @@ export async function createWorkspaceAction(formData: FormData) {
  */
 export async function inviteUserAction(formData: FormData) {
   const session = await requireSession();
-  const tenantId = String(formData.get("tenantId"));
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const role = String(formData.get("role")) as Role;
-  if (email) {
+  const tenantId = str(formData, "tenantId");
+  const email = str(formData, "email").toLowerCase();
+  const role = str(formData, "role") as Role;
+  if (!email) return;
+  await run(async () => {
     const invited = await inviteUser(session, tenantId, email, role);
     if (invited?.status === "invited") {
       await sendAuthMail({
@@ -41,42 +68,60 @@ export async function inviteUserAction(formData: FormData) {
         action: "Accept the invite",
       }).catch((e) => console.error(`[invite] email to ${email} not sent: ${e instanceof Error ? e.message : e}`));
     }
-  }
-  revalidatePath("/settings/workspaces");
+  });
 }
 
 export async function assignCoachAction(formData: FormData) {
   const session = await requireSession();
-  await assignCoach(
-    session,
-    String(formData.get("tenantId")),
-    String(formData.get("coachUserId")),
-  );
-  revalidatePath("/settings/workspaces");
+  await run(() => assignCoach(session, str(formData, "tenantId"), str(formData, "coachUserId")));
+}
+
+export async function unassignCoachAction(formData: FormData) {
+  const session = await requireSession();
+  await run(() => unassignCoach(session, str(formData, "tenantId"), str(formData, "coachUserId")));
+}
+
+export async function memberAccessAction(formData: FormData) {
+  const session = await requireSession();
+  await run(() => setMemberAccess(session, str(formData, "userId"), str(formData, "on") === "true"));
+}
+
+export async function memberRoleAction(formData: FormData) {
+  const session = await requireSession();
+  await run(() => setMemberRole(session, str(formData, "userId"), str(formData, "role") as Role));
+}
+
+export async function renameWorkspaceAction(formData: FormData) {
+  const session = await requireSession();
+  await run(() => renameWorkspace(session, str(formData, "tenantId"), str(formData, "name")));
+  revalidatePath("/w", "layout");
+}
+
+export async function accentAction(formData: FormData) {
+  const session = await requireSession();
+  const accent = str(formData, "accent");
+  await run(() => setWorkspaceAccent(session, str(formData, "tenantId"), accent ? (accent.startsWith("#") ? accent : `#${accent}`) : null));
+  revalidatePath("/w", "layout");
 }
 
 export async function setCapsAction(formData: FormData) {
   const session = await requireSession();
   const num = (k: string) => {
-    const v = String(formData.get(k) ?? "").trim();
+    const v = str(formData, k);
     return v === "" ? null : Number(v);
   };
-  await setUsageCaps(session, String(formData.get("tenantId")), {
-    textSoft: num("textSoft"),
-    textHard: num("textHard"),
-    imageSoft: num("imageSoft"),
-    imageHard: num("imageHard"),
-  });
-  revalidatePath("/settings/workspaces");
+  await run(() =>
+    setUsageCaps(session, str(formData, "tenantId"), {
+      textSoft: num("textSoft"),
+      textHard: num("textHard"),
+      imageSoft: num("imageSoft"),
+      imageHard: num("imageHard"),
+    }),
+  );
   revalidatePath("/w", "layout");
 }
 
 export async function setStatusAction(formData: FormData) {
   const session = await requireSession();
-  await setWorkspaceStatus(
-    session,
-    String(formData.get("tenantId")),
-    String(formData.get("status")) as "active" | "archived",
-  );
-  revalidatePath("/settings/workspaces");
+  await run(() => setWorkspaceStatus(session, str(formData, "tenantId"), str(formData, "status") as "active" | "archived"));
 }

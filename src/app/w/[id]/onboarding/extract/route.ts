@@ -22,6 +22,9 @@ export async function POST(req: Request, ctx: RouteContext<"/w/[id]/onboarding/e
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
+  if (Number(req.headers.get("content-length") ?? 0) > DOCUMENT_MAX_BYTES + 64 * 1024) {
+    return Response.json({ error: "That file is over 10 MB. Split it, or paste the text." }, { status: 413 });
+  }
   let name: string;
   let bytes: Uint8Array | null;
   if (req.headers.get("content-type")?.startsWith("application/json")) {

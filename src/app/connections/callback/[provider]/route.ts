@@ -53,7 +53,7 @@ export async function GET(req: Request, ctx: RouteContext<"/connections/callback
   if (!session || session.userId !== state.u) return done(new NextResponse("Sign in as the person who started this connection.", { status: 403 }));
   let scope;
   try {
-    scope = { ...(await resolveScope(session, state.t)), tenantId: state.t };
+    scope = { ...(await resolveScope(session, state.t)), tenantId: state.t, isPlatformAdmin: false };
   } catch {
     return done(new NextResponse("Not found", { status: 404 }));
   }

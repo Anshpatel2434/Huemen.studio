@@ -36,7 +36,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
   const session = await getSession();
   if (!session) redirect("/login?next=/settings/connections");
   const id = session.tenantId;
-  const scope = { ...(await resolveScope(session, id)), tenantId: id };
+  const scope = { ...(await resolveScope(session, id)), tenantId: id, isPlatformAdmin: false };
   const [pack, connections] = await Promise.all([loadPackForWorkspace(scope), listConnections(scope)]);
   const owner = !!pack && ownsVoice({ userId: session.userId, role: session.role }, pack);
   // Email outlives the connection (it's withdrawn after the read), so it's counted on its own.

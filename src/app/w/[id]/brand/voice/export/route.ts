@@ -14,7 +14,7 @@ export async function GET(req: Request, ctx: RouteContext<"/w/[id]/brand/voice/e
   if (!session) return new Response("Unauthorized", { status: 401 });
   let scope;
   try {
-    scope = { ...(await resolveScope(session, id)), tenantId: id };
+    scope = { ...(await resolveScope(session, id)), tenantId: id, isPlatformAdmin: false };
   } catch {
     return new Response("Not found", { status: 404 });
   }

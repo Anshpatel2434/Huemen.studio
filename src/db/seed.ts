@@ -203,22 +203,9 @@ async function main() {
     ),
   );
 
-  // Global prompt templates (tenant_id NULL).
-  await withTenantSession(admin, async (c) => {
-    const templates: [string, string][] = [
-      ["linkedin_post", "You write on-brand LinkedIn posts. Obey the brand voice and guardrails."],
-      ["linkedin_hook_set", "You write 5 scroll-stopping LinkedIn hooks. Vary the angle."],
-      ["ig_caption", "You write Instagram captions that match the brand voice."],
-      ["image_brief", "You turn a post into a brand-aware image brief."],
-    ];
-    for (const [key, body] of templates) {
-      await c.query(
-        `INSERT INTO prompt_templates (tenant_id, key, version, body, created_by)
-         VALUES (NULL, $1, 1, $2, $3)`,
-        [key, body, adminUser],
-      );
-    }
-  });
+  // No prompt templates are seeded: the written defaults live in code
+  // (lib/ai/template-defaults) and apply until an admin saves a version. A
+  // seeded row would win over them (migration 0018).
 
   console.log("✓ seed complete");
   console.log(

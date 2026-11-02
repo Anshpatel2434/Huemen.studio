@@ -9,7 +9,7 @@
  * Server-only.
  */
 import "server-only";
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { getEnv } from "@/lib/env";
 import { localDriver } from "./local";
 import { s3Driver } from "./s3";
@@ -40,10 +40,11 @@ export function verifySignature(key: string, token: string): boolean {
   const [expStr, mac] = token.split(".");
   const exp = Number(expStr);
   if (!exp || Number.isNaN(exp) || Date.now() > exp) return false;
-  const expected = createHmac("sha256", getEnv().AUTH_SECRET)
+  const expected = Buffer.from(createHmac("sha256", getEnv().AUTH_SECRET)
     .update(`${key}:${exp}`)
-    .digest("hex");
-  return expected === mac;
+    .digest("hex"));
+  const given = Buffer.from(mac ?? "");
+  return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
 /** A short-lived link to read one object through /api/storage, whichever driver holds it. */

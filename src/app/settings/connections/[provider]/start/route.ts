@@ -30,7 +30,7 @@ export async function GET(req: Request, ctx: RouteContext<"/settings/connections
   if (!session) return NextResponse.redirect(new URL("/login?next=/settings/connections", req.url), 303);
   const back = (msg: string) =>
     NextResponse.redirect(new URL(returnPath(from, session.tenantId, `error=${encodeURIComponent(msg)}`), req.url), 303);
-  const scope = { ...(await resolveScope(session, session.tenantId)), tenantId: session.tenantId };
+  const scope = { ...(await resolveScope(session, session.tenantId)), tenantId: session.tenantId, isPlatformAdmin: false };
 
   const pack = await loadPackForWorkspace(scope);
   if (!pack || !ownsVoice({ userId: session.userId, role: session.role }, pack)) {

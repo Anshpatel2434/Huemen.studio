@@ -23,11 +23,15 @@ export async function POST(req: Request, ctx: RouteContext<"/w/[id]/onboarding/t
   if (!session) return Response.json({ error: "Sign in again to record." }, { status: 401 });
   let scope;
   try {
-    scope = { ...(await resolveScope(session, id)), tenantId: id };
+    scope = { ...(await resolveScope(session, id)), tenantId: id, isPlatformAdmin: false };
   } catch {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Refuse an oversized body before reading it (a direct upload sends only a key).
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES + 64 * 1024) {
+    return Response.json({ error: "That recording is too long. Keep it to a few minutes." }, { status: 413 });
+  }
   let audio: Blob | null = null;
   let name = "note.webm";
   if (req.headers.get("content-type")?.startsWith("application/json")) {

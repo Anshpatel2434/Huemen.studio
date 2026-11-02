@@ -24,21 +24,23 @@ export default async function QuestionnairePage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ done?: string }>;
+  searchParams: Promise<{ done?: string; busy?: string }>;
 }) {
   const { token } = await params;
-  const { done } = await searchParams;
+  const { done, busy } = await searchParams;
   const tenantId = verifyQuestionnaireToken(token);
   if (!tenantId) notFound();
 
   // Read the workspace name (public: name only) to brand the form.
-  const name = (
+  const ws = (
     await withTenantSession(
       { tenantId, userId: null, isPlatformAdmin: true },
-      (c) => c.query<{ name: string }>("SELECT name FROM tenants WHERE id=$1", [tenantId]),
+      (c) => c.query<{ name: string; status: string }>("SELECT name, status FROM tenants WHERE id=$1", [tenantId]),
     )
-  ).rows[0]?.name;
-  if (!name) notFound();
+  ).rows[0];
+  // An archived workspace takes no more answers.
+  if (!ws || ws.status !== "active") notFound();
+  const name = ws.name;
 
   return (
     <main className="flex-1 flex flex-col items-center px-5 py-14">
@@ -51,6 +53,9 @@ export default async function QuestionnairePage({
         A few minutes now means the workshop starts from your real story, not a blank page.
       </p>
 
+      {busy && !done && (
+        <p role="alert" className="mt-8 max-w-[640px] w-full text-sm text-center text-ink-muted">This form has had a lot of answers in the last hour. Your text is still below; try sending it again a little later.</p>
+      )}
       {done ? (
         <div className="mt-10 w-full max-w-[640px] bg-paper border border-hairline rounded-md p-8 text-center fade-up">
           <CheckCircle2 className="mx-auto text-ok" size={28} />

@@ -32,6 +32,10 @@ const schema = z.object({
   // "managed" is the old name for "email" and still accepted.
   AUTH_SECRET: z.string().min(16),
   AUTH_DRIVER: z.preprocess((v) => (v === "managed" ? "email" : v), z.enum(["dev", "email"]).default("dev")),
+  // A production server refuses AUTH_DRIVER=dev (anyone could sign in as
+  // anyone) unless this says so: only for a throwaway test deploy behind the
+  // host's own access protection (Vercel Deployment Protection).
+  AUTH_ALLOW_DEV_SIGNIN: z.preprocess(blankIsUnset, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
 
   // Outbound email (sign-in links, invites). "log" writes them to the server log.
   MAIL_PROVIDER: z.preprocess(blankIsUnset, z.enum(["log", "resend"]).default("log")),
@@ -109,8 +113,18 @@ export type Env = z.infer<typeof schema>;
  * way to send the email would let nobody in, so it stops the app at start-up
  * instead of failing on the first sign-in.
  */
-export function configProblems(env: Env): string[] {
+export function configProblems(env: Env, phase?: string): string[] {
   const out: string[] = [];
+  // Production refusals. Not while `next build` collects pages: the build
+  // runs as production but serves nobody, and CI builds with test settings.
+  if (env.NODE_ENV === "production" && phase !== "phase-production-build") {
+    if (env.AUTH_DRIVER === "dev" && !env.AUTH_ALLOW_DEV_SIGNIN) {
+      out.push("AUTH_DRIVER=dev lets anyone sign in as anyone. Use AUTH_DRIVER=email in production (or AUTH_ALLOW_DEV_SIGNIN=true for a protected throwaway test only).");
+    }
+    if (env.AUTH_SECRET.length < 32 || /change[_-]?me/i.test(env.AUTH_SECRET)) {
+      out.push("AUTH_SECRET is the example value or shorter than 32 characters; it signs every session. Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+    }
+  }
   if (env.AUTH_DRIVER === "email" && env.MAIL_PROVIDER === "log") {
     out.push("AUTH_DRIVER=email sends sign-in links by email: set MAIL_PROVIDER=resend (MAIL_PROVIDER=log only writes them to the server log).");
   }
@@ -139,7 +153,7 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
         `Copy .env.example to .env and fill in the values.`,
     );
   }
-  const problems = configProblems(parsed.data);
+  const problems = configProblems(parsed.data, source.NEXT_PHASE);
   if (problems.length) throw new Error(`Invalid environment configuration:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
   return parsed.data;
 }

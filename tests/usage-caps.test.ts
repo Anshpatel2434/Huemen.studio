@@ -93,8 +93,10 @@ describe("monthly usage caps", () => {
     await generateContent(A, { format: "linkedin_post", topic: "three, again" });
     expect((await listContent(A)).length).toBe(3);
 
-    // Clearing the cap (empty field) means unlimited, and zero is not a cap.
+    // Zero switches drafting off; clearing the cap (empty field) means unlimited.
     await setUsageCaps(admin, A.tenantId!, { textSoft: null, textHard: 0, imageSoft: null, imageHard: null });
+    expect((await listCaps(admin)).get(A.tenantId!)?.textHard).toBe(0);
+    await setUsageCaps(admin, A.tenantId!, { textSoft: null, textHard: null, imageSoft: null, imageHard: null });
     expect((await listCaps(admin)).get(A.tenantId!)?.textHard).toBeNull();
   });
 });

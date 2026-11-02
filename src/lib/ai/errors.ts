@@ -89,7 +89,7 @@ export function userMessage(e: unknown): string {
       ? `That's a lot in a short time. Give it ${wait} and try again.`
       : `This workspace is busy right now. Give it ${wait} and try again.`;
   }
-  if (e instanceof UsageCapError) return `This workspace has used its ${e.cap} generations for the month. Your admin can raise the cap in Settings.`;
+  if (e instanceof UsageCapError) return e.cap === 0 ? "Drafting is switched off for this workspace. Your admin can turn it on in Settings." : `This workspace has used its ${e.cap} generations for the month. Your admin can raise the cap in Settings.`;
   if (e instanceof ProviderError) {
     switch (e.kind) {
       case "timeout": return "That took too long and was stopped. Try again.";
