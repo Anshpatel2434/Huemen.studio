@@ -4,7 +4,7 @@ Deferred, not cancelled (brief §08). Anything parked mid-build lands here **and
 the client is told the same day** — never silently absorbed. Handed over with the
 code at the end (DoD §11).
 
-**Status as of 2026-11-02** (branch `dryrun-fixes`), checked against the code.
+**Status as of 2026-11-02** (branch `launch-blockers`), checked against the code.
 Items keep the date they were first raised; fixed ones say so. Hosting steps for
 a first deploy are in `HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md`.
 
@@ -23,13 +23,12 @@ a first deploy are in `HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md`.
 - 2026-11-02 · build team · **Reading LinkedIn posts** waits on LinkedIn partner approval (`LINKEDIN_POSTS_APPROVED`). The LinkedIn data-export upload works today.
 - 2026-11-02 · build team · **Brand font**: the app uses Archivo and Instrument Serif as stand-ins for Borna until the client confirms the licence covers web and server use.
 
-## Launch blockers (in scope, not yet built)
-- 2026-10-13 · build team · **Production sign-in.** Only the dev sign-in works: the login page offers one-click sign-in as any seeded account, and the verify route uses it. `AUTH_DRIVER=managed` is accepted but sign-in fails under it. Needs the one-time-link sign-in finished with a real email sender. In scope. **Still open.**
-- 2026-10-13 · build team · **Email sending.** `sendAuthMail` sends nothing outside dev; invites are copied as links. In scope (Resend or similar). **Still open.**
-- 2026-10-13 · build team · **S3 storage driver.** `STORAGE_DRIVER=s3` throws "not wired yet"; local disk only, which hosted servers do not keep. In scope. **Still open.**
-- 2026-10-13 · build team · **Upload hardening.** File type trusted from the browser, no re-encoding, SVG logos served raw. In scope (P4-1). **Still open.**
-- 2026-10-13 · build team · **Rate limiting** per user and per tenant (P2-5). In scope. The monthly hard cap bounds spend meanwhile. **Still open.**
-- 2026-11-02 · build team · **Hosting fixes for Vercel and Supabase**: the migration's role step uses superuser-only options Supabase may refuse on a re-run; uploads up to 10 MB go through a server request Vercel caps at 4.5 MB; the database pool (10 per instance) needs lowering for many serverless instances. In scope. Not started.
+## Launch blockers
+All six fixed on 2026-11-02 (branch `launch-blockers`); see "Done" below. What
+is left around them:
+- 2026-11-02 · build team · **Owner steps before launch (no code):** a Resend account with a verified sending domain (`MAIL_PROVIDER=resend`, `RESEND_API_KEY`, `MAIL_FROM`); a private bucket in the client's own account with keys and a CORS rule allowing PUT from the app's address; `DATABASE_POOL_MAX` set to 1 to 3 on Vercel. All in `.env.example`.
+- 2026-11-02 · build team · **Image re-encoding** (rest of P4-1): uploads are checked by their real type and SVGs with active content are refused, but images are stored as uploaded (metadata kept). Re-encoding needs an image library (sharp). Not started.
+- 2026-11-02 · build team · **Abandoned uploads**: a file sent to storage and never used stays under the workspace's `incoming/` prefix. Small (size-limited per upload), but nothing sweeps it yet. Not started.
 
 ## Promised, not started (proposal modules)
 **Confirm these have been raised with the client.** On 2026-10-13 they had not been.
@@ -42,7 +41,7 @@ a first deploy are in `HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md`.
 
 ## Interface debt (in scope)
 - 2026-11-01 · build team · **Clutter.** A measured review of nine screens found seven patterns that make the studio feel heavy (always-on chrome, competing primary buttons, instruction paragraphs, the same fact in up to ten places, panels crowding the canvas, too many label styles, empty states first). The review, the clean-UI rules and a five-phase plan (about 3.5 days) were shared as a report; the owner chose to review it with the client before any code changes. Not started.
-- 2026-11-01 · build team · **Native dropdowns.** 17 browser `<select>`s remain, against the no-system-UI rule; one shared Huemen dropdown replaces them all. Part of the clutter plan. Not started.
+- 2026-11-01 · build team · **Native dropdowns.** 16 browser `<select>`s remain (the brief editor's asset type became chips on 2026-11-02), against the no-system-UI rule; one shared Huemen dropdown replaces them all. Part of the clutter plan. Not started.
 
 ## Architecture debt (in scope, not demo-visible)
 - 2026-10-13 · build team · **Job queue and streaming** (P2-4): the `jobs` table and `QUEUE_DRIVER` exist unused; everything runs in the request thread. Needed before batch work runs for many clients at once. **Still open.**
@@ -53,6 +52,12 @@ a first deploy are in `HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md`.
 - 2026-10-13 · build team · **Background sync for connections** (docs/integrations.md), Microsoft 365. **Still open.**
 
 ## Done since the 2026-10-13 audit
+- 2026-11-02 · **Production sign-in and email**: one-time sign-in links and invites sent through Resend; `AUTH_DRIVER=email` refuses to start without a sender (`6a261e9`).
+- 2026-11-02 · **S3 storage driver** for AWS S3, Supabase Storage or Cloudflare R2, in the client's own account (`8b3f4f1`).
+- 2026-11-02 · **Upload safety**: the type is read from the file's bytes, SVGs with active content are refused, stored files are served with nosniff, a sandboxing CSP and download-unless-image (`f990da2`).
+- 2026-11-02 · **Rate limits**: 20 model calls a minute per person and 60 per workspace (settings), five sign-in emails per account per 15 minutes; counted in Postgres so they hold across serverless instances (`13e75c6`).
+- 2026-11-02 · **Hosting fixes**: migrations run on managed Postgres without superuser and refuse to finish if the app role could bypass row-level security; pool size is a setting (`6244d98`).
+- 2026-11-02 · **Direct uploads**: files go from the browser to storage and the server reads them back, so the 1 MB server-action limit (which broke assets over 1 MB) and Vercel's 4.5 MB limit no longer apply (`5d8614a`).
 - 2026-11-02 · **Website reader**: real crawl of the home and About pages; correct brand colours on modern and dark sites; a model read of what they do pre-fills onboarding (`8a6b15a`).
 - 2026-11-01 · **Agent drafts write live on the canvas**, beside the conversation (`13da971`).
 - 2026-10-30 · **Agent answers as cards** (OpenUI): plans, ideas, hooks and brief checks with working buttons (`0227914`).

@@ -5,34 +5,41 @@ whole flow end to end, with Groq's free API standing in for Claude. This is a
 **flow test, not the launch**: demo data only, a protected URL, throwaway
 accounts.
 
-**Branch to deploy:** `openui-agent`. It includes everything: the short
-onboarding, Getting started, the Relume-style brand core, and the agent's card
-answers (OpenUI).
+**Branch to deploy:** `launch-blockers`. It includes everything: the short
+onboarding, Getting started, the Relume-style brand core, the agent's card
+answers (OpenUI), and the launch-blocker fixes (sign-in email, S3 storage,
+upload safety, rate limits, hosting fixes, direct uploads).
 
-**State on 31 October 2026:** everything works locally on Docker Postgres with
+**State on 2 November 2026:** everything works locally on Docker Postgres with
 the built-in stand-in writer (`AI_TEXT_PROVIDER=mock`). Typecheck and lint are
-clean, and all 322 tests pass. Nothing has ever been deployed, and no real
-model has been connected yet.
+clean, and all 388 tests pass. The migration step was also run against a
+Postgres where the migrating user is not a superuser, as on Supabase. Nothing
+has been deployed yet, and no real model has been connected yet.
 
-Read this whole file before starting. The blockers below change how a few
-steps have to be done.
+Read this whole file before starting. Section 1 says what is still missing and
+what was fixed, because a few steps depend on it.
 
 ---
 
-## 1. Blockers: what is not built yet
+## 1. What is missing, and what was fixed
 
-These are real gaps in the code. For the test, each one has a workaround
-(section 2). For the real launch, each must be fixed.
+Still missing (a workaround is given for the test):
 
-| # | Blocker | Where | What happens on Vercel today | Test workaround |
-|---|---|---|---|---|
-| B1 | **No AI provider for Groq.** Only `mock` and `anthropic` exist. `AI_TEXT_PROVIDER=openai` is in the settings list but throws "not built". | `src/lib/ai/index.ts` (`selectTextProvider`), `src/lib/env.ts` | Any real-AI setting fails on the first call | Build a small Groq provider (section 4). Do the first deploy on `mock`. |
-| B2 | **Sign-in emails are never sent.** `AUTH_DRIVER=dev` shows a one-click sign-in for every seeded account and shows the magic link on screen. `AUTH_DRIVER=managed` sends nothing, so nobody can sign in. | `src/lib/mail.ts` (`sendAuthMail`) | `dev`: anyone with the URL can sign in as anyone. `managed`: nobody can sign in. | Keep `AUTH_DRIVER=dev` and turn on **Vercel Deployment Protection**, so only invited Vercel users can open the URL. |
-| B3 | **No S3 storage driver.** Files (logos, uploads, project files) go to local disk. The S3 settings exist, but `STORAGE_DRIVER=s3` throws "S3 driver not wired yet". | `src/lib/storage/index.ts`, `src/lib/storage/local.ts` | Writes into the project folder fail, because Vercel's filesystem is read-only | `STORAGE_LOCAL_DIR=/tmp/huemen-storage`. Uploads then work but **vanish** when the function restarts. Expect missing logos later in a session. |
-| B4 | **Database role step is untested on Supabase.** Migrations create the runtime role `huemen_app` with `NOSUPERUSER NOBYPASSRLS`. Supabase's `postgres` user is not a true superuser. A first run (CREATE ROLE) should work. A second run takes the `ALTER ROLE ... NOSUPERUSER NOBYPASSRLS` path, which may be refused. | `src/db/migrate.ts` (`bootstrapRuntimeRole`) | Migration may stop with "permission denied to alter role" | If it fails on a re-run, change the ALTER line to `ALTER ROLE huemen_app WITH LOGIN PASSWORD %L` (drop the two flags; a role created by `postgres` never has them anyway). |
-| B5 | **Uploads over 4.5 MB fail.** Vercel caps a request body at 4.5 MB, but onboarding accepts Word/PDF up to 10 MB through the server. | `src/app/w/[id]/onboarding/extract/route.ts` | Larger files fail with a 413 from Vercel | Test with files under 4 MB. |
-| B6 | **Database pool is sized for one server.** `max: 10` connections per instance is hard-coded. Many Vercel instances can exceed Supabase's pooler limit. | `src/db/pool.ts` | Fine for a one-person test | Leave it, or change `max: 10` to `max: 3`. |
-| B7 | **No AI images.** Visuals are rendered from templates. The image entry point returns a 1x1 placeholder and nothing calls it. | `src/lib/ai/index.ts` (`generateImage`) | Not a failure; just not there | None needed. Visuals still work from templates. |
+| # | Gap | Where | Test workaround |
+|---|---|---|---|
+| B1 | **No AI provider for Groq.** Only `mock` and `anthropic` exist. `AI_TEXT_PROVIDER=openai` is in the settings list but throws "not built". | `src/lib/ai/index.ts` (`selectTextProvider`), `src/lib/env.ts` | Build a small Groq provider (section 4). Do the first deploy on `mock`. |
+| B7 | **No AI images.** Visuals are rendered from templates. The image entry point returns a 1x1 placeholder and nothing calls it. | `src/lib/ai/index.ts` (`generateImage`) | None needed. Visuals still work from templates. |
+
+Fixed on 2 November (the old workarounds are no longer needed):
+
+| # | Was | Now |
+|---|---|---|
+| B2 | Sign-in emails were never sent. | `AUTH_DRIVER=email` with `MAIL_PROVIDER=resend` sends one-time sign-in links and invites. It refuses to start without `RESEND_API_KEY` and `MAIL_FROM`. For this test you may still use `AUTH_DRIVER=dev` behind Deployment Protection if you have no Resend account. |
+| B3 | No S3 storage driver. | `STORAGE_DRIVER=s3` works with Supabase Storage, AWS S3 or R2. Use a private Supabase Storage bucket (section 2, step 7). |
+| B4 | Migration role step might fail on a re-run on Supabase. | Fixed and tested as a non-superuser. Migrate also refuses to finish if `huemen_app` could bypass row-level security. |
+| B5 | Uploads over 4.5 MB failed (and brand assets over 1 MB). | Files go from the browser straight to the bucket. Files over 4 MB need a CORS rule on the bucket (section 2, step 7); smaller ones work without it. |
+| B6 | Pool size hard-coded at 10. | `DATABASE_POOL_MAX`; set `2` on Vercel. |
+| new | No rate limits. | 20 model calls a minute per person, 60 per workspace (`AI_RATE_PER_USER_MINUTE`, `AI_RATE_PER_WORKSPACE_MINUTE`), five sign-in emails per account per 15 minutes. |
 
 Not blockers, but untested: real-model output quality anywhere, especially the
 agent's card answers (OpenUI Lang). Groq's models are not Claude, so treat
@@ -66,9 +73,10 @@ answer quality from this test as a floor, not the real thing.
    DOTENV_CONFIG_PATH=.env.supabase npm run db:seed
    ```
    On PowerShell, set `$env:DOTENV_CONFIG_PATH=".env.supabase"` first, then run the two npm scripts.
-   Migrate creates the role and every table with row-level security. Seed creates the demo workspaces and accounts, such as `demo@client.test`. If migrate fails on the role step, see B4.
+   Migrate creates the role and every table with row-level security. Seed creates the demo workspaces and accounts, such as `demo@client.test`. Migrate can be re-run safely; it stops with a plain message if `huemen_app` could skip row-level security.
    **Never run `npm run db:reset`**: it wipes the local Docker database, and it is not meant for Supabase.
 6. **SSL:** if the app or migrate fails with a certificate error, add `?sslmode=no-verify` to the connection strings (test only).
+7. **Storage bucket.** Storage > New bucket, name `huemen`, **private**. Then Project Settings > Storage > S3 Connection: enable it, note the endpoint (`https://<project-ref>.supabase.co/storage/v1/s3`) and region, and create an access key pair. These go in Vercel only (section 3). Supabase does not let you set CORS on a bucket through its S3 API; if uploads over 4 MB fail in the browser console with a CORS error, note it: smaller uploads still work through the app, and the real launch will use a bucket where CORS can be set (S3 or R2).
 
 ---
 
@@ -76,7 +84,7 @@ answer quality from this test as a floor, not the real thing.
 
 1. **Import** `Anshpatel2434/Huemen.studio` and set the branch `openui-agent` as the one to deploy (or deploy it as a preview).
 2. **Function region:** Project Settings > Functions > **Mumbai (bom1)**, next to Supabase. Every query crosses this hop, so the wrong region makes every page slow.
-3. **Deployment Protection:** turn it **on** (Standard Protection). Required, because of B2.
+3. **Deployment Protection:** turn it **on** (Standard Protection). Required if you use `AUTH_DRIVER=dev`, which lets anyone with the URL sign in as anyone.
 4. **Environment variables** (Project Settings > Environment Variables). Set them all **before** the first build:
 
    | Name | Value |
@@ -86,9 +94,13 @@ answer quality from this test as a floor, not the real thing.
    | `DATABASE_ADMIN_URL` | admin session-pooler string (the app checks it is set; only migrations use it) |
    | `DATABASE_APP_PASSWORD` | the app password |
    | `AUTH_SECRET` | 32+ random characters: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-   | `AUTH_DRIVER` | `dev` (see B2) |
-   | `STORAGE_DRIVER` | `local` |
-   | `STORAGE_LOCAL_DIR` | `/tmp/huemen-storage` (see B3) |
+   | `DATABASE_POOL_MAX` | `2` |
+   | `AUTH_DRIVER` | `dev`, or `email` if you set up Resend (then also `MAIL_PROVIDER=resend`, `RESEND_API_KEY`, `MAIL_FROM`) |
+   | `STORAGE_DRIVER` | `s3` |
+   | `STORAGE_S3_BUCKET` | `huemen` |
+   | `STORAGE_S3_REGION` | the project's region, e.g. `ap-south-1` |
+   | `STORAGE_S3_ENDPOINT` | `https://<project-ref>.supabase.co/storage/v1/s3` |
+   | `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | the key pair from section 2, step 7 |
    | `QUEUE_DRIVER` | `pg` |
    | `AI_TEXT_PROVIDER` | `mock` for the first deploy, then your Groq provider (section 4) |
    | `AI_TEXT_FALLBACKS` | `off` (the server-side fallback is an Anthropic feature) |
@@ -129,7 +141,7 @@ Check the exact model names on Groq's console first; their list changes. For
 `structured`, pick a strong model that supports JSON schema output.
 
 **Expect these with Groq's free tier:**
-- **Rate limits.** Huemen's prompts are large: 3,600 to 7,000 tokens of brand context per call, and the agent adds about 1,500 tokens of component spec. Free-tier per-minute token limits are low, so 429 errors after a few quick actions are normal. Test as one person, at a human pace. Errors show as a plain "try again" message and are logged in `generation_logs`.
+- **Rate limits.** Huemen's prompts are large: 3,600 to 7,000 tokens of brand context per call, and the agent adds about 1,500 tokens of component spec. Free-tier per-minute token limits are low, so 429 errors after a few quick actions are normal. Test as one person, at a human pace. (Huemen's own limit, 20 calls a minute per person, is far above what the free tier allows.) Errors show as a plain "try again" message and are logged in `generation_logs`.
 - **Agent card answers.** The agent must reply in OpenUI Lang (spec in `src/lib/agent-ui/prompt.ts`). If a model writes it badly, the panel shows "I couldn't lay that answer out" and the server logs `agent_answer_invalid` with the error codes. Count those; it is the most useful number from this test.
 - **Data.** Use demo data only. The brief's rule is that client data is never used for model training; that is agreed with Anthropic, not with Groq.
 
@@ -142,7 +154,7 @@ The seed creates three accounts, each one click on the dev sign-in page:
 `demo@client.test` (a finished workspace with a brief, pillars and pieces), and
 `admin@huemen.studio` (the platform admin).
 
-- [ ] **Onboarding, 7 screens** (as `fresh@client.test`): website, name, audience, writing (paste a post), look (upload one image under 4 MB), words, first draft. The first draft is written by the model and scored.
+- [ ] **Onboarding, 7 screens** (as `fresh@client.test`): website, name, audience, writing (paste a post), look (upload one image; then try one between 4 and 5 MB to see whether the bucket accepts the browser directly), words, first draft. The first draft is written by the model and scored.
 - [ ] **Getting started guide** opens after the first draft. Open each tab: voice (this-or-that pairs), brand rules, stories and facts, pillars, more writing.
 - [ ] **Brand core:** pillar map (add a pillar from the library), style guide (shuffle colours, light/dark preview).
 - [ ] **A project:** Ideate (pick pillar and angle), then Content: draft one piece live (streams in), ask for a change on one line, approve it.
@@ -158,11 +170,9 @@ Write down every failure with the page, the time, and what Vercel's function log
 
 ## 6. What this test does not prove (still needed for launch)
 
-- Real sign-in emails and invites (B2): a Resend sender in `src/lib/mail.ts`.
-- Durable file storage (B3): the S3 driver, pointed at Supabase Storage or R2.
-- Migrations proven re-runnable on Supabase (B4).
-- Uploads up to 10 MB (B5): direct browser-to-storage signed uploads.
-- Pool sizing for many instances (B6).
+- Sign-in by email for real, unless you set up Resend: it needs the client's own sending domain.
+- Uploads over 4 MB on a bucket with a CORS rule (S3 or R2 in the client's account).
+- Image re-encoding on upload, and a sweep of abandoned uploads (both in `docs/phase-two.md`).
 - Claude's quality and cost. Production is planned on Claude (Opus 5.5 for writing, Haiku 5.5 for light work), not Groq.
 - Load capacity. Run a load test on staging once the above are done.
 
@@ -174,6 +184,6 @@ card answers are in `docs/agent-answers.md`.
 
 - Never commit `.env` or any key. Keys go in Vercel's settings, not in files or chat.
 - Never run `npm run db:reset` against anything you care about; it wipes the database.
-- Do not push to `main`. Work on a branch off `openui-agent`.
+- Do not push to `main`. Work on a branch off `launch-blockers`.
 - No emojis in UI copy or docs.
 - `AGENTS.md` explains the two rules the whole codebase rests on: tenant isolation in the database, and one brand-context builder for every prompt. Read it before changing data access or prompts.
