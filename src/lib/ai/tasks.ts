@@ -505,7 +505,52 @@ export const calendarPlan: TaskDef<CalendarPlan> = {
   },
 };
 
+// ---- reading their website: who they are, in the site's own words -----------
+
+const SiteProfileSchema = z.object({
+  name: z.string(),
+  whatTheyDo: z.string(),
+  audience: z.string(),
+  offers: z.string(),
+  positioning: z.string(),
+});
+export type SiteProfile = z.infer<typeof SiteProfileSchema>;
+
+const sentence = (s: string) => (s.split(/(?<=[.!?])\s+/)[0] ?? "").trim();
+const OFFER_WORDS = /\b(1:1 coaching|one-to-one coaching|group coaching|coaching|courses?|workshops?|programmes?|programs?|cohorts?|consulting|mentoring|retreats?|masterclass(?:es)?|membership|community|podcast|books?|keynotes?|speaking|templates?|audits?)\b/gi;
+
+export const siteProfile: TaskDef<SiteProfile> = {
+  key: "site_profile",
+  schema: SiteProfileSchema,
+  template:
+    "You read the public website of a person or small business that is setting up their personal brand, and say who they are in the site's own words, so onboarding can offer it for them to confirm. Write as they would describe themselves, plainly. Only use what the site says; when it does not say something, leave that field empty rather than guess. Never invent clients, numbers, credentials or claims.",
+  contract: [
+    "Return name: the person or brand as they sign their work (no taglines, no \"Home\").",
+    "whatTheyDo: one line, under 140 characters, what they do and for whom, in their words.",
+    "audience: who their work is for, one line.",
+    "offers: what they sell or give, as a short comma-separated list.",
+    "positioning: why them, one line, only if the site says it outright.",
+    "Use an empty string for anything the site does not say.",
+  ].join("\n"),
+  mock(input) {
+    const text = block(input, "Text");
+    const description = field(input, "Description");
+    const prose = `${description} ${text}`;
+    // "helps X" says who it's for more surely than "for X" ("a leader for the next generation").
+    const forWhom = (/\b(?:helps?|helping|work(?:ing)? with)\s+([^.!?,\n]{6,90})/i.exec(prose) ?? /\bfor\s+([^.!?,\n]{6,90})/i.exec(prose))?.[1]?.trim() ?? "";
+    const offers = [...new Set([...prose.matchAll(OFFER_WORDS)].map((m) => m[1].toLowerCase()))].slice(0, 4);
+    return {
+      name: field(input, "Title"),
+      whatTheyDo: (sentence(description) || sentence(text.replace(/^\[Home page\]\s*/, ""))).slice(0, 140),
+      audience: forWhom.replace(/[,;:]\s*$/, ""),
+      offers: offers.join(", "),
+      positioning: "",
+    };
+  },
+};
+
 export const TASKS = {
+  [siteProfile.key]: siteProfile,
   [topicProposals.key]: topicProposals,
   [calendarPlan.key]: calendarPlan,
   [rewritePart.key]: rewritePart,

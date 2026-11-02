@@ -30,8 +30,10 @@ import {
   pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveBeliefs, saveProofs, saveStories, suggestAnswers, type DialPick,
 } from "@/lib/data/enrich";
 import { importFromUrl, safeGet, WebImportError } from "@/lib/integrations/web";
-import { decodeEntities } from "@/lib/integrations/text";
-import { extractSiteBrand } from "@/lib/visual/core";
+import { readSite } from "@/lib/integrations/site";
+import { runTask } from "@/lib/ai";
+import { siteProfile as siteProfileTask } from "@/lib/ai/tasks";
+import { loadBrandContext } from "@/lib/context/context-loader";
 import { loadVisualIdentity, saveVisualIdentity } from "@/lib/data/foundation";
 import { listAssets } from "@/lib/data/assets";
 import { listPillars } from "@/lib/data/planning";
@@ -386,60 +388,59 @@ export async function advanceAction(tenantId: string, to: ScreenKey) {
   redirect(`/w/${tenantId}/onboarding?s=${to}`);
 }
 
-const meta = (html: string, key: string) =>
-  new RegExp(`<meta[^>]+(?:name|property)=["']${key}["'][^>]*content=["']([^"']*)["']`, "i").exec(html)?.[1]
-  ?? new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:name|property)=["']${key}["']`, "i").exec(html)?.[1]
-  ?? "";
 /**
- * A site's colours, ordered the way a palette is read: the lightest first (the
- * ground visuals sit on), then the most colourful (the accent), then the rest.
- */
-function groundFirst(palette: string[]): string[] {
-  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const light = (h: string) => rgb(h).reduce((a, b) => a + b, 0);
-  const chroma = (h: string) => Math.max(...rgb(h)) - Math.min(...rgb(h));
-  if (palette.length < 2) return palette;
-  const ground = [...palette].sort((a, b) => light(b) - light(a))[0];
-  const accent = palette.filter((c) => c !== ground).sort((a, b) => chroma(b) - chroma(a))[0];
-  return [ground, accent, ...palette.filter((c) => c !== ground && c !== accent)];
-}
-const tidy = (s: string) => decodeEntities(s).replace(/\s+/g, " ").trim();
-
-/**
- * Screen 1: read their website. The home page and up to three stylesheets,
- * fetched behind the SSRF guard. The name and one-line description become the
- * defaults on the next two screens; colours and fonts go into the hue when it
- * has none yet (the Look screen shows them to change).
+ * Screen 1: read their website (lib/integrations/site): the home page, up to
+ * three stylesheets and its About page, behind the SSRF guard. The name and
+ * description become the defaults on the next screens; colours and fonts go
+ * into the hue when it has none yet (the Look screen shows them to change).
+ * Returns the pages' text too, for siteProfileAction, the next step on screen.
  */
 export async function siteAction(tenantId: string, url: string) {
   const { scope } = await actionActor(tenantId);
   return attempt(async () => {
     const raw = url.trim();
     if (!raw) throw new WebImportError("Add your website first.");
-    let page;
+    let read;
     try {
-      page = await safeGet(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+      read = await readSite(raw);
     } catch {
       throw new WebImportError("We couldn't open that site. Check the address, or carry on without it.");
     }
-    const first = extractSiteBrand(page.body, [], page.url);
-    const css = await Promise.all(first.stylesheets.map((s) => safeGet(s).then((r) => r.body).catch(() => "")));
-    const brand = extractSiteBrand(page.body, css, page.url);
-    const titleTag = /<title[^>]*>([^<]*)<\/title>/i.exec(page.body)?.[1] ?? "";
-    // "Jane Doe | Coaching" or "Home - Acme": keep the part that names them.
-    const title = tidy(meta(page.body, "og:site_name") || titleTag).split(/\s[|–—-]\s/).filter((p) => !/^home$/i.test(p.trim()))[0]?.trim().slice(0, 80) ?? "";
-    const description = tidy(meta(page.body, "og:description") || meta(page.body, "description")).slice(0, 240);
-    const site = { url: page.url, title, description, palette: groundFirst(brand.palette), fonts: brand.fonts, logo: brand.logo, at: new Date().toISOString() };
+    const site = { url: read.url, title: read.title, description: read.description, palette: read.palette, fonts: read.fonts, logo: read.logo, dark: read.dark, at: new Date().toISOString() };
     await updateOnboarding(scope, await requirePack(scope), { site });
     const v = await loadVisualIdentity(scope);
     await saveVisualIdentity(scope, {
       ...v,
       palette: v.palette.length ? v.palette : site.palette,
-      fonts: v.fonts.length ? v.fonts : brand.fonts,
-      core: { ...(v.core ?? {}), site: { url: page.url, logo: brand.logo, at: site.at } },
+      fonts: v.fonts.length ? v.fonts : site.fonts,
+      core: { ...(v.core ?? {}), site: { url: read.url, logo: read.logo, at: site.at } },
     });
     refresh(tenantId);
-    return site;
+    return { site, text: read.text };
+  });
+}
+
+const SITE_TEXT_MAX = 20_000;
+
+/**
+ * Screen 1, second step: what the site says about them (the site_profile task,
+ * on the cheap route), saved with the site so the name and audience screens can
+ * offer it. A failure (no model yet, the monthly cap, a provider error) is
+ * logged by the facade and leaves the title and description to fill in instead.
+ */
+export async function siteProfileAction(tenantId: string, text: string) {
+  const { scope } = await actionActor(tenantId);
+  return attempt(async () => {
+    const pack = await requirePack(scope);
+    const site = pack.onboarding.site;
+    if (!site) throw new WebImportError("Read your website first.");
+    const taskInput = [`Site: ${site.url}`, `Title: ${site.title}`, `Description: ${site.description}`, "", "Text:", text.slice(0, SITE_TEXT_MAX)].join("\n");
+    const p = await runTask(scope, siteProfileTask, { context: await loadBrandContext(scope), taskInput, route: "cheap" });
+    const line = (t: string, n: number) => t.replace(/\s+/g, " ").trim().slice(0, n);
+    const profile = { name: line(p.name, 80), whatTheyDo: line(p.whatTheyDo, 160), audience: line(p.audience, 200), offers: line(p.offers, 200), positioning: line(p.positioning, 200) };
+    await updateOnboarding(scope, pack, { site: { ...site, profile } });
+    refresh(tenantId);
+    return profile;
   });
 }
 

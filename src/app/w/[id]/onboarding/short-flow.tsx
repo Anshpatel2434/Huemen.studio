@@ -25,7 +25,7 @@ import { SCREENS, type ScreenKey } from "@/lib/onboarding/screens";
 import { uploadAssetAction } from "@/app/w/[id]/brand/actions";
 import {
   advanceAction, audienceAction, finishIngestAction, finishOnboardingAction, firstPieceAction, ingestAction, lookAction,
-  markIngestingAction, nameAction, saveSourcesAction, siteAction, voiceNotesAction, wordsAction,
+  markIngestingAction, nameAction, saveSourcesAction, siteAction, siteProfileAction, voiceNotesAction, wordsAction,
 } from "./actions";
 import { useStepDraft } from "./draft";
 
@@ -117,9 +117,13 @@ function Skip({ tenantId, to, label = "Skip for now" }: { tenantId: string; to: 
 // 1 · Website
 // =============================================================================
 
-export type SiteFound = { url: string; title: string; description: string; palette: string[]; fonts: string[]; logo: string | null };
+export type SiteFound = {
+  url: string; title: string; description: string; palette: string[]; fonts: string[]; logo: string | null;
+  profile?: { name: string; whatTheyDo: string; audience: string; offers: string; positioning: string } | null;
+};
 
-const SITE_STEPS = ["Capture the address", "Read your website", "Find your brand", "Show what we found"];
+// Each step is real work: the address checked, the pages and styles fetched, then what the site says read by the model.
+const SITE_STEPS = ["Capture the address", "Read your website", "Understand what you do", "Show what we found"];
 
 export function SiteScreen({ tenantId, found: initial }: { tenantId: string; found: SiteFound | null }) {
   const [url, setUrl] = useStepDraft("site:url", initial?.url.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "");
@@ -135,15 +139,16 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
     setError(null);
     setFound(null);
     setPhase(0);
-    await wait(350);
+    await wait(250);
     setPhase(1);
     const r = await siteAction(tenantId, url);
     if (!r.ok) { setPhase(-1); setError(r.error); return; }
     setPhase(2);
-    await wait(450);
+    // The model's read is a bonus: if it fails, the page's own title and description stand in.
+    const p = r.value.text ? await siteProfileAction(tenantId, r.value.text) : null;
     setPhase(3);
-    await wait(350);
-    setFound(r.value);
+    await wait(300);
+    setFound({ ...r.value.site, profile: p?.ok ? p.value : null });
     setPhase(4);
   };
 
@@ -209,7 +214,8 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
                 )}
                 <div className="min-w-0">
                   <p className="text-lg leading-snug truncate">{found.title || found.url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</p>
-                  <p className="text-sm text-ink-muted mt-1 line-clamp-3">{found.description || "No description on the home page. You'll add one in a moment."}</p>
+                  <p className="text-sm text-ink-muted mt-1 line-clamp-3">{found.profile?.whatTheyDo || found.description || "No description on the home page. You'll add one in a moment."}</p>
+                  {found.profile?.audience && <p className="text-sm text-ink-muted mt-1 line-clamp-2">Who it&apos;s for: {found.profile.audience.replace(/^for\s+/i, "")}</p>}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3 border-t border-hairline pt-4">
@@ -276,8 +282,13 @@ export function NameScreen({ tenantId, saved, suggested }: {
   );
 }
 
-export function AudienceScreen({ tenantId, saved }: { tenantId: string; saved: { audience: string; offers: string; positioning: string } }) {
-  const [form, setForm] = useStepDraft("short:audience", saved);
+type AudienceFields = { audience: string; offers: string; positioning: string };
+
+export function AudienceScreen({ tenantId, saved, suggested }: { tenantId: string; saved: AudienceFields; suggested?: AudienceFields }) {
+  const s = suggested ?? { audience: "", offers: "", positioning: "" };
+  const start = { audience: saved.audience || s.audience, offers: saved.offers || s.offers, positioning: saved.positioning || s.positioning };
+  const [form, setForm] = useStepDraft("short:audience", start);
+  const fromSite = (k: keyof AudienceFields) => !saved[k] && !!s[k] && form[k] === s[k];
   const [moving, go] = useTransition();
   return (
     <Split
@@ -289,13 +300,13 @@ export function AudienceScreen({ tenantId, saved }: { tenantId: string; saved: {
       actions={<Go label="Continue" busy={moving && "Saving"} disabled={!form.audience.trim()} onClick={() => go(async () => { await audienceAction(tenantId, form); })} />}
       panel={
         <Card className="flex flex-col gap-5">
-          <Field label="Who is it for?">
+          <Field label="Who is it for?" from={fromSite("audience")}>
             <textarea rows={2} value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })} placeholder="Engineers promoted into their first management role" className="field" autoFocus />
           </Field>
-          <Field label="What do you offer them?">
+          <Field label="What do you offer them?" from={fromSite("offers")}>
             <textarea rows={2} value={form.offers} onChange={(e) => setForm({ ...form, offers: e.target.value })} placeholder="1:1 coaching, a six-week cohort, team workshops" className="field" />
           </Field>
-          <Field label="Why you, in one line" hint="Optional.">
+          <Field label="Why you, in one line" hint="Optional." from={fromSite("positioning")}>
             <textarea rows={2} value={form.positioning} onChange={(e) => setForm({ ...form, positioning: e.target.value })} placeholder="I help new managers stop firefighting and start leading" className="field" />
           </Field>
         </Card>

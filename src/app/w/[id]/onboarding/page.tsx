@@ -65,8 +65,8 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         // A new pack is named after the email address; that's not a name to sign with.
         const name = p.displayName.toLowerCase() === session.email.toLowerCase() ? "" : p.displayName;
         return at === "name"
-          ? <NameScreen tenantId={id} saved={{ name, niche: f.niche }} suggested={{ name: site?.title ?? "", niche: firstSentence(site?.description ?? "") }} />
-          : <AudienceScreen tenantId={id} saved={{ audience: f.audience, offers: f.offers, positioning: f.positioning }} />;
+          ? <NameScreen tenantId={id} saved={{ name, niche: f.niche }} suggested={{ name: site?.profile?.name || site?.title || "", niche: site?.profile?.whatTheyDo || firstSentence(site?.description ?? "") }} />
+          : <AudienceScreen tenantId={id} saved={{ audience: f.audience, offers: f.offers, positioning: f.positioning }} suggested={site?.profile ? { audience: site.profile.audience, offers: site.profile.offers, positioning: site.profile.positioning } : undefined} />;
       }
 
       case "writing":

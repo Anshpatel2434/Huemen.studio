@@ -66,6 +66,7 @@ const TASK_META: Record<string, { label: string; about: string }> = {
   extract_answers: { label: "Onboarding pre-fill", about: "Proposes Core answers from their writing for one-tap confirm." },
   dial_pairs: { label: "This or that", about: "Paired lines for the voice dials in onboarding." },
   voice_preview: { label: "Live voice preview", about: "The paragraph that changes as answers are saved." },
+  site_profile: { label: "Read your website", about: "Onboarding's first screen: name, what they do, who it's for and what they offer, from the site's own words." },
 };
 
 /** The catalogue, in the order the admin page shows it. */

@@ -386,7 +386,13 @@ export interface Onboarding {
   /** The short flow's furthest screen (lib/onboarding/screens). */
   screen?: number;
   /** What the first screen read off their website, offered as defaults on the next ones. */
-  site?: { url: string; title: string; description: string; palette: string[]; fonts: string[]; logo: string | null; at: string };
+  site?: {
+    url: string; title: string; description: string; palette: string[]; fonts: string[]; logo: string | null; at: string;
+    /** The site's own background is dark (its palette starts with that ground). */
+    dark?: boolean;
+    /** What the site says about them, read by the site_profile task; absent when no model has read it. */
+    profile?: { name: string; whatTheyDo: string; audience: string; offers: string; positioning: string };
+  };
   /** When the Getting started window was first dismissed, so it opens itself only once. */
   guideSeenAt?: string;
   /**
