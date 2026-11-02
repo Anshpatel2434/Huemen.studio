@@ -9,7 +9,7 @@ import { WhatsNew } from "./whats-new";
 
 /**
  * Brand home's create actions: the same three ways in as the library (paste
- * notes, copy a brief, blank project), plus the one-time "what's new" note.
+ * notes, like a past project, blank project), plus the one-time "what's new" note.
  */
 export function HomeActions({ tenantId, projects, showWhatsNew }: {
   tenantId: string;
@@ -23,7 +23,7 @@ export function HomeActions({ tenantId, projects, showWhatsNew }: {
       {showWhatsNew && <WhatsNew onStart={() => setCreating("blank")} />}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setNotes(true)} className={btnClass("ghost", "sm")}><ClipboardPaste size={15} aria-hidden="true" /> Paste notes</button>
-        <button type="button" onClick={() => setCreating("copy")} disabled={projects.length === 0} className={btnClass("secondary", "sm")}><Copy size={15} aria-hidden="true" /> From a brief</button>
+        <button type="button" onClick={() => setCreating("copy")} disabled={projects.length === 0} className={btnClass("secondary", "sm")}><Copy size={15} aria-hidden="true" /> Like a past one</button>
         <button type="button" onClick={() => setCreating("blank")} className={btnClass("primary", "sm")}><Plus size={15} aria-hidden="true" /> New project</button>
       </div>
       <NewProjectModal tenantId={tenantId} projects={projects} mode={creating} onClose={() => setCreating(null)} />

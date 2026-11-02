@@ -364,6 +364,19 @@ export async function runTask<T>(
   task: TaskDef<T>,
   input: { context: BrandContext; taskInput: string; route?: TextRoute; contentItemId?: string | null },
 ): Promise<T> {
+  return (await runTaskStamped(scope, task, input)).data;
+}
+
+/**
+ * runTask, also saying which template version and model wrote the answer, so
+ * a caller that saves AI-written text onto a piece can stamp it (brief §05:
+ * the template version is stamped on every content_item).
+ */
+export async function runTaskStamped<T>(
+  scope: SessionScope,
+  task: TaskDef<T>,
+  input: { context: BrandContext; taskInput: string; route?: TextRoute; contentItemId?: string | null },
+): Promise<{ data: T; model: string; template: { id: string | null; version: number } }> {
   const env = getEnv();
   const route = input.route ?? "strong";
   let model = `${env.AI_TEXT_PROVIDER}-${route}`;
@@ -390,7 +403,7 @@ export async function runTask<T>(
       status: "ok",
       contentItemId: input.contentItemId ?? null,
     });
-    return result.data;
+    return { data: result.data, model: result.model, template: { id: template.id, version: template.version } };
   } catch (err) {
     await logGeneration(scope, {
       kind: "text",

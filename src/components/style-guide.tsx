@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { Check, Globe, ImagePlus, Moon, Plus, Shuffle, Sun, X } from "lucide-react";
 import { btnClass } from "@/components/btn";
-import { readSiteBrandAction, saveVisualAction, uploadAssetChecked } from "@/app/w/[id]/brand/actions";
+import { deleteAssetAction, readSiteBrandAction, saveVisualAction, uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 import { MAX_REFERENCES, type SiteBrand, type VisualCore } from "@/lib/visual/core";
 import type { VisualIdentity } from "@/lib/data/foundation";
@@ -376,8 +376,19 @@ function References({ tenantId, references }: { tenantId: string; references: { 
       <span className="text-sm font-medium">Designs that look like you <span className="text-ink-faint font-normal">· up to {MAX_REFERENCES}</span></span>
       <div className="flex flex-wrap gap-3">
         {references.slice(0, MAX_REFERENCES).map((r) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={r.id} src={r.url} alt="A reference design" className="w-32 h-32 object-cover rounded-xl border border-hairline" />
+          <div key={r.id} className="group relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={r.url} alt="A reference design" className="w-32 h-32 object-cover rounded-xl border border-hairline" />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => start(async () => { await deleteAssetAction(tenantId, r.id); router.refresh(); })}
+              aria-label="Remove this reference design"
+              className="hu-iconbtn absolute top-1.5 right-1.5 bg-paper opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            >
+              <X size={13} aria-hidden="true" />
+            </button>
+          </div>
         ))}
         {references.length < MAX_REFERENCES && (
           <label className="w-32 h-32 rounded-xl border border-dashed border-line flex flex-col items-center justify-center gap-1 text-xs text-ink-muted cursor-pointer hover:border-line-strong">
@@ -387,7 +398,7 @@ function References({ tenantId, references }: { tenantId: string; references: { 
         )}
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <p className="text-xs text-ink-faint">Branded posts or ads you already like. They show the look; they are never copied.</p>
+      <p className="text-xs text-ink-faint">Branded posts or ads you already like, kept as a reference for you and your coach. Visuals are drawn from templates and don&apos;t read them yet.</p>
     </div>
   );
 }

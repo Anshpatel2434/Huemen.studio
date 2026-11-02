@@ -50,6 +50,12 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
         <PillarMap tenantId={id} brandName={(ws?.name ?? "Your brand")} completeness={ctx.completeness} briefRows={briefRows} pillars={pillars} pieces={pieces} selectedId={typeof sp.pillar === "string" ? sp.pillar : null} />
       </div>
       <StepPanel title="Pillars">
+        {sp.drafted && (
+          <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> {String(sp.drafted)} piece{sp.drafted === "1" ? "" : "s"} drafted, one project each. They are in your Library.</p>
+        )}
+        {typeof sp.stopped === "string" && (
+          <p role="alert" className="text-xs text-ink-muted bg-panel border border-hairline rounded-sm px-2.5 py-2">Stopped before the last pillars: {sp.stopped} The pieces it reached are kept.</p>
+        )}
         {sp.generated && (
           <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> Pillars generated from your brief and answers. Rename, remove or add any before drafting.</p>
         )}

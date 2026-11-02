@@ -20,7 +20,7 @@ import { listSamples, loadPackForWorkspace } from "./voice-pack";
 import type { ProjectScope, WorkspaceScope } from "./projects";
 import { withTenantSession } from "@/db/session";
 import { formatByKey } from "@/lib/content/formats";
-import { runTask } from "@/lib/ai";
+import { runTask, runTaskStamped } from "@/lib/ai";
 import { rewriteInVoice, voiceJudge, type JudgeResult } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
 
@@ -124,10 +124,24 @@ export async function judgeText(scope: WorkspaceScope, text: string, platform?: 
 
 /** The whole draft rewritten in their voice: the primary action when off brand. */
 export async function rewriteText(scope: WorkspaceScope, text: string, platform?: string | null): Promise<string> {
+  return (await rewriteTextStamped(scope, text, platform)).text;
+}
+
+/**
+ * The same rewrite, saying which template wrote it, for a rewrite that lands
+ * on a saved piece (which is then stamped and its log row linked to it).
+ */
+export async function rewriteTextStamped(
+  scope: WorkspaceScope,
+  text: string,
+  platform?: string | null,
+  contentItemId?: string | null,
+): Promise<{ text: string; template: { id: string | null; version: number } }> {
   const pack = await loadPackForWorkspace(scope);
-  const { text: out } = await runTask(scope, rewriteInVoice, {
+  const { data, template } = await runTaskStamped(scope, rewriteInVoice, {
     context: await loadBrandContext(scope, "en", platform ?? undefined, "rewrite"),
     taskInput: judgeInput(text, pack?.index.neverWords ?? [], platform),
+    contentItemId: contentItemId ?? null,
   });
-  return out;
+  return { text: data.text, template };
 }

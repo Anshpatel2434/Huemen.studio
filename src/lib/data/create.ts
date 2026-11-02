@@ -14,7 +14,7 @@
  */
 import "server-only";
 import { withTenantSession } from "@/db/session";
-import { runTask } from "@/lib/ai";
+import { runTask, runTaskStamped } from "@/lib/ai";
 import { coWriteOutline, topicProposals } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { formatByKey } from "@/lib/content/formats";
@@ -76,7 +76,7 @@ export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boole
 /** A new piece at Ideate. Returns the project id. */
 export async function startPiece(
   scope: WorkspaceScope,
-  input: { topic: string; format?: string | null; pillarName?: string | null; ideaId?: string | null },
+  input: { topic: string; format?: string | null; pillarName?: string | null; pillarId?: string | null; angle?: string | null; ideaId?: string | null },
 ): Promise<string> {
   const topic = input.topic.trim() || "Untitled piece";
   const projectId = await createProject(scope, clip(topic, 120));
@@ -90,8 +90,8 @@ export async function startPiece(
     [...pillars].sort((a, b) => b.name.length - a.name.length).find((x) => want.startsWith(x.name.toLowerCase()));
   await setIdeate(p, {
     format: input.format ?? null,
-    pillarId: pillar?.id ?? null,
-    angle: null,
+    pillarId: input.pillarId ?? pillar?.id ?? null,
+    angle: input.angle?.trim() || null,
     ideaId: input.ideaId ?? null,
     topic,
   });
@@ -123,7 +123,7 @@ export async function coWrite(
   input: { format: string; topic: string; angle?: string | null; pillarId?: string | null },
 ): Promise<string> {
   const fmt = formatByKey(input.format);
-  const outline = await runTask(scope, coWriteOutline, {
+  const { data: outline, template } = await runTaskStamped(scope, coWriteOutline, {
     context: await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write"),
     taskInput: [`Format: ${fmt.label}`, `Topic: ${input.topic}`, input.angle ? `Angle: ${input.angle}` : ""].filter(Boolean).join("\n"),
   });
@@ -136,6 +136,7 @@ export async function coWrite(
     pillarId: input.pillarId,
     status: "draft",
     origin: "co-write-outline",
+    stamp: { templateId: template.id, version: template.version },
   });
   await unlockStage(scope, "content").catch(() => undefined);
   return id;

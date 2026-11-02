@@ -87,10 +87,21 @@ const fz = (n: number, t: Tweaks | null, base = 300) => `${((n * 16 * 100) / bas
 const rem = (n: number, t: Tweaks) => fz(n, t);
 const MONO = "var(--font-mono)";
 
+/** The sign-off: the workspace's logo, when it has one, beside the brand name. */
+function Signoff({ brand, logo, style, prefix = "" }: { brand: string; logo?: string | null; style: CSSProperties; prefix?: string }) {
+  return (
+    <span className="inline-flex items-center gap-[0.6em] max-w-full" style={style}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {logo && <img src={logo} alt="" crossOrigin="anonymous" className="w-auto object-contain shrink-0" style={{ height: "2.4em", maxWidth: "8em" }} />}
+      <span className="tracking-[0.18em] uppercase font-medium truncate">{prefix}{brand}</span>
+    </span>
+  );
+}
+
 // ---- post image ---------------------------------------------------------------
 
-export function PostImage({ layout, w, h, s, t, fonts, brand, eyebrow, text, frameRef }: {
-  layout: PostLayout; w: number; h: number; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; eyebrow?: string;
+export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRef }: {
+  layout: PostLayout; w: number; h: number; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; eyebrow?: string;
   text: RenderText; frameRef?: (el: HTMLDivElement | null) => void;
 }) {
   const p = paint(s, t, "normal");
@@ -100,7 +111,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, eyebrow, text, fra
     <div className="leading-[1.12] font-medium w-full" style={{ fontFamily: font, color: p.words, fontSize: rem(n, t), ...extra }}>{text({ kind: "post" })}</div>
   );
   const sign = (color = p.bold ? p.mark : p.fg) => (
-    <p className="tracking-[0.18em] uppercase font-medium" style={{ color: p.showMarks ? color : p.fg, fontFamily: MONO, fontSize: fz(0.62, null) }}>{brand}</p>
+    <Signoff brand={brand} logo={logo} style={{ color: p.showMarks ? color : p.fg, fontFamily: MONO, fontSize: fz(0.62, null) }} />
   );
 
   if (layout === "split") {
@@ -110,7 +121,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, eyebrow, text, fra
           <div className="flex-[62] flex flex-col justify-center p-[9%]" style={al}>{headline(1.35)}</div>
           <div className="flex-[38] flex flex-col justify-end p-[9%] gap-2" style={{ ...al, background: p.showMarks ? s.accent : p.fg, color: p.showMarks ? (contrast(s.bg, s.accent) >= contrast(s.fg, s.accent) ? s.bg : s.fg) : p.bg }}>
             <span className="h-[2px] w-[16%] bg-current opacity-70" />
-            <p className="tracking-[0.18em] uppercase font-medium" style={{ fontFamily: MONO, fontSize: fz(0.62, null) }}>{brand}</p>
+            <Signoff brand={brand} logo={logo} style={{ fontFamily: MONO, fontSize: fz(0.62, null) }} />
           </div>
         </div>
       </Frame>
@@ -157,8 +168,8 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, eyebrow, text, fra
 
 // ---- quote card ---------------------------------------------------------------
 
-export function QuoteCard({ layout, s, t, fonts, brand, text, frameRef }: {
-  layout: QuoteLayout; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; text: RenderText; frameRef?: (el: HTMLDivElement | null) => void;
+export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef }: {
+  layout: QuoteLayout; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; text: RenderText; frameRef?: (el: HTMLDivElement | null) => void;
 }) {
   const p = paint(s, t, "inverse");
   const center = layout === "centered" || t.align === "center";
@@ -167,7 +178,7 @@ export function QuoteCard({ layout, s, t, fonts, brand, text, frameRef }: {
     <div className="leading-snug w-full" style={{ fontFamily: font, fontStyle: italic ? "italic" : "normal", color: p.words, fontSize: rem(n, t) }}>{text({ kind: "quote" })}</div>
   );
   const sign = (dash = true) => (
-    <p className="tracking-[0.18em] uppercase" style={{ color: p.showMarks ? s.accent : p.fg, fontFamily: MONO, fontSize: fz(0.6, null) }}>{dash ? "— " : ""}{brand}</p>
+    <Signoff brand={brand} logo={logo} prefix={dash && !logo ? "— " : ""} style={{ color: p.showMarks ? s.accent : p.fg, fontFamily: MONO, fontSize: fz(0.6, null) }} />
   );
 
   if (layout === "centered") {

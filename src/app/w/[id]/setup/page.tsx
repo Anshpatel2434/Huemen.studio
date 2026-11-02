@@ -174,6 +174,7 @@ export default async function SetupPage({ params, searchParams }: PageProps<"/w/
             </label>
           ))}
           {sp.made && <p role="status" className="text-sm text-ok flex items-center gap-2"><CheckCircle2 size={15} aria-hidden="true" /> {pillars.length} pillars ready.</p>}
+          {sp.blocked && <p role="alert" className="text-sm text-ink-muted">Answer at least two of these, and fill in what you do and who for in the brief, so the pillars are yours rather than generic.</p>}
           {pillars.length > 0 && (
             <ul className="flex flex-wrap gap-2" aria-label="Your pillars">
               {pillars.map((x) => <li key={x.id}><Badge>{x.name}</Badge></li>)}

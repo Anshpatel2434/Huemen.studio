@@ -48,7 +48,7 @@ export async function askAgent(tenantId: string, projectId: string, message: str
   if (/\b(write|draft|generate|create|make)\b/i.test(msg) && FORMAT_WORDS.some(([re]) => re.test(msg))) {
     const pillars = await listPillars(scope);
     if (!project || pillars.length === 0) {
-      return { text: "There are no pillars yet. They are set up once for the whole workspace, in onboarding — generate them and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
+      return { text: "There are no pillars yet. They are set up once for the whole workspace, in onboarding — generate them and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `/w/${tenantId}/brand/questions` }] };
     }
     const format = FORMAT_WORDS.find(([re]) => re.test(msg))![1];
     const label = FORMATS.find((f) => f.key === format)!.label;
@@ -70,19 +70,19 @@ export async function askAgent(tenantId: string, projectId: string, message: str
   const pillarMatch = msg.match(/\b(?:add|create|new)\s+(?:a\s+)?pillar\s*(?:called|named|:)?\s*(.+)$/i);
   if (pillarMatch) {
     if (!project) {
-      return { text: "Pillars are generated from the brief questions. Answer those and I can add more.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
+      return { text: "Pillars are generated from the brief questions. Answer those and I can add more.", tasks: [{ label: "Open brief questions", href: `/w/${tenantId}/brand/questions` }] };
     }
     const name = pillarMatch[1].replace(/^["“]|["”.]$/g, "").trim();
     await createPillar(scope, name);
     refresh();
-    return { text: `Added “${name}” as a pillar.`, tasks: [{ label: "Pillar map updated", detail: name, href: `${base}/pillars` }] };
+    return { text: `Added “${name}” as a pillar.`, tasks: [{ label: "Pillar map updated", detail: name, href: `/w/${tenantId}/brand/pillars` }] };
   }
 
   const ideaMatch = msg.match(/^(?:idea|note|capture)\s*[:\-]\s*(.+)$/i);
   if (ideaMatch) {
     await captureIdea(scope, ideaMatch[1].trim());
     refresh();
-    return { text: "Captured in the idea inbox and tagged to the closest pillar.", tasks: [{ label: "Idea captured", href: `${base}/ideas` }] };
+    return { text: "Captured in the idea inbox and tagged to the closest pillar.", tasks: [{ label: "Idea captured", href: `/w/${tenantId}/plan/ideas` }] };
   }
 
   // Everything that is not a command is a question: answered live, in cards.
@@ -109,7 +109,7 @@ export async function runAgentAction(tenantId: string, projectId: string, raw: u
   if (action.type === "draft_piece") {
     const pillars = await listPillars(scope);
     if (pillars.length === 0) {
-      return { text: "There are no pillars yet. Generate them first and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
+      return { text: "There are no pillars yet. Generate them first and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `/w/${tenantId}/brand/questions` }] };
     }
     try {
       await unlockStage(scope, "content");
@@ -131,14 +131,14 @@ export async function runAgentAction(tenantId: string, projectId: string, raw: u
   if (action.type === "add_pillar") {
     const pillars = await listPillars(scope);
     if (pillars.some((p) => p.name.toLowerCase() === action.params.name.toLowerCase())) {
-      return { text: `“${action.params.name}” is already one of your pillars.`, tasks: [{ label: "Open pillars", href: `${base}/pillars` }] };
+      return { text: `“${action.params.name}” is already one of your pillars.`, tasks: [{ label: "Open pillars", href: `/w/${tenantId}/brand/pillars` }] };
     }
     await createPillar(scope, action.params.name, action.params.description);
     revalidatePath(base, "layout");
-    return { text: `Added “${action.params.name}” as a pillar.`, tasks: [{ label: "Pillar map updated", detail: action.params.name, href: `${base}/pillars` }] };
+    return { text: `Added “${action.params.name}” as a pillar.`, tasks: [{ label: "Pillar map updated", detail: action.params.name, href: `/w/${tenantId}/brand/pillars` }] };
   }
 
   await captureIdea(scope, action.params.text);
   revalidatePath(base, "layout");
-  return { text: "Saved to the idea inbox.", tasks: [{ label: "Idea captured", href: `${base}/ideas` }] };
+  return { text: "Saved to the idea inbox.", tasks: [{ label: "Idea captured", href: `/w/${tenantId}/plan/ideas` }] };
 }

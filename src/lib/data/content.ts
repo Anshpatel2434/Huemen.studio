@@ -229,7 +229,8 @@ export async function regenerateWithSteer(scope: ProjectScope, itemId: string, s
     systemTemplate: template.body,
     context,
     taskInput: `Format: ${fmt.label}\nTopic: ${item.topic ?? ""}\nSteer: ${steer}\nPrevious:\n${item.hook}\n${item.body}`,
-    variants: 2,
+    // One version: the steer replaces the piece, so a second would be paid for and thrown away.
+    variants: 1,
     contentItemId: itemId,
   });
   const d = splitDraft(result.variants[0]);
@@ -250,8 +251,8 @@ export async function regenerateWithSteer(scope: ProjectScope, itemId: string, s
       [scope.tenantId, itemId, next, steer, d.hook, d.body, d.cta, template.version, result.model],
     );
     await c.query(
-      `UPDATE content_items SET hook=$1, body=$2, cta=$3, status='draft', prompt_version=$4 WHERE id=$5`,
-      [d.hook, d.body, d.cta, template.version, itemId],
+      `UPDATE content_items SET hook=$1, body=$2, cta=$3, status='draft', prompt_version=$4, prompt_template_id=$5 WHERE id=$6`,
+      [d.hook, d.body, d.cta, template.version, template.id, itemId],
     );
   });
 }
@@ -374,6 +375,8 @@ export async function createContentItem(
     pillarId?: string | null;
     status: "draft" | "edited";
     origin: "own-writing" | "co-write-outline";
+    /** Set when a model wrote it: the template version that did (brief §05). */
+    stamp?: { templateId: string | null; version: number } | null;
   },
 ): Promise<string> {
   const fmt = formatByKey(input.format);
@@ -381,10 +384,12 @@ export async function createContentItem(
     const id = (
       await c.query<{ id: string }>(
         `INSERT INTO content_items
-           (tenant_id, project_id, channel, format, topic, hook, body, cta, pillar_id, status, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+           (tenant_id, project_id, channel, format, topic, hook, body, cta, pillar_id, status, created_by,
+            prompt_version, prompt_template_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
         [scope.tenantId, scope.projectId, fmt.channel, fmt.key, input.topic || null, input.hook, input.body,
-         input.cta, input.pillarId || null, input.status, scope.userId],
+         input.cta, input.pillarId || null, input.status, scope.userId,
+         input.stamp?.version ?? null, input.stamp?.templateId ?? null],
       )
     ).rows[0].id;
     await c.query(
@@ -408,5 +413,12 @@ async function linkIdea(c: PoolClient, contentItemId: string, projectId: string)
       WHERE project_id IS NULL AND converted_to_content_item_id IS NULL
         AND id = (SELECT idea_id FROM projects WHERE id = $2)`,
     [contentItemId, projectId],
+  );
+}
+
+/** Record which template wrote what is on a piece now (a whole-piece rewrite). */
+export async function stampContentItem(scope: ProjectScope, itemId: string, stamp: { templateId: string | null; version: number }): Promise<void> {
+  await withTenantSession(scope, (c) =>
+    c.query("UPDATE content_items SET prompt_version = $1, prompt_template_id = $2 WHERE id = $3 AND project_id = $4", [stamp.version, stamp.templateId, itemId, scope.projectId]),
   );
 }

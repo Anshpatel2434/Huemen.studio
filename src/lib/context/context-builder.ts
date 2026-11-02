@@ -9,8 +9,11 @@
  * This module is PURE (no I/O) so it is trivially unit-testable. The DB-backed
  * loader lives in ./context-loader and calls this.
  *
- * `CONTEXT_VERSION` is stamped onto every content_item (via prompt_version) so a
- * bad output can be traced to the exact context shape that produced it.
+ * `CONTEXT_VERSION` names the shape of the block and travels with it
+ * (`version`); bump it whenever what the block carries changes. What is
+ * stamped on each content_item is the prompt TEMPLATE version
+ * (prompt_version / prompt_template_id), so a draft can be traced to the
+ * template that wrote it.
  */
 
 /**
@@ -34,7 +37,7 @@
  * check also carries their aspiration, so a draft aimed where they want to
  * sound isn't marked down for not matching their old writing.
  */
-export const CONTEXT_VERSION = 6; // 6: Visual Core, beliefs, pillars and strategy answers are in the block (no task input carries brand data)
+export const CONTEXT_VERSION = 7; // 7: offers carry what is included and how they are priced; 6: Visual Core, beliefs, pillars and strategy answers are in the block (no task input carries brand data)
 
 /** What the context is for (spec 01 §3 load order). Undefined reads as "write". */
 export type ContextTask = "write" | "rewrite" | "check" | "reply";
@@ -54,7 +57,7 @@ export interface BrandProfileInput {
   audience?: Record<string, unknown> | null;
   offersSummary?: string | null;
   /** The offer designer's saved offers (brief §4.4): reusable as context for pitch emails. */
-  offers?: { name: string; format?: string | null; promise?: string | null }[];
+  offers?: { name: string; format?: string | null; promise?: string | null; deliverables?: string[]; pricing?: string | null }[];
   /** The workspace's content pillars: every piece sits under one (INV-2: in the block, not in task inputs). */
   pillars?: { name: string; description?: string | null }[];
   /** Pre-workshop and onboarding strategy answers, as "key: answer" (migration 0008). */
@@ -518,6 +521,9 @@ function serialize(input: BrandContextInput): string {
     for (const o of offers) {
       const bits = [nonEmpty(o.format) ? o.format!.trim() : "", nonEmpty(o.promise) ? o.promise!.trim() : ""].filter(Boolean);
       lines.push(`  - ${o.name.trim()}${bits.length ? `: ${bits.join(". ")}` : ""}`);
+      const inside = (o.deliverables ?? []).map((d) => d.trim()).filter(Boolean).slice(0, 6);
+      if (inside.length) lines.push(`    Includes: ${inside.join("; ")}`);
+      if (nonEmpty(o.pricing)) lines.push(`    Priced: ${o.pricing!.trim()}`);
     }
   }
 

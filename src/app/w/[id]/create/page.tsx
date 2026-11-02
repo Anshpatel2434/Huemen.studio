@@ -9,6 +9,7 @@ import { btnClass } from "@/components/btn";
 import { Avatar } from "@/components/ui";
 import { coreCardFacts } from "@/lib/voice/core-card";
 import { startPieceAction } from "./actions";
+import { startFromSlotAction } from "../plan/actions";
 import { SuggestOthers } from "./suggest-others";
 import { Proposals, ProposalsLoading, Start } from "./proposals";
 import { Select } from "@/components/select";
@@ -28,7 +29,7 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
   const platform = pack?.onboarding.writeFor?.[0] ?? "linkedin";
   const format = FORMATS.find((f) => f.platform === platform)?.key ?? null;
   const open = ideas.filter((i) => i.status !== "archived" && !i.projectId && !i.convertedTo).slice(0, 6);
-  const upcoming = slots.filter((s) => !s.contentItemId && s.topic).slice(0, 6);
+  const upcoming = slots.filter((s) => !s.startedProjectId && !s.contentItemId && s.topic).slice(0, 6);
   const onboarded = !!pack?.onboarding.completedAt;
   const core = pack ? coreCardFacts(pack, today.getTime()) : null;
 
@@ -111,12 +112,15 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
               <ul className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
                 {upcoming.map((s) => (
                   <li key={s.id}>
-                    <Start tenantId={id} topic={s.topic ?? ""} pillar={s.pillarName} format={format}>
+                    {/* Through the slot, so it keeps its platform, angle and call to action and links to the piece. */}
+                    <form action={startFromSlotAction}>
+                      <input type="hidden" name="tenantId" value={id} />
+                      <input type="hidden" name="id" value={s.id} />
                       <button type="submit" className="w-full text-left px-4 py-3 min-h-11 hover:bg-field flex items-center gap-3">
                         <span className="font-mono text-xs text-ink-faint tabular-nums shrink-0">{s.date.slice(5)}</span>
                         <span className="flex-1 min-w-0 text-sm line-clamp-2">{s.topic}</span>
                       </button>
-                    </Start>
+                    </form>
                   </li>
                 ))}
               </ul>

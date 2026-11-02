@@ -5,8 +5,8 @@ import { actionProjectScope } from "@/lib/auth/workspace";
 import { getSession } from "@/lib/auth";
 import { learnFromApproval } from "@/lib/data/learning";
 import { getProject, unlockStage } from "@/lib/data/projects";
-import { deleteContent, generateContent, regenerateWithSteer, updateContent, applyVariant, patchContent, listContent, rewritePartOf } from "@/lib/data/content";
-import { judgeText, rewriteText, scoreContentItem, scoreProject } from "@/lib/data/check";
+import { deleteContent, generateContent, regenerateWithSteer, updateContent, applyVariant, patchContent, listContent, rewritePartOf, stampContentItem } from "@/lib/data/content";
+import { judgeText, rewriteTextStamped, scoreContentItem, scoreProject } from "@/lib/data/check";
 import type { JudgeResult } from "@/lib/ai/tasks";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { recordEdit } from "@/lib/data/training";
@@ -243,10 +243,11 @@ export async function rewriteContentItemAction(
   if (!item) return { ok: false, error: "That piece is gone." };
   try {
     // Hook and body only: the call to action is a separate field and stays theirs.
-    const text = await rewriteText(scope, draftOf({ ...item, cta: null }), formatByKey(item.format).platform);
+    const { text, template } = await rewriteTextStamped(scope, draftOf({ ...item, cta: null }), formatByKey(item.format).platform, itemId);
     const lines = text.split("\n");
     const hook = (lines.shift() ?? "").trim();
     await patchContent(scope, itemId, { hook, body: lines.join("\n").trim(), cta: item.cta });
+    await stampContentItem(scope, itemId, { templateId: template.id, version: template.version });
     await settle(scope, tenantId, projectId);
     return { ok: true };
   } catch (e) {

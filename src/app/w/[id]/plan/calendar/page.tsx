@@ -5,14 +5,11 @@ import { getWorkspace } from "@/lib/data/workspaces";
 import { listCalendar, listPillars } from "@/lib/data/planning";
 import { DocPage } from "@/components/doc-page";
 import { btnClass } from "@/components/btn";
-import { deleteCalendarEntryAction } from "../actions";
-import { startPieceAction } from "../../create/actions";
-import { FORMATS } from "@/lib/content/formats";
+import { deleteCalendarEntryAction, startFromSlotAction } from "../actions";
 import { CALENDAR_DAYS } from "@/lib/content/calendar-plan";
 import { AddSlotButton, GenerateCalendarButton } from "./calendar-tools";
 
 /** A slot's channel to the format a piece for it starts in. */
-const formatFor = (channel: string | null) => (channel ? FORMATS.find((f) => f.channel === channel)?.key ?? null : null);
 
 export const metadata = { title: "Calendar" };
 
@@ -74,17 +71,20 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
                   <div key={e.id} className="group relative rounded-sm pl-2 pr-5 py-1 text-xs leading-tight bg-panel border-l-[3px]" style={{ borderLeftColor: shade(e.pillarId) }}>
                     <p className="font-medium truncate">{e.topic ?? "Untitled"}</p>
                     <p className="text-ink-faint truncate capitalize">{e.channel ?? ""}{e.pillarName ? ` · ${e.pillarName}` : ""}</p>
-                    {!e.contentItemId && e.topic && (
-                      <form action={startPieceAction} className="mt-1">
+                    {e.startedProjectId ? (
+                      <Link href={`/w/${id}/p/${e.startedProjectId}`} className="hu-hit mt-1 inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-ink hover:underline underline-offset-2">
+                        Open <ArrowRight size={10} aria-hidden="true" />
+                      </Link>
+                    ) : e.topic && (
+                      <form action={startFromSlotAction} className="mt-1">
                         <input type="hidden" name="tenantId" value={id} />
-                        <input type="hidden" name="topic" value={e.topic} />
-                        {e.pillarName && <input type="hidden" name="pillar" value={e.pillarName} />}
-                        {formatFor(e.channel) && <input type="hidden" name="format" value={formatFor(e.channel)!} />}
+                        <input type="hidden" name="id" value={e.id} />
                         <button className="hu-hit inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline underline-offset-2">
                           Start <ArrowRight size={10} aria-hidden="true" />
                         </button>
                       </form>
                     )}
+                    {(e.hookAngle || e.cta) && <p className="text-ink-faint truncate" title={[e.hookAngle, e.cta && `Close with: ${e.cta}`].filter(Boolean).join(". ")}>{e.hookAngle ?? `Close with: ${e.cta}`}</p>}
                     <form action={deleteCalendarEntryAction} className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                       <input type="hidden" name="tenantId" value={id} />
                       <input type="hidden" name="id" value={e.id} />

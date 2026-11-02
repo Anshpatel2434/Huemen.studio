@@ -45,7 +45,7 @@ describe("the Visual Core", () => {
   });
   it("reaches the prompt through the one context builder", () => {
     const ctx = buildBrandContext({ visualIdentity: { palette: ["#FF3429"], coreLines: visualCoreLines(core) } });
-    expect(CONTEXT_VERSION).toBe(6);
+    expect(CONTEXT_VERSION).toBe(7);
     expect(ctx.serialized).toContain("Colour use: #FF3429 for Headlines and buttons only");
     expect(ctx.serialized).toContain("Motifs: A red dot");
   });

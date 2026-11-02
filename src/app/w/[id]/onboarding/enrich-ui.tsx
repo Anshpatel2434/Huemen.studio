@@ -520,7 +520,7 @@ export function BrandImages({ tenantId, logo, headshot }: { tenantId: string; lo
       </div>
       {pending && <p className="text-sm text-ink-muted flex items-center gap-2"><AgentDots /> Uploading</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <p className="text-xs text-ink-faint flex items-center gap-1">Visuals use them. Your headshot is only used in your own visuals. <ArrowRight size={11} aria-hidden="true" /> Colours can come from your logo below.</p>
+      <p className="text-xs text-ink-faint flex items-center gap-1">Your logo signs your visuals. Your headshot is kept for your own use and is never sent to a model. <ArrowRight size={11} aria-hidden="true" /> Colours can come from your logo below.</p>
     </div>
   );
 }

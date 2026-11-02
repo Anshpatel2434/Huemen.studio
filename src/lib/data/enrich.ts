@@ -50,23 +50,14 @@ async function basisOf(scope: WorkspaceScope, pack: VoicePack) {
 // ---- pre-fill ---------------------------------------------------------------------
 
 export async function suggestAnswers(scope: WorkspaceScope, pack: VoicePack, opts: { force?: boolean } = {}) {
-  const { basis, foundation: f } = await basisOf(scope, pack);
+  const { basis } = await basisOf(scope, pack);
   const cached = pack.onboarding.suggestions;
   if (!opts.force && cached?.basis === basis) return cached.answers;
 
   const samples = (await listSamples(scope, pack.id)).filter((s) => s.visibility === "public").slice(0, 12);
-  const story = f.chapters.filter((c) => c.body.trim()).map((c) => `${c.title}: ${c.body}`).join(" / ");
-  const brief = [
-    f.niche ? `Niche: ${f.niche}` : "",
-    f.audience ? `Audience: ${f.audience}` : "",
-    f.positioning ? `Positioning: ${f.positioning}` : "",
-    f.offers ? `Offers: ${f.offers}` : "",
-    story ? `Story: ${story}` : "",
-  ].filter(Boolean);
+  // The brief (niche, audience, positioning, offers, story) is in the context
+  // block (INV-2); the task input is only the writing being read.
   const taskInput = [
-    "Brief:",
-    ...brief,
-    "",
     "Writing:",
     ...samples.map((s, i) => `[${i + 1}] (${s.channel}) ${words(s.body, 300)}`),
   ].join("\n");
@@ -84,12 +75,10 @@ export async function suggestAnswers(scope: WorkspaceScope, pack: VoicePack, opt
 // ---- this or that -----------------------------------------------------------------
 
 export async function pairsFor(scope: WorkspaceScope, pack: VoicePack) {
-  const { basis, foundation: f } = await basisOf(scope, pack);
+  const { basis } = await basisOf(scope, pack);
   if (pack.onboarding.pairs?.basis === basis && pack.onboarding.pairs.list.length) return pack.onboarding.pairs.list;
-  const taskInput = [
-    `About: ${f.niche || "their work"}${f.audience ? `, for ${f.audience}` : ""}`,
-    ...DIAL_KEYS.map((d) => `Dial: ${d} (${DIAL_LABELS[d][0]} to ${DIAL_LABELS[d][1]})`),
-  ].join("\n");
+  // What they do and for whom is in the context block (INV-2).
+  const taskInput = DIAL_KEYS.map((d) => `Dial: ${d} (${DIAL_LABELS[d][0]} to ${DIAL_LABELS[d][1]})`).join("\n");
   const { pairs } = await runTask(scope, dialPairs, { context: await loadBrandContext(scope), taskInput, route: "cheap" });
   const list = pairs
     .filter((p): p is typeof p & { dial: DialKey } => (DIAL_KEYS as readonly string[]).includes(p.dial) && !!p.left.trim() && !!p.right.trim())

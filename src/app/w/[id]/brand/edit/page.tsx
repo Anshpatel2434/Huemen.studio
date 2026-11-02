@@ -7,7 +7,7 @@ import { SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { PersistForm } from "@/components/persist";
 import { saveFoundationAction } from "../actions";
-import { AssetUploadForm } from "@/components/asset-upload-form";
+import { AssetList, AssetUploadForm } from "@/components/asset-upload-form";
 
 export const metadata = { title: "Edit brief" };
 
@@ -97,23 +97,9 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
 
         <section id="assets" className="mt-6 mb-16 border-t border-hairline pt-6 scroll-mt-6">
           <p className="font-medium">Brand assets</p>
-          <p className="text-sm text-ink-muted mt-0.5 mb-4">Logos, fonts and reference images. PNG, JPG, WebP, SVG or font files, max 5 MB.</p>
+          <p className="text-sm text-ink-muted mt-0.5 mb-4">PNG, JPG, WebP, SVG or font files, max 5 MB. Your newest logo signs every visual. Fonts and reference images are kept for you and your coach; visuals are drawn from templates and don&apos;t read them yet.</p>
           <AssetUploadForm tenantId={id} />
-          {assets.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-3">
-              {assets.map((a) => (
-                <div key={a.id} className="w-28 bg-panel border border-hairline rounded-md p-2">
-                  {a.mime.startsWith("image/") ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.url} alt={a.kind} className="w-full h-16 object-contain" />
-                  ) : (
-                    <div className="h-16 flex items-center justify-center text-xs text-ink-faint">{a.mime}</div>
-                  )}
-                  <p className="label-mono text-ink-faint mt-1 truncate">{a.kind.replace("_", " ")}</p>
-                </div>
-              ))}
-            </div>
-          )}
+          <AssetList tenantId={id} assets={assets} />
         </section>
       </div>
     </div>

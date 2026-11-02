@@ -43,12 +43,23 @@ const HOOKS = [
 /**
  * The stand-in reads what the real model reads: brand data comes from the
  * context block, never from the task input (INV-2). The tasks' stand-ins look
- * for a "Never use:" line, so it is supplied here from the context's guardrails.
+ * for "Never use:" and "Audience:" lines, so they are supplied here from the
+ * context (its guardrails, and the audience line of the block).
  */
 function withContextHints(req: TextGenRequest): string {
+  const hints: string[] = [];
   const never = req.context.guardrails.dontWords;
-  if (!never.length || /^Never use: /m.test(req.taskInput)) return req.taskInput;
-  return `Never use: ${never.join(", ")}\n${req.taskInput}`;
+  if (never.length && !/^Never use: /m.test(req.taskInput)) hints.push(`Never use: ${never.join(", ")}`);
+  const audience = field(req.context.serialized, "Audience");
+  if (audience && !/^Audience: /m.test(req.taskInput)) {
+    let said = audience;
+    try {
+      const a = JSON.parse(audience) as Record<string, unknown>;
+      said = String(a.description ?? a.who ?? Object.values(a).find((v) => typeof v === "string") ?? "");
+    } catch { /* already plain text */ }
+    if (said.trim()) hints.push(`Audience: ${said.trim()}`);
+  }
+  return hints.length ? `${hints.join("\n")}\n${req.taskInput}` : req.taskInput;
 }
 
 function mockPillars(req: TextGenRequest): string {

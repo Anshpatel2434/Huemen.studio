@@ -59,7 +59,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           ) : (
             <>
               The brief is {ctx.completeness}% complete, so drafts will read generic.{" "}
-              <Link href={`/w/${id}/p/${pid}/brief`} className="underline underline-offset-2">Open the brief →</Link>
+              <Link href={`/w/${id}/brand`} className="underline underline-offset-2">Open the brief →</Link>
             </>
           )}
         </div>

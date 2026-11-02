@@ -74,7 +74,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
 
   const title = view === "all" ? "All projects" : view === "archived" ? "Archived" : "Recents";
   const tabs: { v: View; label: string }[] = [
-    { v: "recents", label: "Recently viewed" },
+    { v: "recents", label: "Recently edited" },
     { v: "all", label: "All projects" },
     { v: "archived", label: "Archived" },
   ];
@@ -86,7 +86,7 @@ export function ProjectsHome({ tenantId, workspaceName, projects, view, initialQ
       <header className="shrink-0 flex flex-wrap items-center gap-2 px-5 min-[900px]:px-8 pt-6 pb-4 bg-ground">
         <h1 className="text-2xl flex-1 min-w-[10ch]">{title}{q ? <span className="text-ink-faint font-normal"> · “{q}”</span> : null}</h1>
         <button onClick={() => setHero(true)} className={btnClass("ghost", "sm")}><ClipboardPaste size={15} aria-hidden="true" /> Paste notes</button>
-        <button onClick={() => setCreating("copy")} disabled={projects.length === 0} className={btnClass("secondary", "sm")}><Copy size={15} aria-hidden="true" /> From a brief</button>
+        <button onClick={() => setCreating("copy")} disabled={projects.length === 0} className={btnClass("secondary", "sm")}><Copy size={15} aria-hidden="true" /> Like a past one</button>
         <button onClick={() => setCreating("blank")} className={btnClass("primary", "sm")}><Plus size={15} aria-hidden="true" /> New project</button>
       </header>
 
@@ -268,7 +268,7 @@ function CardMenu({ p, tenantId, archived, floating }: { p: Project; tenantId: s
                   <MenuItem icon={<ExternalLink size={15} aria-hidden="true" />} onClick={() => { setOpen(false); router.push(`/w/${tenantId}/p/${p.id}`); }}>Open</MenuItem>
                   <MenuItem icon={<Star size={15} aria-hidden="true" />} onClick={() => run(() => starProjectAction(tenantId, p.id, !p.starred), p.starred ? "Removed from starred" : "Starred")}>{p.starred ? "Unstar" : "Add to starred"}</MenuItem>
                   <MenuItem icon={<Pencil size={15} aria-hidden="true" />} onClick={() => { setOpen(false); setRenaming(true); }}>Rename</MenuItem>
-                  <MenuItem icon={<Copy size={15} aria-hidden="true" />} onClick={() => start(async () => { setOpen(false); const id = await duplicateProjectAction(tenantId, p.id); router.push(`/w/${tenantId}/p/${id}/brief/questions`); })}>New project from this brief</MenuItem>
+                  <MenuItem icon={<Copy size={15} aria-hidden="true" />} onClick={() => start(async () => { setOpen(false); const id = await duplicateProjectAction(tenantId, p.id, `${p.name} (again)`); router.push(`/w/${tenantId}/p/${id}/ideate`); })}>New project like this</MenuItem>
                   <MenuSeparator />
                   <MenuItem icon={<Archive size={15} aria-hidden="true" />} onClick={() => run(() => archiveProjectAction(tenantId, p.id), "Archived")}>Archive</MenuItem>
                   <MenuItem danger icon={<Trash2 size={15} aria-hidden="true" />} onClick={() => { setOpen(false); setDeleting(true); }}>Delete</MenuItem>

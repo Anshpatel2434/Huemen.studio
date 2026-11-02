@@ -13,6 +13,7 @@ import { generateContent } from "@/lib/data/content";
 import { unlockStage } from "@/lib/data/projects";
 import { startPiece } from "@/lib/data/create";
 import { scoreProject } from "@/lib/data/check";
+import { userMessage } from "@/lib/ai/errors";
 
 const refresh = (tenantId: string) => revalidatePath(`/w/${tenantId}`, "layout");
 
@@ -64,17 +65,27 @@ export async function draftFromPillarsAction(fd: FormData): Promise<void> {
   const scope = await actionScope(tenantId);
   const format = String(fd.get("format") ?? "linkedin_post");
   const pillars = await listPillars(scope);
-  // Sequential on purpose: each call is logged, and a failure keeps the
-  // pieces already made (there is no job queue yet).
+  // Sequential on purpose: each call is logged, and a failure (a cap, a rate
+  // limit, the provider) stops the run but keeps the pieces already made;
+  // the page says how many and why it stopped. There is no job queue yet.
+  let drafted = 0;
+  let stopped: string | null = null;
   for (const p of pillars) {
     const projectId = await startPiece(scope, { topic: `${p.name}: ${p.description ?? "what I've learned"}`, format, pillarName: p.name });
     const ps = { ...scope, projectId };
-    await generateContent(ps, { format, topic: p.name, pillarId: p.id });
+    try {
+      await generateContent(ps, { format, topic: p.name, pillarId: p.id });
+    } catch (e) {
+      // The piece stays, at Ideate with its topic, ready to draft later.
+      stopped = userMessage(e);
+      break;
+    }
     await scoreProject(ps).catch(() => undefined);
     await unlockStage(ps, "content");
+    drafted++;
   }
   refresh(tenantId);
-  redirect(`/w/${tenantId}?drafted=${pillars.length}`);
+  redirect(`/w/${tenantId}/brand/pillars?${new URLSearchParams({ drafted: String(drafted), ...(stopped ? { stopped } : {}) })}`);
 }
 
 /** Start one piece from a pillar, at Ideate. */

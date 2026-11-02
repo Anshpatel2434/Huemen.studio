@@ -57,10 +57,10 @@ export async function loadBrandContext(
     ).rows[0];
     // The offer designer's offers (§4.4) are workspace-level, like the brief.
     const offers = (
-      await c.query<{ name: string; format: string | null; promise: string | null }>(
-        `SELECT name, format, promise FROM offers WHERE project_id IS NULL ORDER BY created_at LIMIT 8`,
+      await c.query<{ name: string; format: string | null; promise: string | null; deliverables: string[] | null; pricing: string | null }>(
+        `SELECT name, format, promise, deliverables, pricing_logic_notes AS pricing FROM offers WHERE project_id IS NULL ORDER BY created_at LIMIT 8`,
       )
-    ).rows;
+    ).rows.map((o) => ({ ...o, deliverables: Array.isArray(o.deliverables) ? o.deliverables : [] }));
 
     // Pillars and strategy answers are brand data, so they ride in the block
     // too; no module appends them to its own task input (INV-2).

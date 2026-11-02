@@ -7,8 +7,8 @@
  */
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Upload } from "lucide-react";
-import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
+import { Upload, X } from "lucide-react";
+import { deleteAssetAction, uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 import { ChipChoice } from "@/components/chip-choice";
 import { Button } from "@/components/ui";
@@ -50,5 +50,36 @@ export function AssetUploadForm({ tenantId }: { tenantId: string }) {
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </form>
+  );
+}
+
+/** What has been uploaded, each with a way to remove it. */
+export function AssetList({ tenantId, assets }: { tenantId: string; assets: { id: string; kind: string; mime: string; url: string }[] }) {
+  const router = useRouter();
+  const [busy, start] = useTransition();
+  if (!assets.length) return null;
+  return (
+    <div className="mt-4 flex flex-wrap gap-3">
+      {assets.map((a) => (
+        <div key={a.id} className="group relative w-28 bg-panel border border-hairline rounded-md p-2">
+          {a.mime.startsWith("image/") ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={a.url} alt={a.kind.replace("_", " ")} className="w-full h-16 object-contain" />
+          ) : (
+            <div className="h-16 flex items-center justify-center text-xs text-ink-faint">{a.mime}</div>
+          )}
+          <p className="text-xs text-ink-faint mt-1 truncate capitalize">{a.kind.replace("_", " ")}</p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => start(async () => { await deleteAssetAction(tenantId, a.id); router.refresh(); })}
+            aria-label={`Remove this ${a.kind.replace("_", " ")}`}
+            className="hu-iconbtn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-paper"
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }

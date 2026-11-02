@@ -4,12 +4,12 @@ import { loadBrandContext } from "@/lib/context/context-loader";
 
 export const dynamic = "force-dynamic";
 
-/** Open a project where the work is: empty brief → intake, else the furthest unlocked step. */
+/** Open a project where the work is: an empty brief → the workspace's intake, else the furthest unlocked step. */
 export default async function ProjectIndex({ params }: PageProps<"/w/[id]/p/[pid]">) {
   const { id, pid } = await params;
   const { scope, project } = await projectScope(id, pid);
   const ctx = await loadBrandContext(scope);
   const base = `/w/${id}/p/${pid}`;
-  if (ctx.completeness === 0) redirect(`${base}/intake`);
+  if (ctx.completeness === 0) redirect(`/w/${id}/brand/intake`);
   redirect(`${base}/${project.stage}`);
 }

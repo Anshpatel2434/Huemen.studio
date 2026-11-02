@@ -19,7 +19,7 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
   const open = checks.filter((c) => !c.ok).length;
   const approved = content.filter((c) => c.status === "approved");
   const firstFlagged = content.find((c) => c.violations.length || !c.cta.trim());
-  const fixHref = ctx.degraded ? `/w/${id}/p/${pid}/brief/edit` : firstFlagged ? `/w/${id}/p/${pid}/content?item=${firstFlagged.id}` : `/w/${id}/p/${pid}/content`;
+  const fixHref = ctx.degraded ? `/w/${id}/brand/edit` : firstFlagged ? `/w/${id}/p/${pid}/content?item=${firstFlagged.id}` : `/w/${id}/p/${pid}/content`;
 
   return (
     <DocPage eyebrow={`${project.name} · Export`} title="Ship it" accent="clean." sub="Review brand health, then take the brief and content out as a PDF or as Markdown (Notion-compatible). Direct posting to LinkedIn or Instagram isn't part of v1." width={1000}>

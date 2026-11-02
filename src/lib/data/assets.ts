@@ -14,7 +14,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
-import { storage, tenantKey } from "@/lib/storage";
+import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import { sniffType, svgProblem } from "@/lib/storage/sniff";
 
 export type AssetKind = "logo" | "reference_image" | "headshot" | "font" | "other";
@@ -116,4 +116,42 @@ export async function listAssets(scope: WorkspaceScope): Promise<AssetView[]> {
       url: await storage().signedUrl(r.storage_key),
     })),
   );
+}
+
+/**
+ * Remove an upload: its row, its file, and its place among the reference
+ * designs picked as "this is our look" (visual core). Another workspace's id
+ * finds nothing under RLS and removes nothing.
+ */
+export async function deleteAsset(scope: WorkspaceScope, id: string): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return false;
+  const key = await withTenantSession(scope, async (c) => {
+    const row = (await c.query<{ storage_key: string }>("DELETE FROM assets WHERE id = $1 AND project_id IS NULL RETURNING storage_key", [id])).rows[0];
+    if (!row) return null;
+    await c.query(
+      `UPDATE visual_identities SET core = jsonb_set(core, '{references}', (core->'references') - $1::text)
+        WHERE jsonb_typeof(core->'references') = 'array' AND core->'references' ? $1::text`,
+      [id],
+    );
+    return row.storage_key;
+  });
+  if (!key) return false;
+  await storage().delete(key).catch(() => {}); // the row is gone either way; a stray file is unreachable
+  return true;
+}
+
+/**
+ * The workspace's newest logo, as a link that lasts a working session: the
+ * visual board draws it into every template and exports the frames to PNG,
+ * which fetches it again, so the default five-minute link is too short.
+ */
+export async function logoUrl(scope: WorkspaceScope): Promise<string | null> {
+  const key = (
+    await withTenantSession(scope, (c) =>
+      c.query<{ storage_key: string }>(
+        `SELECT storage_key FROM assets WHERE kind = 'logo' AND project_id IS NULL AND mime LIKE 'image/%' ORDER BY created_at DESC LIMIT 1`,
+      ),
+    )
+  ).rows[0]?.storage_key;
+  return key ? appSignedUrl(key, 8 * 60 * 60) : null;
 }

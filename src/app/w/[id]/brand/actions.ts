@@ -11,7 +11,7 @@ import { actionScope } from "@/lib/auth/workspace";
 import {
   loadFoundation, saveBriefAnswers, saveFoundation, saveVisualIdentity, type FoundationForm, type VisualIdentity,
 } from "@/lib/data/foundation";
-import { AssetError, storeAsset, uploadAsset, type AssetKind } from "@/lib/data/assets";
+import { AssetError, deleteAsset, storeAsset, uploadAsset, type AssetKind } from "@/lib/data/assets";
 import { takeIncoming } from "@/lib/storage/upload";
 import { safeGet } from "@/lib/integrations/web";
 import { extractSiteBrand, type SiteBrand } from "@/lib/visual/core";
@@ -74,6 +74,13 @@ export async function uploadAssetChecked(fd: FormData): Promise<{ error?: string
     if (e instanceof AssetError) return { error: e.message };
     throw e;
   }
+}
+
+/** Remove an upload (a logo, font or reference design). */
+export async function deleteAssetAction(tenantId: string, assetId: string): Promise<void> {
+  const scope = await actionScope(tenantId);
+  await deleteAsset(scope, assetId);
+  revalidatePath(`/w/${tenantId}`, "layout");
 }
 
 /** Intake: labelled notes → brief fields (only non-empty values overwrite). */

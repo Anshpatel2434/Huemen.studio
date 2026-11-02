@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * The two ways a project starts from the workspace, shared by Brand home and
- * the library: the New project modal (blank, or copying another project's
- * brief) and the "describe the brand" prompt that starts a brief from notes.
+ * The two ways to start from the workspace, shared by Brand home and the
+ * library: the New project modal (blank, or set up like a past project) and
+ * the "describe the brand" prompt that starts the workspace brief from notes.
  */
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
@@ -21,19 +21,19 @@ export const EXAMPLES = [
 export function NewProjectModal({ tenantId, projects, mode, onClose }: {
   tenantId: string;
   projects: { id: string; name: string }[];
-  /** null keeps it closed; "copy" starts from another project's brief. */
+  /** null keeps it closed; "copy" sets it up like a past project. */
   mode: null | "blank" | "copy";
   onClose: () => void;
 }) {
   return (
-    <Modal open={mode !== null} onClose={onClose} title={mode === "copy" ? "New project from a brief" : "New project"} width={460}>
+    <Modal open={mode !== null} onClose={onClose} title={mode === "copy" ? "New project like a past one" : "New project"} width={460}>
       <form action={createProjectAction} className="flex flex-col gap-5">
         <input type="hidden" name="tenantId" value={tenantId} />
         <Field label="Project name" required>
           <input name="name" className="field" placeholder="e.g. Q4 thought-leadership push" autoFocus />
         </Field>
         {mode === "copy" ? (
-          <Field label="Copy the brief from" hint="Story, voice and visual identity are copied; pillars and content start fresh." required>
+          <Field label="Set up like" hint="Same format, platform, angle and pillar. The writing starts fresh; your brief applies to every project." required>
             <Select name="fromProject" defaultValue={projects[0]?.id} label="Project" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
           </Field>
         ) : (

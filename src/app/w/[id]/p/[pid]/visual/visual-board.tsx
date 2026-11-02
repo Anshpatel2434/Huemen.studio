@@ -63,7 +63,7 @@ const WIRE_FONTS: Fonts = { display: "var(--font-sans)", accent: "var(--font-san
 const KIND_LABEL: Record<ArtboardKind, string> = { post: "Post image", quote: "Quote card", carousel: "Carousel" };
 
 type BoardProps = {
-  tenantId: string; projectId: string; brandName: string; items: Item[]; palette: string[]; fonts: string[]; imageStyle: string; selectedId: string | null; initialScheme: number;
+  tenantId: string; projectId: string; brandName: string; logo: string | null; items: Item[]; palette: string[]; fonts: string[]; imageStyle: string; selectedId: string | null; initialScheme: number;
 };
 
 /**
@@ -86,7 +86,7 @@ export function VisualBoard(props: BoardProps) {
   );
 }
 
-function Board({ tenantId, projectId, brandName, items, palette, fonts, imageStyle, selectedId, initialScheme }: BoardProps) {
+function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, imageStyle, selectedId, initialScheme }: BoardProps) {
   const history = useCanvasHistory();
   const router = useRouter();
   const toast = useToast();
@@ -385,7 +385,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                         width={DISPLAY_W}
                         actions={<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(`${i.id}:single`, fmt.frame.w, fmt.frame.h, `${fileSlug(brandName)}-post-${fmt.frame.w}x${fmt.frame.h}`)} />}
                       >
-                        <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={sc} t={d.tweaks} fonts={fp} brand={brandName} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} />
+                        <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} />
                       </Artboard>
                       <Artboard
                         label={`Quote card · ${QUOTE_LAYOUTS.find((l) => l.key === d.layouts.quote)?.label}`}
@@ -393,7 +393,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                         width={DISPLAY_W}
                         actions={<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(`${i.id}:quote`, 1080, 1080, `${fileSlug(brandName)}-quote-1080x1080`)} />}
                       >
-                        <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} text={text} frameRef={frameRef(`${i.id}:quote`)} />
+                        <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} text={text} frameRef={frameRef(`${i.id}:quote`)} />
                       </Artboard>
                       <Artboard
                         label={`Carousel · ${CAROUSEL_LAYOUTS.find((l) => l.key === d.layouts.carousel)?.label}`}
@@ -433,6 +433,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
           scheme={s}
           fonts={fontPair}
           brand={brandName}
+          logo={logo}
           onClose={() => setOptions(null)}
           onKeep={(kind, key, label) => {
             const d = designOf(options.item);
@@ -522,9 +523,9 @@ function TweakPanel({ item, design, onTweak, onOptions, onReset, onApplyAll, can
 
 // ---- show me options -----------------------------------------------------------------
 
-function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fonts, brand, onClose, onKeep }: {
+function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fonts, brand, logo, onClose, onKeep }: {
   item: Item; kind: ArtboardKind; onKind: (k: ArtboardKind) => void; design: Design; slides: string[]; ctaIndex: number;
-  scheme: ReturnType<typeof schemesFrom>[number]; fonts: Fonts; brand: string; onClose: () => void;
+  scheme: ReturnType<typeof schemesFrom>[number]; fonts: Fonts; brand: string; logo: string | null; onClose: () => void;
   onKeep: (kind: ArtboardKind, key: string, label: string) => void;
 }) {
   const fmt = formatByKey(item.format);
@@ -551,9 +552,9 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
               <div key={l.key} className={`rounded-md border p-3 flex flex-col gap-3 ${on ? "border-ink ring-1 ring-ink" : "border-hairline"}`}>
                 <div className="theme-light rounded-xs overflow-hidden ring-1 ring-[var(--hairline)] pointer-events-none">
                   {kind === "post" ? (
-                    <PostImage layout={l.key as never} w={fmt.frame.w} h={fmt.frame.h} s={scheme} t={t} fonts={fonts} brand={brand} eyebrow={item.pillarName ?? undefined} text={plain} />
+                    <PostImage layout={l.key as never} w={fmt.frame.w} h={fmt.frame.h} s={scheme} t={t} fonts={fonts} brand={brand} logo={logo} eyebrow={item.pillarName ?? undefined} text={plain} />
                   ) : kind === "quote" ? (
-                    <QuoteCard layout={l.key as never} s={scheme} t={t} fonts={fonts} brand={brand} text={plain} />
+                    <QuoteCard layout={l.key as never} s={scheme} t={t} fonts={fonts} brand={brand} logo={logo} text={plain} />
                   ) : (
                     <div className="overflow-hidden"><CarouselFrames layout={l.key as never} slides={slides.slice(0, 3)} ctaIndex={ctaIndex < 3 ? ctaIndex : -1} s={scheme} t={t} fonts={fonts} frameWidth={104} text={plain} /></div>
                   )}

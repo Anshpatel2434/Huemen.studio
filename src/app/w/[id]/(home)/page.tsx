@@ -81,7 +81,7 @@ export default async function WorkspaceHome({ params, searchParams }: PageProps<
     core: pack ? coreCardFacts(pack, now) : null,
     format: FORMATS.find((f) => f.platform === platform)?.key ?? null,
     ideas: ideas.filter((i) => i.status !== "archived" && !i.projectId && !i.convertedTo),
-    upcoming: slots.filter((s) => !s.contentItemId && s.topic),
+    upcoming: slots.filter((s) => !s.startedProjectId && !s.contentItemId && s.topic),
     usage: {
       text: usage.textThisMonth,
       images: usage.imagesThisMonth,

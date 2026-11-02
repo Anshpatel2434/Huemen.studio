@@ -192,6 +192,8 @@ export interface CalendarEntryView {
   cta: string | null;
   status: string;
   contentItemId: string | null;
+  /** The piece "Start" made from this slot (0019), or null while it is still only planned. */
+  startedProjectId: string | null;
 }
 
 export async function listCalendar(scope: WorkspaceScope, from: string, to: string): Promise<CalendarEntryView[]> {
@@ -214,7 +216,33 @@ export async function listCalendar(scope: WorkspaceScope, from: string, to: stri
       cta: r.cta,
       status: r.status,
       contentItemId: r.content_item_id,
+      startedProjectId: r.started_project_id ?? null,
     })),
+  );
+}
+
+/** One slot of the workspace calendar, for starting a piece from it. */
+export async function getCalendarEntry(scope: WorkspaceScope, id: string): Promise<CalendarEntryView | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const r = (
+    await withTenantSession(scope, (c) =>
+      c.query(
+        `SELECT e.*, to_char(e.entry_date, 'YYYY-MM-DD') AS d, p.name AS pillar_name
+           FROM calendar_entries e LEFT JOIN pillars p ON p.id = e.pillar_id
+          WHERE e.id = $1 AND e.project_id IS NULL`,
+        [id],
+      ),
+    )
+  ).rows[0];
+  return r
+    ? { id: r.id, date: r.d, pillarId: r.pillar_id, pillarName: r.pillar_name, channel: r.channel, topic: r.topic, hookAngle: r.hook_angle, cta: r.cta, status: r.status, contentItemId: r.content_item_id, startedProjectId: r.started_project_id ?? null }
+    : null;
+}
+
+/** Remember the piece a slot started, so the slot shows "Open" instead of starting another. */
+export async function markSlotStarted(scope: WorkspaceScope, id: string, projectId: string): Promise<void> {
+  await withTenantSession(scope, (c) =>
+    c.query("UPDATE calendar_entries SET started_project_id = $2 WHERE id = $1 AND project_id IS NULL", [id, projectId]),
   );
 }
 
@@ -268,10 +296,13 @@ export async function generateCalendar(
 
   const byName = new Map(pillars.map((p) => [p.name.toLowerCase(), p.id]));
   const bySlot = new Map(filled.map((f) => [f.slot, f]));
+  // The model can return fewer slots than asked; only what was written counts.
+  let written = 0;
   await withTenantSession(scope, async (c) => {
     for (const s of slots) {
       const f = bySlot.get(s.slot);
       if (!f) continue;
+      written++;
       const pillarId = byName.get(f.pillar.trim().toLowerCase()) ?? null;
       await c.query(
         `INSERT INTO calendar_entries (tenant_id, project_id, entry_date, pillar_id, channel, topic, hook_angle, cta)
@@ -280,7 +311,7 @@ export async function generateCalendar(
       );
     }
   });
-  return { planned: slots.length, skipped: all.length - slots.length };
+  return { planned: written, skipped: all.length - slots.length };
 }
 
 export async function deleteCalendarEntry(scope: WorkspaceScope, id: string): Promise<void> {
@@ -320,6 +351,20 @@ export async function createOffer(
       `INSERT INTO offers (tenant_id, project_id, name, format, promise, deliverables, pricing_logic_notes, created_by)
        VALUES ($1,NULL,$2,$3,$4,$5,$6,$7)`,
       [scope.tenantId, o.name, o.format || null, o.promise || null, JSON.stringify(o.deliverables), o.pricingLogic || null, scope.userId],
+    ),
+  );
+}
+
+export async function updateOffer(
+  scope: WorkspaceScope,
+  id: string,
+  o: { name: string; format: string; promise: string; deliverables: string[]; pricingLogic: string },
+): Promise<void> {
+  await withTenantSession(scope, (c) =>
+    c.query(
+      `UPDATE offers SET name=$2, format=$3, promise=$4, deliverables=$5, pricing_logic_notes=$6
+        WHERE id=$1 AND project_id IS NULL`,
+      [id, o.name, o.format || null, o.promise || null, JSON.stringify(o.deliverables), o.pricingLogic || null],
     ),
   );
 }

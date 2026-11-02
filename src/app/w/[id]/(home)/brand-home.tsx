@@ -22,6 +22,7 @@ import { HomeActions, NewProjectButton } from "./home-actions";
 import { BandPill, ago, type Project } from "./project-bits";
 import { GettingStarted } from "./getting-started";
 import type { GuideSection } from "@/lib/data/getting-started";
+import { startFromSlotAction } from "../plan/actions";
 
 export interface BrandHomeProps {
   tenantId: string;
@@ -181,12 +182,14 @@ export function BrandHome(props: BrandHomeProps) {
                   <ul className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
                     {upcoming.slice(0, 4).map((s) => (
                       <li key={s.id}>
-                        <Start tenantId={tenantId} topic={s.topic ?? ""} pillar={s.pillarName} format={format}>
+                        <form action={startFromSlotAction}>
+                          <input type="hidden" name="tenantId" value={tenantId} />
+                          <input type="hidden" name="id" value={s.id} />
                           <button type="submit" className="w-full text-left px-4 py-3 min-h-11 hover:bg-hover flex items-center gap-3">
                             <span className="font-mono text-xs text-ink-faint tabular-nums shrink-0">{s.date.slice(5)}</span>
                             <span className="flex-1 min-w-0 text-sm line-clamp-2">{s.topic}</span>
                           </button>
-                        </Start>
+                        </form>
                       </li>
                     ))}
                   </ul>
