@@ -12,7 +12,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { Check, Globe, ImagePlus, Moon, Plus, Shuffle, Sun, X } from "lucide-react";
 import { btnClass } from "@/components/btn";
-import { readSiteBrandAction, saveVisualAction, uploadAssetAction } from "@/app/w/[id]/brand/actions";
+import { readSiteBrandAction, saveVisualAction, uploadAssetChecked } from "@/app/w/[id]/brand/actions";
+import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 import { MAX_REFERENCES, type SiteBrand, type VisualCore } from "@/lib/visual/core";
 import type { VisualIdentity } from "@/lib/data/foundation";
 
@@ -352,15 +353,22 @@ function More({ tenantId, site, onSite, children }: { tenantId: string; site: Vi
 function References({ tenantId, references }: { tenantId: string; references: { id: string; url: string }[] }) {
   const router = useRouter();
   const [busy, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const upload = (file?: File) => {
     if (!file) return;
     start(async () => {
-      const fd = new FormData();
-      fd.append("tenantId", tenantId);
-      fd.append("kind", "reference_image");
-      fd.append("file", file);
-      await uploadAssetAction(fd);
-      router.refresh();
+      setError(null);
+      try {
+        const fd = new FormData();
+        fd.append("tenantId", tenantId);
+        fd.append("kind", "reference_image");
+        fd.append("key", await sendToStorage(tenantId, "asset", file, file.name));
+        const r = await uploadAssetChecked(fd);
+        if (r.error) return setError(r.error);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof UploadFailed ? e.message : "That file couldn't be used. Use a PNG, JPG or WebP under 5 MB.");
+      }
     });
   };
   return (
@@ -378,6 +386,7 @@ function References({ tenantId, references }: { tenantId: string; references: { 
           </label>
         )}
       </div>
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <p className="text-xs text-ink-faint">Branded posts or ads you already like. They show the look; they are never copied.</p>
     </div>
   );

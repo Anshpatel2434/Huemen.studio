@@ -23,6 +23,7 @@ import { WORDS, MIN_PICKS, MAX_PICKS } from "@/lib/voice/words";
 import { MAX_REFERENCES } from "@/lib/visual/core";
 import { SCREENS, type ScreenKey } from "@/lib/onboarding/screens";
 import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
+import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 import {
   advanceAction, audienceAction, finishIngestAction, finishOnboardingAction, firstPieceAction, ingestAction, lookAction,
   markIngestingAction, nameAction, saveSourcesAction, siteAction, siteProfileAction, voiceNotesAction, wordsAction,
@@ -368,9 +369,9 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, link
           source: c.key === "linkedin" && f.name.toLowerCase().endsWith(".csv") ? "export" : "upload",
           run: async () => {
             if (/\.(pdf|docx)$/i.test(f.name)) {
-              const body = new FormData();
-              body.append("file", f);
-              const res = await fetch(`/w/${tenantId}/onboarding/extract`, { method: "POST", body });
+              const key = await sendToStorage(tenantId, "document", f, f.name).catch(() => null);
+              if (!key) return [];
+              const res = await fetch(`/w/${tenantId}/onboarding/extract`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, name: f.name }) });
               const out = (await res.json().catch(() => ({}))) as { text?: string };
               return out.text ? ingestText(out.text, c.key, vis).pieces : [];
             }
@@ -564,13 +565,14 @@ export function LookScreen({ tenantId, references, palette, site }: {
       const fd = new FormData();
       fd.append("tenantId", tenantId);
       fd.append("kind", "reference_image");
-      fd.append("file", file);
       try {
+        // Straight to storage, then the key: a server action takes 1 MB at most.
+        fd.append("key", await sendToStorage(tenantId, "asset", file, file.name));
         const r = await uploadAssetChecked(fd);
         if (r.error) setError(r.error);
         else router.refresh();
-      } catch {
-        setError("That file couldn't be used. Use a PNG, JPG or WebP under 5 MB.");
+      } catch (e) {
+        setError(e instanceof UploadFailed ? e.message : "That file couldn't be used. Use a PNG, JPG or WebP under 5 MB.");
       }
     });
   };

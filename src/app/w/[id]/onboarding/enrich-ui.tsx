@@ -20,6 +20,7 @@ import { btnClass } from "@/components/btn";
 import { AgentDots } from "@/components/ui";
 import { DIAL_LABELS, LANGUAGES, type DialKey, type LanguageKey, type LanguageMix, type Proof, type Story } from "@/lib/voice/types";
 import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
+import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 import {
   finishIngestAction, importUrlAction, influencesAction, languagesAction, pairsAction, picksAction, previewAction,
   beliefsAction, proofsAction, storiesAction, suggestionsAction,
@@ -486,13 +487,14 @@ export function BrandImages({ tenantId, logo, headshot }: { tenantId: string; lo
       const fd = new FormData();
       fd.append("tenantId", tenantId);
       fd.append("kind", kind);
-      fd.append("file", file);
       try {
+        // Straight to storage, then the key: a server action takes 1 MB at most.
+        fd.append("key", await sendToStorage(tenantId, "asset", file, file.name));
         const r = await uploadAssetChecked(fd);
         if (r.error) setError(r.error);
         else router.refresh();
-      } catch {
-        setError("That file couldn't be used. Use a PNG, JPG or WebP under 5 MB (SVG works for logos).");
+      } catch (e) {
+        setError(e instanceof UploadFailed ? e.message : "That file couldn't be used. Use a PNG, JPG or WebP under 5 MB (SVG works for logos).");
       }
     });
   };

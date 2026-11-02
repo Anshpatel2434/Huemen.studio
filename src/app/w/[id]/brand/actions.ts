@@ -11,7 +11,8 @@ import { actionScope } from "@/lib/auth/workspace";
 import {
   loadFoundation, saveBriefAnswers, saveFoundation, saveVisualIdentity, type FoundationForm, type VisualIdentity,
 } from "@/lib/data/foundation";
-import { AssetError, uploadAsset, type AssetKind } from "@/lib/data/assets";
+import { AssetError, storeAsset, uploadAsset, type AssetKind } from "@/lib/data/assets";
+import { takeIncoming } from "@/lib/storage/upload";
 import { safeGet } from "@/lib/integrations/web";
 import { extractSiteBrand, type SiteBrand } from "@/lib/visual/core";
 import { generatePillars } from "@/lib/data/pipeline";
@@ -45,9 +46,18 @@ export async function saveFoundationAction(fd: FormData): Promise<void> {
 
 export async function uploadAssetAction(fd: FormData): Promise<void> {
   const { scope } = await ctx(fd);
-  const file = fd.get("file") as File | null;
   const kind = String(fd.get("kind") ?? "reference_image") as AssetKind;
-  if (file && file.size > 0) await uploadAsset(scope, file, kind);
+  // A file sent ahead to storage (lib/upload-client) arrives as its key; a
+  // plain form still posts the file itself, which only works under 1 MB.
+  const key = fd.get("key");
+  if (key) {
+    const bytes = await takeIncoming(scope.tenantId, key, "asset");
+    if (!bytes) throw new AssetError("That upload didn't arrive or has expired. Choose the file again.");
+    await storeAsset(scope, bytes, kind);
+  } else {
+    const file = fd.get("file") as File | null;
+    if (file && file.size > 0) await uploadAsset(scope, file, kind);
+  }
   revalidatePath(`/w/${scope.tenantId}`, "layout");
 }
 

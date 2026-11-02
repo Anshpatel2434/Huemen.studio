@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { ArrowLeft, Info, Upload } from "lucide-react";
+import { ArrowLeft, Info } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { loadFoundation } from "@/lib/data/foundation";
 import { listAssets } from "@/lib/data/assets";
 import { SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { PersistForm } from "@/components/persist";
-import { saveFoundationAction, uploadAssetAction } from "../actions";
+import { saveFoundationAction } from "../actions";
+import { AssetUploadForm } from "@/components/asset-upload-form";
 
 export const metadata = { title: "Edit brief" };
 
@@ -97,16 +98,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
         <section id="assets" className="mt-6 mb-16 border-t border-hairline pt-6 scroll-mt-6">
           <p className="font-medium">Brand assets</p>
           <p className="text-sm text-ink-muted mt-0.5 mb-4">Logos, fonts and reference images. PNG, JPG, WebP, SVG or font files, max 5 MB.</p>
-          <form action={uploadAssetAction} className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="tenantId" value={id} />
-            <input type="file" name="file" required className="text-sm file:mr-3 file:min-h-11 file:rounded-full file:border file:border-line file:bg-transparent file:px-5 file:text-sm file:font-medium file:cursor-pointer hover:file:border-line-strong" />
-            <select name="kind" defaultValue="logo" className="field !w-auto">
-              <option value="logo">Logo</option>
-              <option value="reference_image">Reference image</option>
-              <option value="font">Font</option>
-            </select>
-            <SubmitButton variant="secondary" pendingLabel="Uploading…"><Upload size={14} /> Upload</SubmitButton>
-          </form>
+          <AssetUploadForm tenantId={id} />
           {assets.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-3">
               {assets.map((a) => (

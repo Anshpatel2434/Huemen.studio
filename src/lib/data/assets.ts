@@ -52,10 +52,21 @@ export async function uploadAsset(
   file: File,
   kind: AssetKind,
 ): Promise<void> {
+  await storeAsset(scope, new Uint8Array(await file.arrayBuffer()), kind);
+}
+
+/**
+ * The checks and the save, for bytes from a form or from storage (a direct
+ * upload, lib/storage/upload). Both routes go through here.
+ */
+export async function storeAsset(
+  scope: WorkspaceScope,
+  bytes: Uint8Array,
+  kind: AssetKind,
+): Promise<void> {
   if (!scope.tenantId) throw new Error("no tenant scope");
-  if (file.size === 0) throw new Error("empty file");
-  if (file.size > MAX_BYTES) throw new Error("file too large (max 5MB)");
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength === 0) throw new Error("empty file");
+  if (bytes.byteLength > MAX_BYTES) throw new AssetError("That file is over 5 MB. Export a smaller one.");
   const mime = sniffType(bytes);
   const allowed = ALLOWED[kind];
   if (!mime || (allowed.length && !allowed.includes(mime))) {
@@ -76,7 +87,7 @@ export async function uploadAsset(
        VALUES ($1,$7,$2,$3,$4,$5,$6)`,
       // Brand uploads (logos, fonts, references) belong to the workspace, not a
       // piece (migration 0007), so project_id is NULL like the rest of the brand.
-      [scope.tenantId, kind, key, mime, file.size, scope.userId, null],
+      [scope.tenantId, kind, key, mime, bytes.byteLength, scope.userId, null],
     ),
   );
 }

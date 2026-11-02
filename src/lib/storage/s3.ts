@@ -4,6 +4,9 @@
  * set STORAGE_S3_ENDPOINT for anything that isn't AWS, which switches to
  * path-style addresses (https://endpoint/bucket/key).
  *
+ * Large uploads go browser -> bucket on a presigned PUT (presignPut, see
+ * ./upload), so the bucket needs a CORS rule allowing PUT from APP_URL.
+ *
  * Reads are still served through the app's own signed route (/api/storage,
  * ../index appSignedUrl), not bucket URLs: one place for access checks and
  * safe headers, and images stay same-origin so the visual board can export
@@ -59,6 +62,16 @@ export function s3Driver(cfg: S3Config, appSignedUrl: (key: string, ttl?: number
     async delete(key) {
       const res = await send(urlFor(key), { method: "DELETE" });
       if (!res.ok && res.status !== 404) await fail("delete", res);
+    },
+    async presignPut(key, bytes, mime, ttlSeconds) {
+      // Length and type are signed in: the bucket refuses any other size, so
+      // a link for a 2 MB logo can't be used to park 2 GB in the client's bucket.
+      const signed = await client.sign(`${urlFor(key)}?X-Amz-Expires=${ttlSeconds}`, {
+        method: "PUT",
+        headers: { "Content-Length": String(bytes), "Content-Type": mime },
+        aws: { signQuery: true, allHeaders: true },
+      });
+      return signed.url;
     },
   };
 }

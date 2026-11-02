@@ -36,6 +36,7 @@ import {
   resumeIngestAction, saveSourcesAction, voiceNotesAction, workModeAction,
 } from "./actions";
 import { clearOnboardingDrafts, pendingDrafts, useDraftPrefix, useStepDraft } from "./draft";
+import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 
 /** Back one step: a plain link, so it works mid-save and never loses a draft. */
 export function BackStep({ tenantId, to, label }: { tenantId: string; to: number; label: string }) {
@@ -198,9 +199,13 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
           run: async () => {
             // PDF and Word are read on the server; the words come back like a paste.
             if (/\.(pdf|docx)$/i.test(f.name)) {
-              const body = new FormData();
-              body.append("file", f);
-              const res = await fetch(`/w/${tenantId}/onboarding/extract`, { method: "POST", body });
+              let key: string;
+              try {
+                key = await sendToStorage(tenantId, "document", f, f.name);
+              } catch (e) {
+                return { pieces: [], summary: e instanceof UploadFailed ? e.message : "That file couldn't be sent." };
+              }
+              const res = await fetch(`/w/${tenantId}/onboarding/extract`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, name: f.name }) });
               const out = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
               if (!res.ok || !out.text) return { pieces: [], summary: out.error ?? "That file couldn't be read." };
               return ingestText(out.text, s.channel, vis);

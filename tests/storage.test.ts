@@ -82,6 +82,6 @@ describe("storage round-trip (P0-6/P1-8)", () => {
     if (!ok) return expect(ok).toBe(false);
     const scope = { tenantId: tenant, projectId: project, userId: null, isPlatformAdmin: false };
     const big = new File([new Uint8Array(6 * 1024 * 1024)], "big.png", { type: "image/png" });
-    await expect(uploadAsset(scope, big, "logo")).rejects.toThrow(/too large/);
+    await expect(uploadAsset(scope, big, "logo")).rejects.toThrow(/over 5 MB/);
   });
 });

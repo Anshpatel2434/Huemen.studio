@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Mic, Square } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { AgentDots } from "@/components/ui";
+import { sendToStorage } from "@/lib/upload-client";
 
 const LIMIT_S = 180;
 
@@ -58,9 +59,12 @@ export function VoiceRecorder({ tenantId, enabled, onText }: { tenantId: string;
       try {
         const type = r.mimeType || "audio/webm";
         const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-        const fd = new FormData();
-        fd.append("audio", new File(chunks, `note.${ext}`, { type }));
-        const res = await fetch(`/w/${tenantId}/onboarding/transcribe`, { method: "POST", body: fd });
+        const key = await sendToStorage(tenantId, "audio", new Blob(chunks, { type }), `note.${ext}`);
+        const res = await fetch(`/w/${tenantId}/onboarding/transcribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, name: `note.${ext}`, type }),
+        });
         const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
         if (!res.ok || !body.text) setError(body.error ?? "That didn't work. Try again, or type it.");
         else onText(body.text);
