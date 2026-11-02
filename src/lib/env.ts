@@ -61,6 +61,10 @@ const schema = z.object({
   // Per request. Generation still runs in the request thread (no job queue
   // yet), so this bounds how long a click can hang.
   AI_TEXT_TIMEOUT_MS: z.preprocess(blankIsUnset, z.coerce.number().int().positive().default(120000)),
+  // Short-window limits on model calls (lib/ratelimit), per person and per
+  // workspace, per minute. 0 turns one off. The monthly cap is separate.
+  AI_RATE_PER_USER_MINUTE: z.preprocess(blankIsUnset, z.coerce.number().int().min(0).default(20)),
+  AI_RATE_PER_WORKSPACE_MINUTE: z.preprocess(blankIsUnset, z.coerce.number().int().min(0).default(60)),
   AI_IMAGE_MODEL: z.string().optional(),
   // Speech to text for voice notes. Claude reads text, not audio, so this is a
   // separate provider. "off" means the page offers typing instead of recording.

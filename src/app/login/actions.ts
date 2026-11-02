@@ -6,6 +6,7 @@ import { safeNext, signLink } from "@/lib/auth/tokens";
 import { findAccountByEmail, getAccount, markSignedIn } from "@/lib/data/auth";
 import { getEnv } from "@/lib/env";
 import { sendAuthMail } from "@/lib/mail";
+import { takeHit } from "@/lib/ratelimit";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -38,6 +39,16 @@ export async function signInWithEmail(formData: FormData): Promise<void> {
   if (!a) redirect(`/login?${q({ e: "noinvite", email })}`);
   if (a.status === "disabled" || a.tenantStatus !== "active") redirect(`/auth/disabled?${q({ email })}`);
   if (a.status === "invited") redirect(`/login?${q({ e: "pending", email })}`);
+
+  // Five links per account per quarter hour: enough for a typo'd inbox or a
+  // lost email, not enough to flood someone's mailbox from this form.
+  let allowed = true;
+  try {
+    await takeHit({ tenantId: a.tenantId, userId: a.id }, "signin-email", { perUser: 5, windowSeconds: 15 * 60 });
+  } catch {
+    allowed = false;
+  }
+  if (!allowed) redirect(`/login?${q({ e: "toomany", email })}`);
 
   const token = signLink("signin", a.id, a.lastSeen);
   const link = `${getEnv().APP_URL}/auth/verify?${new URLSearchParams({ token, ...(next !== "/dashboard" ? { next } : {}) })}`;

@@ -38,6 +38,21 @@ export class UsageCapError extends Error {
   }
 }
 
+/**
+ * Too many calls in a short window (lib/ratelimit). Raised before the provider
+ * is reached, like the monthly cap, and over once the window has moved on.
+ */
+export class RateLimitError extends Error {
+  constructor(
+    public readonly bucket: string,
+    public readonly by: "user" | "workspace",
+    public readonly retryAfterSeconds: number,
+  ) {
+    super(`Rate limit (${by}) on ${bucket}: retry in ${retryAfterSeconds}s`);
+    this.name = "RateLimitError";
+  }
+}
+
 export type ProviderErrorKind =
   | "timeout"
   | "rate_limit"
@@ -68,6 +83,12 @@ export class ProviderError extends Error {
  */
 export function userMessage(e: unknown): string {
   if (e instanceof AiConfigError) return "Drafting isn't switched on for this workspace yet. Your admin can turn it on.";
+  if (e instanceof RateLimitError) {
+    const wait = e.retryAfterSeconds > 90 ? `${Math.ceil(e.retryAfterSeconds / 60)} minutes` : "a minute";
+    return e.by === "user"
+      ? `That's a lot in a short time. Give it ${wait} and try again.`
+      : `This workspace is busy right now. Give it ${wait} and try again.`;
+  }
   if (e instanceof UsageCapError) return `This workspace has used its ${e.cap} generations for the month. Your admin can raise the cap in Settings.`;
   if (e instanceof ProviderError) {
     switch (e.kind) {

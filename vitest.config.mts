@@ -6,6 +6,9 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     setupFiles: ["dotenv/config"],
+    // The per-minute AI limits are off for the suite (many fast mock calls);
+    // tests/ratelimit.test.ts checks the limiter with its own rules.
+    env: { AI_RATE_PER_USER_MINUTE: "0", AI_RATE_PER_WORKSPACE_MINUTE: "0" },
   },
   resolve: {
     alias: {

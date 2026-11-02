@@ -18,6 +18,7 @@ const ERRORS: Record<string, string> = {
   noinvite: "There's no account for that address. Workspaces are invite-only, so ask your coach or admin to invite you.",
   pending: "You've been invited but haven't accepted yet. Open the invite link in your email to join, then sign in here.",
   mailfail: "We couldn't send your sign-in email just now. Try again in a minute.",
+  toomany: "We've sent several sign-in links to that address already. Use the newest one, or try again in 15 minutes.",
   provider: "Sign-in links are sent by your identity provider. Check your inbox for the invite.",
   signin: "Sign in to continue. You'll go straight back to where you were.",
 };

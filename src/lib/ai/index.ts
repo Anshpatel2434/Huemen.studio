@@ -25,6 +25,7 @@ import { anthropicTextProvider } from "./providers/anthropic";
 import { openaiTranscriber, type FetchLike, type Transcriber } from "./providers/openai-transcribe";
 import { assemblePrompt } from "./prompt";
 import { AiConfigError, ProviderError, UsageCapError } from "./errors";
+import { takeHit } from "@/lib/ratelimit";
 import type { Env } from "@/lib/env";
 import type { Effort, TextRoute } from "./types";
 import type { TaskDef } from "./tasks";
@@ -163,6 +164,13 @@ const logStatus = (err: unknown): "error" | "timeout" =>
  */
 export async function enforceCap(scope: SessionScope, kind: "text" | "image"): Promise<void> {
   if (!scope.tenantId) return;
+  // The short window first: a burst is refused before the month is counted.
+  const env = getEnv();
+  await takeHit(scope, "ai", {
+    perUser: env.AI_RATE_PER_USER_MINUTE,
+    perTenant: env.AI_RATE_PER_WORKSPACE_MINUTE,
+    windowSeconds: 60,
+  });
   const col = kind === "text" ? "monthly_text_hard" : "monthly_image_hard";
   const row = await withTenantSession(scope, async (c) => {
     const cap = (await c.query<{ hard: number | null }>(`SELECT ${col} AS hard FROM tenant_usage_caps LIMIT 1`)).rows[0];
