@@ -17,6 +17,7 @@ import { GmailImport } from "@/components/gmail-import";
 import {
   importDocsAction, importLinkedInPostsAction, importYouTubeAction, listEventsAction, pickerConfigAction, saveEventsAsIdeasAction,
 } from "./actions";
+import { Select } from "@/components/select";
 
 type Picked = { id: string; name: string; channel: string; published: boolean };
 
@@ -146,14 +147,13 @@ export function CapabilityRun({ tenantId, cap, prompted = false }: { tenantId: s
               {picked.map((f, i) => (
                 <div key={f.id} className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="flex-1 min-w-0 truncate">{f.name}</span>
-                  <select
+                  <Select
                     value={f.channel}
-                    onChange={(e) => setPicked(picked.map((x, j) => (j === i ? { ...x, channel: e.target.value } : x)))}
-                    className="field !w-auto min-h-11"
-                    aria-label={`Where ${f.name} was written for`}
-                  >
-                    {CHANNELS.map((c) => <option key={c} value={c}>{PLATFORM_RULES[c]?.label ?? c}</option>)}
-                  </select>
+                    onChange={(v) => setPicked(picked.map((x, j) => (j === i ? { ...x, channel: v } : x)))}
+                    variant="pill"
+                    label={`Where ${f.name} was written for`}
+                    options={CHANNELS.map((c) => ({ value: c, label: PLATFORM_RULES[c]?.label ?? c }))}
+                  />
                   <label className="flex items-center gap-1.5 min-h-11 text-sm">
                     <input type="checkbox" checked={f.published} onChange={(e) => setPicked(picked.map((x, j) => (j === i ? { ...x, published: e.target.checked } : x)))} />
                     Published

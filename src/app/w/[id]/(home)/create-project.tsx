@@ -10,6 +10,7 @@ import { ArrowRight } from "lucide-react";
 import { Modal, SubmitButton, Field } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { createProjectAction, createFromPromptAction } from "../project-actions";
+import { Select } from "@/components/select";
 
 export const EXAMPLES = [
   "Leadership coach for first-time engineering managers. Direct, warm, a bit contrarian.",
@@ -33,9 +34,7 @@ export function NewProjectModal({ tenantId, projects, mode, onClose }: {
         </Field>
         {mode === "copy" ? (
           <Field label="Copy the brief from" hint="Story, voice and visual identity are copied; pillars and content start fresh." required>
-            <select name="fromProject" className="field" defaultValue={projects[0]?.id}>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <Select name="fromProject" defaultValue={projects[0]?.id} label="Project" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
           </Field>
         ) : (
           <p className="text-sm text-ink-muted">It starts at Ideate. Content and Visual follow, each unlocking the next.</p>

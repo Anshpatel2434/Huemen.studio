@@ -11,6 +11,7 @@ import { coreCardFacts } from "@/lib/voice/core-card";
 import { startPieceAction } from "./actions";
 import { SuggestOthers } from "./suggest-others";
 import { Proposals, ProposalsLoading, Start } from "./proposals";
+import { Select } from "@/components/select";
 
 export const metadata = { title: "Create" };
 
@@ -76,9 +77,7 @@ export default async function CreatePage({ params }: PageProps<"/w/[id]/create">
             <label htmlFor="create-topic" className="sr-only">Topic</label>
             <input id="create-topic" type="text" name="topic" required placeholder="What's it about? A sentence is plenty." />
             <div className="hu-composer__bar">
-              <select name="format" aria-label="Format" defaultValue={format ?? ""} className="shrink-0">
-                {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-              </select>
+              <Select name="format" label="Format" variant="pill" className="shrink-0" defaultValue={format ?? FORMATS[0].key} options={FORMATS.map((f) => ({ value: f.key, label: f.label }))} />
               <span className="flex-1" />
               <button type="submit" className={btnClass("primary")}>Start</button>
             </div>

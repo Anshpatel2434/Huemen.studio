@@ -7,6 +7,7 @@ import { DocPage } from "@/components/doc-page";
 import { EmptyState, SubmitButton } from "@/components/ui";
 import { FORMATS } from "@/lib/content/formats";
 import { archiveIdeaAction, captureIdeaAction, convertIdeaAction, setIdeaPillarAction } from "../actions";
+import { Select } from "@/components/select";
 
 export const metadata = { title: "Ideas" };
 
@@ -41,10 +42,7 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
                 <form action={setIdeaPillarAction} className="flex items-center gap-2">
                   <input type="hidden" name="tenantId" value={id} />
                   <input type="hidden" name="id" value={i.id} />
-                  <select name="pillarId" aria-label="Pillar" defaultValue={i.pillarId ?? ""} className="flex-1 min-w-0">
-                    <option value="">Untagged</option>
-                    {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  <Select name="pillarId" label="Pillar" variant="pill" defaultValue={i.pillarId ?? ""} className="flex-1 min-w-0" options={[{ value: "", label: "Untagged" }, ...pillars.map((p) => ({ value: p.id, label: p.name }))]} />
                   <SubmitButton variant="ghost" size="sm" pendingLabel="…">Tag</SubmitButton>
                 </form>
                 <div className="flex items-center gap-2 border-t border-hairline pt-3">
@@ -56,9 +54,7 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
                   <form action={convertIdeaAction} className="flex items-center gap-2 flex-1 justify-end">
                     <input type="hidden" name="tenantId" value={id} />
                     <input type="hidden" name="id" value={i.id} />
-                    <select name="format" aria-label="Format">
-                      {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                    </select>
+                    <Select name="format" label="Format" variant="pill" options={FORMATS.map((f) => ({ value: f.key, label: f.label }))} />
                     <SubmitButton size="sm" pendingLabel="Starting…">Start a piece <ArrowRight size={13} /></SubmitButton>
                   </form>
                 </div>

@@ -19,6 +19,7 @@ import { FORMATS } from "@/lib/content/formats";
 import type { WorkMode } from "@/lib/voice/types";
 import { coWriteAction, ownDraftAction } from "./actions";
 import { liveDraftHref } from "@/components/live-draft";
+import { Select } from "@/components/select";
 
 const MODES: { key: WorkMode; label: string; sub: string; icon: typeof PenLine }[] = [
   { key: "ghostwrite", label: "Draft it for me", sub: "A full draft in your voice. You edit.", icon: PenLine },
@@ -113,9 +114,7 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
               />
             )}
             <div className="hu-composer__bar">
-              <select value={format} onChange={(e) => setFormat(e.target.value)} aria-label="Format" className="shrink-0">
-                {FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-              </select>
+              <Select value={format} onChange={setFormat} label="Format" variant="pill" className="shrink-0" options={FORMATS.map((f) => ({ value: f.key, label: f.label }))} />
               <span className="flex-1 text-xs text-ink-faint hidden sm:block">{MODES.find((m) => m.key === mode)?.sub}</span>
               <button type="button" disabled={disabled} onClick={go} className={btnClass("primary", "sm")}>
                 {pending ? <><AgentDots /> {mode === "check" ? "Checking" : "Writing"}</> : <>{cta} <ArrowUp size={15} aria-hidden="true" /></>}

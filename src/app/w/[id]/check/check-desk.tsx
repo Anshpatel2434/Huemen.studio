@@ -23,6 +23,7 @@ import type { CheckOutcome } from "@/lib/data/check";
 import type { JudgeResult } from "@/lib/ai/tasks";
 import type { IssueSeverity } from "@/lib/voice/check";
 import { checkAction, judgeAction, rewriteAction } from "./actions";
+import { Select } from "@/components/select";
 
 const BAND = { on_brand: "on", drifting: "drift", off_brand: "off" } as const;
 const SEVERITY: Record<IssueSeverity, Finding["verdict"]> = { error: "off", warning: "drift", note: "drift" };
@@ -139,11 +140,14 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
               placeholder="Paste a draft: one from here, one you wrote yourself, or one someone wrote for you."
             />
             <div className="hu-composer__bar">
-              <select aria-label="Platform" value={platform} onChange={(e) => setPlatform(e.target.value)} className="shrink-0">
-                {Object.values(PLATFORM_RULES).map((p) => (
-                  <option key={p.key} value={p.key}>{p.label}{platforms.includes(p.key) ? "" : " (not set up)"}</option>
-                ))}
-              </select>
+              <Select
+                label="Platform"
+                value={platform}
+                onChange={setPlatform}
+                variant="pill"
+                className="shrink-0"
+                options={Object.values(PLATFORM_RULES).map((p) => ({ value: p.key, label: `${p.label}${platforms.includes(p.key) ? "" : " (not set up)"}` }))}
+              />
               <p className="flex-1 basis-[28ch] flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-faint tabular-nums font-mono">
                 <span>{text.length.toLocaleString()} characters</span>
                 {rule?.maxChars && <span>· limit {rule.maxChars.toLocaleString()}</span>}

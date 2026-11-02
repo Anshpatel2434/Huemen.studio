@@ -26,6 +26,7 @@ import { learningLog } from "@/lib/data/learning";
 import { perceptionMirror } from "@/lib/voice/mirror";
 import { BeliefsEditor } from "../../onboarding/enrich-ui";
 import { LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
+import { Select } from "@/components/select";
 
 export const metadata = { title: "Voice" };
 export const dynamic = "force-dynamic";
@@ -357,14 +358,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               className="field font-[inherit] leading-relaxed"
             />
             <div className="flex items-center gap-2 flex-wrap">
-              <select name="channel" aria-label="Channel">
-                {Object.values(PLATFORM_RULES).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-                <option value="unknown">Not sure</option>
-              </select>
-              <select name="visibility" aria-label="Who can see it" defaultValue="public">
-                <option value="public">Public writing</option>
-                <option value="private">Private (email, chat)</option>
-              </select>
+              <Select name="channel" label="Channel" variant="pill" options={[...Object.values(PLATFORM_RULES).map((p) => ({ value: p.key, label: p.label })), { value: "unknown", label: "Not sure" }]} />
+              <Select name="visibility" label="Who can see it" variant="pill" defaultValue="public" options={[{ value: "public", label: "Public writing" }, { value: "private", label: "Private (email, chat)" }]} />
               <SubmitButton pendingLabel="Measuring…" size="sm">Add and measure</SubmitButton>
               <span className="text-xs text-ink-faint flex items-center gap-1">
                 <Lock size={11} /> Private writing is measured but never quoted in a draft.

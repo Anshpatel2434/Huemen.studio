@@ -12,6 +12,7 @@ import { btnClass } from "@/components/btn";
 import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
 import type { ContentItemView } from "@/lib/data/content";
 import { askRewriteAction, deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
+import { Select } from "@/components/select";
 
 const WIDTH: Record<Device, number> = { desktop: 520, tablet: 440, mobile: 360 };
 const STATUS_TONE = { draft: "neutral", edited: "dark", approved: "ok" } as const;
@@ -184,11 +185,14 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       {items.length > 0 && (
         <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
           <button onClick={() => setDrafting(true)} className={`${btnClass("primary", "sm")} shadow-[var(--shadow)]`}><Plus size={14} /> Draft</button>
-          <select value={pillarFilter} onChange={(e) => setPillarFilter(e.target.value)} aria-label="Pillar" className="shadow-[var(--shadow-sm)]">
-            <option value="all">All pillars</option>
-            {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            <option value="none">No pillar</option>
-          </select>
+          <Select
+            value={pillarFilter}
+            onChange={setPillarFilter}
+            label="Pillar"
+            variant="pill"
+            className="shadow-[var(--shadow-sm)] rounded-full"
+            options={[{ value: "all", label: "All pillars" }, ...pillars.map((p) => ({ value: p.id, label: p.name })), { value: "none", label: "No pillar" }]}
+          />
           {degraded && <span className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-accent-soft text-accent-ink text-xs"><AlertTriangle size={13} /> Thin brief: drafts will read generic</span>}
         </div>
       )}
@@ -319,10 +323,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
           <label className="block"><span className="hu-label !flex mb-2">Call to action</span><input value={cta} onChange={(e) => setCta(e.target.value)} className="field" placeholder="Missing: add one" /></label>
           <label className="block">
             <span className="hu-label !flex mb-2">Pillar</span>
-            <select value={pillarId} onChange={(e) => setPillarId(e.target.value)} className="field">
-              <option value="">No pillar</option>
-              {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <Select value={pillarId} onChange={setPillarId} label="Pillar" options={[{ value: "", label: "No pillar" }, ...pillars.map((p) => ({ value: p.id, label: p.name }))]} />
           </label>
           <div>
             <p className="text-xs font-medium mb-1.5 flex items-center gap-1.5"><Wand2 size={12} /> Regenerate with a steer</p>

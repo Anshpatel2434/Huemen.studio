@@ -7,6 +7,7 @@ import { AgentDots, Choice, Field, Modal, Segmented, useToast } from "@/componen
 import { btnClass } from "@/components/btn";
 import { CALENDAR_CHANNELS, CALENDAR_DAYS, planSlots, todayIso } from "@/lib/content/calendar-plan";
 import { addCalendarEntryAction, generateCalendarAction } from "../actions";
+import { Select } from "@/components/select";
 
 type Pillar = { id: string; name: string };
 
@@ -164,10 +165,7 @@ export function AddSlotButton({ tenantId, date, label, pillars }: { tenantId: st
           </div>
           {pillars.length > 0 && (
             <Field label="Pillar">
-              <select value={pillarId} onChange={(e) => setPillarId(e.target.value)} className="field">
-                <option value="">No pillar</option>
-                {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <Select value={pillarId} onChange={setPillarId} label="Pillar" options={[{ value: "", label: "No pillar" }, ...pillars.map((p) => ({ value: p.id, label: p.name }))]} />
             </Field>
           )}
         </div>

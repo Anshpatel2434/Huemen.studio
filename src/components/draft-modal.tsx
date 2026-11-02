@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { FORMATS } from "@/lib/content/formats";
 import { liveDraftHref } from "@/components/live-draft";
+import { Select } from "@/components/select";
 
 /** Pick format → optional topic → pillar; context is injected server-side (§4.2). */
 export function DraftModal({
@@ -43,10 +44,7 @@ export function DraftModal({
         {pillars.length > 0 && (
           <label className="block">
             <span className="hu-label !flex mb-2">Pillar</span>
-            <select value={pillar} onChange={(e) => setPillar(e.target.value)} className="field">
-              <option value="">No pillar</option>
-              {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <Select value={pillar} onChange={setPillar} label="Pillar" options={[{ value: "", label: "No pillar" }, ...pillars.map((p) => ({ value: p.id, label: p.name }))]} />
           </label>
         )}
         <p className="text-xs text-ink-muted">No brand context to type: voice, story and guardrails come from the brief. You&apos;ll watch two variants being written on the canvas.</p>
