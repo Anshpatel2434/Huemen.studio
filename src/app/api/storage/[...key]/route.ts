@@ -21,10 +21,20 @@ export async function GET(
   const obj = await storage().get(key);
   if (!obj) return new Response("Not found", { status: 404 });
 
+  // Locked down whatever the file is: the browser may not guess another type,
+  // and a file opened on its own (an SVG, say) can run nothing and load
+  // nothing. Anything that isn't an image or a font is downloaded, not shown.
+  const shown = /^(image\/(png|jpeg|webp|gif|svg\+xml)|font\/)/.test(obj.mime);
+  const name = key.split("/").pop() ?? "file";
   return new Response(obj.data as BodyInit, {
     headers: {
       "Content-Type": obj.mime,
       "Cache-Control": "private, max-age=60",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+      "Content-Disposition": `${shown ? "inline" : "attachment"}; filename="${name.replace(/[^\w.-]/g, "_")}"`,
+      // No Cross-Origin-Resource-Policy: links are built from APP_URL, and a
+      // preview deployment's own address differs from it. The token gates access.
     },
   });
 }

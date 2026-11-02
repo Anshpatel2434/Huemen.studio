@@ -1,9 +1,12 @@
 /**
- * Asset uploads (brief §4.1, §07). Type + size validated; stored under a
- * tenant-prefixed key; served via short-lived signed URLs (INV-1).
+ * Asset uploads (brief §4.1, §07). The type is read from the file's own bytes
+ * (lib/storage/sniff), never the name or what the browser claims, and stored
+ * as detected; SVGs with any active content are refused. Size-limited, stored
+ * under a tenant-prefixed key, served via short-lived signed URLs (INV-1) with
+ * locked-down headers (api/storage).
  *
- * NOTE: image re-encoding (§07) is deferred to the security pass (P4-1) — add a
- * sharp re-encode step in `uploadAsset` before persisting.
+ * Not done: re-encoding images (it would also strip metadata). It needs an
+ * image library (sharp); add it here before persisting if that is wanted.
  *
  * Server-only.
  */
@@ -12,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
 import { storage, tenantKey } from "@/lib/storage";
+import { sniffType, svgProblem } from "@/lib/storage/sniff";
 
 export type AssetKind = "logo" | "reference_image" | "headshot" | "font" | "other";
 
@@ -30,6 +34,19 @@ const EXT: Record<string, string> = {
   "font/ttf": "ttf", "font/otf": "otf",
 };
 
+/** A refused upload, worded for the person who chose the file. */
+export class AssetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AssetError";
+  }
+}
+
+const describe = (types: string[]) => {
+  const names = [...new Set(types.map((t) => ({ "image/svg+xml": "SVG", "application/font-woff": "WOFF" })[t] ?? t.split("/")[1].toUpperCase()))];
+  return names.length ? `a ${names.slice(0, -1).join(", ")}${names.length > 1 ? " or " : ""}${names.at(-1)} file` : "a different file";
+};
+
 export async function uploadAsset(
   scope: WorkspaceScope,
   file: File,
@@ -38,15 +55,20 @@ export async function uploadAsset(
   if (!scope.tenantId) throw new Error("no tenant scope");
   if (file.size === 0) throw new Error("empty file");
   if (file.size > MAX_BYTES) throw new Error("file too large (max 5MB)");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = sniffType(bytes);
   const allowed = ALLOWED[kind];
-  if (allowed.length && !allowed.includes(file.type)) {
-    throw new Error(`unsupported type ${file.type} for ${kind}`);
+  if (!mime || (allowed.length && !allowed.includes(mime))) {
+    throw new AssetError(`That file isn't one we can use here. Upload ${describe(allowed)}.`);
+  }
+  if (mime === "image/svg+xml") {
+    const why = svgProblem(bytes);
+    if (why) throw new AssetError(`That SVG can't be used: ${why}. Export it again as a plain SVG, or upload a PNG.`);
   }
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const ext = EXT[file.type] ?? "bin";
+  const ext = EXT[mime] ?? "bin";
   const key = tenantKey(scope.tenantId, "assets", `${randomUUID()}.${ext}`);
-  await storage().put(key, bytes, file.type);
+  await storage().put(key, bytes, mime);
 
   await withTenantSession(scope, (c) =>
     c.query(
@@ -54,7 +76,7 @@ export async function uploadAsset(
        VALUES ($1,$7,$2,$3,$4,$5,$6)`,
       // Brand uploads (logos, fonts, references) belong to the workspace, not a
       // piece (migration 0007), so project_id is NULL like the rest of the brand.
-      [scope.tenantId, kind, key, file.type, file.size, scope.userId, null],
+      [scope.tenantId, kind, key, mime, file.size, scope.userId, null],
     ),
   );
 }

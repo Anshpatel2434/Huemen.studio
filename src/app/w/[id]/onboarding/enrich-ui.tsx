@@ -19,7 +19,7 @@ import { ArrowRight, Check, ImagePlus, Link2, Plus, RefreshCw, Sparkles, X } fro
 import { btnClass } from "@/components/btn";
 import { AgentDots } from "@/components/ui";
 import { DIAL_LABELS, LANGUAGES, type DialKey, type LanguageKey, type LanguageMix, type Proof, type Story } from "@/lib/voice/types";
-import { uploadAssetAction } from "@/app/w/[id]/brand/actions";
+import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import {
   finishIngestAction, importUrlAction, influencesAction, languagesAction, pairsAction, picksAction, previewAction,
   beliefsAction, proofsAction, storiesAction, suggestionsAction,
@@ -488,8 +488,9 @@ export function BrandImages({ tenantId, logo, headshot }: { tenantId: string; lo
       fd.append("kind", kind);
       fd.append("file", file);
       try {
-        await uploadAssetAction(fd);
-        router.refresh();
+        const r = await uploadAssetChecked(fd);
+        if (r.error) setError(r.error);
+        else router.refresh();
       } catch {
         setError("That file couldn't be used. Use a PNG, JPG or WebP under 5 MB (SVG works for logos).");
       }

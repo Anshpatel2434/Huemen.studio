@@ -11,7 +11,7 @@ import { actionScope } from "@/lib/auth/workspace";
 import {
   loadFoundation, saveBriefAnswers, saveFoundation, saveVisualIdentity, type FoundationForm, type VisualIdentity,
 } from "@/lib/data/foundation";
-import { uploadAsset, type AssetKind } from "@/lib/data/assets";
+import { AssetError, uploadAsset, type AssetKind } from "@/lib/data/assets";
 import { safeGet } from "@/lib/integrations/web";
 import { extractSiteBrand, type SiteBrand } from "@/lib/visual/core";
 import { generatePillars } from "@/lib/data/pipeline";
@@ -49,6 +49,21 @@ export async function uploadAssetAction(fd: FormData): Promise<void> {
   const kind = String(fd.get("kind") ?? "reference_image") as AssetKind;
   if (file && file.size > 0) await uploadAsset(scope, file, kind);
   revalidatePath(`/w/${scope.tenantId}`, "layout");
+}
+
+/**
+ * The same upload for client components, with a refusal returned as a message
+ * they can show ("That SVG can't be used: it contains a script..."). A thrown
+ * error's message never reaches the browser in production.
+ */
+export async function uploadAssetChecked(fd: FormData): Promise<{ error?: string }> {
+  try {
+    await uploadAssetAction(fd);
+    return {};
+  } catch (e) {
+    if (e instanceof AssetError) return { error: e.message };
+    throw e;
+  }
 }
 
 /** Intake: labelled notes → brief fields (only non-empty values overwrite). */

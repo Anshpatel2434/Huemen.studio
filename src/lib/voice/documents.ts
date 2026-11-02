@@ -7,6 +7,7 @@
  */
 import "server-only";
 import { unzipSync, strFromU8 } from "fflate";
+import { sniffType } from "@/lib/storage/sniff";
 
 export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -51,6 +52,11 @@ export async function pdfText(bytes: Uint8Array): Promise<string> {
 export async function documentText(name: string, bytes: Uint8Array): Promise<string> {
   if (bytes.byteLength > DOCUMENT_MAX_BYTES) throw new Error("That file is over 10 MB. Split it, or paste the text.");
   const ext = name.toLowerCase().split(".").pop();
+  // The name says what it should be; the first bytes say what it is.
+  const real = sniffType(bytes);
+  if ((ext === "pdf" && real !== "application/pdf") || (ext === "docx" && real !== "application/zip")) {
+    throw new Error(`That file is named .${ext} but isn't one. Save it again as a real ${ext === "pdf" ? "PDF" : "Word document"}, or paste the text.`);
+  }
   const text = ext === "pdf" ? await pdfText(bytes) : ext === "docx" ? docxText(bytes) : null;
   if (text === null) throw new Error("Only PDF and Word (.docx) files are read here.");
   if (!text.trim()) throw new Error(ext === "pdf" ? "No text found. A scanned PDF is an image; paste the text instead." : "No text found in that document.");

@@ -22,7 +22,7 @@ import { ingestLinkedIn, ingestText, splitPieces, stripEmail, type IngestedPiece
 import { WORDS, MIN_PICKS, MAX_PICKS } from "@/lib/voice/words";
 import { MAX_REFERENCES } from "@/lib/visual/core";
 import { SCREENS, type ScreenKey } from "@/lib/onboarding/screens";
-import { uploadAssetAction } from "@/app/w/[id]/brand/actions";
+import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import {
   advanceAction, audienceAction, finishIngestAction, finishOnboardingAction, firstPieceAction, ingestAction, lookAction,
   markIngestingAction, nameAction, saveSourcesAction, siteAction, siteProfileAction, voiceNotesAction, wordsAction,
@@ -566,8 +566,9 @@ export function LookScreen({ tenantId, references, palette, site }: {
       fd.append("kind", "reference_image");
       fd.append("file", file);
       try {
-        await uploadAssetAction(fd);
-        router.refresh();
+        const r = await uploadAssetChecked(fd);
+        if (r.error) setError(r.error);
+        else router.refresh();
       } catch {
         setError("That file couldn't be used. Use a PNG, JPG or WebP under 5 MB.");
       }

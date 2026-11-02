@@ -314,7 +314,7 @@ describe("enrichment in the database", () => {
     const png = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], "me.png", { type: "image/png" });
     await uploadAsset(W, png, "headshot");
     expect((await listAssets(W)).some((a) => a.kind === "headshot")).toBe(true);
-    await expect(uploadAsset(W, new File(["x"], "me.svg", { type: "image/svg+xml" }), "headshot")).rejects.toThrow(/unsupported/);
+    await expect(uploadAsset(W, new File(["x"], "me.svg", { type: "image/svg+xml" }), "headshot")).rejects.toThrow(/isn't one we can use/);
   });
 });
 

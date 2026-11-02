@@ -50,7 +50,7 @@ describe("storage round-trip (P0-6/P1-8)", () => {
   it("stores under a tenant-prefixed key and reads back via signed URL", async () => {
     if (!ok) return expect(ok).toBe(false);
     const scope = { tenantId: tenant, projectId: project, userId: null, isPlatformAdmin: false };
-    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG magic
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]); // the full PNG signature: the type is read from the bytes
     const file = new File([bytes], "logo.png", { type: "image/png" });
 
     await uploadAsset(scope, file, "logo");
@@ -69,6 +69,13 @@ describe("storage round-trip (P0-6/P1-8)", () => {
     const obj = await storage().get(key);
     expect(obj?.mime).toBe("image/png");
     await storage().delete(key);
+  });
+
+  it("refuses a page disguised as a PNG (name and claimed type are the uploader's to choose)", async () => {
+    if (!ok) return expect(ok).toBe(false);
+    const scope = { tenantId: tenant, projectId: project, userId: null, isPlatformAdmin: false };
+    const fake = new File([new TextEncoder().encode("<html><script>steal()</script></html>")], "logo.png", { type: "image/png" });
+    await expect(uploadAsset(scope, fake, "logo")).rejects.toThrow(/isn't one we can use/);
   });
 
   it("rejects an oversized file", async () => {
