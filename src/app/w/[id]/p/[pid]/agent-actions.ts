@@ -22,6 +22,8 @@ export interface AgentReply {
   tasks: { label: string; detail?: string; href?: string }[];
   /** Not a command: the panel asks the agent stream instead (lib/agent-ui), which answers in cards. */
   stream?: boolean;
+  /** A draft to write live on the Content canvas (components/live-draft), beside the panel. */
+  liveDraft?: { format: string; topic: string; pillarId: string | null };
 }
 
 const FORMAT_WORDS: [RegExp, string][] = [
@@ -100,22 +102,29 @@ export async function runAgentAction(tenantId: string, projectId: string, raw: u
   const scope = await actionProjectScope(tenantId, projectId);
   const base = `/w/${tenantId}/p/${projectId}`;
 
+  // The draft itself is written live on the Content canvas, beside the panel
+  // (components/live-draft, through content/stream, which saves and scores it).
+  // Here: the step gate, the Content step opened, and the pillar named by the
+  // card turned into this workspace's pillar.
   if (action.type === "draft_piece") {
     const pillars = await listPillars(scope);
     if (pillars.length === 0) {
       return { text: "There are no pillars yet. Generate them first and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
     }
+    try {
+      await unlockStage(scope, "content");
+    } catch {
+      return { text: "This project isn't ready to draft yet. Say what it's about in Ideate first.", tasks: [{ label: "Open Ideate", href: `${base}/ideate` }] };
+    }
     const { format, topic } = action.params;
     const want = action.params.pillar?.toLowerCase();
     const pillar = want ? pillars.find((p) => p.name.toLowerCase() === want) : undefined;
     const label = FORMATS.find((f) => f.key === format)!.label;
-    const id = await generateContent(scope, { format, topic, pillarId: pillar?.id ?? null });
-    await scoreProject(scope).catch(() => undefined);
-    await unlockStage(scope, "content");
     revalidatePath(base, "layout");
     return {
-      text: `Drafted “${topic}”${pillar ? ` under ${pillar.name}` : ""}.`,
-      tasks: [{ label: `${label} drafted`, detail: "2 variants saved to history", href: `${base}/content?item=${id}` }],
+      text: `Writing “${topic}” on the canvas, in your voice${pillar ? `, under ${pillar.name}` : ""}.`,
+      tasks: [{ label: `${label}, two versions`, detail: "Saved to the project when it finishes" }],
+      liveDraft: { format, topic, pillarId: pillar?.id ?? null },
     };
   }
 

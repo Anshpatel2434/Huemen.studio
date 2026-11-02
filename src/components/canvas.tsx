@@ -45,10 +45,18 @@ export function Canvas({
     const gutter = narrow ? 24 : 80;
     const sw = narrow && first ? first.offsetWidth : s.scrollWidth;
     const sh = narrow && first ? first.offsetHeight : s.scrollHeight;
-    const z = Math.min(1, (w.clientWidth - gutter) / sw, (w.clientHeight - (narrow ? 96 : 120)) / sh);
+    // Boards float their own controls over the top-left (the Content step's
+    // Draft button and pillar filter: 12px inset + a 44px control), and the
+    // tool strip over the bottom. Below a 900px WINDOW (not canvas: a laptop
+    // canvas between two panels is narrower than that) the step panel's
+    // "Details" button also floats top-right, down to 112px
+    // (components/step-panel). Fitted content starts below them and ends above
+    // the strip, so nothing sits under a control.
+    const top = window.innerWidth < 900 ? 124 : 72, bottom = 72;
+    const z = Math.min(1, (w.clientWidth - gutter) / sw, (w.clientHeight - top - bottom) / sh);
     const zz = Math.max(narrow ? 0.35 : 0.2, Math.round(z * 100) / 100);
     setZoom(zz);
-    setPan({ x: Math.max(narrow ? 12 : 40, (w.clientWidth - sw * zz) / 2), y: narrow ? 24 : 48 });
+    setPan({ x: Math.max(narrow ? 12 : 40, (w.clientWidth - sw * zz) / 2), y: top });
   }, []);
 
   useLayoutEffect(() => {

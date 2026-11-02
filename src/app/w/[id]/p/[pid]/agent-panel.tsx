@@ -15,6 +15,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { ArrowUp, Check } from "lucide-react";
 import { Renderer, type ActionEvent } from "@openuidev/react-lang";
 import { AgentDots } from "@/components/ui";
+import { liveDraftHref } from "@/components/live-draft";
 import { agentLibrary } from "@/lib/agent-ui/library";
 import { PAGES } from "@/lib/agent-ui/spec";
 import { parseAgentAction } from "@/lib/agent-ui/actions";
@@ -125,7 +126,9 @@ export function AgentPanel({ workspaceId, projectId, degraded, completeness }: {
       try {
         const r = await runAgentAction(workspaceId, projectId, action);
         setMsgs((m) => [...m, { role: "agent", text: r.text, tasks: r.tasks }]);
-        router.refresh();
+        // A draft is written live on the Content canvas, beside this panel.
+        if (r.liveDraft) router.push(liveDraftHref(base, r.liveDraft));
+        else router.refresh();
       } catch {
         setMsgs((m) => [...m, { role: "agent", text: "That didn't go through. Press it again in a moment." }]);
       }

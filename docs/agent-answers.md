@@ -23,6 +23,12 @@ a checklist with a link to fix each gap.
    ("Draft this" drafts, "Open" opens a page); the model only fills in props.
    Writes go to `runAgentAction`, which validates the action again
    (`src/lib/agent-ui/actions.ts`) before anything runs.
+5. **Drafts are written live on the canvas.** A Draft button does not write
+   off-screen: `runAgentAction` checks the step gate, opens the Content step
+   and resolves the pillar, then the panel opens the live-draft link
+   (`liveDraftHref`, `src/components/live-draft.tsx`). The canvas streams both
+   versions beside the conversation, which stays open, then saves, scores and
+   opens the piece, the same path as the Content step's own Draft button.
 
 ## Files
 
