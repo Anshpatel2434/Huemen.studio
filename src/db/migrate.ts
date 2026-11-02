@@ -30,14 +30,37 @@ async function bootstrapRuntimeRole(pool: Pool) {
   const exists = await pool.query(
     "SELECT 1 FROM pg_roles WHERE rolname = 'huemen_app'",
   );
+  // Managed Postgres (Supabase, RDS, Neon) gives the owner CREATEROLE but not
+  // superuser, and only a superuser may name SUPERUSER/BYPASSRLS in ALTER ROLE,
+  // even to switch them off. A new role has both off by default, so they are
+  // only spelled out where the connection is allowed to; the check below
+  // proves the result either way.
+  const isSuper = (
+    await pool.query<{ s: boolean }>("SELECT rolsuper AS s FROM pg_roles WHERE rolname = current_user")
+  ).rows[0]?.s;
+  const attrs = isSuper ? "NOSUPERUSER NOBYPASSRLS " : "";
   // Build the DDL server-side with %L so the password is safely escaped.
   const ddlRes = await pool.query<{ sql: string }>(
     exists.rowCount
-      ? `SELECT format('ALTER ROLE huemen_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD %L', $1::text) AS sql`
-      : `SELECT format('CREATE ROLE huemen_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD %L', $1::text) AS sql`,
+      ? `SELECT format('ALTER ROLE huemen_app WITH LOGIN ${attrs}PASSWORD %L', $1::text) AS sql`
+      : `SELECT format('CREATE ROLE huemen_app LOGIN ${attrs}NOCREATEDB NOCREATEROLE PASSWORD %L', $1::text) AS sql`,
     [appPassword],
   );
   await pool.query(ddlRes.rows[0].sql);
+
+  // INV-1 rests on this: a role that is superuser or BYPASSRLS skips every
+  // policy. Refuse to go on rather than serve requests through it.
+  const role = (
+    await pool.query<{ rolsuper: boolean; rolbypassrls: boolean }>(
+      "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'huemen_app'",
+    )
+  ).rows[0];
+  if (role.rolsuper || role.rolbypassrls) {
+    throw new Error(
+      "huemen_app is a superuser or has BYPASSRLS, so row-level security would not apply to it. " +
+        "Remove those attributes (as a superuser) before running migrations again.",
+    );
+  }
 
   await pool.query("GRANT USAGE ON SCHEMA public TO huemen_app");
   // Auto-grant CRUD on every table/sequence created later by the owner role.

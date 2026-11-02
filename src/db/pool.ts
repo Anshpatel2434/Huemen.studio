@@ -30,7 +30,7 @@ export function appPool(): Pool {
   if (!_appPool) {
     _appPool = new Pool({
       connectionString: getEnv().DATABASE_URL,
-      max: 10,
+      max: getEnv().DATABASE_POOL_MAX,
       idleTimeoutMillis: 30_000,
     });
     _appPool.on("error", onIdleError);

@@ -21,6 +21,10 @@ const schema = z.object({
   // Database — runtime (RLS-enforced, non-owner) + admin (migrations only).
   DATABASE_URL: z.string().min(1),
   DATABASE_ADMIN_URL: z.string().min(1),
+  // Connections each server instance may hold. 10 suits one long-running
+  // server; on Vercel every function instance has its own pool, so keep it at
+  // 1 to 3 there and point DATABASE_URL at a pooler (Supabase :6543).
+  DATABASE_POOL_MAX: z.preprocess(blankIsUnset, z.coerce.number().int().min(1).max(50).default(10)),
   DATABASE_APP_PASSWORD: z.string().min(1),
 
   // Auth. "dev": one-click sign-in for seeded accounts and links shown on screen.
