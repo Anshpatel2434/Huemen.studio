@@ -11,6 +11,7 @@
  */
 import "server-only";
 import { getEnv } from "@/lib/env";
+import { log } from "@/lib/log";
 
 export interface AuthMail {
   to: string;
@@ -70,7 +71,7 @@ export async function sendAuthMail(m: AuthMail, fetchImpl: FetchLike = fetch): P
   }
   if (!res.ok) {
     // The provider's reason goes to the log; the person gets a plain message.
-    console.error(`[mail:resend] ${res.status} ${(await res.text().catch(() => "")).slice(0, 300)}`);
+    log.error("mail.send", new Error(`resend returned ${res.status}`), { provider: "resend", status: res.status, detail: (await res.text().catch(() => "")).slice(0, 300) });
     throw new MailError("We couldn't send the email just now. Try again in a minute.");
   }
   return { delivered: true };

@@ -101,6 +101,12 @@ const schema = z.object({
   // (r_member_social). Leave false until LinkedIn has granted it.
   LINKEDIN_POSTS_APPROVED: z.preprocess(blankIsUnset, z.enum(["true", "false"]).default("false").transform((v) => v === "true")),
 
+  // Operations logging (§05). LOG_LEVEL sets the floor; production emits one
+  // JSON line per event. ERROR_WEBHOOK_URL is where errors are posted when the
+  // deployment has an error tracker — left unset, errors are logged only.
+  LOG_LEVEL: z.preprocess(blankIsUnset, z.enum(["debug", "info", "warn", "error"]).default("info")),
+  ERROR_WEBHOOK_URL: z.preprocess(blankIsUnset, z.string().url().optional()),
+
   // Hides the "Mock AI" badge so a demo reads cleanly. The copy is still
   // sample copy, so production refuses it — see configProblems. Accepts 1/0
   // as well as true/false: it was read straight off process.env as "1" before

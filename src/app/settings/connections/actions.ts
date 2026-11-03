@@ -23,6 +23,7 @@ import {
 import { importPosts } from "@/lib/integrations/linkedin";
 import { ConnectionError } from "@/lib/integrations/oauth";
 import { hasCapability, type CapabilityKey, type ProviderKey } from "@/lib/integrations/providers";
+import { reportError } from "@/lib/log";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -59,7 +60,7 @@ async function guarded<T>(tenantId: string, provider: ProviderKey, cap: Capabili
     return { ok: true, value };
   } catch (e) {
     const error = e instanceof Refusal ? e.message : say(e);
-    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) console.error("[connections]", cap, e);
+    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) void reportError("connection.run", e, { capability: cap });
     await recordSync(scope, provider, cap, { count: 0, error }).catch(() => undefined);
     revalidatePath("/settings/connections");
     return { ok: false, error };
@@ -117,7 +118,7 @@ export async function gmailPageAction(tenantId: string, cursor: GmailCursor): Pr
       },
     };
   } catch (e) {
-    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) console.error("[connections] gmail page", e);
+    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) void reportError("connection.gmail_page", e);
     return { ok: false, error: e instanceof Refusal ? e.message : say(e) };
   }
 }

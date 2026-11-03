@@ -15,6 +15,7 @@ import type { Role } from "@/lib/auth/types";
 import { signLink } from "@/lib/auth/tokens";
 import { getEnv } from "@/lib/env";
 import { sendAuthMail } from "@/lib/mail";
+import { reportError } from "@/lib/log";
 
 export async function createWorkspaceAction(formData: FormData) {
   const session = await requireSession();
@@ -41,7 +42,7 @@ export async function inviteUserAction(formData: FormData) {
         link: `${getEnv().APP_URL}/invite/${signLink("invite", invited.userId, "invited")}`,
         lines: [`You've been invited to ${invited.workspace} on Huemen.studio.`, "Accept the invite to set up your account. The link works for 7 days."],
         action: "Accept the invite",
-      }).catch((e) => console.error(`[invite] email to ${email} not sent: ${e instanceof Error ? e.message : e}`));
+      }).catch((e) => reportError("mail.invite", e, { tenantId }));
     }
   }
   revalidatePath("/settings/workspaces");
