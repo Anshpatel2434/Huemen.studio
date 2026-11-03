@@ -139,6 +139,7 @@ export function packToContextInput(
     neverWords: pack.index.neverWords?.length
       ? pack.index.neverWords
       : (pack.redPen.neverList?.value ?? []),
+    preferredWords: pack.mechanics.lexicon?.value ?? [],
     mustHaves: (pack.redPen.mustHaves?.value ?? pack.index.mustHaves ?? []).map(mustHaveLabel),
     mechanicsLines: mechanicsLines(pack),
     context: ctx ? { channel: ctx.channel, tag: ctx.tag, lines: contextLines(ctx) } : null,

@@ -11,6 +11,20 @@ const foundation: FoundationForm = {
   imageStyleNotes: "Natural light, no stock handshakes.",
 };
 
+const input = {
+  brandName: "Demo Brand",
+  foundation,
+  pillars: [{ id: "p1", name: "Contrarian takes", description: "Where I disagree", contentCount: 1, ideaCount: 0, calendarCount: 1, formats: ["linkedin_post"] }],
+  content: [{
+    id: "c1", format: "linkedin_post", channel: "linkedin", topic: "Hiring", hook: "Hook line", body: "Body copy", cta: "Comment below",
+    status: "approved", pillarId: "p1", pillarName: "Contrarian takes", violations: [], history: [], promptVersion: 1, createdAt: "2026-09-23T00:00:00Z",
+  } as never],
+  calendar: [{ id: "e1", date: "2026-10-01", pillarId: "p1", pillarName: "Contrarian takes", channel: "linkedin", topic: "Hiring", hookAngle: "A story", cta: "Comment", contentItemId: null } as never],
+  offers: [{ id: "o1", name: "Cohort", format: "6 weeks", promise: "Judgement training", deliverables: ["Six sessions"], pricingLogic: "Per seat", createdAt: "2026-09-23T00:00:00Z" } as never],
+  generatedAt: new Date("2026-09-23T00:00:00Z"),
+  scopeLabel: "Approved pieces only",
+};
+
 describe("pdf export", () => {
   it("renders a PDF with the brief, pillars, offers, calendar and content", async () => {
     const buf = await buildPdf({
@@ -31,5 +45,32 @@ describe("pdf export", () => {
     const text = buf.toString("latin1");
     expect(text).toContain("/Type /Page");
     expect(buf.subarray(-10).toString()).toContain("%%EOF");
+  }, 60_000);
+
+  // §4.7: a workspace's own accent reaches its export, so a brief looks like
+  // the workspace it came from. Compared as bytes because the colour ends up
+  // inside a Flate-compressed content stream, where it cannot be grepped for.
+  // Every PDF carries a random trailer /ID, so that one field is normalised
+  // away first — the test below pins that nothing else varies between runs.
+  const body = (buf: Buffer) => buf.toString("latin1").replace(/\/ID \[[^\]]*\]/, "");
+
+  it("renders differently once the workspace sets an accent (§4.7)", async () => {
+    const [house, own] = await Promise.all([
+      buildPdf({ ...input, accent: null }),
+      buildPdf({ ...input, accent: "#1d4ed8" }),
+    ]);
+    expect(house.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(own.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(body(own)).not.toBe(body(house));
+  }, 60_000);
+
+  // Without this the comparison above would pass on nothing more than PDF
+  // nondeterminism, rather than on the accent being used.
+  it("is otherwise byte-identical across runs", async () => {
+    const [a, b] = await Promise.all([
+      buildPdf({ ...input, accent: null }),
+      buildPdf({ ...input, accent: null }),
+    ]);
+    expect(body(a)).toBe(body(b));
   }, 60_000);
 });

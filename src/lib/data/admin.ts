@@ -20,6 +20,20 @@ export interface WorkspaceRow {
   status: string;
   user_count: number;
   created_at: string;
+  /** The workspace's own accent colour (§4.7), or null for the house one. */
+  accent: string | null;
+}
+
+/**
+ * A workspace's accent must be a hex colour: it is written into a CSS variable
+ * and into the PDF export, so anything else would either do nothing or break
+ * the stylesheet. Returns the normalised value, or null to clear it.
+ */
+export function parseAccent(raw: string): string | null {
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (!/^#[0-9a-f]{6}$/.test(v)) throw new Error("An accent must be a hex colour, like #FF3429.");
+  return v;
 }
 
 function scopeOf(session: Session): SessionScope {
@@ -48,7 +62,7 @@ export async function listWorkspaces(session: Session): Promise<WorkspaceRow[]> 
       c.query<WorkspaceRow>(
         `SELECT t.id, t.name, t.status,
                 (SELECT count(*)::int FROM users u WHERE u.tenant_id = t.id) AS user_count,
-                t.created_at
+                t.created_at, t.branding->>'accent' AS accent
            FROM tenants t ORDER BY t.created_at DESC`,
       ),
     )
@@ -245,4 +259,23 @@ export async function setWorkspaceStatus(
   // next sign-in: the cookie carries the tenant claim RLS keys on.
   if (status === "archived") await bumpSessionVersionsForTenant(tenantId);
   await audit(scope, tenantId, "workspace.status", { status });
+}
+
+/**
+ * Set (or clear) a workspace's accent colour. The chrome already read
+ * `branding.accent`; until this existed nothing could write it, so §4.7's
+ * white-label was readable but not settable outside the seed. Merged into the
+ * branding JSON rather than replacing it, so later keys survive.
+ */
+export async function setWorkspaceAccent(session: Session, tenantId: string, accent: string | null): Promise<void> {
+  const scope = scopeOf(session);
+  await withTenantSession(scope, (c) =>
+    c.query(
+      accent
+        ? "UPDATE tenants SET branding = coalesce(branding,'{}'::jsonb) || jsonb_build_object('accent', $1::text) WHERE id=$2"
+        : "UPDATE tenants SET branding = coalesce(branding,'{}'::jsonb) - 'accent' WHERE id=$1",
+      accent ? [accent, tenantId] : [tenantId],
+    ),
+  );
+  await audit(scope, tenantId, "workspace.accent", { accent });
 }

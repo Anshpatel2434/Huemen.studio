@@ -44,6 +44,9 @@ export async function GET(req: Request, ctx: RouteContext<"/w/[id]/p/[pid]/expor
     offers,
     generatedAt: new Date(),
     scopeLabel: onlyApproved ? "Approved pieces only" : "Every piece, including drafts",
+    // The workspace's own accent (§4.7), so an export looks like the rest of
+    // their workspace rather than like everyone else's.
+    accent: typeof workspace?.branding?.accent === "string" ? workspace.branding.accent : null,
   });
   const file = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "brand"}-brief.pdf`;
   return new Response(new Uint8Array(pdf), {

@@ -11,7 +11,7 @@ import { listMembers } from "@/lib/data/auth";
 import { getEnv } from "@/lib/env";
 import { Badge, SubmitButton } from "@/components/ui";
 import { CopyField } from "./copy-field";
-import { assignCoachAction, createWorkspaceAction, inviteUserAction, setCapsAction, setStatusAction } from "./actions";
+import { assignCoachAction, createWorkspaceAction, inviteUserAction, setAccentAction, setCapsAction, setStatusAction } from "./actions";
 
 function CapField({ name, label, value }: { name: string; label: string; value: number | null | undefined }) {
   return (
@@ -124,6 +124,22 @@ export default async function WorkspacesAdminPage() {
                   <SubmitButton variant="secondary" size="sm" pendingLabel="…">Save caps</SubmitButton>
                 </div>
                 <p className="text-xs text-ink-faint mt-2">Warn turns the usage meter amber. Stop refuses further generations until the month resets, with a message saying who can raise it. Leave a field empty for no limit. Changes are audited.</p>
+              </form>
+              <form action={setAccentAction} className="border-t border-hairline pt-3">
+                <input type="hidden" name="tenantId" value={w.id} />
+                <p className="text-xs text-ink-muted">Accent colour</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    name="accent"
+                    type="color"
+                    defaultValue={w.accent ?? "#ff3429"}
+                    aria-label={`Accent colour for ${w.name}`}
+                    className="h-9 w-12 shrink-0 rounded-sm border border-hairline bg-paper p-1 cursor-pointer"
+                  />
+                  <SubmitButton variant="secondary" size="sm" pendingLabel="…">Save accent</SubmitButton>
+                  <span className="text-xs text-ink-faint truncate">{w.accent ? `Using ${w.accent}` : "Using the house accent"}</span>
+                </div>
+                <p className="text-xs text-ink-faint mt-2">Theirs everywhere in this workspace — buttons, active states, and the brand brief PDF. Leave it alone to keep the house vermilion.</p>
               </form>
             </div>
           </section>

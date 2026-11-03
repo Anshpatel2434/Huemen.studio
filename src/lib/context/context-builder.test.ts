@@ -74,6 +74,26 @@ describe("buildBrandContext (INV-2)", () => {
     expect(ctx.guardrails.doWords).toContain("clarity");
   });
 
+  // Both guardrail lists used to resolve differently: the never-list preferred
+  // the pack's, the preferred-list always read the brand guide. A pack
+  // workspace therefore reported no preferred words at all.
+  it("takes both guardrail lists from the pack when there is one", () => {
+    const ctx = buildBrandContext({
+      ...fullFoundation,
+      voicePack: { preferredWords: ["sharpen", "evidence"], neverWords: ["synergy"] },
+    });
+    expect(ctx.guardrails.doWords).toEqual(["sharpen", "evidence"]);
+    expect(ctx.guardrails.dontWords).toEqual(["synergy"]);
+    // The brand guide's own lists are replaced, not merged.
+    expect(ctx.guardrails.doWords).not.toContain("clarity");
+    expect(ctx.guardrails.dontWords).not.toContain("guru");
+  });
+
+  it("falls back to the brand guide when there is no pack", () => {
+    const ctx = buildBrandContext(fullFoundation);
+    expect(ctx.guardrails.doWords).toContain("clarity");
+  });
+
   it("includes the brand voice and palette in the serialised block", () => {
     const ctx = buildBrandContext(fullFoundation);
     expect(ctx.serialized).toContain("## VOICE");

@@ -98,6 +98,12 @@ export interface VoicePackInput {
   readingLevel?: string | null;
   guardrails?: { rule: string; why?: string; instead?: string }[];
   neverWords?: string[];
+  /**
+   * The measured lexicon. Already in the prompt via `mechanicsLines` ("Words
+   * they reach for"); carried separately so `guardrails.doWords` means the
+   * same thing for a pack workspace as for a brand one.
+   */
+  preferredWords?: string[];
   mustHaves?: string[];
   /** Measured numbers, already rendered as short lines. */
   mechanicsLines?: string[];
@@ -564,8 +570,13 @@ export function buildBrandContext(input: BrandContextInput): BrandContext {
     degraded: score < DEGRADED_THRESHOLD,
     serialized: serialize(input),
     guardrails: {
-      doWords: input.voiceGuide?.doWords ?? [],
-      // The pack's never-list is the person's own; it replaces the brand's.
+      // A pack's lists are the person's own — measured from their writing, not
+      // typed into a form — so when there is a pack they replace the brand
+      // guide's. That held for the never-list already; the preferred list used
+      // to read the brand guide even for a pack workspace, which left it empty
+      // there. Both resolve the same way now, so a caller reading these does
+      // not have to know which kind of voice it is looking at.
+      doWords: input.voicePack?.preferredWords ?? input.voiceGuide?.doWords ?? [],
       dontWords: input.voicePack?.neverWords ?? input.voiceGuide?.dontWords ?? [],
     },
   };

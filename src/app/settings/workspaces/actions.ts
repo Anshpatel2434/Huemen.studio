@@ -6,7 +6,9 @@ import {
   assignCoach,
   createWorkspace,
   inviteUser,
+  parseAccent,
   setUsageCaps,
+  setWorkspaceAccent,
   setWorkspaceStatus,
 } from "@/lib/data/admin";
 import type { Role } from "@/lib/auth/types";
@@ -79,4 +81,19 @@ export async function setStatusAction(formData: FormData) {
     String(formData.get("status")) as "active" | "archived",
   );
   revalidatePath("/settings/workspaces");
+}
+
+/**
+ * Set a workspace's accent colour (§4.7). Revalidates the workspace shell as
+ * well as this page, because the chrome reads the accent on every screen.
+ */
+export async function setAccentAction(formData: FormData) {
+  const session = await requireSession();
+  await setWorkspaceAccent(
+    session,
+    String(formData.get("tenantId")),
+    parseAccent(String(formData.get("accent") ?? "")),
+  );
+  revalidatePath("/settings/workspaces");
+  revalidatePath("/w", "layout");
 }

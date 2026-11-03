@@ -4,8 +4,9 @@
  * voice, visual identity, pillars, offers, calendar, then the pieces.
  *
  * Rendered with @react-pdf/renderer — pure JS, no headless browser, so it runs
- * anywhere the app runs. Monochrome like the app, and carrying the client's
- * brand name only: no Okra marks (§4.7).
+ * anywhere the app runs. Monochrome like the app, carrying the workspace's own
+ * accent where the app uses one, and the client's brand name only: no Okra
+ * marks (§4.7).
  *
  * Server-only.
  */
@@ -26,8 +27,15 @@ export interface ExportInput {
   generatedAt: Date;
   /** Shown on the cover, e.g. "Approved pieces only". */
   scopeLabel: string;
+  /**
+   * The workspace's accent (§4.7), or null for the house one. Used in the same
+   * places the app uses it — as punctuation, not as a fill.
+   */
+  accent?: string | null;
 }
 
+/** The house accent, when a workspace has not set its own. */
+const HOUSE_ACCENT = "#ff3429";
 const INK = "#0a0a0a";
 const MUTED = "#525252";
 const FAINT = "#8a8a8a";
@@ -101,6 +109,7 @@ function Footer({ brandName }: { brandName: string }) {
 
 function BriefDocument(input: ExportInput) {
   const { brandName: name, foundation: f } = input;
+  const accent = input.accent ?? HOUSE_ACCENT;
   const palette = list(f.palette);
   const chapters = f.chapters.filter((c) => c.body.trim());
   const samples = f.samplePosts.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -110,12 +119,12 @@ function BriefDocument(input: ExportInput) {
       {/* Cover */}
       <Page size="A4" style={s.coverPage}>
         <View>
-          <Text style={s.eyebrow}>BRAND BRIEF</Text>
+          <Text style={[s.eyebrow, { color: accent }]}>BRAND BRIEF</Text>
           <Text style={s.coverTitle}>{name}</Text>
           {!!f.positioning && <Text style={s.coverSub}>{f.positioning}</Text>}
         </View>
         <View>
-          <View style={s.rule} />
+          <View style={[s.rule, { borderBottomColor: accent, borderBottomWidth: 2 }]} />
           <View style={s.row}><Text style={s.rowLabel}>Exported</Text><Text style={s.rowValue}>{date(input.generatedAt)}</Text></View>
           <View style={s.row}><Text style={s.rowLabel}>Included</Text><Text style={s.rowValue}>{input.scopeLabel}</Text></View>
           <View style={s.row}><Text style={s.rowLabel}>Contents</Text><Text style={s.rowValue}>Brief · Voice · Visual identity · Pillars{input.offers.length ? " · Offers" : ""}{input.calendar.length ? " · Calendar" : ""} · {input.content.length} piece{input.content.length === 1 ? "" : "s"}</Text></View>
@@ -246,7 +255,7 @@ function BriefDocument(input: ExportInput) {
               {!!c.body && <Text>{c.body}</Text>}
               {!!c.cta && (
                 <Text style={s.cta}>
-                  <Text style={{ color: FAINT }}>CALL TO ACTION  </Text>
+                  <Text style={{ color: accent }}>CALL TO ACTION  </Text>
                   {c.cta}
                 </Text>
               )}
