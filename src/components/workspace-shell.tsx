@@ -12,6 +12,7 @@ import { getWorkspace, listWorkspaceNames } from "@/lib/data/workspaces";
 import { listProjects } from "@/lib/data/projects";
 import { loadUsage } from "@/lib/data/insights";
 import { isPlatformAdmin } from "@/lib/auth/types";
+import { getEnv } from "@/lib/env";
 import { AppShell, type ShellTab } from "./app-shell";
 
 export async function WorkspaceShell({ tenantId, section, tabs, actions, children }: {
@@ -35,6 +36,7 @@ export async function WorkspaceShell({ tenantId, section, tabs, actions, childre
           isAdmin: isPlatformAdmin(session.role),
           starred: projects.filter((p) => p.starred).map((p) => ({ id: p.id, name: p.name })),
           usage: { used: usage.textThisMonth + usage.imagesThisMonth, cap: usage.caps.textHard, soft: usage.caps.textSoft },
+          aiMock: isMockAi(),
         }}
         section={section}
         tabs={tabs}
@@ -44,4 +46,14 @@ export async function WorkspaceShell({ tenantId, section, tabs, actions, childre
       </AppShell>
     </div>
   );
+}
+
+/**
+ * Whether to warn that the copy is sample copy. HIDE_MOCK_BADGE silences it
+ * for a demo; `configProblems` refuses that setting in production, so this
+ * cannot quietly hide a mock from a paying client.
+ */
+export function isMockAi(): boolean {
+  const env = getEnv();
+  return env.AI_TEXT_PROVIDER === "mock" && !env.HIDE_MOCK_BADGE;
 }

@@ -23,7 +23,7 @@ import {
   ChevronDown, House, LayoutGrid, BarChart3, Settings, Users, LogOut, Plus, Search, Archive, Star, ChevronRight,
   PenLine, ScanText, Fingerprint, CalendarDays, Menu as MenuIcon, X,
 } from "lucide-react";
-import { Avatar, IconButton, LogoMark, Menu, MenuItem, MenuSeparator, ToastProvider } from "@/components/ui";
+import { Avatar, Badge, IconButton, LogoMark, Menu, MenuItem, MenuSeparator, ToastProvider } from "@/components/ui";
 import { ThemeSwitch, ThemeToggle } from "@/components/theme";
 import { PageTransition } from "@/components/page-transition";
 import { signOutAction } from "@/app/dashboard/actions";
@@ -37,6 +37,8 @@ export interface ShellNav {
   isAdmin: boolean;
   starred: { id: string; name: string }[];
   usage: { used: number; cap: number | null; soft?: number | null };
+  /** Sample copy, not a model: warn on every screen, not only in the editor. */
+  aiMock: boolean;
 }
 
 export interface ShellTab { href: string; label: string; exact?: boolean }
@@ -101,6 +103,9 @@ export function AppShell({ nav, section, tabs, actions, children }: {
               </button>
               <Crumbs nav={nav} section={section} tabs={tabs} />
               <span className="flex-1" />
+              {/* With the status controls, not beside the crumbs: on a phone it
+                  would otherwise push the breadcrumb off its own header. */}
+              {nav.aiMock && <span className="shrink-0"><Badge tone="warn">Mock AI</Badge></span>}
               {actions}
               <ThemeToggle />
             </div>
@@ -136,13 +141,14 @@ function Crumbs({ nav, section, tabs }: { nav: ShellNav; section?: string; tabs?
     else here.push({ label: section });
   }
   return (
-    <nav aria-label="Breadcrumb" className="min-w-0">
+    <nav aria-label="Breadcrumb" className="min-w-0 overflow-hidden">
       <ol className="hu-crumbs">
         <li className="min-w-0 flex"><Link href={home} className="truncate max-w-[22ch]">{nav.workspace.name}</Link></li>
         {here.map((c, i) => (
           <li key={c.label} className="min-w-0 flex items-center gap-2">
             <span className="sep" aria-hidden="true">/</span>
-            {c.href && i < here.length - 1 ? <Link href={c.href}>{c.label}</Link> : <span aria-current="page">{c.label}</span>}
+            {/* Truncated, not overflowing: on a phone these sit beside the Mock AI badge. */}
+            {c.href && i < here.length - 1 ? <Link href={c.href} className="truncate">{c.label}</Link> : <span aria-current="page" className="truncate">{c.label}</span>}
           </li>
         ))}
       </ol>

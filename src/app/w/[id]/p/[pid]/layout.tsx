@@ -6,6 +6,7 @@ import { listPillars } from "@/lib/data/planning";
 import { listContent } from "@/lib/data/content";
 import { signQuestionnaireToken } from "@/lib/invite/token";
 import { getEnv } from "@/lib/env";
+import { isMockAi } from "@/components/workspace-shell";
 import { ProjectShell } from "./shell";
 
 export const dynamic = "force-dynamic";
@@ -39,8 +40,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
         }}
         members={members}
         questionnaireUrl={session.role === "client" ? null : `${env.APP_URL}/q/${signQuestionnaireToken(id)}`}
-        // HIDE_MOCK_BADGE=1 keeps the badge off for client demos; the copy is still sample copy.
-        aiMock={env.AI_TEXT_PROVIDER === "mock" && process.env.HIDE_MOCK_BADGE !== "1"}
+        aiMock={isMockAi()}
       >
         {children}
       </ProjectShell>

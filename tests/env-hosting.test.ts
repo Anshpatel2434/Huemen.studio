@@ -23,3 +23,23 @@ describe("hosting settings", () => {
     expect(() => parseEnv({ ...BASE, DATABASE_POOL_MAX: "0" })).toThrow();
   });
 });
+
+/**
+ * HIDE_MOCK_BADGE silences the only on-screen sign that the copy came from a
+ * stub rather than a model. Fine for a demo, never in production — a client
+ * would have no way to tell sample copy from their own.
+ */
+describe("the mock-AI badge", () => {
+  it("can be hidden outside production, and reads 1 as well as true", () => {
+    expect(parseEnv({ ...BASE, HIDE_MOCK_BADGE: "1" }).HIDE_MOCK_BADGE).toBe(true);
+    expect(parseEnv({ ...BASE, HIDE_MOCK_BADGE: "true" }).HIDE_MOCK_BADGE).toBe(true);
+    expect(parseEnv({ ...BASE, HIDE_MOCK_BADGE: "" }).HIDE_MOCK_BADGE).toBe(false);
+    expect(parseEnv(BASE).HIDE_MOCK_BADGE).toBe(false);
+  });
+  it("cannot be hidden in production", () => {
+    expect(() => parseEnv({ ...BASE, NODE_ENV: "production", HIDE_MOCK_BADGE: "1" })).toThrow(/HIDE_MOCK_BADGE/);
+  });
+  it("leaves production alone when the flag is not set", () => {
+    expect(() => parseEnv({ ...BASE, NODE_ENV: "production" })).not.toThrow();
+  });
+});

@@ -307,7 +307,8 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
           <Section id="type" icon={Type} title="Typography" open={open} setOpen={setOpen}>
             <p className="text-[1.4rem] leading-tight" style={{ fontFamily: fontPair.display }}>{fonts[0] ?? "Archivo (house)"}</p>
             <p className="text-[1.2rem] italic mt-1" style={{ fontFamily: fontPair.accent }}>{fonts[1] ?? "Instrument Serif (house)"}</p>
-            <p className="text-xs text-ink-faint mt-2">Brand fonts render only if installed; licence check for server rendering is an open decision (brief §09).</p>
+            {/* Says what it means for them, not what it means for us. */}
+            <p className="text-xs text-ink-faint mt-2">Your brand fonts show here only if they&apos;re installed on this device. Exports use the house pair until their licence covers rendering on our servers.</p>
           </Section>
           <Section id="img" icon={ImageIcon} title="Image style" open={open} setOpen={setOpen}>
             <p className="text-sm text-ink-muted leading-relaxed">{imageStyle || "No image style notes yet."}</p>

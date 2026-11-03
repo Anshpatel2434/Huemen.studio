@@ -114,7 +114,13 @@ export function AgentPanel({ workspaceId, projectId, degraded, completeness }: {
   /** A card's button. Only allow-listed actions run; the server checks again. */
   const onAction = (ev: ActionEvent) => {
     const action = parseAgentAction({ type: ev.type, params: ev.params });
-    if (!action || busy) return;
+    if (busy) return;
+    // A button the allow-list doesn't recognise used to do nothing at all,
+    // which reads as a broken panel. Say so, in the panel's own voice.
+    if (!action) {
+      setMsgs((m) => [...m, { role: "agent", text: "That button isn't one I can run. Tell me what you want and I'll do it from here." }]);
+      return;
+    }
     if (action.type === "ask") return ask(action.params.text);
     if (action.type === "open") {
       const p = PAGES[action.params.page];

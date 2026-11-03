@@ -87,7 +87,8 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
           <FileMenu workspace={workspace} project={project} />
           <Link href={`/w/${workspace.id}`} title={`Back to ${workspace.name}`} className="hidden md:inline-flex items-center min-h-11 px-3.5 rounded-lg bg-paper border border-hairline text-sm font-medium truncate max-w-[24ch] hover:border-line-strong transition-colors">{project.name}</Link>
           <span className="md:hidden text-sm font-medium truncate">{project.name}</span>
-          {aiMock && <span className="ml-1 shrink-0 hidden sm:inline-flex"><Badge tone="warn">Mock AI</Badge></span>}
+          {/* Shown on a phone too: a narrow screen is not a reason to drop a warning. */}
+          {aiMock && <span className="ml-1 shrink-0 inline-flex"><Badge tone="warn">Mock AI</Badge></span>}
         </div>
 
         {/* The steps as one segmented control, like Sitemap / Wireframe / Style Guide / Design. */}

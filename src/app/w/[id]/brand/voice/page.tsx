@@ -16,6 +16,8 @@ import { confidence, deriveHardRules, deriveSelfCheck, readyChecklist, skipDeep,
 import { nextDeepQuestions, QUESTIONS } from "@/lib/voice/questions";
 import { VOICE_FILES } from "@/lib/voice/export";
 import { approvedPieceCount, approvedSince, listEditProposals, listProposals, ownsVoice } from "@/lib/data/training";
+import { transcriptionEnabled } from "@/lib/ai";
+import { isPlatformAdmin } from "@/lib/auth/types";
 import { QuestionField } from "../../onboarding/steps";
 import {
   addSamplesAction, decideEditAction, decidePatternAction, decideProposalAction, deleteSampleAction, excludeSampleAction, previewRescanAction, rescanAction,
@@ -70,9 +72,18 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
   if (!pack) {
     return (
-      <DocPage eyebrow="Brand core · Voice" title="No voice yet." accent="Let's build one." sub="A Voice Pack belongs to a person. Sign in as the person whose brand this is and it will be created for them.">
+      <DocPage eyebrow="Brand core · Voice" title="No voice yet." accent="Let's build one." sub="A voice is built from someone's own writing, so it belongs to the person whose brand this is.">
         <div className="border-y border-hairline">
-          <EmptyState icon={<Mic size={18} />} title="No pack on file" sub="Voice packs are created for the person whose writing they describe." />
+          <EmptyState
+            icon={<Mic size={18} />}
+            title="No pack on file"
+            sub={
+              isPlatformAdmin(session.role) || session.role === "coach"
+                ? "Send them the questionnaire from Workspaces & access, or open Getting started here and fill it in with them."
+                : "Getting started walks you through it — paste a few pieces you've written and the voice comes out of those."
+            }
+            action={<Link href={`/w/${id}/setup`} className={btnClass("primary")}>Getting started</Link>}
+          />
         </div>
       </DocPage>
     );
@@ -239,7 +250,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             </p>
             <div className="flex flex-col gap-4">
               {deep.map((q) => (
-                <QuestionField key={q.id} tenantId={id} q={q} keys={q.id === "C7" ? (pack.identity.personalityWords?.value ?? []).map((w) => w.word) : undefined} />
+                <QuestionField key={q.id} tenantId={id} q={q} canRecord={transcriptionEnabled()} keys={q.id === "C7" ? (pack.identity.personalityWords?.value ?? []).map((w) => w.word) : undefined} />
               ))}
             </div>
           </Card>

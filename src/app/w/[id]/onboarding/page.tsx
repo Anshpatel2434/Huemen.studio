@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { firstPieceStale } from "@/lib/voice/lifecycle";
@@ -8,6 +9,7 @@ import { checkText } from "@/lib/data/check";
 import { getProject } from "@/lib/data/projects";
 import { listAssets } from "@/lib/data/assets";
 import { isScreen, resumeScreen, SCREENS, screenForLegacyStep, screenIndex, type ScreenKey } from "@/lib/onboarding/screens";
+import { btnClass } from "@/components/btn";
 import { OnboardingDrafts } from "./draft";
 import { UrlImport } from "./enrich-ui";
 import { AudienceScreen, DraftScreen, LookScreen, NameScreen, SiteScreen, WordsScreen, WritingScreen } from "./short-flow";
@@ -37,7 +39,11 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
       <div className="absolute inset-0 overflow-y-auto">
         <div className="page py-12"><div className="max-w-3xl">
           <h1 className="text-3xl">A voice belongs to a person.</h1>
-          <p className="text-ink-muted mt-2">Sign in as the person whose brand this is and their voice pack will be created for them.</p>
+          <p className="text-ink-muted mt-2">
+            It is built from their own writing, so there is nothing to walk through until there is a person to build it for.
+            Getting started is where that begins.
+          </p>
+          <Link href={`/w/${id}/setup`} className={`${btnClass("primary")} mt-5`}>Getting started</Link>
         </div></div>
       </div>
     );
