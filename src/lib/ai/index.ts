@@ -105,6 +105,8 @@ async function logGeneration(
     status: "ok" | "error" | "timeout";
     error?: string;
     contentItemId?: string | null;
+    /** INV-2: which context shape produced this. Absent for calls with no context. */
+    contextVersion?: number;
   },
 ): Promise<void> {
   if (!scope.tenantId) return; // logs are tenant-scoped (INV-1)
@@ -112,8 +114,8 @@ async function logGeneration(
     c.query(
       `INSERT INTO generation_logs
          (tenant_id, kind, model, tokens_in, tokens_out, image_count,
-          latency_ms, status, error, user_id, content_item_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          latency_ms, status, error, user_id, content_item_id, context_version)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         scope.tenantId,
         row.kind,
@@ -126,6 +128,7 @@ async function logGeneration(
         row.error ?? null,
         scope.userId,
         row.contentItemId ?? null,
+        row.contextVersion ?? null,
       ],
     ),
   );
@@ -218,6 +221,7 @@ export async function generateText(
       latencyMs: Date.now() - started,
       status: "ok",
       contentItemId: req.contentItemId ?? null,
+      contextVersion: req.context.version,
     });
     return result;
   } catch (err) {
@@ -228,6 +232,7 @@ export async function generateText(
       status: logStatus(err),
       error: err instanceof Error ? err.message : String(err),
       contentItemId: req.contentItemId ?? null,
+      contextVersion: req.context.version,
     });
     throw err;
   }
@@ -288,6 +293,7 @@ export async function* streamText(
         latencyMs: Date.now() - started,
         status: "ok",
         contentItemId: req.contentItemId ?? null,
+        contextVersion: req.context.version,
       });
       yield { type: "done", text: ev.text || text, model: ev.model };
       return;
@@ -302,6 +308,7 @@ export async function* streamText(
       status: logStatus(err),
       error: err instanceof Error ? err.message : String(err),
       contentItemId: req.contentItemId ?? null,
+      contextVersion: req.context.version,
     });
     throw err;
   } finally {
@@ -314,6 +321,7 @@ export async function* streamText(
         status: "error",
         error: "Stream abandoned by the client before it finished.",
         contentItemId: req.contentItemId ?? null,
+        contextVersion: req.context.version,
       });
     }
   }
@@ -337,6 +345,7 @@ export async function generateImage(
       latencyMs: Date.now() - started,
       status: "ok",
       contentItemId: req.contentItemId ?? null,
+      contextVersion: req.context.version,
     });
     return result;
   } catch (err) {
@@ -347,6 +356,7 @@ export async function generateImage(
       status: logStatus(err),
       error: err instanceof Error ? err.message : String(err),
       contentItemId: req.contentItemId ?? null,
+      contextVersion: req.context.version,
     });
     throw err;
   }
@@ -388,6 +398,7 @@ export async function runTask<T>(
       latencyMs: Date.now() - started,
       status: "ok",
       contentItemId: input.contentItemId ?? null,
+      contextVersion: input.context.version,
     });
     return result.data;
   } catch (err) {
@@ -398,6 +409,7 @@ export async function runTask<T>(
       status: logStatus(err),
       error: err instanceof Error ? err.message : String(err),
       contentItemId: input.contentItemId ?? null,
+      contextVersion: input.context.version,
     });
     throw err;
   }

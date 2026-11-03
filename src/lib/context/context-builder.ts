@@ -9,8 +9,14 @@
  * This module is PURE (no I/O) so it is trivially unit-testable. The DB-backed
  * loader lives in ./context-loader and calls this.
  *
- * `CONTEXT_VERSION` is stamped onto every content_item (via prompt_version) so a
- * bad output can be traced to the exact context shape that produced it.
+ * Two versions are recorded, and they are not the same thing:
+ *   - `prompt_version` on content_items / content_generations — which PROMPT
+ *     TEMPLATE wrote a piece. Templates are data and admin-editable (INV-2).
+ *   - `context_version` on generation_logs — this file's `CONTEXT_VERSION`,
+ *     the shape of the block that was injected. Per call, because the block
+ *     is assembled per call.
+ * Together they trace a bad output back to both the template and the context
+ * shape that produced it.
  */
 
 /**

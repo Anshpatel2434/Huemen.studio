@@ -139,6 +139,14 @@ Treat these as acceptance criteria on *all* work, not a separate task:
   - **Constraint (INV-1 / §07 / risk §10):** this is the one unshippable bug
     class. **Done when:** tests exist for each endpoint as it lands, run in CI,
     and a deliberately-leaky query makes them fail (proving they bite).
+  - _2026-11-03:_ This was ticked while only the TABLE-level tests existed
+    (`tests/isolation.test.ts`). `tests/isolation-endpoints.test.ts` now covers
+    the request surface the brief actually names — `resolveScope`, the
+    workspace and project page helpers, the export route and the storage
+    route — and carries a negative control, so a suite that stopped biting
+    would say so. Proved by loosening the client rule in `resolveScope`: four
+    tests failed, including the export route handing over another tenant's
+    brief. CI refuses to skip these when the database is unreachable.
 
 ### 1b. Auth, roles, tenant provisioning, admin shell
 - [x] **P1-4 — Role enforcement (Owner/Admin, Coach, Client).** Map role claims
@@ -241,9 +249,14 @@ upload + questionnaire), context builder written + unit-tested.
     progress and retained partial results on failure.
   - _2026-10-13:_ No queue, no streaming: generation runs in the request thread (`AI_TEXT_TIMEOUT_MS`). The `jobs` table and `QUEUE_DRIVER` exist unused. Parked, client to be told.
   - _2026-10-14:_ Streaming built: single drafts are written live onto the canvas (NDJSON route, provider `stream()`). Queue still parked.
-- [ ] **P2-5 — Rate limiting on generation endpoints.** Per user **and** per
+- [x] **P2-5 — Rate limiting on generation endpoints.** Per user **and** per
   tenant (§07). **Done when:** limits enforced + surfaced clearly when hit.
   - _2026-10-13:_ Not built. Only the hard usage cap (P3-9) bounds spend.
+  - _2026-11-02:_ Built (`13e75c6`). 20 model calls a minute per person and 60
+    per workspace, both settings; five sign-in emails per account per 15
+    minutes. Counted in Postgres, so the limit holds across serverless
+    instances rather than per process. Hitting one says which limit was hit
+    and when it clears.
 
 ### 2b. AI Content Studio — text (§4.2)
 - [x] **P2-6 — All text formats.** LinkedIn post, LinkedIn hook set, Instagram
@@ -261,6 +274,11 @@ upload + questionnaire), context builder written + unit-tested.
   rewritten.
   - **Done when:** a don't-word in output is flagged, not auto-removed.
   - _2026-10-13:_ Never-words in the prompt and checked after, flagged not rewritten; deterministic voice score + model findings. Do-words only reach the prompt on the legacy no-pack path.
+  - _2026-11-03:_ That last sentence was wrong. A pack's preferred words do
+    reach the prompt, as the measured lexicon ("Words they reach for") in the
+    mechanics block. What was actually missing: `guardrails.doWords` read the
+    brand guide only, so for a pack workspace the field came back empty while
+    `dontWords` fell back to the pack. Both resolve the same way now.
 - [x] **P2-9 — Regenerate-with-steer + generation history.** Steers ("shorter",
   "more contrarian", "less corporate") **without losing the previous version** —
   keep generation history per `content_item`.
@@ -344,6 +362,11 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
   foundation, calendar, and content (Markdown per P1-12).
   - **Constraint:** exports carry **client branding**, **no Okra marks**.
   - _2026-10-13:_ PDF (`@react-pdf/renderer`) and Markdown, approved-only or all; voice pack as eight files. Titled by the person or workspace, no Okra marks. Tenant palette/logo not yet applied to exports (see P3-12).
+  - _2026-11-03:_ The PDF carries the workspace's accent — cover eyebrow, cover
+    rule, call-to-action label — which is the "with client branding" line.
+    Admins can set that accent in Workspaces & access; until now nothing could
+    write `tenants.branding`, so the chrome read a colour only the seed had
+    ever set. A tenant LOGO is still not applied anywhere (see P3-12).
 
 ### 3d. Admin & analytics (§4.6)
 - [x] **P3-8 — Per-tenant usage view.** Generations run, images produced, active
@@ -408,8 +431,11 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
   to edit prompt templates**.
   - _2026-10-13:_ README covers setup, env vars and prompt editing. No deployment section yet.
 - [ ] **P4-14** — **Architecture note + data-model diagram** checked into the repo.
-- [ ] **P4-15** — **Phase-two list** written up from everything parked during the
+- [x] **P4-15** — **Phase-two list** written up from everything parked during the
   build, handed over with the code.
+  - _2026-11-03:_ `docs/phase-two.md`, kept current as items land rather than
+    written at the end. Each entry is dated, says who parked it and whether it
+    is still open, and the ones that have since shipped carry their commit.
 
 ---
 

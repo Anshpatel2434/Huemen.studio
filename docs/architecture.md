@@ -12,8 +12,14 @@ runs this after handover.
 Browser ── Next.js (RSC + server actions) ──┬── Postgres (RLS)      tenant data
                                              ├── Object storage     uploads + images
                                              ├── AI facade          text + image providers
-                                             └── Job queue (pg)      batch generation
+                                             └── Job queue (pg)      NOT BUILT — see below
 ```
+
+**The job queue is not built.** The `jobs` table and `QUEUE_DRIVER` exist and
+are unused; every generation, including batch work like a calendar or a
+carousel, runs in the request thread. It is on the phase-two list, and it is
+the thing to build first if several clients generate at once. This diagram
+shows it because it is the intended shape, not the current one.
 
 ## Tenant isolation (INV-1) — the load-bearing design
 

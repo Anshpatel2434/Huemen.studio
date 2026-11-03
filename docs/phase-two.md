@@ -37,7 +37,7 @@ is left around them:
 - 2026-10-13 · build team · **AI offer designer** (P3-3): today a manual form; offers do reach prompts as context. Not started.
 - 2026-10-13 · build team · **Answer-first (AEO) page generator** (P3-4). Not started.
 - 2026-10-13 · build team · **Repurposing pipeline** (P3-6). Not started.
-- 2026-10-13 · build team · **Custom domain + TLS** (P3-11) and **full tenant branding** on chrome, emails and exports (P3-12): only the accent colour is applied today. Not started.
+- 2026-10-13 · build team · **Custom domain + TLS** (P3-11) and **full tenant branding** on chrome, emails and exports (P3-12): the accent colour is applied to the chrome and the PDF export and is settable per workspace since 2026-11-03; a tenant LOGO and tenant fonts are applied nowhere, and emails carry no tenant branding at all. Partly done.
 
 ## Interface debt (in scope)
 - 2026-11-01 · build team · **Clutter.** A measured review of nine screens found seven patterns that make the studio feel heavy (always-on chrome, competing primary buttons, instruction paragraphs, the same fact in up to ten places, panels crowding the canvas, too many label styles, empty states first). The review, the clean-UI rules and a five-phase plan (about 3.5 days) were shared as a report; the owner chose to review it with the client before any code changes. Not started.
@@ -51,6 +51,21 @@ is left around them:
 - 2026-10-13 · build team · **Background sync for connections** (docs/integrations.md), Microsoft 365. **Still open.**
 
 ## Done since the 2026-10-13 audit
+- 2026-11-03 · **Announcement graphic and keepable variants** (§4.3): the brief
+  asks for four output types and the announcement one was never built, so a
+  piece had no graphic for "I'm speaking at X". It is the fourth artboard now,
+  in three layouts. Regenerating also used to DELETE the previous set, so
+  trying a second colour scheme destroyed the first with no way back — which
+  makes the control hostile to use, since comparing is the whole point. Sets
+  are kept and marked instead, and "Earlier sets" restores one reversibly.
+- 2026-11-03 · **Settable white-label accent** (part of P3-12): the chrome had
+  always read `tenants.branding.accent`, but nothing could write it outside the
+  seed, so every real workspace ran on the house vermilion. Admins set it per
+  workspace now, audited, and the brand brief PDF uses it.
+- 2026-11-03 · **Context version on every call** (INV-2): `generation_logs`
+  carries `context_version`. The context builder's docstring had claimed this
+  was recorded since long before anything wrote it, so tracing a bad output
+  back to the context shape that produced it was not actually possible.
 - 2026-11-03 · **Observability** (was: no error tracking, no structured logger, no health endpoint): `src/lib/log.ts` emits one JSON line per event in production and stays readable in development, with `LOG_LEVEL` as the floor; every ad-hoc `console.error` now goes through it with an event name. `reportError` POSTs to `ERROR_WEBHOOK_URL` when the deployment sets one — a seam rather than a vendor, because choosing the error tracker is the client's call. `GET /api/health` answers 200 or 503 within five seconds, bounded so a wedged database is reported rather than hung on.
 - 2026-11-02 · **Production sign-in and email**: one-time sign-in links and invites sent through Resend; `AUTH_DRIVER=email` refuses to start without a sender (`6a261e9`).
 - 2026-11-02 · **S3 storage driver** for AWS S3, Supabase Storage or Cloudflare R2, in the client's own account (`8b3f4f1`).
