@@ -10,6 +10,7 @@ import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
 import { uploadAsset, listAssets } from "@/lib/data/assets";
 import { storage, verifySignature, keyBelongsToTenant } from "@/lib/storage";
+import sharp from "sharp";
 
 let ok = false;
 let tenant = "";
@@ -50,7 +51,10 @@ describe("storage round-trip (P0-6/P1-8)", () => {
   it("stores under a tenant-prefixed key and reads back via signed URL", async () => {
     if (!ok) return expect(ok).toBe(false);
     const scope = { tenantId: tenant, projectId: project, userId: null, isPlatformAdmin: false };
-    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]); // the full PNG signature: the type is read from the bytes
+    // A real PNG, not just the signature: uploads are re-encoded from their
+    // own pixels now, so a file with the right magic number and nothing
+    // decodable behind it is refused (lib/storage/reencode).
+    const bytes = new Uint8Array(await sharp({ create: { width: 2, height: 2, channels: 3, background: "#f00" } }).png().toBuffer());
     const file = new File([bytes], "logo.png", { type: "image/png" });
 
     await uploadAsset(scope, file, "logo");

@@ -16,6 +16,7 @@ import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
 import { storage, tenantKey } from "@/lib/storage";
 import { sniffType, svgProblem } from "@/lib/storage/sniff";
+import { ImageError, reencodeImage } from "@/lib/storage/reencode";
 
 export type AssetKind = "logo" | "reference_image" | "headshot" | "font" | "other";
 
@@ -77,9 +78,20 @@ export async function storeAsset(
     if (why) throw new AssetError(`That SVG can't be used: ${why}. Export it again as a plain SVG, or upload a PNG.`);
   }
 
+  // Rebuilt from its own pixels, so what is stored is an image and nothing
+  // else, without the EXIF a phone attaches to a headshot. SVG passes through
+  // (see lib/storage/reencode).
+  let stored = bytes;
+  try {
+    stored = await reencodeImage(bytes, mime);
+  } catch (err) {
+    if (err instanceof ImageError) throw new AssetError(`We couldn't use that file: ${err.message}. Try exporting it again.`);
+    throw err;
+  }
+
   const ext = EXT[mime] ?? "bin";
   const key = tenantKey(scope.tenantId, "assets", `${randomUUID()}.${ext}`);
-  await storage().put(key, bytes, mime);
+  await storage().put(key, stored, mime);
 
   await withTenantSession(scope, (c) =>
     c.query(
@@ -87,7 +99,7 @@ export async function storeAsset(
        VALUES ($1,$7,$2,$3,$4,$5,$6)`,
       // Brand uploads (logos, fonts, references) belong to the workspace, not a
       // piece (migration 0007), so project_id is NULL like the rest of the brand.
-      [scope.tenantId, kind, key, mime, bytes.byteLength, scope.userId, null],
+      [scope.tenantId, kind, key, mime, stored.byteLength, scope.userId, null],
     ),
   );
 }

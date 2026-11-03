@@ -27,7 +27,6 @@ a first deploy are in `HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md`.
 All six fixed on 2026-11-02 (branch `launch-blockers`); see "Done" below. What
 is left around them:
 - 2026-11-02 · build team · **Owner steps before launch (no code):** a Resend account with a verified sending domain (`MAIL_PROVIDER=resend`, `RESEND_API_KEY`, `MAIL_FROM`); a private bucket in the client's own account with keys and a CORS rule allowing PUT from the app's address; `DATABASE_POOL_MAX` set to 1 to 3 on Vercel. All in `.env.example`.
-- 2026-11-02 · build team · **Image re-encoding** (rest of P4-1): uploads are checked by their real type and SVGs with active content are refused, but images are stored as uploaded (metadata kept). Re-encoding needs an image library (sharp). Not started.
 - 2026-11-02 · build team · **Abandoned uploads**: a file sent to storage and never used stays under the workspace's `incoming/` prefix. Small (size-limited per upload), but nothing sweeps it yet. Not started.
 
 ## Promised, not started (proposal modules)
@@ -51,6 +50,14 @@ is left around them:
 - 2026-10-13 · build team · **Background sync for connections** (docs/integrations.md), Microsoft 365. **Still open.**
 
 ## Done since the 2026-10-13 audit
+- 2026-11-03 · **Image re-encoding** (rest of P4-1): raster uploads are decoded
+  and written again from their own pixels, so a valid image carrying something
+  else does not keep it, and EXIF — the GPS tag on a headshot taken at home,
+  the device, the timestamp — is not stored. Oversized bitmaps are refused at
+  the header rather than allocated. SVG is deliberately untouched: it is markup
+  that `svgProblem` already screens, and rasterising a logo would ruin it.
+  `sharp` is a direct dependency now; it was already in the tree as Next's own,
+  so the deployment carries no new binary.
 - 2026-11-03 · **Announcement graphic and keepable variants** (§4.3): the brief
   asks for four output types and the announcement one was never built, so a
   piece had no graphic for "I'm speaking at X". It is the fourth artboard now,

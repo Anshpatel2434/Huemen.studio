@@ -19,6 +19,7 @@ import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
 import type { WorkspaceScope } from "@/lib/data/projects";
 import { noteDbUnreachable } from "./helpers/require-db";
+import sharp from "sharp";
 
 function pack(over: Partial<VoicePack> = {}): VoicePack {
   return {
@@ -313,7 +314,9 @@ describe("enrichment in the database", () => {
   it("accepts a headshot as its own kind of asset (0014)", async () => {
     if (!dbReachable) return;
     const { uploadAsset, listAssets } = await import("@/lib/data/assets");
-    const png = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], "me.png", { type: "image/png" });
+    // A decodable image: the signature alone no longer gets through.
+    const bytes = new Uint8Array(await sharp({ create: { width: 2, height: 2, channels: 3, background: "#09f" } }).png().toBuffer());
+    const png = new File([bytes], "me.png", { type: "image/png" });
     await uploadAsset(W, png, "headshot");
     expect((await listAssets(W)).some((a) => a.kind === "headshot")).toBe(true);
     await expect(uploadAsset(W, new File(["x"], "me.svg", { type: "image/svg+xml" }), "headshot")).rejects.toThrow(/isn't one we can use/);
