@@ -26,10 +26,23 @@ export const CAROUSEL_LAYOUTS = [
   { key: "progress", label: "Progress", about: "A bar along the foot shows how far through the reader is." },
 ] as const;
 
+/**
+ * Announcement graphic (brief §4.3's fourth output type): a launch, a date, a
+ * place. It leads with a short label — "NOW OPEN", "14 MARCH" — so it reads
+ * across a feed without being read, which is what separates it from a post
+ * image carrying a sentence.
+ */
+export const ANNOUNCEMENT_LAYOUTS = [
+  { key: "banner", label: "Banner", about: "A label across a colour band, the line beneath it." },
+  { key: "stamp", label: "Stamp", about: "The label in a ring, centred, like a seal." },
+  { key: "ticket", label: "Ticket", about: "Label left, line right, divided by a rule." },
+] as const;
+
 export type PostLayout = (typeof POST_LAYOUTS)[number]["key"];
 export type QuoteLayout = (typeof QUOTE_LAYOUTS)[number]["key"];
 export type CarouselLayout = (typeof CAROUSEL_LAYOUTS)[number]["key"];
-export type ArtboardKind = "post" | "quote" | "carousel";
+export type AnnouncementLayout = (typeof ANNOUNCEMENT_LAYOUTS)[number]["key"];
+export type ArtboardKind = "post" | "quote" | "carousel" | "announcement";
 
 export interface Tweaks {
   /** Type size against the template's own, 0.8 to 1.4. */
@@ -42,13 +55,13 @@ export interface Tweaks {
 }
 
 export interface Design {
-  layouts: { post: PostLayout; quote: QuoteLayout; carousel: CarouselLayout };
+  layouts: { post: PostLayout; quote: QuoteLayout; carousel: CarouselLayout; announcement: AnnouncementLayout };
   tweaks: Tweaks;
 }
 
 export const DEFAULT_TWEAKS: Tweaks = { scale: 1, align: "left", accent: "subtle", background: "scheme" };
 export const DEFAULT_DESIGN: Design = {
-  layouts: { post: "statement", quote: "classic", carousel: "standard" },
+  layouts: { post: "statement", quote: "classic", carousel: "standard", announcement: "banner" },
   tweaks: DEFAULT_TWEAKS,
 };
 
@@ -67,6 +80,7 @@ export function parseDesign(raw: unknown): Design {
       post: oneOf(l.post, POST_LAYOUTS, DEFAULT_DESIGN.layouts.post),
       quote: oneOf(l.quote, QUOTE_LAYOUTS, DEFAULT_DESIGN.layouts.quote),
       carousel: oneOf(l.carousel, CAROUSEL_LAYOUTS, DEFAULT_DESIGN.layouts.carousel),
+      announcement: oneOf(l.announcement, ANNOUNCEMENT_LAYOUTS, DEFAULT_DESIGN.layouts.announcement),
     },
     tweaks: {
       scale: Number.isFinite(scale) ? Math.min(1.4, Math.max(0.8, Math.round(scale * 20) / 20)) : DEFAULT_TWEAKS.scale,

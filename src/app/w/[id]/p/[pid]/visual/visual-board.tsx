@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy } from "lucide-react";
+import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy, History } from "lucide-react";
 import { AgentDots, Badge, IconButton, Modal, Segmented, SubmitButton, Tabs, useToast } from "@/components/ui";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { fileSlug, nodeToPngBlob, saveBlob, zipBlobs } from "@/lib/ui/png";
-import { deleteVisualsAction, generateVisualsAction, saveDesignAction } from "../pipeline-actions";
+import { deleteVisualsAction, generateVisualsAction, listVisualHistoryAction, restoreVisualSetAction, saveDesignAction } from "../pipeline-actions";
 import { Canvas, Artboard } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory } from "@/components/canvas-edit";
 import { askRewriteAction, patchContentAction } from "../content/actions";
@@ -16,10 +16,10 @@ import { btnClass } from "@/components/btn";
 import { FORMATS, formatByKey } from "@/lib/content/formats";
 import { stepLabel } from "@/lib/projects/stages";
 import {
-  CAROUSEL_LAYOUTS, DEFAULT_DESIGN, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, sameDesign,
+  ANNOUNCEMENT_LAYOUTS, CAROUSEL_LAYOUTS, DEFAULT_DESIGN, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, sameDesign,
   type ArtboardKind, type Design, type Tweaks,
 } from "@/lib/visual/design";
-import { CarouselFrames, PostImage, QuoteCard, schemesFrom, type Fonts, type RenderText, type Scheme } from "./visual-layouts";
+import { AnnouncementCard, CarouselFrames, PostImage, QuoteCard, schemesFrom, type Fonts, type RenderText, type Scheme } from "./visual-layouts";
 import { lookCheck, type LookResult } from "@/lib/visual/look-check";
 
 type Item = {
@@ -60,7 +60,7 @@ const DISPLAY_W = 300;
 const WIRE: Scheme = { name: "Wireframe", bg: "#FFFFFF", fg: "#1F1F1F", accent: "#BDBDBD" };
 const WIRE_FONTS: Fonts = { display: "var(--font-sans)", accent: "var(--font-sans)" };
 
-const KIND_LABEL: Record<ArtboardKind, string> = { post: "Post image", quote: "Quote card", carousel: "Carousel" };
+const KIND_LABEL: Record<ArtboardKind, string> = { post: "Post image", quote: "Quote card", carousel: "Carousel", announcement: "Announcement" };
 
 type BoardProps = {
   tenantId: string; projectId: string; brandName: string; items: Item[]; palette: string[]; fonts: string[]; imageStyle: string; selectedId: string | null; initialScheme: number;
@@ -218,14 +218,15 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
 
   // ---- text on the canvas: editable and askable --------------------------------
   const textFor = (i: Item, slides: Slide[]): RenderText => function renderText(slot) {
-    if (slot.kind === "post" || slot.kind === "quote") {
-      const what = slot.kind === "post" ? "Headline" : "Quote";
+    if (slot.kind === "post" || slot.kind === "quote" || slot.kind === "announcement") {
+      const what = slot.kind === "post" ? "Headline" : slot.kind === "quote" ? "Quote" : "Announcement";
+      const asking = slot.kind === "post" ? "Post image headline" : slot.kind === "quote" ? "Quote card line" : "Announcement line";
       return (
         <EditableText
           value={i.hook}
           required
           label={what}
-          onAsk={askFor(i, slot.kind === "post" ? "Post image headline" : "Quote card line")}
+          onAsk={askFor(i, asking)}
           onCommit={(hook, _p, m) => edit(i, { hook }, `${m?.asked ? "rewrite" : "edit"} ${what.toLowerCase()}`, m?.asked)}
         />
       );
@@ -374,6 +375,7 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                           <button type="button" onClick={() => exportSet(i, slides)} disabled={busy !== null} className={btnClass("secondary", "sm")}>
                             {busy === `${i.id}:set` ? <><AgentDots /> Rendering…</> : <><Download size={14} aria-hidden="true" /> Download set</>}
                           </button>
+                          <PreviousSets tenantId={tenantId} projectId={projectId} item={i} schemes={schemes} />
                           <IconButton label="Remove these visuals" onClick={() => setRemoving(i)}><Trash2 size={15} /></IconButton>
                         </>
                       )}
@@ -394,6 +396,23 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
                         actions={<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(`${i.id}:quote`, 1080, 1080, `${fileSlug(brandName)}-quote-1080x1080`)} />}
                       >
                         <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} text={text} frameRef={frameRef(`${i.id}:quote`)} />
+                      </Artboard>
+                      <Artboard
+                        label={`Announcement · ${ANNOUNCEMENT_LAYOUTS.find((l) => l.key === d.layouts.announcement)?.label}`}
+                        meta="1:1 · 1080×1080"
+                        width={DISPLAY_W}
+                        actions={<ExportButton busy={busy === `${i.id}:announcement`} onClick={() => exportOne(`${i.id}:announcement`, 1080, 1080, `${fileSlug(brandName)}-announcement-1080x1080`)} />}
+                      >
+                        <AnnouncementCard
+                          layout={d.layouts.announcement}
+                          s={sc}
+                          t={d.tweaks}
+                          fonts={fp}
+                          brand={brandName}
+                          label={i.pillarName ?? "Announcement"}
+                          text={text}
+                          frameRef={frameRef(`${i.id}:announcement`)}
+                        />
                       </Artboard>
                       <Artboard
                         label={`Carousel · ${CAROUSEL_LAYOUTS.find((l) => l.key === d.layouts.carousel)?.label}`}
@@ -457,6 +476,88 @@ function Board({ tenantId, projectId, brandName, items, palette, fonts, imageSty
 
 // ---- live tweaks ------------------------------------------------------------------
 
+/**
+ * Sets this piece had before the current one. A regenerate keeps what it
+ * replaces (brief §4.3), so trying another scheme is no longer one-way; this
+ * is how someone gets back to the one they preferred.
+ */
+function PreviousSets({ tenantId, projectId, item, schemes }: {
+  tenantId: string; projectId: string; item: Item; schemes: ReturnType<typeof schemesFrom>;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [sets, setSets] = useState<{ stamp: string; at: string; scheme: number; frames: number }[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = async () => {
+    setOpen(true);
+    if (sets) return;
+    try {
+      setSets(await listVisualHistoryAction(tenantId, projectId, item.id));
+    } catch {
+      setSets([]);
+      toast("Couldn't read the earlier sets.", "danger");
+    }
+  };
+
+  const restore = async (stamp: string) => {
+    setBusy(stamp);
+    try {
+      if (await restoreVisualSetAction(tenantId, projectId, item.id, stamp)) {
+        setOpen(false);
+        setSets(null);
+        router.refresh();
+        toast("Put that set back.");
+      } else {
+        toast("That set is no longer there.", "danger");
+      }
+    } catch {
+      toast("Couldn't put that set back.", "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" onClick={load} className={btnClass("ghost", "sm")}>
+        <History size={14} aria-hidden="true" /> Earlier sets
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Earlier sets" width={460}>
+        {sets === null ? (
+          <p className="text-sm text-ink-muted flex items-center gap-2"><AgentDots /> Looking</p>
+        ) : sets.length === 0 ? (
+          <p className="text-sm text-ink-muted">
+            None yet. Generating again keeps whatever it replaces, so you can always come back to this one.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-[var(--hairline)]">
+            {sets.map((v) => (
+              <li key={v.stamp} className="flex items-center gap-3 py-3">
+                <span
+                  aria-hidden="true"
+                  className="w-8 h-8 rounded-sm shrink-0 border border-hairline"
+                  style={{ background: schemes[v.scheme]?.bg ?? "var(--field)" }}
+                />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium">{schemes[v.scheme]?.name ?? `Scheme ${v.scheme + 1}`}</span>
+                  <span className="block text-xs text-ink-faint">
+                    {v.frames} artboards · replaced {new Date(v.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </span>
+                <button type="button" disabled={busy !== null} onClick={() => restore(v.stamp)} className={btnClass("secondary", "sm")}>
+                  {busy === v.stamp ? <AgentDots /> : "Use this"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
+    </>
+  );
+}
+
 function TweakPanel({ item, design, onTweak, onOptions, onReset, onApplyAll, canApplyAll }: {
   item: Item; design: Design; onTweak: (t: Tweaks, label: string) => void; onOptions: (kind: ArtboardKind) => void;
   onReset: () => void; onApplyAll: () => void; canApplyAll: boolean;
@@ -499,8 +600,8 @@ function TweakPanel({ item, design, onTweak, onOptions, onReset, onApplyAll, can
 
       <div className="flex flex-col gap-1.5">
         <p className="text-xs font-medium">Layouts</p>
-        {(["post", "quote", "carousel"] as ArtboardKind[]).map((k) => {
-          const list = k === "post" ? POST_LAYOUTS : k === "quote" ? QUOTE_LAYOUTS : CAROUSEL_LAYOUTS;
+        {(["post", "quote", "carousel", "announcement"] as ArtboardKind[]).map((k) => {
+          const list = k === "post" ? POST_LAYOUTS : k === "quote" ? QUOTE_LAYOUTS : k === "announcement" ? ANNOUNCEMENT_LAYOUTS : CAROUSEL_LAYOUTS;
           const cur = list.find((l) => l.key === design.layouts[k])?.label;
           return (
             <button key={k} type="button" onClick={() => onOptions(k)} className="flex items-center justify-between min-h-11 px-3 rounded-sm border border-hairline hover:border-line text-sm">
@@ -529,7 +630,7 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
 }) {
   const fmt = formatByKey(item.format);
   const plain: RenderText = (slot) => (slot.kind === "slide" ? slides[slot.index] : item.hook);
-  const list = kind === "post" ? POST_LAYOUTS : kind === "quote" ? QUOTE_LAYOUTS : CAROUSEL_LAYOUTS;
+  const list = kind === "post" ? POST_LAYOUTS : kind === "quote" ? QUOTE_LAYOUTS : kind === "announcement" ? ANNOUNCEMENT_LAYOUTS : CAROUSEL_LAYOUTS;
   const current = design.layouts[kind];
   const t = design.tweaks ?? DEFAULT_TWEAKS;
   return (
@@ -540,7 +641,7 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
             label="Artboard"
             value={kind}
             onSelect={onKind}
-            items={(["post", "quote", "carousel"] as ArtboardKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+            items={(["post", "quote", "carousel", "announcement"] as ArtboardKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))}
           />
           <p className="text-xs text-ink-muted">In this piece&apos;s words, scheme and tweaks. Keep one; the others stay a click away.</p>
         </div>
@@ -554,6 +655,8 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
                     <PostImage layout={l.key as never} w={fmt.frame.w} h={fmt.frame.h} s={scheme} t={t} fonts={fonts} brand={brand} eyebrow={item.pillarName ?? undefined} text={plain} />
                   ) : kind === "quote" ? (
                     <QuoteCard layout={l.key as never} s={scheme} t={t} fonts={fonts} brand={brand} text={plain} />
+                  ) : kind === "announcement" ? (
+                    <AnnouncementCard layout={l.key as never} s={scheme} t={t} fonts={fonts} brand={brand} label={item.pillarName ?? "Announcement"} text={plain} />
                   ) : (
                     <div className="overflow-hidden"><CarouselFrames layout={l.key as never} slides={slides.slice(0, 3)} ctaIndex={ctaIndex < 3 ? ctaIndex : -1} s={scheme} t={t} fonts={fonts} frameWidth={104} text={plain} /></div>
                   )}

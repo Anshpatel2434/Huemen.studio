@@ -10,7 +10,7 @@ import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
 import { createProject, unlockStage, type ProjectScope } from "@/lib/data/projects";
 import { generateContent } from "@/lib/data/content";
-import { generateVisuals, listVisuals, saveDesign } from "@/lib/data/pipeline";
+import { generateVisuals, listVisuals, listVisualHistory, restoreVisualSet, saveDesign } from "@/lib/data/pipeline";
 import { DEFAULT_DESIGN, parseDesign, POST_LAYOUTS, QUOTE_LAYOUTS, CAROUSEL_LAYOUTS, type Design } from "@/lib/visual/design";
 import { paint } from "@/app/w/[id]/p/[pid]/visual/visual-layouts";
 import { noteDbUnreachable } from "./helpers/require-db";
@@ -25,7 +25,7 @@ describe("the design model", () => {
     expect(parseDesign(null)).toEqual(DEFAULT_DESIGN);
     expect(parseDesign({ scheme: 2 })).toEqual(DEFAULT_DESIGN);
     const d = parseDesign({ layouts: { post: "split", quote: "nope" }, tweaks: { scale: 9, align: "center", accent: "loud", background: "tint" } });
-    expect(d.layouts).toEqual({ post: "split", quote: "classic", carousel: "standard" });
+    expect(d.layouts).toEqual({ post: "split", quote: "classic", carousel: "standard", announcement: "banner" });
     expect(d.tweaks).toEqual({ scale: 1.4, align: "center", accent: "subtle", background: "tint" });
   });
   it("tweaks change the paint: inverse flips, no accent hides marks, bold only when readable", () => {
@@ -81,10 +81,11 @@ describe("saving a piece's design", () => {
     await generateVisuals(A, { scheme: 0, approvedOnly: false });
     expect((await listVisuals(A))[0].design).toEqual(DEFAULT_DESIGN);
 
-    const chosen: Design = { layouts: { post: "editorial", quote: "minimal", carousel: "progress" }, tweaks: { scale: 1.2, align: "center", accent: "bold", background: "tint" } };
+    const chosen: Design = { layouts: { post: "editorial", quote: "minimal", carousel: "progress", announcement: "ticket" }, tweaks: { scale: 1.2, align: "center", accent: "bold", background: "tint" } };
     expect(await saveDesign(A, id, chosen)).toBe(true);
     const rows = await listVisuals(A);
-    expect(rows.length).toBe(3);
+    // post, quote, carousel and the announcement graphic (brief §4.3).
+    expect(rows.length).toBe(4);
     for (const r of rows) expect(r.design).toEqual(chosen);
 
     await generateVisuals(A, { scheme: 1, approvedOnly: false });
@@ -95,5 +96,41 @@ describe("saving a piece's design", () => {
     expect(await saveDesign(B, id, DEFAULT_DESIGN)).toBe(false);
     expect((await listVisuals(A))[0].design).toEqual(chosen);
     expect(await listVisuals(B)).toEqual([]);
+  });
+});
+
+describe("a regenerate keeps the set it replaces (brief §4.3)", () => {
+  it("files the old set away, and can put it back", async () => {
+    if (!dbReachable) return;
+    const id = await generateContent(A, { format: "linkedin_post", topic: "variants" });
+    await unlockStage(A, "content");
+
+    await generateVisuals(A, { scheme: 0, approvedOnly: false });
+    const first = (await listVisuals(A)).filter((r) => r.contentItemId === id);
+    expect(first.map((r) => r.kind).sort()).toEqual(["announcement", "carousel_frame", "quote_card", "single"]);
+    expect(first.every((r) => r.scheme === 0)).toBe(true);
+    expect(await listVisualHistory(A, id)).toHaveLength(0);
+
+    // Try another scheme. The first set must survive, not be destroyed.
+    await generateVisuals(A, { scheme: 2, approvedOnly: false });
+    const second = (await listVisuals(A)).filter((r) => r.contentItemId === id);
+    expect(second.every((r) => r.scheme === 2)).toBe(true);
+
+    const history = await listVisualHistory(A, id);
+    expect(history).toHaveLength(1);
+    expect(history[0].scheme).toBe(0);
+    expect(history[0].frames).toBe(4);
+
+    // And going back works, leaving the newer set recoverable in its turn.
+    expect(await restoreVisualSet(A, id, history[0].stamp)).toBe(true);
+    const back = (await listVisuals(A)).filter((r) => r.contentItemId === id);
+    expect(back.every((r) => r.scheme === 0)).toBe(true);
+    expect((await listVisualHistory(A, id))[0].scheme).toBe(2);
+  });
+
+  it("refuses to restore a set that belongs to another piece", async () => {
+    if (!dbReachable) return;
+    const other = await generateContent(A, { format: "linkedin_post", topic: "not this one" });
+    expect(await restoreVisualSet(A, other, new Date().toISOString())).toBe(false);
   });
 });

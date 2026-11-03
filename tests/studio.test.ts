@@ -119,7 +119,8 @@ describe("projects", () => {
       .toBe(pillarCount);
     expect(await generateVisuals(A2, { scheme: 1, approvedOnly: false })).toBe(pillarCount);
     expect((await getProject(A2, A2.projectId))!.stage).toBe("visual");
-    expect((await listVisuals(A2)).length).toBe(pillarCount * 3);
+    // post image, quote card, carousel and announcement (brief §4.3).
+    expect((await listVisuals(A2)).length).toBe(pillarCount * 4);
     expect(await listVisuals(B)).toEqual([]);
   });
 

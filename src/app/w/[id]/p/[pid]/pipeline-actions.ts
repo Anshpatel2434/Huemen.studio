@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { actionProjectScope } from "@/lib/auth/workspace";
-import { deleteVisuals, generateContentFromPillars, generatePillars, generateVisuals, saveDesign } from "@/lib/data/pipeline";
+import { deleteVisuals, generateContentFromPillars, generatePillars, generateVisuals, listVisualHistory, restoreVisualSet, saveDesign } from "@/lib/data/pipeline";
 import type { Design } from "@/lib/visual/design";
 import { getProject } from "@/lib/data/projects";
 import { stageIndex } from "@/lib/projects/stages";
@@ -46,6 +46,20 @@ export async function generateContentAction(fd: FormData): Promise<void> {
 export async function saveDesignAction(tenantId: string, projectId: string, contentItemId: string, design: Design, scheme?: number): Promise<boolean> {
   const scope = await actionProjectScope(tenantId, projectId);
   const ok = await saveDesign(scope, contentItemId, design, scheme);
+  revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
+  return ok;
+}
+
+/** Sets this piece had before the current one, newest first (brief §4.3). */
+export async function listVisualHistoryAction(tenantId: string, projectId: string, contentItemId: string) {
+  const scope = await actionProjectScope(tenantId, projectId);
+  return listVisualHistory(scope, contentItemId);
+}
+
+/** Put an earlier set back. The current one is kept in its turn, so it reverses. */
+export async function restoreVisualSetAction(tenantId: string, projectId: string, contentItemId: string, stamp: string): Promise<boolean> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const ok = await restoreVisualSet(scope, contentItemId, stamp);
   revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
   return ok;
 }

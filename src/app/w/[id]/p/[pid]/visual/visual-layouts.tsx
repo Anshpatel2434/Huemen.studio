@@ -11,10 +11,10 @@
  * askable while the options view shows it plain.
  */
 import type { CSSProperties, ReactNode } from "react";
-import type { CarouselLayout, PostLayout, QuoteLayout, Tweaks } from "@/lib/visual/design";
+import type { AnnouncementLayout, CarouselLayout, PostLayout, QuoteLayout, Tweaks } from "@/lib/visual/design";
 
 export type Scheme = { name: string; bg: string; fg: string; accent: string };
-export type TextSlot = { kind: "post" } | { kind: "quote" } | { kind: "slide"; index: number };
+export type TextSlot = { kind: "post" } | { kind: "quote" } | { kind: "announcement" } | { kind: "slide"; index: number };
 export type RenderText = (slot: TextSlot) => ReactNode;
 export type Fonts = { display: string; accent: string };
 
@@ -204,6 +204,79 @@ export function QuoteCard({ layout, s, t, fonts, brand, text, frameRef }: {
         <span className="leading-none" style={{ color: p.mark, fontFamily: fonts.accent, fontSize: rem(3, t) }}>“</span>
         {words(1.25)}
         <div className="mt-4">{sign()}</div>
+      </div>
+    </Frame>
+  );
+}
+
+// ---- announcement graphic -----------------------------------------------------
+
+/**
+ * Brief §4.3's fourth output: a launch, a date, a place. It leads with a short
+ * label rather than a sentence, because an announcement has to carry across a
+ * feed before anyone chooses to read it.
+ *
+ * The label is the piece's own eyebrow where it has one; otherwise a plain
+ * "ANNOUNCEMENT", never invented detail — the studio does not make up a date.
+ */
+export function AnnouncementCard({ layout, s, t, fonts, brand, label, text, frameRef }: {
+  layout: AnnouncementLayout; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; label: string;
+  text: RenderText; frameRef?: (el: HTMLDivElement | null) => void;
+}) {
+  const p = paint(s, t, "normal");
+  const center = layout === "stamp" || t.align === "center";
+  const al: CSSProperties = { textAlign: center ? "center" : "left", alignItems: center ? "center" : "flex-start" };
+  const tag = (
+    <p className="tracking-[0.2em] uppercase" style={{ color: p.showMarks ? s.accent : p.fg, fontFamily: MONO, fontSize: fz(0.62, null) }}>{label}</p>
+  );
+  const line = (n: number) => (
+    <div className="leading-tight w-full font-medium" style={{ fontFamily: fonts.display, color: p.words, fontSize: rem(n, t) }}>{text({ kind: "announcement" })}</div>
+  );
+  const sign = () => (
+    <p className="tracking-[0.18em] uppercase" style={{ color: p.fg, opacity: 0.75, fontFamily: MONO, fontSize: fz(0.55, null) }}>{brand}</p>
+  );
+
+  if (layout === "stamp") {
+    return (
+      <Frame w={1080} h={1080} bg={p.bg} fg={p.fg} frameRef={frameRef}>
+        <div className="h-full flex flex-col justify-center gap-5 p-[11%]" style={al}>
+          <span
+            className="inline-flex items-center justify-center rounded-full"
+            style={{ border: `${p.bold ? 4 : 2}px solid ${p.showMarks ? s.accent : p.fg}`, padding: "3.2% 5.2%" }}
+          >
+            {tag}
+          </span>
+          {line(1.35)}
+          {sign()}
+        </div>
+      </Frame>
+    );
+  }
+  if (layout === "ticket") {
+    return (
+      <Frame w={1080} h={1080} bg={p.bg} fg={p.fg} frameRef={frameRef}>
+        <div className="h-full flex items-stretch gap-[6%] p-[10%]">
+          <div className="flex flex-col justify-center shrink-0" style={{ maxWidth: "34%" }}>
+            {tag}
+            <div className="mt-3">{sign()}</div>
+          </div>
+          <span className="shrink-0 self-stretch" style={{ width: p.bold ? 4 : 2, background: p.showMarks ? s.accent : p.fg, opacity: p.showMarks ? 1 : 0.3 }} />
+          <div className="flex-1 min-w-0 flex flex-col justify-center">{line(1.3)}</div>
+        </div>
+      </Frame>
+    );
+  }
+  // banner (the default)
+  return (
+    <Frame w={1080} h={1080} bg={p.bg} fg={p.fg} frameRef={frameRef}>
+      <div className="h-full flex flex-col justify-center gap-6 p-[10%]" style={al}>
+        <span className="w-full" style={{ background: p.showMarks ? s.accent : "transparent", padding: p.showMarks ? "2.6% 3.4%" : 0 }}>
+          <span style={{ color: p.showMarks ? (contrast(s.bg, s.accent) >= 3 ? s.bg : s.fg) : p.fg, fontFamily: MONO, fontSize: fz(0.62, null) }} className="tracking-[0.2em] uppercase">
+            {label}
+          </span>
+        </span>
+        {line(1.4)}
+        {sign()}
       </div>
     </Frame>
   );

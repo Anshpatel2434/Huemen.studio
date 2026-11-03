@@ -120,9 +120,20 @@ export async function generateVisuals(scope: ProjectScope, opts: { scheme: numbe
         )
       ).rows[0]?.params;
       const design = parseDesign(kept);
-      await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2", [it.id, scope.projectId]);
+      // The previous set is kept, not deleted: trying a second scheme used to
+      // destroy the first with no way back (brief §4.3 "keep variants").
+      await c.query(
+        "UPDATE image_assets SET superseded_at = now() WHERE content_item_id=$1 AND project_id=$2 AND superseded_at IS NULL",
+        [it.id, scope.projectId],
+      );
       const f = formatByKey(it.format).frame;
-      const rows: [string, number, number][] = [["single", f.w, f.h], ["quote_card", 1080, 1080], ["carousel_frame", 1080, 1350]];
+      const rows: [string, number, number][] = [
+        ["single", f.w, f.h],
+        ["quote_card", 1080, 1080],
+        ["carousel_frame", 1080, 1350],
+        // Brief §4.3's fourth output type.
+        ["announcement", 1080, 1080],
+      ];
       for (const [kind, w, h] of rows) {
         await c.query(
           `INSERT INTO image_assets (tenant_id, project_id, content_item_id, kind, prompt, model, params, aspect_ratio, width, height, status, created_by)
@@ -161,7 +172,8 @@ export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
     (
       await c.query(
         `SELECT id, content_item_id, kind, params, width, height, created_at FROM image_assets
-          WHERE project_id=$1 AND content_item_id IS NOT NULL ORDER BY created_at`,
+          WHERE project_id=$1 AND content_item_id IS NOT NULL AND superseded_at IS NULL
+          ORDER BY created_at`,
         [scope.projectId],
       )
     ).rows.map((r) => ({
@@ -175,4 +187,68 @@ export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
       createdAt: new Date(r.created_at).toISOString(),
     })),
   );
+}
+
+/** One earlier set of a piece's visuals, as the "previous sets" list shows it. */
+export interface VisualSet {
+  /**
+   * Identifies the set: every row in it was written in the same regenerate.
+   * Full microsecond precision, because it is matched back against the column.
+   */
+  stamp: string;
+  /** The same moment, trimmed to seconds, in a shape `new Date()` accepts. */
+  at: string;
+  scheme: number;
+  design: Design;
+  frames: number;
+}
+
+/**
+ * Sets this piece has had before the current one, newest first. Kept so a
+ * regenerate is reversible: someone can try another scheme and go back.
+ */
+export async function listVisualHistory(scope: ProjectScope, contentItemId: string): Promise<VisualSet[]> {
+  return withTenantSession(scope, async (c) =>
+    (
+      await c.query<{ stamp: string; at: string; params: Record<string, unknown>; frames: string }>(
+        `SELECT to_char(superseded_at, 'YYYY-MM-DD"T"HH24:MI:SS.USOF') AS stamp,
+                to_char(superseded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS at,
+                min(params::text)::jsonb AS params, count(*)::text AS frames
+           FROM image_assets
+          WHERE content_item_id=$1 AND project_id=$2 AND superseded_at IS NOT NULL
+          GROUP BY superseded_at
+          ORDER BY superseded_at DESC`,
+        [contentItemId, scope.projectId],
+      )
+    ).rows.map((r) => ({
+      stamp: r.stamp,
+      at: r.at,
+      scheme: Number(r.params?.scheme ?? 0),
+      design: parseDesign(r.params),
+      frames: Number(r.frames),
+    })),
+  );
+}
+
+/**
+ * Put an earlier set back: the current one is superseded in its turn, so the
+ * swap is itself reversible. False when that set is not this piece's.
+ */
+export async function restoreVisualSet(scope: ProjectScope, contentItemId: string, stamp: string): Promise<boolean> {
+  return withTenantSession(scope, async (c) => {
+    const hit = await c.query(
+      "SELECT 1 FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND superseded_at = $3::timestamptz LIMIT 1",
+      [contentItemId, scope.projectId, stamp],
+    );
+    if (!hit.rowCount) return false;
+    await c.query(
+      "UPDATE image_assets SET superseded_at = now() WHERE content_item_id=$1 AND project_id=$2 AND superseded_at IS NULL",
+      [contentItemId, scope.projectId],
+    );
+    await c.query(
+      "UPDATE image_assets SET superseded_at = NULL WHERE content_item_id=$1 AND project_id=$2 AND superseded_at = $3::timestamptz",
+      [contentItemId, scope.projectId, stamp],
+    );
+    return true;
+  });
 }
