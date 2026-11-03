@@ -28,6 +28,7 @@ import { createPillar } from "@/lib/data/planning";
 import { listContent } from "@/lib/data/content";
 import { confirmCards } from "@/lib/voice/derive";
 import { ingestLinkedIn } from "@/lib/voice/ingest";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 let dbReachable = false;
 let W: WorkspaceScope;
@@ -60,7 +61,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const a = await setup("Onboarding A test");

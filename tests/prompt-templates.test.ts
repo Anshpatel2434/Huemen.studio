@@ -15,6 +15,7 @@ import { listTemplateVersions, saveTemplate } from "@/lib/data/admin";
 import { resolveTemplate } from "@/lib/ai/templates";
 import { TEMPLATE_CATALOG, templateDefault } from "@/lib/ai/template-defaults";
 import type { Session } from "@/lib/auth/types";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 let dbReachable = false;
 let A: ProjectScope;
@@ -28,7 +29,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const root = { tenantId: null, userId: null, isPlatformAdmin: true };

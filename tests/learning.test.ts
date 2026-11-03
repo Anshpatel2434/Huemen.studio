@@ -13,6 +13,7 @@ import { generateContent, listContent, updateContent, regenerateWithSteer } from
 import { learnFromApproval, learningLog } from "@/lib/data/learning";
 import { listVersions, loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { learnDecision, ownShare, relearnDue, similarity, LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 const OWN = (n: number) =>
   `Piece ${n}. I learned to delegate the hard way, by doing everything myself until the team stopped asking. ` +
@@ -63,7 +64,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const a = await makeWorkspace("Learning A (test)", "learn-a@test.local");

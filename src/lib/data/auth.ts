@@ -22,16 +22,20 @@ export interface AccountRow {
   invitedBy: string | null;
   /** Version stamp for one-time sign-in links (see lib/auth/tokens). */
   lastSeen: string;
+  /** Bumped to retire every live session cookie for this account (0018). */
+  sessionVersion: number;
 }
 
 const SELECT = `SELECT u.id, u.tenant_id, t.name AS tenant_name, t.status AS tenant_status, u.email, u.role, u.status,
-                       inv.email AS invited_by, coalesce(to_char(u.last_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS.US'), '') AS last_seen
+                       inv.email AS invited_by, u.session_version,
+                       coalesce(to_char(u.last_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS.US'), '') AS last_seen
                   FROM users u JOIN tenants t ON t.id = u.tenant_id LEFT JOIN users inv ON inv.id = u.invited_by`;
 
 function row(r: Record<string, string>): AccountRow {
   return {
     id: r.id, tenantId: r.tenant_id, tenantName: r.tenant_name, tenantStatus: r.tenant_status, email: r.email,
     role: r.role as Role, status: r.status as AccountRow["status"], invitedBy: r.invited_by, lastSeen: r.last_seen,
+    sessionVersion: Number(r.session_version ?? 1),
   };
 }
 
@@ -70,4 +74,35 @@ export async function listMembers(tenantIds: string[]): Promise<AccountRow[]> {
     c.query(`${SELECT} WHERE u.tenant_id = ANY($1::uuid[]) ORDER BY u.status = 'invited' DESC, u.role, u.email`, [tenantIds]),
   );
   return r.rows.map(row);
+}
+
+/**
+ * The account's current session version, for the per-request revocation check.
+ * Null when the account is gone, disabled, or its workspace is archived — all
+ * of which must end a live session, not just block the next sign-in.
+ */
+export async function currentSessionVersion(id: string): Promise<number | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const r = await withTenantSession(ADMIN, (c) =>
+    c.query<{ session_version: number }>(
+      `SELECT u.session_version FROM users u JOIN tenants t ON t.id = u.tenant_id
+        WHERE u.id = $1 AND u.status <> 'disabled' AND t.status <> 'archived'`,
+      [id],
+    ),
+  );
+  return r.rows[0] ? Number(r.rows[0].session_version) : null;
+}
+
+/** Retire every live session for one account (role change, forced sign-out). */
+export async function bumpSessionVersion(id: string): Promise<void> {
+  await withTenantSession(ADMIN, (c) =>
+    c.query("UPDATE users SET session_version = session_version + 1 WHERE id = $1", [id]),
+  );
+}
+
+/** Retire every live session in a workspace (archiving it). */
+export async function bumpSessionVersionsForTenant(tenantId: string): Promise<void> {
+  await withTenantSession(ADMIN, (c) =>
+    c.query("UPDATE users SET session_version = session_version + 1 WHERE tenant_id = $1", [tenantId]),
+  );
 }

@@ -21,6 +21,7 @@ import {
   loadPackForWorkspace, rescan, savePack,
 } from "@/lib/data/voice-pack";
 import { tagged } from "@/lib/voice/types";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 let dbReachable = false;
 let A: ProjectScope;   // tenant A, project 1
@@ -50,7 +51,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const a = await makeTenantWithUser("Voice A test");

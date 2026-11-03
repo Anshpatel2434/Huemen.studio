@@ -14,6 +14,7 @@ import { appPool } from "@/db/pool";
 import { generateContent, listContent, patchContent, updateContent } from "@/lib/data/content";
 import { captureIdea, createOffer, createPillar, listIdeas, listOffers, listPillars, addCalendarEntry, listCalendar, reorderPillars } from "@/lib/data/planning";
 import { loadUsage } from "@/lib/data/insights";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 let dbReachable = false;
 let A: ProjectScope;
@@ -32,7 +33,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const ta = await makeTenant("Studio A (test)");

@@ -22,6 +22,7 @@ import { clip } from "@/lib/voice/derive";
 import { createProject, setIdeate, unlockStage, type ProjectScope, type WorkspaceScope } from "./projects";
 import { listPillars } from "./planning";
 import { createContentItem } from "./content";
+import { resolveTemplate } from "@/lib/ai/templates";
 import { loadPackForWorkspace } from "./voice-pack";
 import type { TopicSuggestion } from "@/lib/voice/types";
 
@@ -123,6 +124,10 @@ export async function coWrite(
   input: { format: string; topic: string; angle?: string | null; pillarId?: string | null },
 ): Promise<string> {
   const fmt = formatByKey(input.format);
+  // The same template runTask resolves, read here so the piece can be stamped
+  // with it: a co-written outline is model-shaped, and INV-2 says the prompt
+  // behind a piece has to be traceable.
+  const template = await resolveTemplate(scope, coWriteOutline.key);
   const outline = await runTask(scope, coWriteOutline, {
     context: await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write"),
     taskInput: [`Format: ${fmt.label}`, `Topic: ${input.topic}`, input.angle ? `Angle: ${input.angle}` : ""].filter(Boolean).join("\n"),
@@ -136,6 +141,8 @@ export async function coWrite(
     pillarId: input.pillarId,
     status: "draft",
     origin: "co-write-outline",
+    promptVersion: template.version,
+    promptTemplateId: template.id,
   });
   await unlockStage(scope, "content").catch(() => undefined);
   return id;

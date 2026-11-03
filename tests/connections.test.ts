@@ -24,6 +24,7 @@ import { importPosts, LINKEDIN_VERSION } from "@/lib/integrations/linkedin";
 import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
 import type { WorkspaceScope } from "@/lib/data/projects";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 const KEY = process.env.CONNECTIONS_KEY;
 const b64 = (s: string) => Buffer.from(s).toString("base64url");
@@ -321,7 +322,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const a = await tenant("Connections A test");

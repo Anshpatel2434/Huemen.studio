@@ -374,6 +374,13 @@ export async function createContentItem(
     pillarId?: string | null;
     status: "draft" | "edited";
     origin: "own-writing" | "co-write-outline";
+    /**
+     * The prompt template behind the copy, where a model shaped it (co-write).
+     * Stamped so a bad output can be traced back to the prompt that caused it
+     * (INV-2); left null only when the words are entirely the person's own.
+     */
+    promptVersion?: number | null;
+    promptTemplateId?: string | null;
   },
 ): Promise<string> {
   const fmt = formatByKey(input.format);
@@ -381,16 +388,19 @@ export async function createContentItem(
     const id = (
       await c.query<{ id: string }>(
         `INSERT INTO content_items
-           (tenant_id, project_id, channel, format, topic, hook, body, cta, pillar_id, status, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+           (tenant_id, project_id, channel, format, topic, hook, body, cta, pillar_id, status, created_by,
+            prompt_version, prompt_template_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
         [scope.tenantId, scope.projectId, fmt.channel, fmt.key, input.topic || null, input.hook, input.body,
-         input.cta, input.pillarId || null, input.status, scope.userId],
+         input.cta, input.pillarId || null, input.status, scope.userId,
+         input.promptVersion ?? null, input.promptTemplateId ?? null],
       )
     ).rows[0].id;
     await c.query(
-      `INSERT INTO content_generations (tenant_id, content_item_id, variant_index, hook, body, cta, model)
-       VALUES ($1,$2,0,$3,$4,$5,$6)`,
-      [scope.tenantId, id, input.hook, input.body, input.cta, input.origin],
+      `INSERT INTO content_generations
+         (tenant_id, content_item_id, variant_index, hook, body, cta, model, prompt_version)
+       VALUES ($1,$2,0,$3,$4,$5,$6,$7)`,
+      [scope.tenantId, id, input.hook, input.body, input.cta, input.origin, input.promptVersion ?? null],
     );
     await linkIdea(c, id, scope.projectId);
     return id;

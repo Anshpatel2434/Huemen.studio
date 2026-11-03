@@ -14,6 +14,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Pool } from "pg";
 import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 let dbReachable = false;
 let tenantA = "";
@@ -38,8 +39,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
-    dbReachable = false;
+  } catch (err) {
+    dbReachable = noteDbUnreachable(err);
     return;
   }
   tenantA = await makeTenant("Tenant A (isolation test)");

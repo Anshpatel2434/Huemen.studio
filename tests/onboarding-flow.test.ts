@@ -16,6 +16,7 @@ import { proposeTopics, topicsStale } from "@/lib/data/create";
 import { createPillar } from "@/lib/data/planning";
 import { emptyIndex, type VoicePack } from "@/lib/voice/types";
 import { isOwnSetup, mustOnboard } from "@/app/w/[id]/onboarding/gate";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 function pack(over: Partial<VoicePack> = {}): VoicePack {
   return {
@@ -116,7 +117,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const ids = await withTenantSession({ tenantId: null, userId: null, isPlatformAdmin: true }, async (c) => {

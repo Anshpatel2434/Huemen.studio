@@ -14,6 +14,7 @@ import { listCaps, setUsageCaps } from "@/lib/data/admin";
 import { loadUsage } from "@/lib/data/insights";
 import { UsageCapError, userMessage } from "@/lib/ai/errors";
 import type { Session } from "@/lib/auth/types";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 let dbReachable = false;
 let A: ProjectScope;
@@ -26,7 +27,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const mk = (name: string) =>

@@ -18,6 +18,7 @@ import type { FetchLike } from "@/lib/integrations/oauth";
 import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
 import type { WorkspaceScope } from "@/lib/data/projects";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 function pack(over: Partial<VoicePack> = {}): VoicePack {
   return {
@@ -215,7 +216,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const r = await withTenantSession({ tenantId: null, userId: null, isPlatformAdmin: true }, async (c) => {

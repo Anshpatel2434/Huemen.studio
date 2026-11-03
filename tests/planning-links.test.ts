@@ -14,6 +14,7 @@ import { captureIdea, createOffer, listIdeas } from "@/lib/data/planning";
 import { startPiece } from "@/lib/data/create";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { buildBrandContext, CONTEXT_VERSION } from "@/lib/context/context-builder";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 let dbReachable = false;
 let A: ProjectScope;
@@ -24,7 +25,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const ta = await withTenantSession({ tenantId: null, userId: null, isPlatformAdmin: true }, async (c) =>

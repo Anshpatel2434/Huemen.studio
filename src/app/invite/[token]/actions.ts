@@ -19,7 +19,7 @@ export async function acceptInviteAction(formData: FormData): Promise<void> {
   if (!a || a.status !== "invited" || a.tenantStatus !== "active") redirect(`/invite/${encodeURIComponent(token)}`);
   if (!(await activateInvite(a.id))) redirect(`/invite/${encodeURIComponent(token)}`);
 
-  await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
+  await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email }, a.sessionVersion);
   await markSignedIn(a.id);
   redirect(`/w/${a.tenantId}?welcome=1`);
 }

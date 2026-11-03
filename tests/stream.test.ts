@@ -19,6 +19,7 @@ import { appPool } from "@/db/pool";
 import { createProject, type ProjectScope } from "@/lib/data/projects";
 import { listContent, streamContent } from "@/lib/data/content";
 import { loadUsage } from "@/lib/data/insights";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 const context = buildBrandContext({ brandProfile: { niche: "Leadership coaching" } });
 const prompt = assemblePrompt("You write LinkedIn posts.", context, "Format: LinkedIn post\nTopic: delegation", {
@@ -117,7 +118,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const mk = (name: string) =>

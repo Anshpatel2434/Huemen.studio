@@ -13,6 +13,7 @@ import { generateContent } from "@/lib/data/content";
 import { generateVisuals, listVisuals, saveDesign } from "@/lib/data/pipeline";
 import { DEFAULT_DESIGN, parseDesign, POST_LAYOUTS, QUOTE_LAYOUTS, CAROUSEL_LAYOUTS, type Design } from "@/lib/visual/design";
 import { paint } from "@/app/w/[id]/p/[pid]/visual/visual-layouts";
+import { noteDbUnreachable } from "./helpers/require-db";
 
 describe("the design model", () => {
   it("offers 3-4 layouts per artboard kind", () => {
@@ -49,7 +50,8 @@ beforeAll(async () => {
     await probe.query("SELECT 1");
     await probe.end();
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    noteDbUnreachable(err);
     return;
   }
   const mk = (name: string) =>

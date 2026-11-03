@@ -34,7 +34,9 @@ export default async function QuestionnairePage({
   // Read the workspace name (public: name only) to brand the form.
   const name = (
     await withTenantSession(
-      { tenantId, userId: null, isPlatformAdmin: true },
+      // Anonymous caller: never the admin scope, which would unlock the
+      // admin_all policies. RLS alone must carry this read (INV-1).
+      { tenantId, userId: null, isPlatformAdmin: false },
       (c) => c.query<{ name: string }>("SELECT name FROM tenants WHERE id=$1", [tenantId]),
     )
   ).rows[0]?.name;

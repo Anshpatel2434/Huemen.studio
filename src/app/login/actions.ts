@@ -18,7 +18,7 @@ export async function signInAs(formData: FormData): Promise<void> {
   if (getEnv().AUTH_DRIVER !== "dev") throw new Error("dev sign-in disabled");
   const a = await getAccount(String(formData.get("userId")));
   if (!a || a.status !== "active") redirect("/login?e=noinvite");
-  await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
+  await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email }, a.sessionVersion);
   await markSignedIn(a.id);
   redirect(safeNext(formData.get("next")));
 }

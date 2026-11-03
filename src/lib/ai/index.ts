@@ -257,6 +257,11 @@ export async function* streamText(
   let model = `${env.AI_TEXT_PROVIDER}-${route}`;
   const started = Date.now();
   let text = "";
+  // A stream can also end because the reader walked away: the browser tab
+  // closes mid-draft and the generator is returned at a `yield`, which raises
+  // nothing here. Without this flag that call — already billed by the
+  // provider — would leave no row at all, the silent failure §05 forbids.
+  let logged = false;
   try {
     await enforceCap(scope, "text");
     const provider = selectTextProvider(env);
@@ -274,6 +279,7 @@ export async function* streamText(
         yield ev;
         continue;
       }
+      logged = true;
       await logGeneration(scope, {
         kind: "text",
         model: ev.model,
@@ -288,6 +294,7 @@ export async function* streamText(
     }
     throw new ProviderError("unparseable", "The stream ended without finishing.");
   } catch (err) {
+    logged = true;
     await logGeneration(scope, {
       kind: "text",
       model,
@@ -297,6 +304,18 @@ export async function* streamText(
       contentItemId: req.contentItemId ?? null,
     });
     throw err;
+  } finally {
+    // Neither finished nor threw: the reader abandoned the stream.
+    if (!logged) {
+      await logGeneration(scope, {
+        kind: "text",
+        model,
+        latencyMs: Date.now() - started,
+        status: "error",
+        error: "Stream abandoned by the client before it finished.",
+        contentItemId: req.contentItemId ?? null,
+      });
+    }
   }
 }
 
@@ -414,6 +433,10 @@ export async function transcribe(scope: SessionScope, audio: Blob, filename: str
   const started = Date.now();
   let model = `${env.AI_TRANSCRIBE_PROVIDER}:transcribe`;
   try {
+    // Transcription is a paid provider call like any other, so it is bound by
+    // the same rate limit and monthly cap. Inside the try, so a refusal is
+    // logged rather than disappearing.
+    await enforceCap(scope, "text");
     const t = selectTranscriber(env);
     if (!t) throw new AiConfigError("Voice notes need transcription switched on (AI_TRANSCRIBE_PROVIDER).");
     const out = await t.transcribe(audio, filename);

@@ -12,6 +12,7 @@ import "server-only";
 import { withTenantSession, type SessionScope } from "@/db/session";
 import { adminGlobalScope } from "@/lib/auth/scope";
 import type { Session, Role } from "@/lib/auth/types";
+import { bumpSessionVersionsForTenant } from "@/lib/data/auth";
 
 export interface WorkspaceRow {
   id: string;
@@ -240,5 +241,8 @@ export async function setWorkspaceStatus(
   await withTenantSession(scope, (c) =>
     c.query("UPDATE tenants SET status=$1 WHERE id=$2", [status, tenantId]),
   );
+  // Archiving has to end sessions that are already open, not just block the
+  // next sign-in: the cookie carries the tenant claim RLS keys on.
+  if (status === "archived") await bumpSessionVersionsForTenant(tenantId);
   await audit(scope, tenantId, "workspace.status", { status });
 }
