@@ -9,6 +9,8 @@
 import { revalidatePath } from "next/cache";
 import { actionActor } from "@/lib/auth/workspace";
 import { getEnv } from "@/lib/env";
+import { logger } from "@/lib/observability/log";
+import { reportError } from "@/lib/observability/report";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { ownsVoice } from "@/lib/data/training";
 import { finishIngest, markIngesting } from "@/lib/data/onboarding";
@@ -59,7 +61,9 @@ async function guarded<T>(tenantId: string, provider: ProviderKey, cap: Capabili
     return { ok: true, value };
   } catch (e) {
     const error = e instanceof Refusal ? e.message : say(e);
-    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) console.error("[connections]", cap, e);
+    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) {
+      await reportError(e, { tenantId, userId: scope.userId, source: "action", route: "/settings/connections", extra: { provider, capability: cap } });
+    }
     await recordSync(scope, provider, cap, { count: 0, error }).catch(() => undefined);
     revalidatePath("/settings/connections");
     return { ok: false, error };
@@ -91,6 +95,9 @@ export interface GmailPage extends GmailCursor {
  * §1: "sample, don't hoard"). Private: measured, never quoted.
  */
 export async function gmailPageAction(tenantId: string, cursor: GmailCursor): Promise<Result<GmailPage>> {
+  // Workspace access first and outside the try, as guarded() does: a refused
+  // caller gets the sign-in page or not-found, not a logged "didn't work".
+  await actionActor(tenantId);
   try {
     const { scope, pack } = await ctx(tenantId, "gmail");
     const { token, connection } = await accessToken(scope, "google");
@@ -117,7 +124,9 @@ export async function gmailPageAction(tenantId: string, cursor: GmailCursor): Pr
       },
     };
   } catch (e) {
-    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) console.error("[connections] gmail page", e);
+    if (!(e instanceof Refusal) && !(e instanceof ConnectionError)) {
+      await reportError(e, { tenantId, source: "action", route: "/settings/connections", extra: { provider: "google", capability: "gmail", step: "page" } });
+    }
     return { ok: false, error: e instanceof Refusal ? e.message : say(e) };
   }
 }
@@ -141,7 +150,7 @@ export async function gmailFinishAction(tenantId: string, totals: { scanned: num
       await disconnect(scope, "google", { removeWriting: false });
       disconnected = true;
     }
-    console.info(`[connections] gmail read: ${totals.scanned} scanned, ${pieces} kept, disconnected=${disconnected}`);
+    logger.info("gmail read finished", { tenantId, userId: scope.userId, route: "/settings/connections", scanned: totals.scanned, pieces, disconnected });
     return { value: { pieces, disconnected }, count: pieces };
   });
 }
@@ -159,6 +168,9 @@ export async function removeImportedEmailAction(fd: FormData): Promise<void> {
 
 /** What the Google Picker needs in the browser: a short-lived token and the app's public ids. */
 export async function pickerConfigAction(tenantId: string): Promise<Result<{ token: string; apiKey: string; appId: string }>> {
+  // Workspace access first and outside the try, as guarded() does: a refused
+  // caller gets the sign-in page or not-found, not a logged "didn't work".
+  await actionActor(tenantId);
   try {
     const { scope } = await ctx(tenantId, "docs");
     const { token, connection } = await accessToken(scope, "google");

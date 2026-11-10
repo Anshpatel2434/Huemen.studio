@@ -120,21 +120,13 @@ export async function savePicks(scope: WorkspaceScope, actor: Actor, pack: Voice
 
 // ---- the live preview -----------------------------------------------------------------
 
-/** The hints the stand-in reads; the real model reads the whole voice from the context. */
-export function previewInput(pack: VoicePack, niche: string): string {
-  const dials = pack.identity.dials?.value ?? {};
-  const exclam = pack.index.punctuation.exclamation;
-  const q = pack.index.punctuation.question;
-  return [
-    "Paragraph:",
-    previewSource(niche),
-    "",
-    dials.casual_formal ? `Casual to formal: ${dials.casual_formal}` : "",
-    exclam?.allowed === false ? "Exclamation marks: never" : "",
-    pack.index.sentenceLength.mean ? `Average sentence words: ${Math.round(pack.index.sentenceLength.mean)}` : "",
-    q?.allowed && (q.perPostTarget ?? 0) >= 1 ? "Asks questions: often" : "",
-    (pack.identity.personalityWords?.value ?? []).length ? `Four words: ${pack.identity.personalityWords!.value.map((w) => w.word).join(", ")}` : "",
-  ].filter((l, i) => l !== "" || i === 2).join("\n");
+/**
+ * The preview's task: one plain paragraph to rewrite. Everything about the
+ * voice (dials, punctuation, rhythm, words) comes from the context block
+ * (INV-2); the stand-in reads it from there too (ai/providers/mock).
+ */
+export function previewInput(niche: string): string {
+  return `Paragraph:\n${previewSource(niche)}\n`;
 }
 
 /** One paragraph in their voice, made once per pack version. */
@@ -144,7 +136,7 @@ export async function previewFor(scope: WorkspaceScope, pack: VoicePack): Promis
   if (pack.onboarding.preview?.version === pack.version) return { text: pack.onboarding.preview.text, source };
   const { text } = await runTask(scope, voicePreview, {
     context: await loadBrandContext(scope),
-    taskInput: previewInput(pack, f.niche),
+    taskInput: previewInput(f.niche),
     route: "cheap",
   });
   await updateOnboarding(scope, pack, { preview: { version: pack.version, text: text.trim() } });

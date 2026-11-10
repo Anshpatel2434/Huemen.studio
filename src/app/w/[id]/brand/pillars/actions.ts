@@ -8,12 +8,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { actionScope } from "@/lib/auth/workspace";
 import { createPillar, deletePillar, listPillars, reorderPillars, updatePillar } from "@/lib/data/planning";
-import { generatePillars } from "@/lib/data/pipeline";
-import { generateContent } from "@/lib/data/content";
-import { unlockStage } from "@/lib/data/projects";
+import { tryGeneratePillars } from "@/lib/data/pipeline";
 import { startPiece } from "@/lib/data/create";
-import { scoreProject } from "@/lib/data/check";
-import { userMessage } from "@/lib/ai/errors";
+import { enqueueJob, latestJob, startWorker } from "@/lib/jobs";
 
 const refresh = (tenantId: string) => revalidatePath(`/w/${tenantId}`, "layout");
 
@@ -48,44 +45,67 @@ export async function deletePillarAction(tenantId: string, id: string) {
 export async function regeneratePillarsAction(fd: FormData): Promise<void> {
   const tenantId = String(fd.get("tenantId"));
   const scope = await actionScope(tenantId);
-  await generatePillars(scope, {
-    count: Math.min(5, Math.max(1, Number(fd.get("count") ?? 3))),
-    focus: String(fd.get("focus") ?? ""),
-  });
+  const count = Math.min(5, Math.max(1, Number(fd.get("count") ?? 3)));
+  const focus = String(fd.get("focus") ?? "").slice(0, 500);
+  const failed = await tryGeneratePillars(scope, { count, focus });
   refresh(tenantId);
+  if (failed) redirect(`/w/${tenantId}/brand/pillars?${failedQuery(failed, { focus, count: String(count) })}`);
   redirect(`/w/${tenantId}/brand/pillars?generated=1`);
 }
 
 /**
- * One drafted piece per pillar. Each output is its own project (the client's
- * rule), so this creates one project per pillar rather than filling one.
+ * Pillar generation that fails comes back to the page it started on, with
+ * the reason, the person's input kept, and Try again (components/
+ * generation-failed), instead of an error page (P2-3).
+ */
+function failedQuery(message: string, keep: Record<string, string> = {}, base = ""): string {
+  const q = new URLSearchParams(base);
+  q.set("failed", message.slice(0, 300));
+  for (const [k, v] of Object.entries(keep)) if (v) q.set(k, v);
+  return q.toString();
+}
+
+/** Try again, from any page's failure notice. Returns to that page with its success flag. */
+export async function retryPillarsAction(fd: FormData): Promise<void> {
+  const tenantId = String(fd.get("tenantId"));
+  const scope = await actionScope(tenantId);
+  const back = String(fd.get("back") ?? "");
+  const ok = String(fd.get("ok") ?? "");
+  // Only back into this workspace, and only a plain flag: never an open redirect.
+  const home = `/w/${tenantId}/brand/pillars`;
+  const path = back.startsWith(`/w/${tenantId}/`) && /^[\w/-]+$/.test(back) ? back : home;
+  const flag = /^[a-z]+=[\w-]+(&[a-z]+=[\w-]+)*$/.test(ok) ? ok : "";
+  const focus = String(fd.get("focus") ?? "").slice(0, 500);
+  const count = fd.get("count") ? Math.min(5, Math.max(1, Number(fd.get("count")))) : undefined;
+  const failed = await tryGeneratePillars(scope, count || focus ? { count: count ?? 3, focus } : undefined);
+  refresh(tenantId);
+  const keepBase = String(fd.get("keep") ?? "");
+  const keep = /^[a-z]+=[\w-]+(&[a-z]+=[\w-]+)*$/.test(keepBase) ? keepBase : "";
+  if (failed) redirect(`${path}?${failedQuery(failed, { focus, count: count ? String(count) : "" }, keep)}`);
+  redirect(`${path}${flag ? `?${flag}` : ""}`);
+}
+
+/**
+ * One drafted piece per pillar, each its own project (the client's rule). A
+ * batch is well over the ~10 seconds a person should wait in a request, so it
+ * is queued (lib/jobs, kind pillar_drafts): the page shows its progress, the
+ * pieces already made are kept if it stops, and Try again carries on. A second
+ * click while one is running shows that one instead of starting another.
  */
 export async function draftFromPillarsAction(fd: FormData): Promise<void> {
   const tenantId = String(fd.get("tenantId"));
   const scope = await actionScope(tenantId);
   const format = String(fd.get("format") ?? "linkedin_post");
-  const pillars = await listPillars(scope);
-  // Sequential on purpose: each call is logged, and a failure (a cap, a rate
-  // limit, the provider) stops the run but keeps the pieces already made;
-  // the page says how many and why it stopped. There is no job queue yet.
-  let drafted = 0;
-  let stopped: string | null = null;
-  for (const p of pillars) {
-    const projectId = await startPiece(scope, { topic: `${p.name}: ${p.description ?? "what I've learned"}`, format, pillarName: p.name });
-    const ps = { ...scope, projectId };
-    try {
-      await generateContent(ps, { format, topic: p.name, pillarId: p.id });
-    } catch (e) {
-      // The piece stays, at Ideate with its topic, ready to draft later.
-      stopped = userMessage(e);
-      break;
+  const running = await latestJob(scope, "pillar_drafts");
+  if (!running || !["queued", "running"].includes(running.status)) {
+    const pillars = await listPillars(scope);
+    if (pillars.length > 0) {
+      await enqueueJob(scope, "pillar_drafts", { format, pillarIds: pillars.map((p) => p.id) }, { label: "Drafting from your pillars" });
+      startWorker();
     }
-    await scoreProject(ps).catch(() => undefined);
-    await unlockStage(ps, "content");
-    drafted++;
   }
   refresh(tenantId);
-  redirect(`/w/${tenantId}/brand/pillars?${new URLSearchParams({ drafted: String(drafted), ...(stopped ? { stopped } : {}) })}`);
+  redirect(`/w/${tenantId}/brand/pillars`);
 }
 
 /** Start one piece from a pillar, at Ideate. */

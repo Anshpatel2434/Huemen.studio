@@ -1,3 +1,5 @@
+import { GuardedForm } from "@/components/unsaved-guard";
+import { unsavedKey } from "@/lib/ui/unsaved";
 import Link from "next/link";
 import { Lightbulb, Archive, ArrowRight, CheckCircle2 } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
@@ -21,14 +23,14 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
 
   return (
     <DocPage eyebrow={`${(ws?.name ?? "Your brand")} · Idea inbox`} title="Catch it now." accent="Shape it later." sub="Paste a thought. If its words match a pillar it's tagged to it; otherwise tag it yourself. One click turns it into a new piece, ready to write.">
-      <form action={captureIdeaAction} className="hu-composer max-w-4xl">
+      <GuardedForm storageKey={unsavedKey(id, "idea:new")} action={captureIdeaAction} className="hu-composer max-w-4xl">
         <input type="hidden" name="tenantId" value={id} />
         <textarea name="text" rows={3} required aria-label="New idea" placeholder="e.g. The client who fired me taught me more than the ones who stayed" />
         <div className="hu-composer__bar">
           <span className="text-xs text-ink-faint flex-1">{pillars.length ? `Tagged to the closest of your ${pillars.length} pillars as it lands.` : "Add pillars in Brand core and ideas are tagged to them."}</span>
           <SubmitButton pendingLabel="Saving…" size="sm">Capture</SubmitButton>
         </div>
-      </form>
+      </GuardedForm>
 
       <div className="mt-10">
         <p className="label-mono text-ink-faint mb-3">Open · {open.length}</p>

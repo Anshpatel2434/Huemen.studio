@@ -73,6 +73,30 @@ For any host:
 3. `AUTH_SECRET` of 32+ random characters; `AUTH_DRIVER=email`.
 4. On serverless hosts, `DATABASE_POOL_MAX` 1 to 3 and the database's transaction pooler; raise the function time limit for long generations.
 5. Point an uptime monitor at `GET /api/health` (200 when the database answers, 503 when not).
+6. Set `CRON_SECRET` (16+ random characters) and call `GET /api/cron` every few minutes with `Authorization: Bearer <CRON_SECRET>` (see Background jobs).
+
+## Background jobs
+Work a person would wait more than ~10 seconds for runs in a queue
+([`src/lib/jobs`](src/lib/jobs), the `jobs` table): today "Draft a piece from
+every pillar" and "Generate 90 days". There is no always-on worker:
+- a job starts right after the request that queued it (`after()` from
+  `next/server`, inside the route's 300-second limit);
+- while a page shows the job, its status poll (`GET /w/[id]/jobs/[jobId]`)
+  starts a worker if the job is due or its worker has gone;
+- `GET /api/cron` runs whatever is due, for retries nobody is watching. On
+  Vercel, a Cron Job on that path sends the `Authorization: Bearer` header
+  itself (Vercel's Hobby plan only allows daily crons; use Pro or any uptime
+  pinger that can send a header). Without `CRON_SECRET` the route refuses
+  every call.
+
+A failure a retry could fix (the model timing out, a rate limit) waits and
+tries again: 30 seconds, 2 minutes, 8 minutes, then up to 30 minutes, four
+attempts in all, then the job is `dead`. The monthly cap, a setup error or
+lost access stop it at once (`failed`). Either way the page says why, keeps
+what was already made, and offers Try again, which carries on from there.
+Each job runs as the person who started it, re-checked for access first.
+To add a kind, write a handler in `src/lib/jobs/handlers.ts` that saves its
+progress before each slow step.
 
 ## Tenant isolation (the one bug class we cannot ship)
 Enforced by Postgres RLS on every table, keyed to the session tenant claim; the

@@ -59,7 +59,25 @@ function withContextHints(req: TextGenRequest): string {
     } catch { /* already plain text */ }
     if (said.trim()) hints.push(`Audience: ${said.trim()}`);
   }
+  if (req.templateKey === "voice_preview") hints.push(...previewHints(req.context.serialized));
   return hints.length ? `${hints.join("\n")}\n${req.taskInput}` : req.taskInput;
+}
+
+/**
+ * The live preview's hints, read from the context block the way the real
+ * model reads them (INV-2): the casual-formal dial, a punctuation ban, the
+ * measured sentence length and a closing question. The task input carries
+ * only the paragraph.
+ */
+export function previewHints(s: string): string[] {
+  const out: string[] = [];
+  const casual = s.match(/Casual[–-]Formal (\d+)/)?.[1];
+  if (casual) out.push(`Casual to formal: ${casual}`);
+  if (/No [^.\n]*exclamation marks|free of [^?\n]*exclamation marks/.test(s)) out.push("Exclamation marks: never");
+  const avg = s.match(/Sentences average (\d+(?:\.\d+)?) words/)?.[1];
+  if (avg) out.push(`Average sentence words: ${Math.round(Number(avg))}`);
+  if (/Does it end on a question\?/.test(s)) out.push("Asks questions: often");
+  return out;
 }
 
 function mockPillars(req: TextGenRequest): string {
@@ -126,16 +144,18 @@ export const mockTextProvider: StreamingTextProvider = {
       "what I'd do differently": `What I'd do differently about ${s0}.`,
     };
     const n = req.variants ?? 2;
+    // A steer changes the draft the way a real rewrite would (another opening,
+    // fewer lines for "shorter"), never by writing the instruction into it.
+    const turn = [...steer].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 0) % HOOKS.length;
     const variants = Array.from({ length: n }, (_, i) => {
-      const hook = angle && i === 0 && angleHook[angle] ? angleHook[angle] : HOOKS[i % HOOKS.length](s0);
+      const hook = angle && i === 0 && !steer && angleHook[angle] ? angleHook[angle] : HOOKS[(i + turn) % HOOKS.length](s0);
       const body = [
         positioning ? `${positioning}` : `I work in ${niche}.`,
         short ? "" : `Three things I've learned about ${s0}:`,
         short ? "" : `1. Say the ${doWords[0] ?? "specific"} thing, not the safe thing.`,
         short ? "" : `2. Show the work — one ${doWords[1] ?? "real"} example beats ten claims.`,
         short ? "" : `3. Keep it ${doWords[2] ?? "plain"}. Your audience is busy.`,
-        steer ? `(${steer.toLowerCase()} pass)` : "",
-        req.context.degraded ? "[Draft is generic: the brand foundation is thin.]" : "",
+        // A thin brief is said on the page (content board, agent panel), not in the draft.
       ]
         .filter(Boolean)
         .join("\n\n");

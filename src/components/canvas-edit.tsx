@@ -18,6 +18,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { createPortal } from "react-dom";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { AgentDots, useToast } from "@/components/ui";
+import { useUnsavedChanges } from "@/components/unsaved-guard";
 
 // ------------------------------------------------------------ history ---
 
@@ -127,6 +128,8 @@ export function EditableText({
     setWasEditing(editing);
     if (editing) setDraft(shown);
   }
+  // Text being typed in place is unsaved until it commits (Enter or click away).
+  useUnsavedChanges({ dirty: editing && draft !== shown });
 
   const begin = () => setEditing(true);
   const cancel = () => setEditing(false);
@@ -154,7 +157,8 @@ export function EditableText({
       await onCommit(next, prev, { asked: true }).catch((e) => { setPending(null); throw e; });
       toast(`Rewritten. ${typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+"}Z undoes it.`);
     } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : "That didn't work. Try again.", "danger");
+      // The ask stays open with its words; Try again repeats it.
+      toast(e instanceof Error && e.message ? e.message : "That didn't go through.", "danger", { label: "Try again", run: () => void ask(instruction) });
     } finally {
       setRewriting(false);
     }
@@ -286,12 +290,12 @@ function AskBox({ rect, label, busy, onAsk, onClose }: {
       </form>
       <div className="flex flex-wrap gap-1">
         {ASK_CHIPS.map((c) => (
-          <button key={c} type="button" disabled={busy} onClick={() => send(c)} className="h-8 px-2.5 rounded-full border border-line text-xs hover:bg-hover disabled:opacity-40">
+          <button key={c} type="button" disabled={busy} onClick={() => send(c)} className="h-8 max-sm:h-10 px-2.5 rounded-full border border-line text-xs hover:bg-hover disabled:opacity-40">
             {c}
           </button>
         ))}
       </div>
-      <p className="text-[0.7rem] text-ink-faint px-1">{busy ? "Rewriting in your voice…" : "Applied straight to the canvas. Undo brings it back."}</p>
+      <p className="text-[0.7rem] max-sm:text-xs text-ink-faint px-1">{busy ? "Rewriting in your voice…" : "Applied straight to the canvas. Undo brings it back."}</p>
     </div>,
     document.body,
   );

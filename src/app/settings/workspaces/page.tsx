@@ -14,6 +14,8 @@ import { ChipChoice } from "@/components/chip-choice";
 import { Select } from "@/components/select";
 import { CopyField } from "./copy-field";
 import { ConfirmSubmit } from "@/components/confirm-submit";
+import { GuardedForm } from "@/components/unsaved-guard";
+import { unsavedKey } from "@/lib/ui/unsaved";
 import {
   accentAction,
   assignCoachAction,
@@ -70,10 +72,10 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
       {refused && <Alert tone="warning" className="mt-6">{refused}</Alert>}
       {note && <Alert tone="info" className="mt-6">{note}</Alert>}
 
-      <form action={createWorkspaceAction} className="mt-8 bg-paper border border-hairline rounded-md p-5 flex gap-2">
+      <GuardedForm storageKey={unsavedKey(session.tenantId, "admin:new-workspace")} action={createWorkspaceAction} className="mt-8 bg-paper border border-hairline rounded-md p-5 flex gap-2">
         <input name="name" placeholder="New workspace name" className="field flex-1 min-w-0" required />
         <SubmitButton pendingLabel="Creating…">Create</SubmitButton>
-      </form>
+      </GuardedForm>
 
       <div className="mt-4 flex flex-col gap-4 pb-12">
         {workspaces.map((w) => {
@@ -85,7 +87,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
           return (
             <section key={w.id} className="bg-paper border border-hairline rounded-md p-5">
               <div className="flex items-center gap-2 flex-wrap">
-                <Link href={`/w/${w.id}`} className="font-medium hover:underline flex items-center gap-1">{w.name} <ArrowUpRight size={13} className="text-ink-faint" /></Link>
+                <Link href={`/w/${w.id}`} className="font-medium hover:underline flex items-center gap-1 max-sm:min-h-11">{w.name} <ArrowUpRight size={13} className="text-ink-faint" /></Link>
                 <Badge tone={w.status === "active" ? "ok" : "warn"}>{w.status}</Badge>
                 {home && <Badge>your organisation</Badge>}
                 <span className="text-xs text-ink-faint">{w.user_count} {w.user_count === 1 ? "person" : "people"}</span>
@@ -104,7 +106,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
               {w.status === "archived" && <p className="text-xs text-ink-faint mt-2">Archived: nobody can sign in to it or use it, including anyone signed in when it was archived. Restore to open it again.</p>}
 
               <div className="mt-4 flex flex-col gap-4 min-w-0">
-                <form action={inviteUserAction} className="flex flex-col gap-2">
+                <GuardedForm storageKey={unsavedKey(w.id, "admin:invite")} action={inviteUserAction} className="flex flex-col gap-2">
                   <input type="hidden" name="tenantId" value={w.id} />
                   <div className="flex gap-2">
                     <input name="email" type="email" placeholder="name@example.com" className="field flex-1 min-w-0" required aria-label={`Invite to ${w.name}`} />
@@ -118,7 +120,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                   <p className="text-xs text-ink-faint">
                     {home ? "Coaches and admins belong to your organisation. Admins see every workspace; coaches see the ones they are assigned to." : "Invited as a client of this workspace."}
                   </p>
-                </form>
+                </GuardedForm>
 
                 {!home && (
                   <div>
@@ -206,15 +208,15 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                 )}
 
                 <div className="grid gap-3 md:grid-cols-2 border-t border-hairline pt-3">
-                  <form action={renameWorkspaceAction} className="flex items-end gap-2 min-w-0">
+                  <GuardedForm storageKey={unsavedKey(w.id, "admin:name")} action={renameWorkspaceAction} className="flex items-end gap-2 min-w-0">
                     <input type="hidden" name="tenantId" value={w.id} />
                     <label className="block flex-1 min-w-0">
                       <span className="block text-xs text-ink-muted mb-1">Name</span>
                       <input name="name" defaultValue={w.name} className="field" required maxLength={80} />
                     </label>
                     <SubmitButton variant="secondary" size="sm" pendingLabel="…">Rename</SubmitButton>
-                  </form>
-                  <form action={accentAction} className="flex items-end gap-2 min-w-0">
+                  </GuardedForm>
+                  <GuardedForm storageKey={unsavedKey(w.id, "admin:accent")} action={accentAction} className="flex items-end gap-2 min-w-0">
                     <input type="hidden" name="tenantId" value={w.id} />
                     <label className="block flex-1 min-w-0">
                       <span className="block text-xs text-ink-muted mb-1">Accent colour</span>
@@ -224,10 +226,10 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                       </span>
                     </label>
                     <SubmitButton variant="secondary" size="sm" pendingLabel="…">Save</SubmitButton>
-                  </form>
+                  </GuardedForm>
                 </div>
 
-                <form action={setCapsAction} className="border-t border-hairline pt-3">
+                <GuardedForm storageKey={unsavedKey(w.id, "admin:caps")} action={setCapsAction} className="border-t border-hairline pt-3">
                   <input type="hidden" name="tenantId" value={w.id} />
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="text-xs text-ink-muted">Monthly AI caps</p>
@@ -241,7 +243,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                     <SubmitButton variant="secondary" size="sm" pendingLabel="…">Save caps</SubmitButton>
                   </div>
                   <p className="text-xs text-ink-faint mt-2">Warn turns the usage meter amber. Stop refuses further generations until the month resets. Empty means no limit; 0 switches it off. Visuals are drawn from templates today, so image caps apply only once an image model is connected.</p>
-                </form>
+                </GuardedForm>
               </div>
             </section>
           );

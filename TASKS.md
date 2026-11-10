@@ -150,6 +150,7 @@ Treat these as acceptance criteria on *all* work, not a separate task:
   - **Constraint (INV-1 / §07 / risk §10):** this is the one unshippable bug
     class. **Done when:** tests exist for each endpoint as it lands, run in CI,
     and a deliberately-leaky query makes them fail (proving they bite).
+  - _2026-11-11:_ Per-endpoint tests landed (`tests/cross-tenant-endpoints.test.ts`, about 300 tests, ~50s): every server action and route handler, called in-process with a real session cookie against the real database, as a client of B, a coach of B, a disabled user of A and nobody, aimed at A. Each is refused, returns nothing of A's and changes nothing of A's (checked as the database owner), with a positive control by A's own member; signed-link, cron and browser-report endpoints have their own cases. A new endpoint with no case fails the suite (`tests/helpers/endpoints.ts`). Proven to bite: removing the workspace or project check fails it.
 
 ### 1b. Auth, roles, tenant provisioning, admin shell
 - [x] **P1-4 — Role enforcement (Owner/Admin, Coach, Client).** Map role claims
@@ -239,20 +240,22 @@ upload + questionnaire), context builder written + unit-tested.
   - **Done when:** a template can be edited + versioned without a redeploy; each
     generation resolves the correct (tenant-override-aware) version.
   - _2026-10-13:_ Built: `prompt_templates` resolved per call (tenant override > global > built-in default v0). Admin editor at Settings > Prompts, every save a new version, audited.
-- [~] **P2-3 — Generation logging + visible failure states.** Every model call
+- [x] **P2-3 — Generation logging + visible failure states.** Every model call
   writes a `generation_logs` row **before returning** (kind, model, tokens
   in/out, image count, latency, status, user, tenant).
   - **Constraint:** **no silent failures** — a failed generation is a visible,
     **retryable** UI state; input is saved (never lose a draft).
   - **Done when:** every call is logged; a forced failure shows a retryable state.
   - _2026-10-13:_ Every call logs, success and failure. OPEN: a failed draft is a toast, not a stored retryable state, and the request is not saved before the model call.
-- [~] **P2-4 — Streaming vs. queue policy.** Stream anything the user waits on;
+  - _2026-11-11:_ Done. Live drafts keep their topic and offer Try again; batches are queued jobs that keep their partial results and offer Try again; regenerate, steer and rewrite failures keep the toast open with Try again; pillar generation comes back to its page with the reason, the input kept and Try again (components/generation-failed), never an error page.
+- [x] **P2-4 — Streaming vs. queue policy.** Stream anything the user waits on;
   **queue anything over ~10s**. Job queue with retries+backoff, dead-letter,
   visible job status in the UI.
   - **Done when:** single text gen streams; a long batch queues with visible
     progress and retained partial results on failure.
   - _2026-10-13:_ No queue, no streaming: generation runs in the request thread (`AI_TEXT_TIMEOUT_MS`). The `jobs` table and `QUEUE_DRIVER` exist unused. Parked, client to be told.
   - _2026-10-14:_ Streaming built: single drafts are written live onto the canvas (NDJSON route, provider `stream()`). Queue still parked.
+  - _2026-11-11:_ Queue built (`lib/jobs`, migration 0020): claim with SKIP LOCKED and a lease, backoff retries (30s, 2m, 8m, up to 30m), dead-letter after four attempts, slices inside the function limit, progress kept before each slow step. "Draft from every pillar" and "Generate 90 days" are queued, with status, progress, Stop and Try again on their pages. Runs after the request (`after()`), while a page watches, and from `GET /api/cron` (CRON_SECRET). README, Background jobs.
 - [x] **P2-5 — Rate limiting on generation endpoints.** Per user **and** per
   tenant (§07). **Done when:** limits enforced + surfaced clearly when hit.
   - _2026-10-13:_ Not built. Only the hard usage cap (P3-9) bounds spend.
@@ -395,6 +398,7 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 - [~] **P4-1 — Security review.** Verify §07 across the app: RLS, storage scoping,
   rate limits, upload validation, provider "no-training" setting recorded.
   - _2026-11-03:_ Audited and fixed: production refuses the dev sign-in and the example secret; session expiry and re-check; admin invites limited to the owner's organisation; admin flag forced off in workspace handlers; questionnaire links expire; storage signatures compared in constant time; RLS checked on every table from the catalog; every endpoint checked for a gate; rate limits; upload validation; no-training enforced and recorded (decisions log). Open: image re-encoding, a formal external review.
+  - _2026-11-11:_ Image uploads are re-encoded with sharp (upright, all metadata removed, at most 4096 px, over 50 MP refused); abandoned uploads are swept after 24 hours from the cron route; structured JSON logs with redaction, and errors reported through `onRequestError` and `/api/client-error`, to Sentry when `SENTRY_DSN` is set (client's own account). Open: a formal external review.
 - [x] **P4-2 — Seed data.** Realistic seed for a demo/reference workspace.
   - _2026-10-13:_ Owner org, a finished demo client (pieces, pillars, voice pack, caps) and a fresh client for onboarding.
 

@@ -10,12 +10,16 @@ import { btnClass } from "@/components/btn";
  * question is the title; the body says what the action does and whether it
  * can be undone; the primary button names the action, never "OK".
  */
-export function ConfirmModal({ open, title, children, confirmLabel, danger = false, pending = false, onClose, onConfirm }: {
+export function ConfirmModal({ open, title, children, confirmLabel, cancelLabel = "Cancel", focusCancel = false, danger = false, pending = false, onClose, onConfirm }: {
   open: boolean;
   title: string;
   children?: ReactNode;
   /** The verb on the button: "Delete pillar", "Archive project". */
   confirmLabel: string;
+  /** The way out, when "Cancel" isn't the word ("Stay"). */
+  cancelLabel?: string;
+  /** Start on the way out, for a confirm that throws work away. */
+  focusCancel?: boolean;
   danger?: boolean;
   pending?: boolean;
   onClose: () => void;
@@ -28,8 +32,8 @@ export function ConfirmModal({ open, title, children, confirmLabel, danger = fal
       title={title}
       footer={
         <>
-          <button type="button" onClick={onClose} className={btnClass("secondary")} disabled={pending}>Cancel</button>
-          <button type="button" onClick={onConfirm} className={btnClass(danger ? "danger" : "primary")} disabled={pending} autoFocus>
+          <button type="button" onClick={onClose} className={btnClass("secondary")} disabled={pending} autoFocus={focusCancel}>{cancelLabel}</button>
+          <button type="button" onClick={onConfirm} className={btnClass(danger ? "danger" : "primary")} disabled={pending} autoFocus={!focusCancel}>
             {confirmLabel}
           </button>
         </>

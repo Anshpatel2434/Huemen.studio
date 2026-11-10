@@ -18,6 +18,7 @@ import type { FetchLike } from "@/lib/integrations/oauth";
 import { withTenantSession } from "@/db/session";
 import { appPool } from "@/db/pool";
 import type { WorkspaceScope } from "@/lib/data/projects";
+import { TINY_PNG } from "./fixtures/images";
 
 function pack(over: Partial<VoicePack> = {}): VoicePack {
   return {
@@ -50,6 +51,20 @@ describe("the new tasks are registered and their stand-ins behave", () => {
     const { pairs } = dialPairs.schema.parse(dialPairs.mock(input));
     expect(pairs.map((p) => p.dial)).toEqual([...DIAL_KEYS]);
     expect(pairs.every((p) => p.left !== p.right)).toBe(true);
+  });
+
+  it("takes the preview's voice from the context block, not the task input (INV-2)", async () => {
+    const { previewHints } = await import("@/lib/ai/providers/mock");
+    const { previewInput } = await import("@/lib/data/enrich");
+    expect(previewInput("leadership")).toBe(`Paragraph:\n${previewSource("leadership")}\n`);
+    const ctx = [
+      "Dials, 1 to 10: Casual–Formal 2 (casual)",
+      "Sentences average 9 words (median 8).",
+      "No exclamation marks.",
+      "Does it end on a question?",
+    ].join("\n");
+    expect(previewHints(ctx)).toEqual(["Casual to formal: 2", "Exclamation marks: never", "Average sentence words: 9", "Asks questions: often"]);
+    expect(previewHints("Niche: leadership")).toEqual([]);
   });
 
   it("moves the preview as the voice changes", () => {
@@ -311,7 +326,7 @@ describe("enrichment in the database", () => {
   it("accepts a headshot as its own kind of asset (0014)", async () => {
     if (!dbReachable) return;
     const { uploadAsset, listAssets } = await import("@/lib/data/assets");
-    const png = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], "me.png", { type: "image/png" });
+    const png = new File([TINY_PNG], "me.png", { type: "image/png" });
     await uploadAsset(W, png, "headshot");
     expect((await listAssets(W)).some((a) => a.kind === "headshot")).toBe(true);
     await expect(uploadAsset(W, new File(["x"], "me.svg", { type: "image/svg+xml" }), "headshot")).rejects.toThrow(/isn't one we can use/);

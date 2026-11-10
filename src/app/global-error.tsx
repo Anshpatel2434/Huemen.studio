@@ -1,11 +1,20 @@
 "use client";
 
+import { useEffect } from "react";
+import { sendClientError } from "@/lib/observability/client-send";
+
 /**
  * The last-resort error page, for a failure in the root layout itself (the
  * app's error.tsx can't catch those). It replaces the whole document, so it
  * carries its own minimal styles: monochrome, light or dark with the system.
+ * A failure in the browser is sent to the server log; one on the server is
+ * there already (instrumentation onRequestError).
  */
 export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  useEffect(() => {
+    sendClientError(error);
+  }, [error]);
+
   return (
     <html lang="en">
       <body>

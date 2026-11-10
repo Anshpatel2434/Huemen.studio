@@ -5,6 +5,8 @@ import { getWorkspace } from "@/lib/data/workspaces";
 import { listOffers } from "@/lib/data/planning";
 import { loadFoundation } from "@/lib/data/foundation";
 import { DocPage } from "@/components/doc-page";
+import { GuardedForm } from "@/components/unsaved-guard";
+import { unsavedKey } from "@/lib/ui/unsaved";
 import { EmptyState, SubmitButton } from "@/components/ui";
 import { createOfferAction, deleteOfferAction, updateOfferAction } from "../actions";
 
@@ -44,7 +46,7 @@ export default async function OffersPage({ params, searchParams }: PageProps<"/w
               /></div>
           ) : (
             offers.map((o) => editing === o.id ? (
-              <form key={o.id} action={updateOfferAction} className="bg-field rounded-xl p-5 flex flex-col gap-3">
+              <GuardedForm key={o.id} storageKey={unsavedKey(id, `offer:${o.id}`)} action={updateOfferAction} className="bg-field rounded-xl p-5 flex flex-col gap-3">
                 <input type="hidden" name="tenantId" value={id} />
                 <input type="hidden" name="id" value={o.id} />
                 <p className="font-medium">Edit offer</p>
@@ -53,7 +55,7 @@ export default async function OffersPage({ params, searchParams }: PageProps<"/w
                   <Link href={`/w/${id}/plan/offers`} className="inline-flex items-center min-h-11 px-4 text-sm text-ink-muted hover:text-ink">Cancel</Link>
                   <SubmitButton pendingLabel="Saving…">Save changes</SubmitButton>
                 </div>
-              </form>
+              </GuardedForm>
             ) : (
               <article key={o.id} className="bg-field rounded-xl p-5">
                 <div className="flex items-start gap-3">
@@ -80,12 +82,12 @@ export default async function OffersPage({ params, searchParams }: PageProps<"/w
           )}
         </div>
 
-        <form action={createOfferAction} className="bg-field rounded-xl p-5 flex flex-col gap-3 xl:sticky xl:top-0">
+        <GuardedForm storageKey={unsavedKey(id, "offer:new")} action={createOfferAction} className="bg-field rounded-xl p-5 flex flex-col gap-3 xl:sticky xl:top-0">
           <input type="hidden" name="tenantId" value={id} />
           <p className="font-medium">New offer</p>
           <OfferFields />
           <SubmitButton pendingLabel="Saving…">Save offer</SubmitButton>
-        </form>
+        </GuardedForm>
       </div>
     </DocPage>
   );

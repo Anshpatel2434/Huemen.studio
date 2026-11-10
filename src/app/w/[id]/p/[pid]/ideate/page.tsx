@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { GuardedForm } from "@/components/unsaved-guard";
+import { unsavedKey } from "@/lib/ui/unsaved";
 import { Lightbulb, ArrowRight, Check } from "lucide-react";
 import { projectScope } from "@/lib/auth/workspace";
 import { listIdeas, listPillars } from "@/lib/data/planning";
@@ -67,7 +69,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
 
       {/* The questions on the left, and beside them the map of what they build. */}
       <div className="grid grid-cols-1 min-[1400px]:grid-cols-[minmax(0,620px)_minmax(0,1fr)] gap-x-14 gap-y-12 items-start">
-      <form id="ideate-form" action={setIdeateAction} className="flex flex-col gap-6 min-w-0">
+      <GuardedForm id="ideate-form" storageKey={unsavedKey(id, `ideate:${pid}`)} action={setIdeateAction} className="flex flex-col gap-6 min-w-0">
         <Hidden id={id} pid={pid} />
 
         <section className="border-t border-hairline pt-6">
@@ -136,13 +138,13 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
           </label>
         </section>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="submit" name="next" value="content" className={btnClass("primary", "md")}>
             Write it <ArrowRight size={14} />
           </button>
           <SubmitButton pendingLabel="Saving…" size="md" variant="ghost">Save and stay</SubmitButton>
         </div>
-      </form>
+      </GuardedForm>
 
       <div className="min-[1400px]:sticky min-[1400px]:top-6 min-w-0">
         <IdeateTree

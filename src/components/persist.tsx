@@ -61,7 +61,7 @@ export function useDraftPersist<T>(key: string | null, value: T, restore: (v: T)
  * be private email or chat). Saved work is on the server and unaffected.
  * The public questionnaire's drafts (`huemen:q:`) belong to no account and stay.
  */
-const ACCOUNT_DRAFTS = ["huemen:onb:", "huemen:brief:", "huemen:intake:"];
+const ACCOUNT_DRAFTS = ["huemen:onb:", "huemen:brief:", "huemen:intake:", "huemen:unsaved:"];
 
 export function ClearAccountDrafts() {
   useEffect(() => {

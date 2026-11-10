@@ -8,6 +8,7 @@ import { btnClass } from "@/components/btn";
 import type { TemplateEntry } from "@/lib/ai/template-defaults";
 import { removeOverrideAction, saveTemplateAction } from "./actions";
 import { Select } from "@/components/select";
+import { unsavedKey, useUnsavedChanges } from "@/components/unsaved-guard";
 
 type Version = { id: string; tenantId: string | null; version: number; body: string; createdAt: string; createdBy: string | null; workspaceName: string | null };
 
@@ -30,11 +31,21 @@ export function PromptCard({ entry, versions, workspaces }: { entry: TemplateEnt
   const [pending, start] = useTransition();
 
   // The newest version for the chosen scope, so the editor opens on what runs there.
+  const savedFor = (tenantId: string) => (tenantId ? overrides.find((o) => o.tenantId === tenantId) : current)?.body ?? current?.body ?? entry.defaultBody;
   const pick = (tenantId: string) => {
     setScope(tenantId);
-    const v = tenantId ? overrides.find((o) => o.tenantId === tenantId) : current;
-    setBody(v?.body ?? current?.body ?? entry.defaultBody);
+    setBody(savedFor(tenantId));
   };
+
+  // An edit in the open editor that isn't saved yet: guarded, and kept for a
+  // reload. Cancel is a choice, so closing the editor lets it go.
+  const { bar } = useUnsavedChanges<{ scope: string; body: string }>({
+    dirty: open && body !== savedFor(scope),
+    storageKey: unsavedKey("admin", `prompt:${entry.key}`),
+    value: { scope, body },
+    onRestore: (v) => { setScope(v.scope); setBody(v.body); setOpen(true); },
+    isSaved: (v) => v.body === savedFor(v.scope),
+  });
 
   const save = () =>
     start(async () => {
@@ -64,6 +75,7 @@ export function PromptCard({ entry, versions, workspaces }: { entry: TemplateEnt
 
   return (
     <article className="bg-paper border border-hairline rounded-md p-5">
+      {bar && <div className="mb-4">{bar}</div>}
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">

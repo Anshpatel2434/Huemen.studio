@@ -92,6 +92,12 @@ const schema = z.object({
   // editor header. The copy is still sample copy.
   HIDE_MOCK_BADGE: z.preprocess(blankIsUnset, z.enum(["0", "1"]).default("0")).transform((v) => v === "1"),
 
+  // Background jobs (lib/jobs): the secret a scheduler sends to GET /api/cron
+  // as "Authorization: Bearer <secret>". Unset, the route refuses every call
+  // and jobs still run after the request that queued them and while a page
+  // watches them; the cron catches retries nobody is watching.
+  CRON_SECRET: z.preprocess(blankIsUnset, z.string().min(16).optional()),
+
   // Connections (Gmail, Google Docs, Google Calendar, LinkedIn). Each provider
   // is off until its client id and secret are set; the page says so instead of
   // showing a button that fails. Tokens are sealed with CONNECTIONS_KEY
@@ -107,6 +113,13 @@ const schema = z.object({
   // Reading a member's own posts needs LinkedIn partner approval
   // (r_member_social). Leave false until LinkedIn has granted it.
   LINKEDIN_POSTS_APPROVED: z.preprocess(blankIsUnset, z.enum(["true", "false"]).default("false").transform((v) => v === "true")),
+
+  // Error tracking (lib/observability/report). Optional: without a DSN errors
+  // are only written to the log. The Sentry account must be in the client's
+  // own name; the DSN is the project's "Client Keys (DSN)" value.
+  SENTRY_DSN: z.preprocess(blankIsUnset, z.string().url().optional()),
+  /** Tags each event, e.g. "production" or "preview". Defaults to NODE_ENV. */
+  SENTRY_ENVIRONMENT: z.preprocess(blankIsUnset, z.string().max(64).optional()),
 });
 
 export type Env = z.infer<typeof schema>;

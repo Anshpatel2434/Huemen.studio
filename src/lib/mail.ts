@@ -11,6 +11,7 @@
  */
 import "server-only";
 import { getEnv } from "@/lib/env";
+import { logger } from "@/lib/observability/log";
 
 export interface AuthMail {
   to: string;
@@ -52,6 +53,8 @@ type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 export async function sendAuthMail(m: AuthMail, fetchImpl: FetchLike = fetch): Promise<{ delivered: boolean }> {
   const env = getEnv();
   if (env.MAIL_PROVIDER === "log") {
+    // Plain text on purpose, not the structured logger: printing the link is
+    // this mode's whole job (local work only; email sign-in refuses it).
     console.info(`[mail:log] to=${m.to} subject="${m.subject}"\n  ${m.lines.join("\n  ")}\n  ${m.link}`);
     return { delivered: false };
   }
@@ -70,7 +73,7 @@ export async function sendAuthMail(m: AuthMail, fetchImpl: FetchLike = fetch): P
   }
   if (!res.ok) {
     // The provider's reason goes to the log; the person gets a plain message.
-    console.error(`[mail:resend] ${res.status} ${(await res.text().catch(() => "")).slice(0, 300)}`);
+    logger.error("email not sent", { provider: "resend", status: res.status, reason: (await res.text().catch(() => "")).slice(0, 300) });
     throw new MailError("We couldn't send the email just now. Try again in a minute.");
   }
   return { delivered: true };

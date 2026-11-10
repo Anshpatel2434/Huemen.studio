@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { actionActor } from "@/lib/auth/workspace";
 import { saveBriefAnswers } from "@/lib/data/foundation";
-import { generatePillars } from "@/lib/data/pipeline";
+import { tryGeneratePillars } from "@/lib/data/pipeline";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { MIN_SEEDS, STRATEGY } from "@/lib/brief/questions";
 
@@ -28,7 +28,12 @@ export async function setupPillarsAction(fd: FormData) {
       revalidatePath(`/w/${tenantId}`, "layout");
       redirect(`/w/${tenantId}/setup?tab=pillars&blocked=1`);
     }
-    await generatePillars(scope);
+    // Answers are saved above; a failed generation comes back here with Try again.
+    const failed = await tryGeneratePillars(scope);
+    if (failed) {
+      revalidatePath(`/w/${tenantId}`, "layout");
+      redirect(`/w/${tenantId}/setup?${new URLSearchParams({ tab: "pillars", failed: failed.slice(0, 300) })}`);
+    }
   }
   revalidatePath(`/w/${tenantId}`, "layout");
   redirect(`/w/${tenantId}/setup?tab=pillars${generate ? "&made=1" : "&saved=1"}`);

@@ -8,10 +8,14 @@ import { btnClass } from "@/components/btn";
 import { deleteCalendarEntryAction, startFromSlotAction } from "../actions";
 import { CALENDAR_CHANNELS, CALENDAR_DAYS } from "@/lib/content/calendar-plan";
 import { AddSlotButton, GenerateCalendarButton } from "./calendar-tools";
+import { latestJob } from "@/lib/jobs";
+import { JobStatus } from "@/components/job-status";
 
 /** A slot's channel to the format a piece for it starts in. */
 
 export const metadata = { title: "Calendar" };
+// "Generate 90 days" starts the job queue after it responds (lib/jobs).
+export const maxDuration = 300;
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -31,7 +35,10 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
     const d = new Date(y, mo - 1, i - lead + 1);
     return { d, key: iso(d), inMonth: d.getMonth() === mo - 1 };
   });
-  const [entries, pillars] = await Promise.all([listCalendar(scope, cells[0].key, cells[cells.length - 1].key), listPillars(scope)]);
+  const [entries, pillars, job] = await Promise.all([
+    listCalendar(scope, cells[0].key, cells[cells.length - 1].key), listPillars(scope), latestJob(scope, "calendar_plan"),
+  ]);
+  const planning = !!job && (job.status === "queued" || job.status === "running");
   const byDay = new Map<string, typeof entries>();
   entries.forEach((e) => byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]));
   const pillarIdx = new Map(pillars.map((p, i) => [p.id, i]));
@@ -48,7 +55,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
       width={1120}
       action={
         <div className="flex flex-wrap items-center gap-2">
-          <GenerateCalendarButton tenantId={id} pillarCount={pillars.length} />
+          <GenerateCalendarButton tenantId={id} pillarCount={pillars.length} busy={planning} />
           <Link href={`?m=${prev}`} className="hu-iconbtn border border-line" aria-label="Previous month"><ChevronLeft size={15} /></Link>
           <Link href="?" className={btnClass("ghost", "sm")}>Today</Link>
           <Link href={`?m=${next}`} className="hu-iconbtn border border-line" aria-label="Next month"><ChevronRight size={15} /></Link>
@@ -56,6 +63,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
       }
     >
       <p className="text-sm text-ink-muted">Press + on a day to add a slot, or plan the next {CALENDAR_DAYS} days from your pillars. A slot starts a piece with its topic filled in.</p>
+      {job && <div className="mt-4"><JobStatus key={job.id} tenantId={id} initial={job} /></div>}
 
       <div className="mt-6 bg-paper border border-hairline rounded-md overflow-hidden">
         <div className="grid grid-cols-7 border-b border-hairline">
