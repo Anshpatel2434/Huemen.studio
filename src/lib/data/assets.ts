@@ -5,8 +5,10 @@
  * under a tenant-prefixed key, served via short-lived signed URLs (INV-1) with
  * locked-down headers (api/storage).
  *
- * Not done: re-encoding images (it would also strip metadata). It needs an
- * image library (sharp); add it here before persisting if that is wanted.
+ * PNG, JPEG and WebP are re-encoded before they are stored (lib/storage/image):
+ * turned upright, every piece of metadata (EXIF, GPS, ICC) removed, capped at
+ * 4096 px, and refused when they would decode to a bomb or can't be decoded.
+ * The stored type and byte count are those of the re-encoded file.
  *
  * Server-only.
  */
@@ -16,6 +18,7 @@ import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import { sniffType, svgProblem } from "@/lib/storage/sniff";
+import { ImageRefused, isReencodedType, reencodeImage } from "@/lib/storage/image";
 
 export type AssetKind = "logo" | "reference_image" | "headshot" | "font" | "other";
 
@@ -77,9 +80,20 @@ export async function storeAsset(
     if (why) throw new AssetError(`That SVG can't be used: ${why}. Export it again as a plain SVG, or upload a PNG.`);
   }
 
+  // Raster images are stored as a fresh file, never as sent (lib/storage/image).
+  let data = bytes;
+  if (isReencodedType(mime)) {
+    try {
+      data = (await reencodeImage(bytes, mime)).data;
+    } catch (e) {
+      if (e instanceof ImageRefused) throw new AssetError(e.message);
+      throw e;
+    }
+  }
+
   const ext = EXT[mime] ?? "bin";
   const key = tenantKey(scope.tenantId, "assets", `${randomUUID()}.${ext}`);
-  await storage().put(key, bytes, mime);
+  await storage().put(key, data, mime);
 
   await withTenantSession(scope, (c) =>
     c.query(
@@ -87,7 +101,7 @@ export async function storeAsset(
        VALUES ($1,$7,$2,$3,$4,$5,$6)`,
       // Brand uploads (logos, fonts, references) belong to the workspace, not a
       // piece (migration 0007), so project_id is NULL like the rest of the brand.
-      [scope.tenantId, kind, key, mime, bytes.byteLength, scope.userId, null],
+      [scope.tenantId, kind, key, mime, data.byteLength, scope.userId, null],
     ),
   );
 }
