@@ -10,11 +10,12 @@ import { redirect } from "next/navigation";
 import { actionScope } from "@/lib/auth/workspace";
 import {
   addCalendarEntry, archiveIdea, captureIdea, createOffer, deleteCalendarEntry, deleteOffer, updateOffer,
-  generateCalendar, getCalendarEntry, getIdea, markIdeaStarted, markSlotStarted, setIdeaPillar,
+  getCalendarEntry, getIdea, markIdeaStarted, markSlotStarted, setIdeaPillar,
 } from "@/lib/data/planning";
 import { FORMATS } from "@/lib/content/formats";
 import { startPiece } from "@/lib/data/create";
-import { CALENDAR_CHANNELS } from "@/lib/content/calendar-plan";
+import { CALENDAR_CHANNELS, CALENDAR_DAYS } from "@/lib/content/calendar-plan";
+import { enqueueJob, latestJob, startWorker } from "@/lib/jobs";
 
 async function ctx(fd: FormData) {
   const t = String(fd.get("tenantId"));
@@ -94,17 +95,26 @@ export async function addCalendarEntryAction(fd: FormData) {
   refresh(t);
 }
 
-/** The 90-day plan. Returns what was planned and how many days were already taken. */
+/**
+ * The 90-day plan. One model call fills every free slot, which can take a
+ * while, so it is queued (lib/jobs, kind calendar_plan) and the calendar page
+ * shows it running, done, or stopped with Try again. A second request while
+ * one is waiting returns that one instead of planning twice.
+ */
 export async function generateCalendarAction(
   tenantId: string,
   opts: { start: string; perWeek: number; channels: string[] },
-): Promise<{ planned: number; skipped: number }> {
+): Promise<{ jobId: string }> {
   const scope = await actionScope(tenantId);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.start)) throw new Error("bad start date");
   const channels = opts.channels.filter((c) => CALENDAR_CHANNELS.some((k) => k.key === c));
-  const out = await generateCalendar(scope, { start: opts.start, perWeek: opts.perWeek, channels });
+  const perWeek = Math.min(7, Math.max(1, Math.round(Number(opts.perWeek) || 3)));
+  const running = await latestJob(scope, "calendar_plan");
+  if (running && (running.status === "queued" || running.status === "running")) return { jobId: running.id };
+  const jobId = await enqueueJob(scope, "calendar_plan", { start: opts.start, perWeek, channels }, { label: `Planning the next ${CALENDAR_DAYS} days` });
+  startWorker();
   refresh(tenantId);
-  return out;
+  return { jobId };
 }
 
 export async function deleteCalendarEntryAction(fd: FormData) {

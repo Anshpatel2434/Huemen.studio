@@ -22,9 +22,8 @@ const CADENCE = [
  * planned in code and one model call fills them. The modal says how many
  * slots that makes before anything runs, so the number is never a surprise.
  */
-export function GenerateCalendarButton({ tenantId, pillarCount }: { tenantId: string; pillarCount: number }) {
+export function GenerateCalendarButton({ tenantId, pillarCount, busy = false }: { tenantId: string; pillarCount: number; busy?: boolean }) {
   const router = useRouter();
-  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [perWeek, setPerWeek] = useState<"2" | "3" | "5">("3");
   const [channels, setChannels] = useState<string[]>(["linkedin", "newsletter"]);
@@ -40,26 +39,20 @@ export function GenerateCalendarButton({ tenantId, pillarCount }: { tenantId: st
     start(async () => {
       setError("");
       try {
-        const out = await generateCalendarAction(tenantId, { start: start_, perWeek: Number(perWeek), channels });
+        // Queued (lib/jobs): the page shows it running and what it planned.
+        await generateCalendarAction(tenantId, { start: start_, perWeek: Number(perWeek), channels });
         setOpen(false);
-        toast(
-          out.planned
-            ? `${out.planned} slots planned${out.skipped ? `, ${out.skipped} days already had one` : ""}`
-            : "Every planned day already has a slot. Nothing added.",
-          out.planned ? "success" : "neutral",
-        );
-        router.push("?");
         router.refresh();
       } catch {
         // The choices stay in the form (brief §07: never lose a user's input).
-        setError("Planning failed and was logged. Your choices are still here, so try again.");
+        setError("Planning couldn't start. Your choices are still here, so try again.");
       }
     });
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={btnClass("secondary", "sm")} disabled={pillarCount === 0} title={pillarCount === 0 ? "Add pillars in Brand core first; the plan is written from them." : undefined}>
-        <Sparkles size={14} aria-hidden="true" /> Generate {CALENDAR_DAYS} days
+      <button type="button" onClick={() => setOpen(true)} className={btnClass("secondary", "sm")} disabled={pillarCount === 0 || busy} title={pillarCount === 0 ? "Add pillars in Brand core first; the plan is written from them." : undefined}>
+        <Sparkles size={14} aria-hidden="true" /> {busy ? "Planning…" : `Generate ${CALENDAR_DAYS} days`}
       </button>
       <Modal
         open={open}
@@ -70,7 +63,7 @@ export function GenerateCalendarButton({ tenantId, pillarCount }: { tenantId: st
           <>
             <button type="button" onClick={() => setOpen(false)} disabled={pending} className={btnClass("secondary")}>Cancel</button>
             <button type="button" onClick={run} disabled={pending || channels.length === 0} className={btnClass("primary")}>
-              {pending ? <><AgentDots /> Planning…</> : `Plan ${count} slots`}
+              {pending ? <><AgentDots /> Starting…</> : `Plan ${count} slots`}
             </button>
           </>
         }

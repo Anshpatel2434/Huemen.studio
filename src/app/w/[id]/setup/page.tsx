@@ -1,3 +1,4 @@
+import { GenerationFailed } from "@/components/generation-failed";
 import Link from "next/link";
 import { ArrowRight, Check, CheckCircle2 } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
@@ -159,6 +160,10 @@ export default async function SetupPage({ params, searchParams }: PageProps<"/w/
       const [pillars, answers] = await Promise.all([listPillars(scope), loadBriefAnswers(scope)]);
       const saved = Object.fromEntries(answers.map((a) => [a.key, a.answer]));
       return (
+        <>
+          {typeof sp.failed === "string" && (
+            <GenerationFailed className="mb-4" tenantId={id} message={sp.failed} back={`/w/${id}/setup`} ok="tab=pillars&made=1" keep="tab=pillars" />
+          )}
         <PersistForm id="setup-pillars" storageKey={`huemen:setup:${p.id}:pillars`} action={setupPillarsAction} className="bg-paper border border-hairline rounded-md p-5 flex flex-col gap-4">
           <input type="hidden" name="tenantId" value={id} />
           <h2 className="text-base">Your pillars</h2>
@@ -188,6 +193,7 @@ export default async function SetupPage({ params, searchParams }: PageProps<"/w/
             {pillars.length > 0 && <Link href={`/w/${id}/brand/pillars`} className={btnClass("ghost")}>See the pillar map</Link>}
           </div>
         </PersistForm>
+        </>
       );
     }
 

@@ -15,6 +15,8 @@ const GATES = [
   "requireSession(", "getSession(", "resolveScope(", "workspaceScope(", "projectScope(",
   "actionScope(", "actionProjectScope(", "actionActor(", "ctx(", "packFor(", "adminGlobalScope(",
   "verifyLink(", "verifyQuestionnaireToken(", "verifySignature(", "verifyPut(", "verifyState(",
+  // api/cron: a scheduler's bearer secret (CRON_SECRET), compared in constant time.
+  "authorisedCron(",
 ];
 
 /** Public on purpose. Key: "file#export". */

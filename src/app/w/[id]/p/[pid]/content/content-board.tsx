@@ -274,14 +274,17 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
   const liveViolations = findViolations(`${hook}\n${body}\n${cta}`, dontWords);
   const dirty = hook !== item.hook || body !== item.body || cta !== item.cta || (pillarId || null) !== item.pillarId;
 
-  const run = (label: string, fn: () => Promise<void | { error?: string }>, done: string) =>
+  // A failed generation stays retryable (P2-3): the toast holds Try again,
+  // which repeats the same request; the draft and the ask are untouched.
+  const run = (label: string, fn: () => Promise<void | { error?: string }>, done: string): void =>
     start(async () => {
       setBusy(label);
+      const again = { label: "Try again", run: () => run(label, fn, done) };
       try {
         const r = await fn();
-        if (r && r.error) toast(r.error, "danger");
+        if (r && r.error) toast(r.error, "danger", again);
         else { toast(done); router.refresh(); }
-      } catch { toast("That failed and was logged. Try again.", "danger"); }
+      } catch { toast("That didn't go through and was logged.", "danger", again); }
       setBusy(null);
     });
 

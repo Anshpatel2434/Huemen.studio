@@ -11,19 +11,26 @@ import { SubmitButton } from "@/components/ui";
 import { ChipChoice } from "@/components/chip-choice";
 import { draftFromPillarsAction, regeneratePillarsAction } from "./actions";
 import { PillarMap, type MapPiece } from "./pillar-map";
+import { latestJob } from "@/lib/jobs";
+import { JobStatus } from "@/components/job-status";
+import { GenerationFailed } from "@/components/generation-failed";
 
 const clip = (s: string, n = 90) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
 export const metadata = { title: "Pillars" };
+// The draft-every-pillar action starts the job queue after it responds (lib/jobs).
+export const maxDuration = 300;
 
 export default async function PillarsPage({ params, searchParams }: PageProps<"/w/[id]/brand/pillars">) {
   const { id } = await params;
   const sp = await searchParams;
   const { scope } = await workspaceScope(id);
   const ws = await getWorkspace(scope);
-  const [f, ctx, pillars, answers, projects] = await Promise.all([
+  const [f, ctx, pillars, answers, projects, job] = await Promise.all([
     loadFoundation(scope), loadBrandContext(scope), listPillars(scope), loadBriefAnswers(scope), listProjects(scope),
+    latestJob(scope, "pillar_drafts"),
   ]);
+  const drafting = !!job && (job.status === "queued" || job.status === "running");
   const chapters = f.chapters.filter((c) => c.body.trim()).length;
   const samples = f.samplePosts.split("\n").filter((s) => s.trim()).length;
   // Each section shows what it holds, like Relume's section descriptions.
@@ -50,11 +57,10 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
         <PillarMap tenantId={id} brandName={(ws?.name ?? "Your brand")} completeness={ctx.completeness} briefRows={briefRows} pillars={pillars} pieces={pieces} selectedId={typeof sp.pillar === "string" ? sp.pillar : null} />
       </div>
       <StepPanel title="Pillars">
-        {sp.drafted && (
-          <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> {String(sp.drafted)} piece{sp.drafted === "1" ? "" : "s"} drafted, one project each. They are in your Library.</p>
-        )}
-        {typeof sp.stopped === "string" && (
-          <p role="alert" className="text-xs text-ink-muted bg-panel border border-hairline rounded-sm px-2.5 py-2">Stopped before the last pillars: {sp.stopped} The pieces it reached are kept.</p>
+        {job && <JobStatus key={job.id} tenantId={id} initial={job} />}
+        {typeof sp.failed === "string" && (
+          <GenerationFailed tenantId={id} message={sp.failed} back={`/w/${id}/brand/pillars`} ok="generated=1"
+            focus={typeof sp.focus === "string" ? sp.focus : undefined} count={typeof sp.count === "string" ? sp.count : undefined} />
         )}
         {sp.generated && (
           <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> Pillars generated from your brief and answers. Rename, remove or add any before drafting.</p>
@@ -70,11 +76,11 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
           </div>
           <label className="block">
             <span className="text-xs text-ink-muted mb-1 block">Focus <span className="text-ink-faint">(optional)</span></span>
-            <textarea name="focus" rows={3} className="field text-sm" placeholder="e.g. Hiring your first team" />
+            <textarea name="focus" rows={3} className="field text-sm" placeholder="e.g. Hiring your first team" defaultValue={typeof sp.focus === "string" ? sp.focus : ""} />
           </label>
           <fieldset>
             <legend className="text-xs text-ink-muted mb-1.5">How many</legend>
-            <ChipChoice name="count" value="3" options={["1", "2", "3", "4", "5"].map((n) => ({ value: n, label: n }))} />
+            <ChipChoice name="count" value={typeof sp.count === "string" && /^[1-5]$/.test(sp.count) ? sp.count : "3"} options={["1", "2", "3", "4", "5"].map((n) => ({ value: n, label: n }))} />
           </fieldset>
           {/* v1 is English-only (brief section 09); language is already a parameter for later. */}
           <input type="hidden" name="language" value="en" />
@@ -89,10 +95,10 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
             <legend className="text-xs text-ink-muted mb-1.5">Format</legend>
             <ChipChoice name="format" value="linkedin_post" options={FORMATS.map((fm) => ({ value: fm.key, label: fm.label }))} />
           </fieldset>
-          <SubmitButton variant="primary" size="sm" pendingLabel={`Drafting ${pillars.length} pieces…`} className="w-full">
-            Draft {pillars.length} {pillars.length === 1 ? "piece" : "pieces"}
+          <SubmitButton variant="primary" size="sm" pendingLabel="Starting…" className="w-full" disabled={drafting || pillars.length === 0}>
+            {drafting ? "Drafting…" : `Draft ${pillars.length} ${pillars.length === 1 ? "piece" : "pieces"}`}
           </SubmitButton>
-          <p className="text-xs text-ink-faint">Each piece becomes its own project in your library, drafted in your voice. Every call is logged.</p>
+          <p className="text-xs text-ink-faint">Each piece becomes its own project in your library, drafted in your voice. It runs on its own; you can leave the page.</p>
         </form>
       </StepPanel>
     </>

@@ -1,3 +1,4 @@
+import { GenerationFailed } from "@/components/generation-failed";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, FileText, Network, Info } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
@@ -54,6 +55,9 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
             <p className="mt-5 flex items-center gap-2 text-sm bg-panel border border-hairline rounded-md px-3 py-2.5"><Info size={14} /> Your notes filled {sp.placed} field{sp.placed === "1" ? "" : "s"} of the brief. Here&apos;s what&apos;s left.</p>
           )}
           {sp.saved && <p className="mt-5 flex items-center gap-2 text-sm text-ok"><CheckCircle2 size={15} /> Answers saved.</p>}
+          {typeof sp.failed === "string" && (
+            <GenerationFailed className="mt-5" tenantId={id} message={sp.failed} back={`/w/${id}/brand/pillars`} ok="generated=1" />
+          )}
           {sp.blocked && (
             <Alert tone="info" className="mt-5" title="Not enough to build pillars yet">
               Get the brief past 50% ({ctx.completeness}% now) and answer at least {MIN_SEEDS} strategy questions.

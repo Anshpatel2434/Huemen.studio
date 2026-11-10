@@ -15,7 +15,7 @@ import { AssetError, deleteAsset, storeAsset, uploadAsset, type AssetKind } from
 import { takeIncoming } from "@/lib/storage/upload";
 import { safeGet } from "@/lib/integrations/web";
 import { extractSiteBrand, type SiteBrand } from "@/lib/visual/core";
-import { generatePillars } from "@/lib/data/pipeline";
+import { tryGeneratePillars } from "@/lib/data/pipeline";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { parseIntake, mergeIntake } from "@/lib/intake/parse";
 import { applyAnswers, buildQuestions, MIN_SEEDS } from "@/lib/brief/questions";
@@ -112,7 +112,9 @@ export async function answerQuestionsAction(fd: FormData): Promise<void> {
   if (fd.get("intent") === "generate") {
     const context = await loadBrandContext(scope);
     if (context.degraded || seeds.length < MIN_SEEDS) redirect(`${base}/questions?blocked=1`);
-    await generatePillars(scope);
+    // Answers are saved above; a failed generation comes back here with Try again.
+    const failed = await tryGeneratePillars(scope);
+    if (failed) redirect(`${base}/questions?${new URLSearchParams({ failed: failed.slice(0, 300) })}`);
     redirect(back ?? `${base}/pillars?generated=1`);
   }
   redirect(back ?? `${base}/questions?saved=1`);

@@ -22,7 +22,6 @@ import { firstPieceStale } from "@/lib/voice/lifecycle";
 import { scoreProject } from "@/lib/data/check";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { formatByKey, FORMATS } from "@/lib/content/formats";
-import { saveBriefAnswers } from "@/lib/data/foundation";
 import type { IngestedPiece } from "@/lib/voice/ingest";
 import type { Answer } from "@/lib/voice/answers";
 import type { DialKey, LanguageMix, Proof, Story, WorkMode } from "@/lib/voice/types";
@@ -157,20 +156,6 @@ export async function goToStepAction(tenantId: string, step: number) {
  * Pillars from the brief and the strategy answers. `intent=next` saves the
  * answers and moves on to the payoff, so Continue never drops what was typed.
  */
-export async function hueAction(fd: FormData) {
-  const tenantId = String(fd.get("tenantId"));
-  const { scope } = await actionActor(tenantId);
-  const answers = (["known_for", "contrarian", "questions"] as const)
-    .map((key) => ({ key, question: key, answer: String(fd.get(key) ?? "").trim() }))
-    .filter((a) => a.answer);
-  if (answers.length) await saveBriefAnswers(scope, answers);
-  const intent = fd.get("intent");
-  if (intent === "pillars") await generatePillars(scope);
-  if (intent === "next") await updateOnboarding(scope, await requirePack(scope), { step: 4 });
-  refresh(tenantId);
-  redirect(`/w/${tenantId}/onboarding?step=${intent === "next" ? 4 : 3}${intent === "pillars" ? "&pillars=1" : ""}`);
-}
-
 // ---- step 4: the payoff --------------------------------------------------------
 
 /**

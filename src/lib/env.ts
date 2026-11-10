@@ -92,6 +92,12 @@ const schema = z.object({
   // editor header. The copy is still sample copy.
   HIDE_MOCK_BADGE: z.preprocess(blankIsUnset, z.enum(["0", "1"]).default("0")).transform((v) => v === "1"),
 
+  // Background jobs (lib/jobs): the secret a scheduler sends to GET /api/cron
+  // as "Authorization: Bearer <secret>". Unset, the route refuses every call
+  // and jobs still run after the request that queued them and while a page
+  // watches them; the cron catches retries nobody is watching.
+  CRON_SECRET: z.preprocess(blankIsUnset, z.string().min(16).optional()),
+
   // Connections (Gmail, Google Docs, Google Calendar, LinkedIn). Each provider
   // is off until its client id and secret are set; the page says so instead of
   // showing a button that fails. Tokens are sealed with CONNECTIONS_KEY

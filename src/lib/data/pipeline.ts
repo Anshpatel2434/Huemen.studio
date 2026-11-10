@@ -16,6 +16,7 @@ import "server-only";
 import { withTenantSession } from "@/db/session";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { generateText } from "@/lib/ai";
+import { userMessage } from "@/lib/ai/errors";
 import { resolveTemplate } from "@/lib/ai/templates";
 import { formatByKey } from "@/lib/content/formats";
 import { generateContent, listContent } from "./content";
@@ -175,4 +176,19 @@ export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
       createdAt: new Date(r.created_at).toISOString(),
     })),
   );
+}
+
+/**
+ * generatePillars for a form action: the reason it failed (the plain message a
+ * person sees), or null when it worked. Pages that generate pillars save the
+ * person's answers first, then send them back with this reason and Try again
+ * (components/generation-failed) instead of an error page (P2-3).
+ */
+export async function tryGeneratePillars(scope: WorkspaceScope, opts: { count?: number; focus?: string } = {}): Promise<string | null> {
+  try {
+    await generatePillars(scope, opts);
+    return null;
+  } catch (e) {
+    return userMessage(e);
+  }
 }

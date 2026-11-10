@@ -154,7 +154,8 @@ export function EditableText({
       await onCommit(next, prev, { asked: true }).catch((e) => { setPending(null); throw e; });
       toast(`Rewritten. ${typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+"}Z undoes it.`);
     } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : "That didn't work. Try again.", "danger");
+      // The ask stays open with its words; Try again repeats it.
+      toast(e instanceof Error && e.message ? e.message : "That didn't go through.", "danger", { label: "Try again", run: () => void ask(instruction) });
     } finally {
       setRewriting(false);
     }

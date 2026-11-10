@@ -60,11 +60,11 @@ export function IconButton({
 
 /** Submit button that shows a pending state while its form's action runs. */
 export function SubmitButton({
-  children, pendingLabel, variant = "primary", size = "md", className = "", name, value,
-}: { children: ReactNode; pendingLabel?: string; variant?: Variant; size?: Size; className?: string; name?: string; value?: string }) {
+  children, pendingLabel, variant = "primary", size = "md", className = "", name, value, disabled = false,
+}: { children: ReactNode; pendingLabel?: string; variant?: Variant; size?: Size; className?: string; name?: string; value?: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" name={name} value={value} disabled={pending} aria-busy={pending} className={`${btnClass(variant, size)} ${className}`}>
+    <button type="submit" name={name} value={value} disabled={pending || disabled} aria-busy={pending} className={`${btnClass(variant, size)} ${className}`}>
       {pending ? <><AgentDots /> {pendingLabel ?? "Working…"}</> : children}
     </button>
   );
@@ -255,7 +255,9 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: {
 // ---- Toast (§12) -----------------------------------------------------------------
 
 type Tone = "neutral" | "success" | "danger";
-const ToastCtx = createContext<(msg: string, tone?: Tone) => void>(() => {});
+/** One follow-up on a toast, e.g. Try again on a failed generation (P2-3: failures are retryable). */
+export interface ToastAction { label: string; run: () => void }
+const ToastCtx = createContext<(msg: string, tone?: Tone, action?: ToastAction) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
 /**
@@ -263,10 +265,10 @@ export const useToast = () => useContext(ToastCtx);
  * never buried under a modal. Copy echoes the action in the past tense (§16).
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<{ id: number; msg: string; tone: Tone }[]>([]);
-  const push = useCallback((msg: string, tone: Tone = "success") => {
+  const [toasts, setToasts] = useState<{ id: number; msg: string; tone: Tone; action?: ToastAction }[]>([]);
+  const push = useCallback((msg: string, tone: Tone = "success", action?: ToastAction) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, tone }]);
+    setToasts((t) => [...t, { id, msg, tone, action }]);
     // An error never times out (design system §12): it stays until it is dismissed.
     if (tone !== "danger") setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
   }, []);
@@ -281,6 +283,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               : t.tone === "success" ? <CheckCircle2 size={18} className="text-[var(--ok-line)]" aria-hidden="true" />
               : <Info size={18} aria-hidden="true" />}
             <span>{t.msg}</span>
+            {t.action && (
+              <button
+                type="button"
+                onClick={() => { dismiss(t.id); t.action!.run(); }}
+                className="pointer-events-auto ml-1 shrink-0 text-sm font-medium underline underline-offset-4 hover:no-underline"
+              >
+                {t.action.label}
+              </button>
+            )}
             {t.tone === "danger" && (
               <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="hu-hit pointer-events-auto -mr-1 ml-1 w-7 h-7 rounded-sm flex items-center justify-center text-ink-faint hover:text-ink">
                 <X size={15} aria-hidden="true" />
