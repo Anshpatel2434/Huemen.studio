@@ -28,7 +28,7 @@ export function StepPanel({ eyebrow, title, children }: {
       </button>
       <aside
         aria-label={eyebrow ? `${eyebrow}: ${title}` : title}
-        className={`${open ? "flex" : "hidden"} min-[900px]:flex absolute top-0 right-0 bottom-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[300px] min-[900px]:top-1 min-[900px]:right-3 min-[900px]:bottom-3 min-[900px]:rounded-2xl min-[900px]:border min-[900px]:shadow-[var(--shadow)] overflow-hidden bg-paper border-l border-hairline flex-col shadow-[var(--shadow-overlay)]`}
+        className={`${open ? "flex" : "hidden"} min-[900px]:flex absolute top-0 right-0 bottom-0 max-sm:top-auto max-sm:left-0 max-sm:h-[75%] max-sm:w-full max-sm:rounded-t-2xl max-sm:border-t max-sm:border-l-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[300px] min-[900px]:top-1 min-[900px]:right-3 min-[900px]:bottom-3 min-[900px]:rounded-2xl min-[900px]:border min-[900px]:shadow-[var(--shadow)] overflow-hidden bg-paper border-l border-hairline flex-col shadow-[var(--shadow-overlay)]`}
       >
         <div className="min-h-12 shrink-0 flex items-center pl-5 pr-1 border-b border-hairline">
           <span className="label-mono text-ink-faint flex-1">{eyebrow ? `${eyebrow} · ${title}` : title}</span>

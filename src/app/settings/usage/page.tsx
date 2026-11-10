@@ -39,9 +39,9 @@ export default async function AiUsagePage() {
             const n = r.u.textThisMonth + r.u.imagesThisMonth;
             return (
               <div key={r.id} className="flex items-center gap-3 h-12">
-                <span className="w-6 h-6 rounded-sm bg-ink text-on-ink text-[0.65rem] flex items-center justify-center uppercase">{r.name.slice(0, 1)}</span>
-                <Link href={`/w/${r.id}/usage`} className="w-40 min-h-11 inline-flex items-center min-w-0 text-sm text-accent-ink hover:underline"><span className="truncate">{r.name}</span></Link>
-                <div className="flex-1"><Meter value={total ? (n / total) * 100 : 0} /></div>
+                <span className="w-6 h-6 shrink-0 rounded-sm bg-ink text-on-ink text-[0.65rem] max-sm:text-xs flex items-center justify-center uppercase">{r.name.slice(0, 1)}</span>
+                <Link href={`/w/${r.id}/usage`} className="w-40 max-sm:w-auto max-sm:flex-1 min-h-11 inline-flex items-center min-w-0 text-sm text-accent-ink hover:underline"><span className="truncate">{r.name}</span></Link>
+                <div className="flex-1 max-sm:flex-none max-sm:w-20"><Meter value={total ? (n / total) * 100 : 0} /></div>
                 <span className="w-12 text-right text-sm tabular-nums">{n}</span>
               </div>
             );

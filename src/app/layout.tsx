@@ -6,6 +6,7 @@ import { PageTransition } from "@/components/page-transition";
 import { ThemeProvider } from "@/components/theme";
 import { StudioCursor } from "@/components/cursor";
 import { FieldErrors } from "@/components/field-errors";
+import { UnsavedGuardRoot } from "@/components/unsaved-guard";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 import { CANVAS_COOKIE, parseCanvasBg } from "@/lib/canvas-bg";
 
@@ -35,6 +36,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <ThemeProvider initial={theme}>
           <PageTransition level="section">{children}</PageTransition>
           <FieldErrors />
+          <UnsavedGuardRoot />
         </ThemeProvider>
         <StudioCursor />
       </body>

@@ -5,7 +5,8 @@ import { loadFoundation } from "@/lib/data/foundation";
 import { listAssets } from "@/lib/data/assets";
 import { SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
-import { PersistForm } from "@/components/persist";
+import { GuardedForm } from "@/components/unsaved-guard";
+import { unsavedKey } from "@/lib/ui/unsaved";
 import { saveFoundationAction } from "../actions";
 import { AssetList, AssetUploadForm } from "@/components/asset-upload-form";
 
@@ -58,7 +59,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
           </div>
         )}
 
-        <PersistForm storageKey={`huemen:brief:${id}`} action={saveFoundationAction} className="mt-6 flex flex-col gap-5">
+        <GuardedForm storageKey={unsavedKey(id, "brief")} action={saveFoundationAction} className="mt-6 flex flex-col gap-5">
           <input type="hidden" name="tenantId" value={id} />
           <Card id="story" title="Story & positioning" sub="What they do, for whom, and the story behind it.">
             <Field name="niche" label="Niche" defaultValue={f.niche} placeholder="e.g. Personal branding for B2B founders" />
@@ -93,7 +94,7 @@ export default async function EditBriefPage({ params, searchParams }: PageProps<
             <Link href={`/w/${id}/brand`} className={btnClass("ghost")}>Cancel</Link>
             <SubmitButton pendingLabel="Saving…">Save brief</SubmitButton>
           </div>
-        </PersistForm>
+        </GuardedForm>
 
         <section id="assets" className="mt-6 mb-16 border-t border-hairline pt-6 scroll-mt-6">
           <p className="font-medium">Brand assets</p>

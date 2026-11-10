@@ -20,6 +20,7 @@ import type { WorkMode } from "@/lib/voice/types";
 import { coWriteAction, ownDraftAction } from "./actions";
 import { liveDraftHref } from "@/components/live-draft";
 import { Select } from "@/components/select";
+import { unsavedKey, useUnsavedChanges } from "@/components/unsaved-guard";
 
 const MODES: { key: WorkMode; label: string; sub: string; icon: typeof PenLine }[] = [
   { key: "ghostwrite", label: "Draft it for me", sub: "A full draft in your voice. You edit.", icon: PenLine },
@@ -47,8 +48,19 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
   // The topic is the prompt: it starts as the piece's title and can be sharpened here.
   const [brief, setBrief] = useState(topic);
 
+  // What's typed here is the piece until it's sent: guarded, and kept for a reload.
+  const { bar, discard } = useUnsavedChanges<{ mode: WorkMode; text: string; brief: string }>({
+    dirty: text.trim() !== "" || brief.trim() !== topic.trim(),
+    storageKey: unsavedKey(tenantId, `write:${projectId}`),
+    value: { mode, text, brief },
+    onRestore: (v) => { setMode(v.mode); setText(v.text); setBrief(v.brief); },
+    isSaved: (v) => !v.text.trim() && v.brief.trim() === topic.trim(),
+  });
+
   const go = () => {
     const t = brief.trim() || topic;
+    // Sent: what was typed is the piece now, not something to offer back.
+    discard();
     // Ghostwrite is written live on the canvas (components/live-draft).
     if (mode === "ghostwrite") return router.push(liveDraftHref(`/w/${tenantId}/p/${projectId}`, { format, topic: t, pillarId }));
     start(async () => {
@@ -100,6 +112,7 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
             ))}
           </div>
 
+          {bar}
           <div className="hu-composer">
             {mode === "check" ? (
               <textarea rows={9} value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste or write your piece. The first line is the hook." aria-label="Your piece" autoFocus />

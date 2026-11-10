@@ -81,7 +81,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
   return (
     // One warm canvas from edge to edge (Relume): the bar, the tools and the
     // panels float on it as white pieces, so nothing frames the work.
-    <div className="h-screen flex flex-col bg-canvas">
+    <div className="h-dvh flex flex-col bg-canvas">
       <header className="min-h-16 shrink-0 flex flex-wrap items-center gap-x-3 px-3">
         <div className="flex-1 flex items-center gap-2 min-w-0 min-h-16">
           <FileMenu workspace={workspace} project={project} />
@@ -125,19 +125,21 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
         </div>
       </header>
 
-      <div className="flex-1 flex min-h-0 relative">
+      {/* On a phone the tools move to a bar along the bottom (thumb reach) and the
+          canvas gets the full width; the panels open as sheets above that bar. */}
+      <div className="flex-1 flex max-sm:flex-col min-h-0 relative">
         {/* Floating tools: white squares on the canvas; each opens its panel, click again to close. */}
-        <nav className="w-[72px] shrink-0 flex flex-col items-center pt-1 pb-3 gap-2.5" aria-label="Tools">
+        <nav className="w-[72px] shrink-0 flex flex-col items-center pt-1 pb-3 gap-2.5 max-sm:order-last max-sm:w-full max-sm:h-[60px] max-sm:flex-row max-sm:justify-between max-sm:px-4 max-sm:py-2 max-sm:border-t max-sm:border-hairline" aria-label="Tools">
           <RailBtn on={leftTab === "layers"} shown={asked} onClick={() => pick("layers")} label="Layers"><Layers size={19} /></RailBtn>
           <RailBtn on={leftTab === "add"} shown={asked} onClick={() => pick("add")} label="Add"><Plus size={20} /></RailBtn>
           <RailBtn on={leftTab === "agent"} shown={asked} onClick={() => pick("agent")} label="Agent"><WandSparkles size={19} /></RailBtn>
-          <span className="flex-1" />
+          <span className="flex-1 max-sm:hidden" />
           <ThemeToggle className="!w-11 !h-11 !rounded-xl !bg-paper border border-hairline hover:border-line-strong" />
           <Link href="/settings" className="w-11 h-11 rounded-xl bg-paper border border-hairline flex items-center justify-center text-ink hover:border-line-strong transition-colors" title="Settings" aria-label="Settings"><Settings size={18} aria-hidden="true" /></Link>
         </nav>
         {leftTab && (
           // A floating card beside the tools; on a phone it opens over the canvas.
-          <aside className={`${asked ? "flex" : "hidden min-[900px]:flex"} absolute top-1 bottom-3 left-[72px] z-30 w-[min(300px,calc(100%-5.5rem))] min-[900px]:static min-[900px]:z-auto min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mb-3 shrink-0 rounded-2xl border border-hairline bg-paper shadow-[var(--shadow)] flex-col min-h-0 overflow-hidden`}>
+          <aside className={`${asked ? "flex" : "hidden min-[900px]:flex"} absolute top-1 bottom-3 left-[72px] z-30 w-[min(300px,calc(100%-5.5rem))] min-[900px]:static min-[900px]:z-auto min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mb-3 shrink-0 rounded-2xl border border-hairline bg-paper shadow-[var(--shadow)] flex-col min-h-0 overflow-hidden max-sm:top-auto max-sm:bottom-[60px] max-sm:left-0 max-sm:w-full max-sm:h-[72%] max-sm:rounded-b-none max-sm:border-x-0 max-sm:shadow-[var(--shadow-overlay)]`}>
             <div className="min-h-14 shrink-0 flex items-center pl-5 pr-2">
               <span className="text-lg font-medium flex-1">{leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"}</span>
               <IconButton label="Close panel" onClick={() => setLeftTab(null)}><X size={18} /></IconButton>
