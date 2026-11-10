@@ -16,7 +16,8 @@ const SIDECAR = ".mime";
 
 /** `dir` overrides STORAGE_LOCAL_DIR (tests use a folder of their own). */
 export function localDriver(dir?: string): StorageDriver {
-  const baseDir = () => resolve(process.cwd(), dir ?? getEnv().STORAGE_LOCAL_DIR);
+  // Runtime data, not code: kept out of the server bundle's file tracing.
+  const baseDir = () => resolve(/* turbopackIgnore: true */ process.cwd(), dir ?? getEnv().STORAGE_LOCAL_DIR);
 
   function pathsFor(key: string) {
     const root = baseDir();
@@ -56,7 +57,7 @@ export function localDriver(dir?: string): StorageDriver {
       const { full, meta } = pathsFor(key);
       try {
         const data = await readFile(full);
-        const mime = await readFile(meta, "utf8").catch(() => "application/octet-stream");
+        const mime = await readFile(/* turbopackIgnore: true */ meta, "utf8").catch(() => "application/octet-stream");
         return { data: new Uint8Array(data), mime };
       } catch {
         return null;

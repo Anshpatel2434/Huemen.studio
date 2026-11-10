@@ -154,6 +154,8 @@ export async function reportError(err: unknown, context: ReportContext = {}, dep
       if (reported.has(err)) return;
       reported.add(err);
     }
+    const extra = Object.fromEntries(Object.entries(context.extra ?? {}).filter(([, v]) => v !== undefined));
+    context = { ...context, extra: Object.keys(extra).length ? extra : undefined };
     logger.error(err instanceof Error ? err.message || err.name : "error", {
       err,
       tenantId: context.tenantId ?? undefined,
