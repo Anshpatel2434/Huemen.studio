@@ -95,6 +95,9 @@ export interface GmailPage extends GmailCursor {
  * §1: "sample, don't hoard"). Private: measured, never quoted.
  */
 export async function gmailPageAction(tenantId: string, cursor: GmailCursor): Promise<Result<GmailPage>> {
+  // Workspace access first and outside the try, as guarded() does: a refused
+  // caller gets the sign-in page or not-found, not a logged "didn't work".
+  await actionActor(tenantId);
   try {
     const { scope, pack } = await ctx(tenantId, "gmail");
     const { token, connection } = await accessToken(scope, "google");
@@ -165,6 +168,9 @@ export async function removeImportedEmailAction(fd: FormData): Promise<void> {
 
 /** What the Google Picker needs in the browser: a short-lived token and the app's public ids. */
 export async function pickerConfigAction(tenantId: string): Promise<Result<{ token: string; apiKey: string; appId: string }>> {
+  // Workspace access first and outside the try, as guarded() does: a refused
+  // caller gets the sign-in page or not-found, not a logged "didn't work".
+  await actionActor(tenantId);
   try {
     const { scope } = await ctx(tenantId, "docs");
     const { token, connection } = await accessToken(scope, "google");

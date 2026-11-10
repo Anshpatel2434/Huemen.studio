@@ -33,6 +33,8 @@ import { NextRequest } from "next/server";
 
 vi.mock("next/headers", async () => (await import("./helpers/next-request")).nextHeaders);
 vi.mock("next/cache", async () => (await import("./helpers/next-request")).nextCache);
+// after() needs a live request; the queue it would start is tested in tests/jobs.test.ts.
+vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: () => undefined }));
 
 import { appPool } from "@/db/pool";
 import { signKey } from "@/lib/storage";
@@ -64,6 +66,11 @@ import * as content from "@/app/w/[id]/p/[pid]/content/actions";
 import * as ideate from "@/app/w/[id]/p/[pid]/ideate/actions";
 import * as pipeline from "@/app/w/[id]/p/[pid]/pipeline-actions";
 import * as plan from "@/app/w/[id]/plan/actions";
+import * as jobs from "@/app/w/[id]/jobs/actions";
+import * as jobRoute from "@/app/w/[id]/jobs/[jobId]/route";
+import * as cronRoute from "@/app/api/cron/route";
+import * as clientError from "@/app/api/client-error/route";
+import { newJob } from "./helpers/cross-tenant";
 import * as projects from "@/app/w/[id]/project-actions";
 import * as setup from "@/app/w/[id]/setup/actions";
 import * as conn from "@/app/settings/connections/actions";
@@ -172,7 +179,8 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
   on(f, pillars, "updatePillarAction", (fn, t) => fn(t.tenantId, t.pillarId, "Renamed pillar", "new words"));
   on(f, pillars, "deletePillarAction", (fn, t) => fn(t.tenantId, t.pillarId), { fresh: async (fx) => ({ pillarId: await newPillar(fx.scopeA) }) });
   on(f, pillars, "regeneratePillarsAction", (fn, t) => fn(form({ tenantId: t.tenantId, count: 1, focus: "pricing" })), { ok: writesAndRedirects(/\/brand\/pillars\?generated=1$/) });
-  on(f, pillars, "draftFromPillarsAction", (fn, t) => fn(form({ tenantId: t.tenantId, format: "linkedin_post" })), { ok: writesAndRedirects(/\/brand\/pillars\?drafted=/) });
+  on(f, pillars, "retryPillarsAction", (fn, t) => fn(form({ tenantId: t.tenantId, back: `/w/${t.tenantId}/brand/pillars`, ok: "generated=1", count: 1 })), { ok: writesAndRedirects(/\/brand\/pillars\?generated=1$/) });
+  on(f, pillars, "draftFromPillarsAction", (fn, t) => fn(form({ tenantId: t.tenantId, format: "linkedin_post" })), { ok: writesAndRedirects(/\/brand\/pillars$/) });
   on(f, pillars, "startFromPillarAction", (fn, t) => fn(t.tenantId, "A pillar"));
 }
 
@@ -234,7 +242,6 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
   on(f, onb, "cardAction", (fn, t) => fn(t.tenantId, "H5:synergy", "allow"), { ok: returns() });
   on(f, onb, "benchmarksAction", (fn, t) => fn(t.tenantId, [t.sampleId]));
   on(f, onb, "goToStepAction", (fn, t) => fn(t.tenantId, 2), { ok: writesAndRedirects(/\/onboarding\?step=2$/) });
-  on(f, onb, "hueAction", (fn, t) => fn(form({ tenantId: t.tenantId, known_for: "pricing", intent: "next" })), { ok: writesAndRedirects(/\/onboarding\?step=4$/) });
   on(f, onb, "workModeAction", (fn, t) => fn(t.tenantId, "cowrite"));
   on(f, onb, "firstPieceAction", (fn, t) => fn(t.tenantId));
   on(f, onb, "ownDraftForFirstPieceAction", (fn, t) => fn(t.tenantId, `${story} My own draft of the first piece.`));
@@ -278,6 +285,15 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
   });
   on(f, plan, "addCalendarEntryAction", (fn, t) => fn(form({ tenantId: t.tenantId, date: "2030-03-01", pillarId: t.pillarId, channel: "linkedin", topic: "Quotes" })));
   on(f, plan, "generateCalendarAction", (fn, t) => fn(t.tenantId, { start: "2031-01-06", perWeek: 1, channels: ["linkedin"] }), { ok: (o, changed) => { returns()(o); expect(changed.length).toBeGreaterThan(0); } });
+  const fj = "src/app/w/[id]/jobs/actions.ts";
+  on(fj, jobs, "retryJobAction", (fn, t) => fn(t.tenantId, t.jobId), {
+    fresh: async (fx) => ({ jobId: await newJob(fx.A, fx.scopeA.userId!) }),
+    ok: (o, changed) => { returns()(o); expect(changed.length).toBeGreaterThan(0); },
+  });
+  on(fj, jobs, "cancelJobAction", (fn, t) => fn(t.tenantId, t.jobId), {
+    fresh: async (fx) => ({ jobId: await newJob(fx.A, fx.scopeA.userId!, "queued") }),
+    ok: (o, changed) => { returns()(o); expect(changed.length).toBeGreaterThan(0); },
+  });
   on(f, plan, "deleteCalendarEntryAction", (fn, t) => fn(form({ tenantId: t.tenantId, id: t.slotId })), { fresh: async (fx) => ({ slotId: await newSlot(fx.scopeA, null) }) });
   on(f, plan, "createOfferAction", (fn, t) => fn(form({ tenantId: t.tenantId, name: "Studio pricing day", format: "workshop" })));
   on(f, plan, "updateOfferAction", (fn, t) => fn(form({ tenantId: t.tenantId, id: t.offerId, name: "Renamed offer", promise: "less guessing" })), { ok: writesAndRedirects(/\/plan\/offers$/) });
@@ -401,6 +417,9 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
     fresh: async (fx) => ({ incomingKey: await newIncoming(fx.A, new Uint8Array([26, 69, 223, 163, 1, 2, 3, 4]), "note.webm") }),
     ok: (o, c) => { status(200, 502)(o); expect(c).toContain("storage files"); },
   });
+  on("src/app/w/[id]/jobs/[jobId]/route.ts", jobRoute, "GET", (fn, t) => fn(request("GET", W(t, `/jobs/${t.jobId}`)), params({ id: t.tenantId, jobId: t.jobId })), {
+    ok: (o) => { status(200)(o); expect((o as { text: string }).text.toLowerCase()).toContain(MARK); },
+  });
   on("src/app/w/[id]/uploads/route.ts", uploads, "POST", (fn, t) => fn(request("POST", W(t, "/uploads"), { json: { purpose: "asset", name: "logo.png", size: 100, type: "image/png" } }), params({ id: t.tenantId })), {
     ok: (o, _c, fx) => { status(200)(o); expect((o as { text: string }).text).toContain(`tenants/${fx.A}/incoming/`); },
   });
@@ -506,7 +525,31 @@ const SPECIAL = [
   "src/app/settings/connections/[provider]/start/route.ts#GET",
   "src/app/invite/[token]/actions.ts#acceptInviteAction",
   "src/app/q/[token]/actions.ts#submitQuestionnaire",
+  "src/app/api/cron/route.ts#GET",
+  "src/app/api/client-error/route.ts#POST",
 ];
+
+describe("cross-tenant: scheduler and browser-report endpoints", { timeout: 30_000 }, () => {
+  it("api/cron: refused without the scheduler's secret, and reads or changes nothing of A's", async () => {
+    if (!ok || !FX) return;
+    const before = await fingerprint(FX.A);
+    for (const auth of [undefined, "Bearer wrong-secret-0123456789", `Bearer ${FX.A}`]) {
+      const r = await cronRoute.GET(request("GET", "/api/cron", { headers: auth ? { authorization: auth } : {} }));
+      expect(r.status).toBe(404);
+      expect((await r.text()).toLowerCase()).not.toContain(MARK);
+    }
+    expect(changedParts(before, await fingerprint(FX.A))).toEqual([]);
+  });
+  it("api/client-error: answers nothing and changes nothing of A's, whoever sends it", async () => {
+    if (!ok || !FX) return;
+    const before = await fingerprint(FX.A);
+    for (const p of [FX.people.clientB, FX.people.nobody, FX.people.disabledA]) {
+      const o = await runAs(p, () => clientError.POST(new NextRequest(request("POST", "/api/client-error", { json: { message: "boom", path: `/w/${FX!.A}` }, headers: { origin: getEnv().APP_URL } }))));
+      expect(textOf(o).toLowerCase()).not.toContain(MARK);
+    }
+    expect(changedParts(before, await fingerprint(FX.A))).toEqual([]);
+  });
+});
 
 describe("cross-tenant: endpoints opened by a signed link", { timeout: 30_000 }, () => {
   const keyOf = async (tenantId: string) => (await one<{ storage_key: string }>("SELECT storage_key FROM assets WHERE tenant_id=$1 ORDER BY created_at LIMIT 1", [tenantId])).storage_key;

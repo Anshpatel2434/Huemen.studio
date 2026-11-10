@@ -63,6 +63,7 @@ export interface Target {
   proposalId: string;
   signalId: string;
   incomingKey: string;
+  jobId: string;
   memberId: string;
   coachId: string;
   assignedCoachId: string;
@@ -74,7 +75,7 @@ export interface Target {
 
 export const OBJECT_KEYS: (keyof Target)[] = [
   "itemId", "generationId", "assetId", "ideaId", "slotId", "offerId", "pillarId", "pillar2Id",
-  "sampleId", "proposalId", "signalId", "incomingKey", "memberId", "coachId", "assignedCoachId",
+  "sampleId", "proposalId", "signalId", "incomingKey", "jobId", "memberId", "coachId", "assignedCoachId",
 ];
 
 export interface Person {
@@ -232,6 +233,15 @@ export async function newIncoming(tenantId: string, body: Uint8Array = new Uint8
   return key;
 }
 
+/** A queued-work row of A's (lib/jobs). Due far in the future, so no worker ever picks it up. */
+export async function newJob(tenantId: string, userId: string, status: "failed" | "queued" = "failed"): Promise<string> {
+  return (await one<{ id: string }>(
+    `INSERT INTO jobs (tenant_id, kind, label, status, payload, last_error, run_after, created_by)
+     VALUES ($1, 'calendar_plan', $2, $3, '{}'::jsonb, 'Stopped.', now() + interval '1 day', $4) RETURNING id`,
+    [tenantId, `${MARK} job`, status, userId],
+  )).id;
+}
+
 export async function newOrgCoach(org: string): Promise<string> {
   return insertUser(org, `${RUN}-coach-${randomUUID().slice(0, 6)}@test.local`, "coach");
 }
@@ -329,13 +339,15 @@ export async function buildFixture(): Promise<Fixture> {
     nobody: await personFor("no session", null),
   };
 
+  const jobId = await newJob(A, clientA);
+
   const a: Target = {
     tenantId: A, projectId: PA, itemId, generationId, assetId, ideaId, slotId, offerId, pillarId, pillar2Id, sampleId,
-    proposalId, signalId, incomingKey, memberId: spareA, coachId, assignedCoachId: coach2, version, workspaceStatus: "archived",
+    proposalId, signalId, incomingKey, jobId, memberId: spareA, coachId, assignedCoachId: coach2, version, workspaceStatus: "archived",
   };
   const aIds: Record<string, string> = {
     tenant: A, project: PA, item: itemId, generation: generationId, asset: assetId, idea: ideaId, slot: slotId, offer: offerId,
-    pillar: pillarId, pillar2: pillar2Id, sample: sampleId, proposal: proposalId, signal: signalId, incoming: incomingKey,
+    pillar: pillarId, pillar2: pillar2Id, sample: sampleId, proposal: proposalId, signal: signalId, incoming: incomingKey, job: jobId,
     pack: pack.id, clientA, disabledA, spareA,
   };
   return { A, B, ORG, PA, PB, a, people, aIds, packA: pack.id, scopeA, scopeB, coach2 };
