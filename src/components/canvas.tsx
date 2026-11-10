@@ -6,7 +6,7 @@
  * wheel, or the zoom menu), fit-to-content, and the floating tool strip.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical } from "lucide-react";
+import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil } from "lucide-react";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
@@ -37,11 +37,26 @@ export function Canvas({
   const fit = useCallback(() => {
     const w = wrap.current, s = stage.current;
     if (!w || !s) return;
-    const sw = s.scrollWidth, sh = s.scrollHeight;
-    const z = Math.min(1, (w.clientWidth - 80) / sw, (w.clientHeight - 120) / sh);
-    const zz = Math.max(0.2, Math.round(z * 100) / 100);
+    // On a phone the artboards sit side by side, so fitting all of them put the
+    // whole set at 20% and nothing could be read. Narrow screens fit the FIRST
+    // artboard instead and pan to the rest.
+    const narrow = w.clientWidth < 900;
+    const first = s.querySelector<HTMLElement>("[data-artboard]");
+    const gutter = narrow ? 24 : 80;
+    const sw = narrow && first ? first.offsetWidth : s.scrollWidth;
+    const sh = narrow && first ? first.offsetHeight : s.scrollHeight;
+    // Boards float their own controls over the top-left (the Content step's
+    // Draft button and pillar filter: 12px inset + a 44px control), and the
+    // tool strip over the bottom. Below a 900px WINDOW (not canvas: a laptop
+    // canvas between two panels is narrower than that) the step panel's
+    // "Details" button also floats top-right, down to 112px
+    // (components/step-panel). Fitted content starts below them and ends above
+    // the strip, so nothing sits under a control.
+    const top = window.innerWidth < 900 ? 124 : 72, bottom = 72;
+    const z = Math.min(1, (w.clientWidth - gutter) / sw, (w.clientHeight - top - bottom) / sh);
+    const zz = Math.max(narrow ? 0.35 : 0.2, Math.round(z * 100) / 100);
     setZoom(zz);
-    setPan({ x: Math.max(40, (w.clientWidth - sw * zz) / 2), y: 48 });
+    setPan({ x: Math.max(narrow ? 12 : 40, (w.clientWidth - sw * zz) / 2), y: top });
   }, []);
 
   useLayoutEffect(() => {
@@ -117,7 +132,11 @@ export function Canvas({
   return (
     <div className="absolute inset-0 overflow-hidden canvas-dots select-none" ref={wrap}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-      style={{ cursor: dragging ? "grabbing" : panning ? "grab" : "default" }}
+      style={{
+        cursor: dragging ? "grabbing" : panning ? "grab" : "default",
+        // The background pattern follows pan and zoom (globals.css, canvas backgrounds).
+        ["--cv-x" as string]: `${pan.x}px`, ["--cv-y" as string]: `${pan.y}px`, ["--cv-z" as string]: zoom,
+      }}
       data-canvas-bg="1"
     >
       <div
@@ -128,29 +147,29 @@ export function Canvas({
         {children}
       </div>
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-paper border border-hairline rounded-[12px] p-1 shadow-[var(--shadow)]" onPointerDown={(e) => e.stopPropagation()}>
-        <ToolBtn on={tool === "select"} onClick={() => setTool("select")} title="Select (V)"><MousePointer2 size={16} /></ToolBtn>
-        <ToolBtn on={tool === "hand"} onClick={() => setTool("hand")} title="Hand (H, or hold Space)"><Hand size={16} /></ToolBtn>
-        <span className="w-px h-5 bg-hairline mx-0.5" />
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-paper border border-hairline rounded-md p-1 shadow-[var(--shadow)]" onPointerDown={(e) => e.stopPropagation()}>
+        <ToolBtn on={tool === "select"} onClick={() => setTool("select")} title="Select (V)"><MousePointer2 size={18} /></ToolBtn>
+        <ToolBtn on={tool === "hand"} onClick={() => setTool("hand")} title="Hand (H, or hold Space)"><Hand size={18} /></ToolBtn>
+        <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
         <div className="relative">
-          <button onClick={() => setMenu((m) => !m)} className="h-8 px-2.5 rounded-[8px] flex items-center gap-1 text-[0.82rem] tabular-nums hover:bg-field">
-            {Math.round(zoom * 100)}% <ChevronDown size={13} className="text-ink-faint" />
+          <button onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} aria-label={`Zoom, ${Math.round(zoom * 100)}%`} className="min-h-11 px-3 rounded-sm flex items-center gap-1 text-sm font-mono tabular-nums hover:bg-hover">
+            {Math.round(zoom * 100)}% <ChevronDown size={15} className="text-ink-faint" aria-hidden="true" />
           </button>
           {menu && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-40 bg-paper border border-hairline rounded-[10px] shadow-[var(--shadow-lg)] p-1 pop">
-              <button onClick={() => { fit(); setMenu(false); }} className="w-full text-left h-8 px-2.5 rounded-[7px] hover:bg-field text-[0.82rem] flex justify-between">Zoom to fit <span className="text-ink-faint">⇧1</span></button>
+            <div role="menu" aria-label="Zoom" className="hu-menu absolute bottom-14 left-1/2 -translate-x-1/2 !min-w-44 pop">
+              <button type="button" role="menuitem" onClick={() => { fit(); setMenu(false); }} className="hu-menu__item"><span className="flex-1">Zoom to fit</span> <span className="text-ink-faint font-mono text-xs">⇧1</span></button>
               {ZOOMS.map((z) => (
-                <button key={z} onClick={() => zoomTo(z)} className="w-full text-left h-8 px-2.5 rounded-[7px] hover:bg-field text-[0.82rem]">{z}%</button>
+                <button key={z} type="button" role="menuitemradio" aria-checked={Math.round(zoom * 100) === z} onClick={() => zoomTo(z)} className="hu-menu__item font-mono tabular-nums">{z}%</button>
               ))}
             </div>
           )}
         </div>
         {onDevice && (
           <>
-            <span className="w-px h-5 bg-hairline mx-0.5" />
-            <ToolBtn on={device === "desktop"} onClick={() => onDevice("desktop")} title="Desktop"><Monitor size={15} /></ToolBtn>
-            <ToolBtn on={device === "tablet"} onClick={() => onDevice("tablet")} title="Tablet"><Tablet size={15} /></ToolBtn>
-            <ToolBtn on={device === "mobile"} onClick={() => onDevice("mobile")} title="Mobile"><Smartphone size={15} /></ToolBtn>
+            <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
+            <ToolBtn on={device === "desktop"} onClick={() => onDevice("desktop")} title="Desktop"><Monitor size={17} /></ToolBtn>
+            <ToolBtn on={device === "tablet"} onClick={() => onDevice("tablet")} title="Tablet"><Tablet size={17} /></ToolBtn>
+            <ToolBtn on={device === "mobile"} onClick={() => onDevice("mobile")} title="Mobile"><Smartphone size={17} /></ToolBtn>
           </>
         )}
         {toolbarExtra}
@@ -161,20 +180,27 @@ export function Canvas({
 
 export function ToolBtn({ children, on, onClick, title }: { children: ReactNode; on?: boolean; onClick: () => void; title: string }) {
   return (
-    <button onClick={onClick} title={title} aria-pressed={on} className={`w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors ${on ? "bg-accent-soft text-accent-ink" : "text-ink-muted hover:bg-field"}`}>
+    <button type="button" onClick={onClick} title={title} aria-label={title} aria-pressed={on} className={`hu-iconbtn !rounded-sm ${on ? "!bg-accent-soft !text-accent-ink" : ""}`}>
       {children}
     </button>
   );
 }
 
 /** Artboard frame label + white board, used on every canvas. */
-export function Artboard({ label, meta, width, children, selected, onSelect, actions, onDragStart, onDragEnd, dimmed }: {
+export function Artboard({ label, meta, width, children, selected, onSelect, onEdit, actions, onDragStart, onDragEnd, dimmed }: {
   label: string; meta?: string; width: number; children: ReactNode; selected?: boolean; onSelect?: () => void; actions?: ReactNode;
+  /**
+   * A plain, visible way in (design system: conventional patterns, nothing to
+   * discover): opens the piece's editor, the same as clicking the board.
+   */
+  onEdit?: () => void;
   /** Makes the label bar a drag handle (e.g. move a piece to another pillar). */
   onDragStart?: (e: React.DragEvent) => void; onDragEnd?: () => void; dimmed?: boolean;
 }) {
   return (
-    <div className={`shrink-0 group/board transition-opacity ${dimmed ? "opacity-40" : ""}`} style={{ width }}>
+    // data-artboard lets the canvas fit one board on a narrow screen without
+    // guessing at the wrapper depth around it.
+    <div data-artboard className={`shrink-0 group/board transition-opacity ${dimmed ? "opacity-40" : ""}`} style={{ width }}>
       <div
         className={`flex items-center gap-2 mb-2 h-6 px-0.5 ${onDragStart ? "cursor-grab active:cursor-grabbing" : ""}`}
         draggable={!!onDragStart}
@@ -183,13 +209,25 @@ export function Artboard({ label, meta, width, children, selected, onSelect, act
         title={onDragStart ? "Drag to move" : undefined}
       >
         {onDragStart && <GripVertical size={13} className="-ml-1 text-ink-faint opacity-0 group-hover/board:opacity-100 shrink-0" />}
-        <span className={`text-[0.78rem] font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>
-        {meta && <span className="text-[0.72rem] text-ink-faint truncate">{meta}</span>}
-        <span className="ml-auto flex items-center gap-1">{actions}</span>
+        <span className={`text-xs font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>
+        {meta && <span className="text-xs text-ink-faint truncate">{meta}</span>}
+        <span className="ml-auto flex items-center gap-1">
+          {actions}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={`ml-1 inline-flex items-center gap-1 h-6 px-2 rounded-full border text-xs font-medium transition-colors ${selected ? "bg-ink text-on-ink border-ink" : "bg-paper border-line text-ink hover:border-line-strong"}`}
+            >
+              <Pencil size={11} aria-hidden="true" /> Edit
+            </button>
+          )}
+        </span>
       </div>
       <div
         onClick={onSelect}
-        className={`theme-light bg-paper rounded-[4px] overflow-hidden transition-shadow ${onSelect ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"}`}
+        className={`theme-light bg-paper rounded-xs overflow-hidden transition-shadow ${onSelect ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"}`}
       >
         {children}
       </div>

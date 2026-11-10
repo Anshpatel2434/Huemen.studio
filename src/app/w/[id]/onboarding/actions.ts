@@ -19,6 +19,7 @@ import { generatePillars } from "@/lib/data/pipeline";
 import { proposeTopics, startPiece, ownDraft, coWrite } from "@/lib/data/create";
 import { generateContent, listContent } from "@/lib/data/content";
 import { firstPieceStale } from "@/lib/voice/lifecycle";
+import { scoreProject } from "@/lib/data/check";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { formatByKey, FORMATS } from "@/lib/content/formats";
 import { saveBriefAnswers } from "@/lib/data/foundation";
@@ -26,9 +27,17 @@ import type { IngestedPiece } from "@/lib/voice/ingest";
 import type { Answer } from "@/lib/voice/answers";
 import type { DialKey, LanguageMix, Proof, Story, WorkMode } from "@/lib/voice/types";
 import {
-  pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveProofs, saveStories, suggestAnswers, type DialPick,
+  pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveBeliefs, saveProofs, saveStories, suggestAnswers, type DialPick,
 } from "@/lib/data/enrich";
-import { importFromUrl, WebImportError } from "@/lib/integrations/web";
+import { importFromUrl, safeGet, WebImportError } from "@/lib/integrations/web";
+import { readSite } from "@/lib/integrations/site";
+import { runTask } from "@/lib/ai";
+import { siteProfile as siteProfileTask } from "@/lib/ai/tasks";
+import { loadBrandContext } from "@/lib/context/context-loader";
+import { loadVisualIdentity, saveVisualIdentity } from "@/lib/data/foundation";
+import { listAssets } from "@/lib/data/assets";
+import { listPillars } from "@/lib/data/planning";
+import { LEGACY_STEP, screenIndex, type ScreenKey } from "@/lib/onboarding/screens";
 import { userMessage } from "@/lib/ai/errors";
 
 const refresh = (t: string) => revalidatePath(`/w/${t}`, "layout");
@@ -111,9 +120,9 @@ export async function voiceNotesAction(tenantId: string, notes: string[]) {
 
 // ---- step 2: confirm your voice ----------------------------------------------
 
-export async function answerAction(tenantId: string, questionId: string, value: Answer) {
+export async function answerAction(tenantId: string, questionId: string, value: Answer, opts: { spoken?: boolean } = {}) {
   const { scope, actor } = await actionActor(tenantId);
-  await answer(scope, actor, await requirePack(scope), questionId, value);
+  await answer(scope, actor, await requirePack(scope), questionId, value, { spoken: !!opts.spoken });
   refresh(tenantId);
 }
 
@@ -188,6 +197,9 @@ export async function firstPieceAction(tenantId: string): Promise<string> {
   let projectId = o.firstProjectId ?? null;
   let topicTitle = projectId ? (await getProject(scope, projectId))?.name ?? "" : "";
   if (!projectId) {
+    // The short flow asks nothing about pillars up front; the first piece still
+    // comes from one, made from the brief and the writing.
+    if (!(await listPillars(scope)).length) await generatePillars(scope).catch(() => 0);
     const [topic] = await proposeTopics(scope);
     topicTitle = topic?.title ?? "What I'd tell myself starting out";
     projectId = await startPiece(scope, { topic: topicTitle, format, pillarName: topic?.pillar });
@@ -206,6 +218,8 @@ export async function firstPieceAction(tenantId: string): Promise<string> {
       await generateContent(p, { format, topic: topicTitle, pillarId });
     }
     // "Check mine" makes no draft: the person writes, and the check reads it.
+    // Scored now, so the dashboard card shows the same band the payoff did.
+    await scoreProject(p).catch(() => undefined);
     await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "done", at: new Date().toISOString() } });
   } catch (e) {
     await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "failed", at: new Date().toISOString() } });
@@ -225,6 +239,8 @@ export async function workModeAction(tenantId: string, mode: WorkMode) {
 /**
  * "Yes, that's me": the last item on the spec's definition of done, and the
  * end of the flow. They land in their studio, with their first piece in it.
+ * "Edit it first" finishes the same way and opens that piece instead, so the
+ * studio doesn't send them back into onboarding afterwards.
  */
 export async function finishOnboardingAction(fd: FormData) {
   const tenantId = String(fd.get("tenantId"));
@@ -233,7 +249,8 @@ export async function finishOnboardingAction(fd: FormData) {
   await completeOnboarding(scope, pack);
   (await cookies()).delete(LATER_COOKIE);
   refresh(tenantId);
-  redirect(`/w/${tenantId}?ready=1`);
+  const piece = String(fd.get("editPiece") ?? "");
+  redirect(/^[0-9a-f-]{36}$/i.test(piece) ? `/w/${tenantId}/p/${piece}/content` : `/w/${tenantId}?ready=1`);
 }
 
 /** Their own writing, checked: shown on the payoff screen. */
@@ -244,6 +261,7 @@ export async function ownDraftForFirstPieceAction(tenantId: string, text: string
   if (!projectId || !text.trim()) return;
   const format = FORMATS.find((f) => f.platform === (pack.onboarding.writeFor?.[0] ?? "linkedin"))?.key ?? "linkedin_post";
   await ownDraft({ ...scope, projectId }, { format: formatByKey(format).key, topic: "", text });
+  await scoreProject({ ...scope, projectId }).catch(() => undefined);
   refresh(tenantId);
 }
 
@@ -316,6 +334,12 @@ export async function storiesAction(tenantId: string, stories: Story[]) {
   refresh(tenantId);
 }
 
+export async function beliefsAction(tenantId: string, beliefs: string[]) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveBeliefs(scope, actor, await requirePack(scope), beliefs);
+  refresh(tenantId);
+}
+
 export async function proofsAction(tenantId: string, proofs: Proof[]) {
   const { scope, actor } = await actionActor(tenantId);
   await saveProofs(scope, actor, await requirePack(scope), proofs);
@@ -338,9 +362,11 @@ export async function languagesAction(tenantId: string, v: LanguageMix) {
  * Their own writing from links: a website, blog, Substack, Medium or a podcast
  * feed with transcripts. One link at a time so the page can show progress.
  */
-export async function importUrlAction(tenantId: string, url: string) {
+export async function importUrlAction(tenantId: string, url: string, ownWriting: boolean) {
   const { scope } = await actionActor(tenantId);
   return attempt(async () => {
+    // The tick box is the consent; the server holds the line, not the button.
+    if (ownWriting !== true) throw new WebImportError("Tick the box to confirm this is your own writing first.");
     const pack = await requirePack(scope);
     const { pieces, note } = await importFromUrl(url);
     const added = await addSamples(
@@ -350,4 +376,115 @@ export async function importUrlAction(tenantId: string, url: string) {
     );
     return { added, found: pieces.length, note };
   });
+}
+
+// ---- the short flow (one question per screen) ----------------------------------
+
+/**
+ * Move to a screen and record it as reached. The old step is kept in step
+ * with it, so the dashboard gate and older links still agree.
+ */
+export async function advanceAction(tenantId: string, to: ScreenKey) {
+  const { scope } = await actionActor(tenantId);
+  await updateOnboarding(scope, await requirePack(scope), { screen: screenIndex(to), step: LEGACY_STEP[to] });
+  refresh(tenantId);
+  redirect(`/w/${tenantId}/onboarding?s=${to}`);
+}
+
+/**
+ * Screen 1: read their website (lib/integrations/site): the home page, up to
+ * three stylesheets and its About page, behind the SSRF guard. The name and
+ * description become the defaults on the next screens; colours and fonts go
+ * into the hue when it has none yet (the Look screen shows them to change).
+ * Returns the pages' text too, for siteProfileAction, the next step on screen.
+ */
+export async function siteAction(tenantId: string, url: string) {
+  const { scope } = await actionActor(tenantId);
+  return attempt(async () => {
+    const raw = url.trim();
+    if (!raw) throw new WebImportError("Add your website first.");
+    let read;
+    try {
+      read = await readSite(raw);
+    } catch {
+      throw new WebImportError("We couldn't open that site. Check the address, or carry on without it.");
+    }
+    const site = { url: read.url, title: read.title, description: read.description, palette: read.palette, fonts: read.fonts, logo: read.logo, dark: read.dark, at: new Date().toISOString() };
+    await updateOnboarding(scope, await requirePack(scope), { site });
+    const v = await loadVisualIdentity(scope);
+    await saveVisualIdentity(scope, {
+      ...v,
+      palette: v.palette.length ? v.palette : site.palette,
+      fonts: v.fonts.length ? v.fonts : site.fonts,
+      core: { ...(v.core ?? {}), site: { url: read.url, logo: read.logo, at: site.at } },
+    });
+    refresh(tenantId);
+    return { site, text: read.text };
+  });
+}
+
+const SITE_TEXT_MAX = 20_000;
+
+/**
+ * Screen 1, second step: what the site says about them (the site_profile task,
+ * on the cheap route), saved with the site so the name and audience screens can
+ * offer it. A failure (no model yet, the monthly cap, a provider error) is
+ * logged by the facade and leaves the title and description to fill in instead.
+ */
+export async function siteProfileAction(tenantId: string, text: string) {
+  const { scope } = await actionActor(tenantId);
+  return attempt(async () => {
+    const pack = await requirePack(scope);
+    const site = pack.onboarding.site;
+    if (!site) throw new WebImportError("Read your website first.");
+    const taskInput = [`Site: ${site.url}`, `Title: ${site.title}`, `Description: ${site.description}`, "", "Text:", text.slice(0, SITE_TEXT_MAX)].join("\n");
+    const p = await runTask(scope, siteProfileTask, { context: await loadBrandContext(scope), taskInput, route: "cheap" });
+    const line = (t: string, n: number) => t.replace(/\s+/g, " ").trim().slice(0, n);
+    const profile = { name: line(p.name, 80), whatTheyDo: line(p.whatTheyDo, 160), audience: line(p.audience, 200), offers: line(p.offers, 200), positioning: line(p.positioning, 200) };
+    await updateOnboarding(scope, pack, { site: { ...site, profile } });
+    refresh(tenantId);
+    return profile;
+  });
+}
+
+/** Screen 2: their name and what they do. A blank field keeps what the brief had. */
+export async function nameAction(tenantId: string, v: { name: string; niche: string }) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveAbout(scope, actor, await requirePack(scope), { name: v.name, niche: v.niche, audience: "", offers: "", positioning: "" });
+  await advanceAction(tenantId, "audience");
+}
+
+/** Screen 3: who it's for, what they offer, and (optionally) why them. */
+export async function audienceAction(tenantId: string, v: { audience: string; offers: string; positioning: string }) {
+  const { scope, actor } = await actionActor(tenantId);
+  await saveAbout(scope, actor, await requirePack(scope), { name: "", niche: "", ...v });
+  await advanceAction(tenantId, "writing");
+}
+
+/**
+ * Screen 5: the first two colours (ground and accent). The rest of the palette,
+ * fonts and notes stay as they are; every design uploaded is a reference.
+ */
+export async function lookAction(tenantId: string, colours: string[]) {
+  const { scope } = await actionActor(tenantId);
+  const v = await loadVisualIdentity(scope);
+  const ok = colours.filter((c) => /^#[0-9a-f]{6}$/i.test(c));
+  const palette = [...ok, ...v.palette.filter((c) => !ok.some((o) => o.toLowerCase() === c.toLowerCase()))].slice(0, 8);
+  const references = (await listAssets(scope)).filter((a) => a.kind === "reference_image").map((a) => a.id);
+  await saveVisualIdentity(scope, { ...v, palette, core: { ...(v.core ?? {}), references } });
+  await advanceAction(tenantId, "words");
+}
+
+/** Screen 6: the words that sound like them (C5). */
+export async function wordsAction(tenantId: string, picks: string[]) {
+  const { scope, actor } = await actionActor(tenantId);
+  await answer(scope, actor, await requirePack(scope), "C5", picks, { spoken: false });
+  await advanceAction(tenantId, "draft");
+}
+
+/** The Getting started window opens itself once; after that it waits on the home page. */
+export async function guideSeenAction(tenantId: string) {
+  const { scope } = await actionActor(tenantId);
+  const pack = await requirePack(scope);
+  if (!pack.onboarding.guideSeenAt) await updateOnboarding(scope, pack, { guideSeenAt: new Date().toISOString() });
 }

@@ -44,11 +44,8 @@ export function localDriver(): StorageDriver {
       }
     },
     async signedUrl(key, ttlSeconds) {
-      const { signKey } = await import("./index");
-      const ttl = ttlSeconds ?? getEnv().STORAGE_SIGNED_URL_TTL_SECONDS;
-      const exp = Date.now() + ttl * 1000;
-      const token = signKey(key, exp);
-      return `${getEnv().APP_URL}/api/storage/${encodeURI(key)}?token=${token}`;
+      const { appSignedUrl } = await import("./index");
+      return appSignedUrl(key, ttlSeconds);
     },
     async delete(key) {
       const { full, meta } = pathsFor(key);

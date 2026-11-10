@@ -7,6 +7,8 @@
 import { getSession } from "@/lib/auth";
 import { resolveScope } from "@/lib/auth/scope";
 import { getProject, type ProjectScope } from "@/lib/data/projects";
+import { getWorkspace } from "@/lib/data/workspaces";
+import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { loadFoundation } from "@/lib/data/foundation";
 import { listContent } from "@/lib/data/content";
 import { listCalendar, listOffers, listPillars } from "@/lib/data/planning";
@@ -26,11 +28,13 @@ export async function GET(req: Request, ctx: RouteContext<"/w/[id]/p/[pid]/expor
   }
   const onlyApproved = new URL(req.url).searchParams.get("scope") === "approved";
 
-  const [project, foundation, pillars, content, offers, calendar] = await Promise.all([
-    getProject(scope, pid), loadFoundation(scope), listPillars(scope), listContent(scope), listOffers(scope),
-    listCalendar(scope, "1900-01-01", "2999-12-31"),
+  const [foundation, pillars, content, offers, calendar, workspace, pack] = await Promise.all([
+    loadFoundation(scope), listPillars(scope), listContent(scope), listOffers(scope),
+    listCalendar(scope, "1900-01-01", "2999-12-31"), getWorkspace(scope), loadPackForWorkspace(scope),
   ]);
-  const name = project?.name ?? "Brand";
+  // The export is the BRAND's: the person's name, else the workspace. A project
+  // is one piece, so its title is never the brand.
+  const name = pack?.displayName?.trim() || workspace?.name || "Brand";
   const pdf = await buildPdf({
     brandName: name,
     foundation,

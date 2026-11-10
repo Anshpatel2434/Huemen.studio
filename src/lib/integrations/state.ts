@@ -19,6 +19,16 @@ export interface OAuthState {
   c: CapabilityKey | null;
   n: string; // nonce, matched against the cookie
   x: number; // expiry, ms since epoch
+  /** Where to land afterwards. A fixed name, never a URL, so it can't become an open redirect. */
+  r?: ReturnTo;
+}
+
+export const RETURN_TO = ["settings", "onboarding"] as const;
+export type ReturnTo = (typeof RETURN_TO)[number];
+
+/** Where the person lands after the provider: Settings, or back in onboarding's "Add samples". */
+export function returnPath(r: ReturnTo | undefined, tenantId: string, query: string): string {
+  return r === "onboarding" ? `/w/${tenantId}/onboarding?step=1&${query}` : `/settings/connections?${query}`;
 }
 
 const TTL_MS = 10 * 60 * 1000;

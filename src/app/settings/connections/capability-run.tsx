@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Running one capability: import sent email, pick documents with the Google
+ * Running one capability: read the sent folder (GmailImport), pick documents with the Google
  * Picker, choose upcoming events to keep as ideas, or import LinkedIn posts.
  * Every run says what it did in numbers, and every failure says what to do.
  */
@@ -13,9 +13,11 @@ import { AgentDots } from "@/components/ui";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import type { CapabilityKey } from "@/lib/integrations/providers";
 import type { UpcomingEvent } from "@/lib/integrations/google";
+import { GmailImport } from "@/components/gmail-import";
 import {
-  importDocsAction, importGmailAction, importLinkedInPostsAction, importYouTubeAction, listEventsAction, pickerConfigAction, saveEventsAsIdeasAction,
+  importDocsAction, importLinkedInPostsAction, importYouTubeAction, listEventsAction, pickerConfigAction, saveEventsAsIdeasAction,
 } from "./actions";
+import { Select } from "@/components/select";
 
 type Picked = { id: string; name: string; channel: string; published: boolean };
 
@@ -55,7 +57,7 @@ function loadPicker(): Promise<GooglePicker> {
 
 const CHANNELS = ["newsletter", "linkedin", "bio", "spoken", "email"];
 
-export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: CapabilityKey }) {
+export function CapabilityRun({ tenantId, cap, prompted = false }: { tenantId: string; cap: CapabilityKey; prompted?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -64,12 +66,6 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
   const [chosen, setChosen] = useState<string[]>([]);
 
   const say = (ok: boolean, text: string) => { setMsg({ ok, text }); router.refresh(); };
-
-  const runGmail = () => start(async () => {
-    const r = await importGmailAction(tenantId);
-    if (!r.ok) return say(false, r.error);
-    say(true, `Read ${r.value.read} sent ${r.value.read === 1 ? "email" : "emails"}; ${r.value.added} new ${r.value.added === 1 ? "piece" : "pieces"} kept. Short replies and quoted text were left out.`);
-  });
 
   const openPicker = () => start(async () => {
     setMsg(null);
@@ -139,11 +135,7 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
 
   return (
     <div className="flex flex-col gap-3">
-      {cap === "gmail" && (
-        <button type="button" disabled={pending} onClick={runGmail} className={`${btnClass("secondary", "sm")} self-start`}>
-          {pending ? <><AgentDots /> Reading sent email</> : "Import sent email"}
-        </button>
-      )}
+      {cap === "gmail" && <GmailImport tenantId={tenantId} prompted={prompted} />}
 
       {cap === "docs" && (
         <>
@@ -151,25 +143,24 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
             <FileText size={14} aria-hidden="true" /> Pick documents
           </button>
           {picked.length > 0 && (
-            <div className="flex flex-col gap-2 border border-hairline rounded-[10px] p-3">
+            <div className="flex flex-col gap-2 border border-hairline rounded-md p-3">
               {picked.map((f, i) => (
-                <div key={f.id} className="flex flex-wrap items-center gap-2 text-[0.85rem]">
+                <div key={f.id} className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="flex-1 min-w-0 truncate">{f.name}</span>
-                  <select
+                  <Select
                     value={f.channel}
-                    onChange={(e) => setPicked(picked.map((x, j) => (j === i ? { ...x, channel: e.target.value } : x)))}
-                    className="field !w-auto min-h-11"
-                    aria-label={`Where ${f.name} was written for`}
-                  >
-                    {CHANNELS.map((c) => <option key={c} value={c}>{PLATFORM_RULES[c]?.label ?? c}</option>)}
-                  </select>
-                  <label className="flex items-center gap-1.5 min-h-11 text-[0.8rem]">
+                    onChange={(v) => setPicked(picked.map((x, j) => (j === i ? { ...x, channel: v } : x)))}
+                    variant="pill"
+                    label={`Where ${f.name} was written for`}
+                    options={CHANNELS.map((c) => ({ value: c, label: PLATFORM_RULES[c]?.label ?? c }))}
+                  />
+                  <label className="flex items-center gap-1.5 min-h-11 text-sm">
                     <input type="checkbox" checked={f.published} onChange={(e) => setPicked(picked.map((x, j) => (j === i ? { ...x, published: e.target.checked } : x)))} />
                     Published
                   </label>
                 </div>
               ))}
-              <p className="text-[0.75rem] text-ink-faint">Unpublished documents are measured but never quoted in a draft.</p>
+              <p className="text-xs text-ink-faint">Unpublished documents are measured but never quoted in a draft.</p>
               <button type="button" disabled={pending} onClick={importDocs} className={`${btnClass("primary", "sm")} self-start`}>
                 {pending ? <><AgentDots /> Reading</> : `Import ${picked.length} ${picked.length === 1 ? "document" : "documents"}`}
               </button>
@@ -186,12 +177,12 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
             </button>
           )}
           {events && (
-            <div className="flex flex-col gap-1.5 border border-hairline rounded-[10px] p-3">
-              {events.length === 0 && <p className="text-[0.85rem] text-ink-muted">Nothing coming up that looks like content.</p>}
+            <div className="flex flex-col gap-1.5 border border-hairline rounded-md p-3">
+              {events.length === 0 && <p className="text-sm text-ink-muted">Nothing coming up that looks like content.</p>}
               {events.map((e) => (
-                <label key={e.id} className="flex items-start gap-2 min-h-11 text-[0.85rem] cursor-pointer">
+                <label key={e.id} className="flex items-start gap-2 min-h-11 text-sm cursor-pointer">
                   <input type="checkbox" className="mt-1" checked={chosen.includes(e.id)} onChange={() => setChosen(chosen.includes(e.id) ? chosen.filter((x) => x !== e.id) : [...chosen, e.id])} />
-                  <span><span className="font-mono text-[0.75rem] text-ink-faint tabular-nums">{e.date}</span> {e.title}</span>
+                  <span><span className="font-mono text-xs text-ink-faint tabular-nums">{e.date}</span> {e.title}</span>
                 </label>
               ))}
               <div className="flex gap-2 pt-1">
@@ -216,7 +207,7 @@ export function CapabilityRun({ tenantId, cap }: { tenantId: string; cap: Capabi
       )}
 
       {msg && (
-        <p role={msg.ok ? "status" : "alert"} className={`text-[0.82rem] flex items-start gap-1.5 ${msg.ok ? "text-ok" : "text-danger"}`}>
+        <p role={msg.ok ? "status" : "alert"} className={`text-sm flex items-start gap-1.5 ${msg.ok ? "text-ok" : "text-danger"}`}>
           {msg.ok && <Check size={13} className="mt-0.5 shrink-0" aria-hidden="true" />} {msg.text}
         </p>
       )}

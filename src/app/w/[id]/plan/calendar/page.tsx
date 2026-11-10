@@ -1,17 +1,15 @@
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight, X, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { getWorkspace } from "@/lib/data/workspaces";
 import { listCalendar, listPillars } from "@/lib/data/planning";
 import { DocPage } from "@/components/doc-page";
-import { SubmitButton } from "@/components/ui";
 import { btnClass } from "@/components/btn";
-import { addCalendarEntryAction, deleteCalendarEntryAction } from "../actions";
-import { startPieceAction } from "../../create/actions";
-import { FORMATS } from "@/lib/content/formats";
+import { deleteCalendarEntryAction, startFromSlotAction } from "../actions";
+import { CALENDAR_CHANNELS, CALENDAR_DAYS } from "@/lib/content/calendar-plan";
+import { AddSlotButton, GenerateCalendarButton } from "./calendar-tools";
 
 /** A slot's channel to the format a piece for it starts in. */
-const formatFor = (channel: string | null) => (channel ? FORMATS.find((f) => f.channel === channel)?.key ?? null : null);
 
 export const metadata = { title: "Calendar" };
 
@@ -49,58 +47,48 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
       accent={String(y)}
       width={1120}
       action={
-        <div className="flex items-center gap-2">
-          <button disabled title="The 90-day generator runs as a queued batch job, which is next on the build plan (TASKS P3-1)." className={btnClass("secondary", "sm")}><Sparkles size={14} /> Generate 90 days</button>
-          <Link href={`?m=${prev}`} className="w-8 h-8 rounded-[8px] border border-line flex items-center justify-center hover:border-ink" aria-label="Previous month"><ChevronLeft size={15} /></Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <GenerateCalendarButton tenantId={id} pillarCount={pillars.length} />
+          <Link href={`?m=${prev}`} className="hu-iconbtn border border-line" aria-label="Previous month"><ChevronLeft size={15} /></Link>
           <Link href="?" className={btnClass("ghost", "sm")}>Today</Link>
-          <Link href={`?m=${next}`} className="w-8 h-8 rounded-[8px] border border-line flex items-center justify-center hover:border-ink" aria-label="Next month"><ChevronRight size={15} /></Link>
+          <Link href={`?m=${next}`} className="hu-iconbtn border border-line" aria-label="Next month"><ChevronRight size={15} /></Link>
         </div>
       }
     >
-      <form action={addCalendarEntryAction} className="bg-paper border border-hairline rounded-[14px] p-3 grid grid-cols-2 md:grid-cols-[150px_1fr_160px_130px_auto] gap-2 items-center shadow-[var(--shadow-sm)]">
-        <input type="hidden" name="tenantId" value={id} />
-        <input type="date" name="date" required defaultValue={today} className="field !h-9 !py-0" />
-        <input name="topic" required placeholder="Topic" className="field !h-9 !py-0" />
-        <select name="pillarId" className="field !h-9 !py-0">
-          <option value="">No pillar</option>
-          {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <select name="channel" className="field !h-9 !py-0">
-          <option value="linkedin">LinkedIn</option>
-          <option value="instagram">Instagram</option>
-          <option value="newsletter">Newsletter</option>
-        </select>
-        <SubmitButton size="sm" pendingLabel="Adding…">Add slot</SubmitButton>
-      </form>
+      <p className="text-sm text-ink-muted">Press + on a day to add a slot, or plan the next {CALENDAR_DAYS} days from your pillars. A slot starts a piece with its topic filled in.</p>
 
-      <div className="mt-6 bg-paper border border-hairline rounded-[14px] overflow-hidden">
+      <div className="mt-6 bg-paper border border-hairline rounded-md overflow-hidden">
         <div className="grid grid-cols-7 border-b border-hairline">
           {DOW.map((d) => <p key={d} className="label-mono text-ink-faint px-3 py-2">{d}</p>)}
         </div>
         <div className="grid grid-cols-7">
           {cells.map((c, i) => (
-            <div key={c.key} className={`min-h-[112px] p-2 border-hairline ${i % 7 ? "border-l" : ""} ${i >= 7 ? "border-t" : ""} ${c.inMonth ? "" : "bg-panel"}`}>
-              <p className={`text-[0.75rem] tabular-nums mb-1.5 ${c.key === today ? "inline-flex w-6 h-6 rounded-full bg-accent text-on-ink items-center justify-center font-medium" : c.inMonth ? "text-ink-muted" : "text-ink-faint"}`}>{c.d.getDate()}</p>
+            <div key={c.key} className={`group/day relative min-h-[112px] p-2 border-hairline ${i % 7 ? "border-l" : ""} ${i >= 7 ? "border-t" : ""} ${c.inMonth ? "" : "bg-panel"}`}>
+              <p className={`text-xs tabular-nums mb-1.5 ${c.key === today ? "inline-flex w-6 h-6 rounded-full bg-accent text-on-ink items-center justify-center font-medium" : c.inMonth ? "text-ink-muted" : "text-ink-faint"}`}>{c.d.getDate()}</p>
+              <AddSlotButton tenantId={id} date={c.key} label={c.d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} pillars={pillars.map((p) => ({ id: p.id, name: p.name }))} />
               <div className="flex flex-col gap-1">
                 {(byDay.get(c.key) ?? []).map((e) => (
-                  <div key={e.id} className="group relative rounded-[6px] pl-2 pr-5 py-1 text-[0.72rem] leading-tight bg-panel border-l-[3px]" style={{ borderLeftColor: shade(e.pillarId) }}>
+                  <div key={e.id} className="group relative rounded-sm pl-2 pr-5 py-1 text-xs leading-tight bg-panel border-l-[3px]" style={{ borderLeftColor: shade(e.pillarId) }}>
                     <p className="font-medium truncate">{e.topic ?? "Untitled"}</p>
-                    <p className="text-ink-faint truncate capitalize">{e.channel ?? ""}{e.pillarName ? ` · ${e.pillarName}` : ""}</p>
-                    {!e.contentItemId && e.topic && (
-                      <form action={startPieceAction} className="mt-1">
+                    <p className="text-ink-faint truncate">{CALENDAR_CHANNELS.find((c) => c.key === e.channel)?.label ?? e.channel ?? ""}{e.pillarName ? ` · ${e.pillarName}` : ""}</p>
+                    {e.startedProjectId ? (
+                      <Link href={`/w/${id}/p/${e.startedProjectId}`} className="hu-hit mt-1 inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-ink hover:underline underline-offset-2">
+                        Open <ArrowRight size={10} aria-hidden="true" />
+                      </Link>
+                    ) : e.topic && (
+                      <form action={startFromSlotAction} className="mt-1">
                         <input type="hidden" name="tenantId" value={id} />
-                        <input type="hidden" name="topic" value={e.topic} />
-                        {e.pillarName && <input type="hidden" name="pillar" value={e.pillarName} />}
-                        {formatFor(e.channel) && <input type="hidden" name="format" value={formatFor(e.channel)!} />}
-                        <button className="hu-hit inline-flex items-center gap-1 text-[0.7rem] font-medium text-accent hover:underline underline-offset-2">
+                        <input type="hidden" name="id" value={e.id} />
+                        <button className="hu-hit inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline underline-offset-2">
                           Start <ArrowRight size={10} aria-hidden="true" />
                         </button>
                       </form>
                     )}
-                    <form action={deleteCalendarEntryAction} className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100">
+                    {(e.hookAngle || e.cta) && <p className="text-ink-faint truncate" title={[e.hookAngle, e.cta && `Close with: ${e.cta}`].filter(Boolean).join(". ")}>{e.hookAngle ?? `Close with: ${e.cta}`}</p>}
+                    <form action={deleteCalendarEntryAction} className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                       <input type="hidden" name="tenantId" value={id} />
                       <input type="hidden" name="id" value={e.id} />
-                      <button className="w-4 h-4 flex items-center justify-center text-ink-faint hover:text-accent-ink" aria-label="Remove slot"><X size={11} /></button>
+                      <button className="hu-hit w-6 h-6 rounded-full flex items-center justify-center text-ink-faint hover:text-ink hover:bg-hover" aria-label={`Remove ${e.topic ?? "this slot"}`}><X size={13} aria-hidden="true" /></button>
                     </form>
                   </div>
                 ))}
@@ -109,7 +97,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
           ))}
         </div>
       </div>
-      <p className="text-[0.75rem] text-ink-faint mt-3 pb-10">{entries.length} slot{entries.length === 1 ? "" : "s"} this view. Export copies these out; direct publishing isn&apos;t part of v1.</p>
+      <p className="text-xs text-ink-faint mt-3 pb-10">{entries.length} slot{entries.length === 1 ? "" : "s"} this view. Export copies these out; direct publishing isn&apos;t part of v1.</p>
     </DocPage>
   );
 }

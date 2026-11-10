@@ -11,7 +11,7 @@
  *   deep — drip-fed later, two or three at a time, never mid-draft.
  */
 
-export type QuestionFormat = "open" | "short" | "mcq" | "multi" | "chips" | "shorts";
+export type QuestionFormat = "open" | "short" | "mcq" | "multi" | "chips" | "shorts" | "compass" | "framing";
 
 export interface Question {
   id: string;
@@ -27,7 +27,18 @@ export interface Question {
   followUp?: string;
   /** Voice notes encouraged: the answer is also a spoken sample. */
   spoken?: boolean;
+  /** MCQ and some Multi: offer "Other (type it)" (05 Part 1, format key). */
+  other?: boolean;
+  /** Options that need a few words after them, e.g. "Depends on the topic (say which)". */
+  sayWhich?: string[];
+  /** Multi: at most this many picks. */
+  max?: number;
+  /** A 1–10 dose under the choices, e.g. C9 "How much humour?". */
+  dial?: { ask: string; left: string; right: string };
 }
+
+/** The label of the free-text choice on an MCQ (05 Part 1, format key). */
+export const OTHER = "Other (type it)";
 
 /** The default follow-up for a generic answer (file 05, Part 1, rule 4). */
 export const DEFAULT_FOLLOW_UP =
@@ -70,6 +81,7 @@ export const QUESTIONS: Question[] = [
       "A provocateur: I challenge how they think",
       "A storyteller: I share what I've seen and let them draw the lesson",
     ],
+    other: true,
   },
   {
     id: "A4", tier: "core", format: "short", fills: "identity.carries",
@@ -114,6 +126,10 @@ export const QUESTIONS: Question[] = [
     ask: "Same party. You've had a couple of drinks and your guard is down. Now what do you really say? What jokes do you make? How do people react to you?",
   },
   {
+    id: "C3", tier: "deep", format: "compass", fills: "identity.quadrant",
+    ask: "Drop a dot where you are today. Then drop a second dot where you want to be.",
+  },
+  {
     id: "C4", tier: "core", format: "open", fills: "identity.dials",
     ask: "Slide each one to where you are. We've pre-set them from your writing. Move anything that feels wrong.",
   },
@@ -137,7 +153,8 @@ export const QUESTIONS: Question[] = [
     example: "30 seconds: this person sees what others miss. 5 minutes: I'd trust their judgement. 20 minutes: I want them in the room.",
   },
   {
-    id: "C9", tier: "deep", format: "mcq", fills: "identity.humour",
+    id: "C9", tier: "deep", format: "multi", fills: "identity.humour", max: 2,
+    dial: { ask: "How much humour?", left: "Almost none", right: "In every piece" },
     ask: "What kind of funny are you?",
     options: [
       "Dry: I say it straight and let you catch it",
@@ -153,6 +170,12 @@ export const QUESTIONS: Question[] = [
     id: "C10", tier: "deep", format: "multi", fills: "identity.language",
     ask: "Which languages do you write or think in? Do you mix them?",
     options: ["English", "Hindi", "Hinglish", "Punjabi", "Gujarati", "Marathi", "Tamil", "Bengali"],
+    other: true,
+  },
+  {
+    id: "C10b", tier: "deep", format: "mcq", fills: "identity.languageMixing",
+    ask: "Where is mixing okay?",
+    options: ["Everywhere", "Only in casual places (chat, Instagram, comments)", "Only in chat", "Never in writing"],
   },
   // ---- D. The lines you don't cross -----------------------------------------
   {
@@ -172,8 +195,16 @@ export const QUESTIONS: Question[] = [
       "Quiet and measured: I raise the question and let people get there",
       "Clear and firm: I say what I think and back it up",
       "Loud and provocative: I say the thing people are afraid to say",
-      "Depends on the topic",
+      "Depends on the topic (say which)",
     ],
+    sayWhich: ["Depends on the topic (say which)"],
+  },
+  {
+    id: "D4", tier: "deep", format: "framing", fills: "guardrails.framing",
+    ask: "Are there topics where how you frame it really matters? How do you want it framed?",
+    options: ["AI and technology", "Politics", "Religion", "Money and income", "Gender", "Mental health", "Competitors", "Your industry's problems"],
+    example: "AI: always as people working with AI, never people versus AI.",
+    other: true,
   },
   {
     id: "D5", tier: "deep", format: "mcq", fills: "guardrails.toneMix",
@@ -184,11 +215,16 @@ export const QUESTIONS: Question[] = [
       "Mostly the hard stuff: failures and what they taught me",
       "I don't tell personal stories",
     ],
+    other: true,
   },
   {
-    id: "D6", tier: "deep", format: "multi", fills: "redPen.pushy",
-    ask: "When you want someone to contact you, which endings feel pushy to you?",
-    options: ["DM me", "Reach out", "Let's connect", "Book a call", "Link in bio", "Comment below", "Follow for more", "Get in touch"],
+    id: "D6", tier: "deep", format: "open", fills: "guardrails.closers",
+    ask: "When you want someone to contact you, how do you end?",
+  },
+  {
+    id: "D6b", tier: "deep", format: "multi", fills: "redPen.pushy",
+    ask: "And which endings feel pushy to you?",
+    options: ["DM me", "Reach out", "Let's connect", "Book a call", "Link in bio", "Comment below", "Follow for more", "Get in touch", "None of these"],
   },
   {
     id: "D7", tier: "core", format: "open", fills: "guardrails.never",
@@ -213,12 +249,20 @@ export const QUESTIONS: Question[] = [
     id: "E5", tier: "deep", format: "short", fills: "mechanics.opener",
     ask: "Write the first line of a post you'd be proud of. Just the first line.",
   },
+  {
+    id: "E6", tier: "deep", format: "open", fills: "voice.oneBreath", spoken: true,
+    ask: "Record yourself describing your whole work in one breath, the way you'd say it out loud. About 30 seconds.",
+  },
   // ---- F. Your rooms --------------------------------------------------------
   {
     id: "F3", tier: "deep", format: "shorts", fills: "contexts.situations",
     ask: "How does your tone change in each of these moments? One line each, or skip any.",
     prompts: ["Announcing something new", "Someone complains or is upset", "Disagreeing with someone", "Pitching to a partner", "A quick social reply", "Selling or making an offer"],
     example: "Someone complains: I drop the jokes, own it fast, and say what happens next.",
+  },
+  {
+    id: "F4", tier: "deep", format: "short", fills: "contexts.disagreement",
+    ask: "How do you disagree with someone in writing? Write a line you'd actually use.",
   },
   {
     id: "F5", tier: "deep", format: "shorts", fills: "contexts.signoffs",
@@ -235,10 +279,11 @@ export const questionById = (id: string): Question | undefined => QUESTIONS.find
  * spec's open "drip-fed later"): enough writing to be worth refining, never
  * an interruption mid-draft.
  */
-export function nextDeepQuestions(answered: string[], approvedPieces: number, size = 3): Question[] {
+export function nextDeepQuestions(answered: string[], approvedPieces: number, size = 3, skip: Iterable<string> = []): Question[] {
   const batches = Math.floor(approvedPieces / 5);
   if (batches === 0) return [];
-  const done = new Set(answered);
+  // A question the scan already answered is never asked (05 "Skip if").
+  const done = new Set([...answered, ...skip]);
   const open = QUESTIONS.filter((q) => q.tier === "deep" && !done.has(q.id));
   const offered = QUESTIONS.filter((q) => q.tier === "deep" && done.has(q.id)).length;
   const allowance = batches * size - offered;

@@ -60,6 +60,21 @@ const MOCK_ANGLES = [
   "A small moment that explains",
 ];
 
+/**
+ * Subjects the stand-in openings attach to. Crossed with MOCK_TOPICS they give
+ * enough distinct lines to fill a quarter without repeating, which is what a
+ * real plan has to do.
+ */
+const MOCK_SUBJECTS = [
+  "the first ninety days",
+  "hiring your replacement",
+  "the meeting nobody needed",
+  "saying no to good work",
+  "the feedback that landed",
+  "being the newest person in the room",
+  "what the numbers left out",
+];
+
 export const topicProposals: TaskDef<TopicProposals> = {
   key: "topic_proposals",
   schema: Topics,
@@ -76,7 +91,9 @@ export const topicProposals: TaskDef<TopicProposals> = {
     while (picked.length < 3) picked.push(picked[picked.length - 1]);
     return {
       topics: picked.map((p, i) => ({
-        title: `${MOCK_ANGLES[i]} ${p.toLowerCase()}`,
+        // A pillar name is a label, not a noun phrase: "…explains Origin story"
+        // reads as a bug. Keep the pillar beside the line, not inside it.
+        title: `${MOCK_ANGLES[i]} ${MOCK_SUBJECTS[i % MOCK_SUBJECTS.length]}`,
         why: `Stand-in suggestion from your "${p}" pillar.`,
         pillar: pillars.length ? p : "",
       })),
@@ -365,8 +382,178 @@ export const voicePreview: TaskDef<{ text: string }> = {
   },
 };
 
+// ---- select and instruct: one part of a piece, rewritten on request --------
+
+const Part = z.object({ text: z.string() });
+export type PartResult = z.infer<typeof Part>;
+
+const FILLER = /\b(really|very|just|actually|basically|simply|truly|quite|incredibly)\s+/gi;
+const firstUpper = (t: string) => t.replace(/^(\s*)([a-z])/, (_, a: string, b: string) => a + b.toUpperCase());
+const tidy = (t: string) => t.replace(/[ \t]{2,}/g, " ").replace(/ +([,.!?])/g, "$1").trim();
+
+/** The stand-in's rewrites: deterministic, and visibly what was asked for. */
+export function mockRewritePart(text: string, instruction: string, never: string[] = []): string {
+  const ask = instruction.toLowerCase();
+  let t = text.trim();
+  const sentences = (x: string) => x.match(/[^.!?\n]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [x];
+  if (/short|tight|cut|trim|brief|concise/.test(ask)) {
+    const ss = sentences(t);
+    t = ss.length > 1 ? ss[0] : t.split(/\s+/).slice(0, Math.max(4, Math.ceil(t.split(/\s+/).length * 0.6))).join(" ").replace(/[,;:]$/, "") + ".";
+  }
+  if (/punch|bold|strong|sharp/.test(ask)) {
+    t = sentences(t.replace(FILLER, ""))[0].replace(/[,;:]\s.*$/, "").replace(/[.!?]*$/, ".");
+  }
+  if (/contrarian|provocative|spicy|disagree/.test(ask)) t = `Unpopular opinion: ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+  if (/warm|friendl|kind|human/.test(ask)) t = `Honestly? ${t}`;
+  if (/question/.test(ask)) t = `${t.replace(/[.!?]+$/, "")}?`;
+  if (/formal|professional/.test(ask)) t = t.replace(/\b(\w+)'re\b/g, "$1 are").replace(/\bdon't\b/gi, "do not").replace(/\bit's\b/gi, "it is").replace(/\bI'm\b/g, "I am");
+  if (/casual|relaxed|conversational/.test(ask))
+    t = t.replace(/\bdo not\b/gi, (m) => (m[0] === "D" ? "Don't" : "don't")).replace(/\bit is\b/gi, (m) => (m[0] === "I" ? "It's" : "it's")).replace(/\bI am\b/g, "I'm");
+  if (/emoji/.test(ask) && !/no emoji/.test(ask)) t = `${t} ✨`;
+  if (/upper|caps/.test(ask)) t = t.toUpperCase();
+  // Anything else: a tighter, plainer version, so the change is always visible.
+  if (t === text.trim()) {
+    const first = sentences(t.replace(FILLER, ""))[0].replace(/^(so|well|okay|ok),?\s+/i, "");
+    const cut = first.split(/\s+(?:because|which|so that|and then)\s+|,\s+/i)[0].replace(/[.!?]*$/, ".");
+    const words = first.split(/\s+/);
+    t = cut !== first ? cut : words.length > 6 ? `${words.slice(0, Math.ceil(words.length * 0.7)).join(" ").replace(/[,;:]$/, "")}.` : `${first.replace(/[.!?]*$/, "")}!`;
+  }
+  for (const w of never) t = t.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b[,!]?`, "gi"), "");
+  return firstUpper(tidy(t)) || text;
+}
+
+export const rewritePart: TaskDef<PartResult> = {
+  key: "rewrite_part",
+  schema: Part,
+  template:
+    "You change one part of a piece the person is editing, the way they asked, in their voice. Change only that part. Keep their meaning and their facts unless the instruction says otherwise, and keep the rest of the piece in mind so the part still fits it.",
+  contract: [
+    "Return text: the new version of the part only, with no quotes, labels or commentary.",
+    "Keep it the same kind of thing: a hook stays one line, a slide stays one idea, a call to action stays one ask.",
+    "Do not add a fact, name, number or claim that is not in the piece or the brand context.",
+  ].join("\n"),
+  mock(input) {
+    const never = field(input, "Never use").split(",").map((w) => w.trim()).filter(Boolean);
+    return { text: mockRewritePart(block(input, "Part"), field(input, "Instruction"), never) };
+  },
+};
+
+// ---- the 90-day calendar (brief §4.2, P3-1) ---------------------------------
+
+const Calendar = z.object({
+  slots: z.array(
+    z.object({
+      /** The slot number from the input; the date and channel stay code-owned. */
+      slot: z.number().int(),
+      /** A pillar name exactly as listed, or an empty string. */
+      pillar: z.string(),
+      topic: z.string(),
+      hookAngle: z.string(),
+      cta: z.string(),
+    }),
+  ),
+});
+export type CalendarPlan = z.infer<typeof Calendar>;
+
+const MOCK_HOOKS = [
+  "Open on the moment it went wrong",
+  "Start with the number nobody expects",
+  "A question the reader is already asking",
+  "Contrast what people assume with what happens",
+  "One line of the story, then the lesson",
+];
+const MOCK_CTAS = ["What would you add?", "Reply if this is you.", "Save this for the next time it comes up.", "Tell me where I'm wrong.", "Forward this to the one person who needs it."];
+const MOCK_TOPICS = [
+  "The mistake I see most often with",
+  "What nobody tells you about",
+  "A small moment that explains",
+  "The one rule I keep about",
+  "What changed my mind about",
+  "Why the obvious advice fails on",
+];
+
+export const calendarPlan: TaskDef<CalendarPlan> = {
+  key: "calendar_plan",
+  schema: Calendar,
+  template:
+    "You plan what a person publishes over the next three months, in their voice and from their own pillars. Each slot is one piece on a named day and channel. Rotate the pillars so none is forgotten, vary the angles so no two neighbouring slots feel alike, and keep every topic something they have an opinion on. Never plan a topic that needs a fact they have not given.",
+  contract: [
+    "Return slots: one entry per slot number listed in the input, in order, none missing and none invented.",
+    "Each has: slot (the number as given), pillar (a pillar name exactly as listed, or an empty string if none fits), topic (one line, in their words, not a headline formula), hookAngle (how the piece opens, under 12 words), cta (one line, or an empty string for a channel with no ask).",
+    "Fit the channel: a newsletter slot can carry a bigger idea than an X slot.",
+    "Every topic must be different from every other one in the plan. A quarter of repeats is not a plan, so do not reuse a topic, and do not reach the same idea twice by rewording it.",
+  ].join("\n"),
+  mock(input) {
+    const pillars = fields(input, "Pillar").map((p) => p.split(" (")[0].trim());
+    const slots = fields(input, "Slot").map((s) => Number(s.split("|")[0]));
+    return {
+      slots: slots.map((slot, i) => {
+        const pillar = pillars.length ? pillars[i % pillars.length] : "";
+        // Pair each opening with a different subject rather than cycling one
+        // list, so a stand-in plan reads like 38 pieces and not six on repeat.
+        const opener = MOCK_TOPICS[i % MOCK_TOPICS.length];
+        const subject = MOCK_SUBJECTS[Math.floor(i / MOCK_TOPICS.length) % MOCK_SUBJECTS.length];
+        return {
+          slot,
+          pillar,
+          topic: `${opener} ${subject}${pillar ? ` (${pillar})` : ""}`,
+          hookAngle: MOCK_HOOKS[i % MOCK_HOOKS.length],
+          cta: MOCK_CTAS[i % MOCK_CTAS.length],
+        };
+      }),
+    };
+  },
+};
+
+// ---- reading their website: who they are, in the site's own words -----------
+
+const SiteProfileSchema = z.object({
+  name: z.string(),
+  whatTheyDo: z.string(),
+  audience: z.string(),
+  offers: z.string(),
+  positioning: z.string(),
+});
+export type SiteProfile = z.infer<typeof SiteProfileSchema>;
+
+const sentence = (s: string) => (s.split(/(?<=[.!?])\s+/)[0] ?? "").trim();
+const OFFER_WORDS = /\b(1:1 coaching|one-to-one coaching|group coaching|coaching|courses?|workshops?|programmes?|programs?|cohorts?|consulting|mentoring|retreats?|masterclass(?:es)?|membership|community|podcast|books?|keynotes?|speaking|templates?|audits?)\b/gi;
+
+export const siteProfile: TaskDef<SiteProfile> = {
+  key: "site_profile",
+  schema: SiteProfileSchema,
+  template:
+    "You read the public website of a person or small business that is setting up their personal brand, and say who they are in the site's own words, so onboarding can offer it for them to confirm. Write as they would describe themselves, plainly. Only use what the site says; when it does not say something, leave that field empty rather than guess. Never invent clients, numbers, credentials or claims.",
+  contract: [
+    "Return name: the person or brand as they sign their work (no taglines, no \"Home\").",
+    "whatTheyDo: one line, under 140 characters, what they do and for whom, in their words.",
+    "audience: who their work is for, one line.",
+    "offers: what they sell or give, as a short comma-separated list.",
+    "positioning: why them, one line, only if the site says it outright.",
+    "Use an empty string for anything the site does not say.",
+  ].join("\n"),
+  mock(input) {
+    const text = block(input, "Text");
+    const description = field(input, "Description");
+    const prose = `${description} ${text}`;
+    // "helps X" says who it's for more surely than "for X" ("a leader for the next generation").
+    const forWhom = (/\b(?:helps?|helping|work(?:ing)? with)\s+([^.!?,\n]{6,90})/i.exec(prose) ?? /\bfor\s+([^.!?,\n]{6,90})/i.exec(prose))?.[1]?.trim() ?? "";
+    const offers = [...new Set([...prose.matchAll(OFFER_WORDS)].map((m) => m[1].toLowerCase()))].slice(0, 4);
+    return {
+      name: field(input, "Title"),
+      whatTheyDo: (sentence(description) || sentence(text.replace(/^\[Home page\]\s*/, ""))).slice(0, 140),
+      audience: forWhom.replace(/[,;:]\s*$/, ""),
+      offers: offers.join(", "),
+      positioning: "",
+    };
+  },
+};
+
 export const TASKS = {
+  [siteProfile.key]: siteProfile,
   [topicProposals.key]: topicProposals,
+  [calendarPlan.key]: calendarPlan,
+  [rewritePart.key]: rewritePart,
   [voiceJudge.key]: voiceJudge,
   [rewriteInVoice.key]: rewriteInVoice,
   [coWriteOutline.key]: coWriteOutline,

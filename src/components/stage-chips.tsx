@@ -18,7 +18,7 @@ export function StageChips({ active = "brief" }: { active?: string }) {
         return (
           <div key={s.key} className="flex items-center gap-1">
             {i > 0 && <span className="w-4 border-t border-dashed border-line" />}
-            <span className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[8px] text-[0.8rem] ${on ? "bg-paper shadow-[var(--shadow-sm)] text-ink font-medium" : "text-ink-faint"}`}>
+            <span className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-sm text-sm ${on ? "bg-paper shadow-[var(--shadow-sm)] text-ink font-medium" : "text-ink-faint"}`}>
               <Icon size={13} /> {s.label}
             </span>
           </div>

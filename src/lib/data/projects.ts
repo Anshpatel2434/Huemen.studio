@@ -148,37 +148,23 @@ export async function renameProject(scope: ProjectScope, name: string): Promise<
   await withTenantSession(scope, (c) => c.query("UPDATE projects SET name=$1 WHERE id=$2", [name, scope.projectId]));
 }
 
-export async function duplicateProjectBrief(scope: ProjectScope, name: string): Promise<string> {
-  // New project seeded with a copy of this project's brief (voice + visual).
+/**
+ * A new project set up like this one: same format, platform, angle and pillar,
+ * starting fresh at Ideate. The brief is the workspace's (migration 0007), so
+ * every project already writes from it; nothing of the brief is copied.
+ */
+export async function duplicateProject(scope: ProjectScope, name: string): Promise<string> {
   return withTenantSession(scope, async (c) => {
-    const id = (
+    const row = (
       await c.query<{ id: string }>(
-        `INSERT INTO projects (tenant_id, name, created_by) VALUES ($1,$2,$3) RETURNING id`,
-        [scope.tenantId, name, scope.userId],
+        `INSERT INTO projects (tenant_id, name, created_by, format, channel, angle, pillar_id, mode)
+         SELECT tenant_id, $1, $2, format, channel, angle, pillar_id, mode FROM projects WHERE id = $3
+         RETURNING id`,
+        [name, scope.userId, scope.projectId],
       )
-    ).rows[0].id;
-    const bp = (await c.query("SELECT * FROM brand_profiles WHERE project_id=$1 ORDER BY updated_at DESC LIMIT 1", [scope.projectId])).rows[0];
-    if (bp) {
-      const nb = (
-        await c.query<{ id: string }>(
-          `INSERT INTO brand_profiles (tenant_id, project_id, status, story_arc, positioning_statement, niche, audience, offers_summary, completeness)
-           SELECT tenant_id, $1, status, story_arc, positioning_statement, niche, audience, offers_summary, completeness
-             FROM brand_profiles WHERE id=$2 RETURNING id`,
-          [id, bp.id],
-        )
-      ).rows[0].id;
-      await c.query(
-        `INSERT INTO voice_guides (tenant_id, brand_profile_id, tone_descriptors, do_words, dont_words, sample_posts, reading_level, formatting_rules)
-         SELECT tenant_id, $1, tone_descriptors, do_words, dont_words, sample_posts, reading_level, formatting_rules FROM voice_guides WHERE brand_profile_id=$2`,
-        [nb, bp.id],
-      );
-      await c.query(
-        `INSERT INTO visual_identities (tenant_id, brand_profile_id, palette, fonts, image_style_notes, aspect_ratio_defaults)
-         SELECT tenant_id, $1, palette, fonts, image_style_notes, aspect_ratio_defaults FROM visual_identities WHERE brand_profile_id=$2`,
-        [nb, bp.id],
-      );
-    }
-    return id;
+    ).rows[0];
+    if (!row) throw new Error("project not found");
+    return row.id;
   });
 }
 
@@ -198,8 +184,9 @@ export async function archiveProject(scope: ProjectScope): Promise<void> {
 }
 
 /**
- * Permanently delete a project. Its brief, pillars, content (with history),
- * visuals, ideas, calendar and offers go with it (ON DELETE CASCADE).
+ * Permanently delete a project: one piece, its content (with history) and its
+ * visuals (ON DELETE CASCADE). The brief, pillars, ideas, calendar and offers
+ * are the workspace's since 0007 and are untouched.
  * generation_logs rows stay for usage and audit (their content link is
  * nulled). Stored files are removed after the rows, best effort: a leftover
  * file is harmless, a missing row is not.

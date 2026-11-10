@@ -16,7 +16,7 @@ process.env.GOOGLE_CLIENT_ID = "test-google-client";
 process.env.GOOGLE_CLIENT_SECRET = "test-google-secret";
 
 import { open, seal } from "@/lib/integrations/crypto";
-import { decodeState, encodeState, pkcePair } from "@/lib/integrations/state";
+import { decodeState, encodeState, pkcePair, returnPath } from "@/lib/integrations/state";
 import { authorizeUrl, hasCapability, redirectUri, scopesFor, CAPABILITIES } from "@/lib/integrations/providers";
 import { ConnectionError, exchangeCode, refresh, whoami, type FetchLike } from "@/lib/integrations/oauth";
 import { importPickedFiles, importSentMail, messageText, upcomingEvents } from "@/lib/integrations/google";
@@ -73,6 +73,15 @@ describe("the OAuth state", () => {
     const [body, sig] = tok.split(".");
     const forged = b64(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString()), t: "someone-else" }));
     expect(decodeState(`${forged}.${sig}`, "secret", "nonce-1", 2_000)).toBeNull();
+  });
+
+  it("lands back where it started, and only ever on one of our own pages", () => {
+    const tok = encodeState({ ...s, r: "onboarding" }, "secret", 1_000);
+    const back = decodeState(tok, "secret", "nonce-1", 2_000)!;
+    expect(returnPath(back.r, back.t, "connected=google")).toBe("/w/tenant/onboarding?step=1&connected=google");
+    expect(returnPath(undefined, "tenant", "error=x")).toBe("/settings/connections?error=x");
+    // Anything that isn't a known name falls back to Settings, never a URL.
+    expect(returnPath("https://evil.example" as never, "tenant", "q=1")).toBe("/settings/connections?q=1");
   });
 
   it("uses a PKCE challenge that is the hash of the verifier", () => {
@@ -181,6 +190,60 @@ describe("Gmail: only what they wrote, in Sent", () => {
     expect(pieces.every((p) => p.visibility === "private" && p.channel === "email")).toBe(true);
     expect(new URL(seen[0].url).searchParams.get("q")).toMatch(/^in:sent /);
     expect((seen[0].init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+});
+
+describe("Gmail: the whole sent folder, page by page, then let go", () => {
+  const long = (n: number) =>
+    `Email number ${n}: a properly written note about pricing the next cohort, what the last one taught me, and what I would change next time if the numbers hold up the way I expect them to.`;
+  const mailbox = (total: number) => {
+    const ids = Array.from({ length: total }, (_, i) => `m${i}`);
+    return fake([
+      ["https://gmail.googleapis.com/gmail/v1/users/me/messages?", (url) => {
+        const u = new URL(url);
+        const start = Number(u.searchParams.get("pageToken") ?? 0);
+        const size = Number(u.searchParams.get("maxResults"));
+        const page = ids.slice(start, start + size);
+        return json({
+          messages: page.map((id) => ({ id })),
+          resultSizeEstimate: total,
+          ...(start + size < total ? { nextPageToken: String(start + size) } : {}),
+        });
+      }],
+      ["https://gmail.googleapis.com/gmail/v1/users/me/messages/m", (url) => {
+        const id = url.split("/messages/")[1].split("?")[0];
+        return json({ id, payload: { mimeType: "text/plain", body: { data: b64(long(Number(id.slice(1)))) } } });
+      }],
+    ]);
+  };
+
+  it("reads one page per call and says where the next one starts", async () => {
+    const { sentMailPage, GMAIL_PAGE_SIZE } = await import("@/lib/integrations/google");
+    const { f } = mailbox(250);
+    const first = await sentMailPage("tok", {}, f);
+    expect(first.scanned).toBe(GMAIL_PAGE_SIZE);
+    expect(first.pieces).toHaveLength(GMAIL_PAGE_SIZE);
+    expect(first.estimate).toBe(250);
+    expect(first.nextPageToken).toBe("100");
+    const last = await sentMailPage("tok", { pageToken: "200" }, f);
+    expect(last.scanned).toBe(50);
+    expect(last.nextPageToken).toBeNull();
+  });
+
+  it("never reads past the cap, however big the mailbox", async () => {
+    const { importSentMail, GMAIL_IMPORT_MAX } = await import("@/lib/integrations/google");
+    const { f, seen } = mailbox(GMAIL_IMPORT_MAX + 300);
+    const { scanned } = await importSentMail("tok", { max: 1e9 }, f);
+    expect(scanned).toBe(GMAIL_IMPORT_MAX);
+    expect(seen.filter((s) => s.url.includes("/messages/m"))).toHaveLength(GMAIL_IMPORT_MAX);
+  });
+
+  it("withdraws itself only when that cuts nothing else off", async () => {
+    const { onlyFor } = await import("@/lib/data/connections");
+    const view = (granted: string[]) => ({ granted } as unknown as Parameters<typeof onlyFor>[0]);
+    expect(onlyFor(view(["gmail", "profile"]), "gmail")).toBe(true);
+    expect(onlyFor(view(["gmail", "profile", "calendar"]), "gmail")).toBe(false);
+    expect(onlyFor(view(["gmail", "docs"]), "gmail")).toBe(false);
   });
 });
 
@@ -334,6 +397,28 @@ describe("connections in the database", () => {
     expect(seen).toHaveLength(1);
     expect(await listConnections(A)).toEqual([]);
     expect((await listSamples(A, pack.id)).some((s) => s.body === piece.body)).toBe(false);
+  });
+
+  it("read once: email outlives the withdrawn connection, and can still be removed in one go", async () => {
+    if (!dbReachable) return;
+    const { saveConnection, addImported, disconnect, listConnections, importedEmailCount, removeImportedEmail } = await import("@/lib/data/connections");
+    const { loadPackForWorkspace } = await import("@/lib/data/voice-pack");
+    await saveConnection(A, "google", { accessToken: "ya29.ONCE", refreshToken: "1//ONCE", expiresAt: new Date(Date.now() + 3600e3).toISOString(), scopes: ["openid", "https://www.googleapis.com/auth/gmail.readonly"] }, { id: "g-1", email: "a@example.com", name: "A" });
+    const pack = (await loadPackForWorkspace(A))!;
+    const conn = (await listConnections(A))[0];
+    const body = "An email I sent about pricing a cohort, long enough to count as a piece of writing for the voice.";
+    expect(await addImported(A, pack, conn.id, [{ externalId: "gmail:once1", body, channel: "email", visibility: "private", publishedAt: null }])).toBe(1);
+
+    const { f } = fake([["https://oauth2.googleapis.com/revoke", () => new Response("", { status: 200 })]]);
+    await disconnect(A, "google", { removeWriting: false }, f);
+    expect(await listConnections(A)).toEqual([]);
+    expect(await importedEmailCount(A, pack.id)).toBe(1);
+    // Another workspace can't see, count or remove it.
+    expect(await importedEmailCount(B, pack.id)).toBe(0);
+    expect(await removeImportedEmail(B, pack.id)).toBe(0);
+
+    expect(await removeImportedEmail(A, pack.id)).toBe(1);
+    expect(await importedEmailCount(A, pack.id)).toBe(0);
   });
 
   it("refuses a sample that points at another workspace's connection (0013)", async () => {

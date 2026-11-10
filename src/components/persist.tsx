@@ -29,6 +29,7 @@ export function useDraftPersist<T>(key: string | null, value: T, restore: (v: T)
   // Restore once, then allow saving. Both state updates batch, so the first save
   // sees the restored value, not the initial one.
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- syncing from browser storage after hydration */
     if (!key) {
       setReady(true);
       return;
@@ -38,6 +39,7 @@ export function useDraftPersist<T>(key: string | null, value: T, restore: (v: T)
       if (raw != null) restore(JSON.parse(raw) as T);
     } catch {}
     setReady(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
     // restore only when the key changes; `restore` is intentionally excluded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

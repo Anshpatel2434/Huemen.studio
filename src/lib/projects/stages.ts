@@ -19,3 +19,5 @@ export const STAGE_LABEL: Record<Stage, string> = {
   content: "Content",
   visual: "Visual",
 };
+/** "Step 2 of 3", for eyebrows and locked screens. Counts from STAGES, never a literal. */
+export const stepLabel = (s: Stage) => `Step ${stageIndex(s) + 1} of ${STAGES.length}`;

@@ -6,9 +6,11 @@ import { actionActor } from "@/lib/auth/workspace";
 import {
   addSamples, deleteSample, loadPackForWorkspace, rescan, setSampleExcluded,
 } from "@/lib/data/voice-pack";
-import { decideEditProposal, decideProposal, restoreVersion, writePack, type WriteOutcome } from "@/lib/data/training";
+import { decideEditProposal, decideProposal, ownsVoice, restoreVersion, writePack, type WriteOutcome } from "@/lib/data/training";
 import { tagged } from "@/lib/voice/types";
-import { finishIngest } from "@/lib/data/onboarding";
+import { finishIngest, setAntiSample, setBenchmarkNote } from "@/lib/data/onboarding";
+import { decidePattern } from "@/lib/data/patterns";
+import { splitPieces } from "@/lib/voice/ingest";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -31,15 +33,15 @@ function done(path: string, outcome: WriteOutcome | null): never {
 }
 
 /**
- * Add writing to the corpus. Pieces are separated by a blank line, because a
- * real post has line breaks inside it and one-per-line would shred it.
+ * Add writing to the corpus. Pieces are separated by a --- line or two blank
+ * lines; a single blank line is a paragraph inside a post (ingest `splitPieces`).
  */
 export async function addSamplesAction(fd: FormData): Promise<void> {
   const { scope, pack, path } = await packFor(fd);
   if (!pack) return;
   const channel = str(fd, "channel") || "unknown";
   const visibility = str(fd, "visibility") === "private" ? "private" : "public";
-  const bodies = str(fd, "text").split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const bodies = splitPieces(String(fd.get("text") ?? ""));
   if (bodies.length) {
     await addSamples(scope, pack.id, bodies.map((body) => ({ body, channel, visibility, source: "paste" as const })));
     await finishIngest(scope, pack);
@@ -147,4 +149,50 @@ export async function restoreVersionAction(fd: FormData): Promise<void> {
 export async function previewRescanAction(fd: FormData): Promise<void> {
   const { path } = await packFor(fd);
   redirect(`${path}?preview=1#remeasure`);
+}
+
+// ---- what we noticed across sources --------------------------------------------
+
+/**
+ * Keep or drop a pattern found across their sources. Theirs to decide: a
+ * coach sees the public half but can't settle it for them.
+ */
+export async function decidePatternAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack || !ownsVoice(actor, pack)) return;
+  await decidePattern(scope, actor, pack, {
+    value: str(fd, "value"),
+    keep: str(fd, "keep") === "1",
+  });
+  revalidatePath(path);
+}
+
+// ---- benchmarks, the anti-sample and the self-check (G3, G4, red-pen) --------
+
+/** G3: why a benchmark is them. Theirs to confirm, so owner-only. */
+export async function setBenchmarkNoteAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack || !ownsVoice(actor, pack)) return;
+  const note = str(fd, "note");
+  if (note) await setBenchmarkNote(scope, pack, str(fd, "sampleId"), note);
+  revalidatePath(path);
+}
+
+/** G4: the piece that is almost them but wrong, and what's off about it. */
+export async function setAntiSampleAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack || !ownsVoice(actor, pack)) return;
+  await setAntiSample(scope, pack, { sampleId: str(fd, "sampleId"), off: str(fd, "off"), fixed: str(fd, "fixed") });
+  revalidatePath(path);
+}
+
+/** The red-pen self-check, one question per line. Empty restores the derived list. */
+export async function saveSelfCheckAction(fd: FormData): Promise<void> {
+  const { scope, actor, pack, path } = await packFor(fd);
+  if (!pack) return;
+  const qs = str(fd, "selfCheck").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 10);
+  const redPen = { ...pack.redPen };
+  if (qs.length) redPen.selfCheck = tagged(qs, "ask");
+  else delete redPen.selfCheck;
+  done(path, await writePack(scope, actor, pack, { redPen }, "Self-check edited."));
 }

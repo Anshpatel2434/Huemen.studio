@@ -101,6 +101,8 @@ export function ingestLinkedIn(csv: string): IngestResult {
 const WA_LINE =
   /^\[?(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[APap][Mm])?)\]?\s*(?:-\s*)?([^:]{1,60}):\s?(.*)$/;
 const WA_SKIP = /<media omitted>|<attached:|this message was deleted|messages and calls are end-to-end encrypted/i;
+/** Days of a chat kept, newest first: years of chat would drown every other source. */
+export const WA_MAX_DAYS = 60;
 
 /**
  * WhatsApp "Export chat" (.txt). Keeps ONLY the messages sent by `myName`, and
@@ -132,7 +134,10 @@ export function ingestWhatsApp(text: string, myName: string): IngestResult {
     }
   }
 
-  const pieces: IngestedPiece[] = [...byDay.values()]
+  // An export runs oldest to newest; the most recent days are how they write now.
+  const days = [...byDay.values()];
+  const kept = days.slice(-WA_MAX_DAYS);
+  const pieces: IngestedPiece[] = kept
     .map((msgs) => msgs.filter(Boolean).join("\n"))
     .filter((b) => b.trim().length > 0)
     .map((body) => ({ body, channel: "whatsapp", visibility: "private" as const, kind: "unguarded" as const }));
@@ -146,7 +151,7 @@ export function ingestWhatsApp(text: string, myName: string): IngestResult {
   }
   return {
     pieces,
-    summary: `${mineCount} of your messages read, grouped into ${pieces.length} days. ${theirs} messages from other people were left out and not stored.`,
+    summary: `${mineCount} of your messages read, grouped into ${pieces.length} days${days.length > kept.length ? ` (the most recent ${WA_MAX_DAYS}; ${days.length - kept.length} older days left out)` : ""}. ${theirs} messages from other people were left out and not stored.`,
   };
 }
 
@@ -154,18 +159,48 @@ export function ingestWhatsApp(text: string, myName: string): IngestResult {
  * One sent email, pasted. Quoted replies, forwarded text and the signature are
  * stripped (file 06: "strip other people's words before storing anything").
  */
+/**
+ * Split a paste into pieces. A single blank line is a paragraph break inside a
+ * post, so it never splits; pieces are separated by a line of `---` (or `***`),
+ * or by two or more blank lines. Splitting on every blank line used to shred
+ * one multi-paragraph post into several "pieces", inflating counts and breaking
+ * the paragraph, opener and closer numbers (spec 06 §3).
+ */
+export function splitPieces(paste: string): string[] {
+  const t = paste.replace(/\r\n/g, "\n").replace(/^﻿/, "");
+  const parts = /^\s*(---|\*\*\*)\s*$/m.test(t) ? t.split(/^\s*(?:---|\*\*\*)\s*$/m) : t.split(/\n[ \t]*\n(?:[ \t]*\n)+/);
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+
+/** An auto-reply says nothing about how they write: the whole message is dropped. */
+const AUTO_REPLY = /^(automatic reply|auto(matic)?[- ]?reply|out of (the )?office|i am (currently )?(out of|away from) (the )?office|i('m| am) on leave|thank you for your (e-?mail|message)[,.]? i (will|shall) (respond|get back))/i;
+
+/** Where a legal footer or mailing-list boilerplate starts (spec 06 §1: strip footers and templates). */
+const FOOTER = /^(this (e-?mail|message)( and any (files|attachments)[\w ]*)? (is|are|may be|contains?) (confidential|privileged|intended)|confidentiality (notice|note)|disclaimer\s*:|the information (contained )?in this (e-?mail|message)|if you (are not|have received this) (the intended|in error)|please consider the environment|to unsubscribe|unsubscribe\b|view (this e-?mail )?in (your )?browser|you('re| are) receiving this (e-?mail|because))/i;
+
+/** A signature's contact lines: a phone number, an address, a URL, a pipe-separated title row. */
+const CONTACT_LINE = /(\+?\d[\d\s().-]{8,}\d)|([\w.+-]+@[\w-]+\.[\w.]+)|(https?:\/\/|www\.)|(\s\|\s)/i;
+
 export function stripEmail(raw: string): string {
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  const first = lines.find((l) => l.trim())?.trim() ?? "";
+  if (AUTO_REPLY.test(first)) return "";
   const out: string[] = [];
   for (const line of lines) {
-    if (/^On .+wrote:\s*$/i.test(line.trim())) break; // the quoted thread starts here
-    if (/^-{2,}\s*(original|forwarded) message/i.test(line.trim())) break;
-    if (/^From: .+/i.test(line.trim()) && out.length > 0) break;
-    if (line.trim() === "--" || line.trim() === "-- ") break; // signature delimiter
-    if (/^>/.test(line.trim())) continue;
-    if (/^sent from my (iphone|android|phone)/i.test(line.trim())) continue;
+    const t = line.trim();
+    if (/^On .+wrote:\s*$/i.test(t)) break; // the quoted thread starts here
+    // Gmail wraps the attribution: "On Mon, 3 Jun 2026 at 10:02, Sam <…>" / "wrote:"
+    if (/^wrote:\s*$/i.test(t) && /^On\b/i.test(out.at(-1)?.trim() ?? "")) { out.pop(); break; }
+    if (/^-{2,}\s*(original|forwarded) message/i.test(t)) break;
+    if (/^(From|Sent|To): .+/i.test(t) && out.length > 0) break;
+    if (t === "--" || t === "-- " || /^_{5,}$/.test(t)) break; // signature delimiter
+    if (FOOTER.test(t)) break;
+    if (/^>/.test(t)) continue;
+    if (/^(sent from my|get outlook for) /i.test(t)) continue;
     out.push(line);
   }
+  // A signature block without a delimiter: trailing contact lines go.
+  while (out.length && (CONTACT_LINE.test(out.at(-1)!) || !out.at(-1)!.trim())) out.pop();
   return out.join("\n").trim();
 }
 
@@ -194,33 +229,37 @@ export const SOURCE_GROUPS: { group: string; private?: boolean; sources: { key: 
       { key: "instagram", label: "Instagram", channel: "instagram", how: "Paste captions" },
       { key: "x", label: "X", channel: "x", how: "Paste posts" },
       { key: "threads", label: "Threads", channel: "threads", how: "Paste posts" },
+      { key: "facebook", label: "Facebook", channel: "facebook", how: "Paste posts. Separate them with a --- line" },
+      { key: "youtube_community", label: "YouTube community posts", channel: "youtube_community", how: "Paste posts from your channel's Community tab" },
     ],
   },
   {
     group: "Long-form",
     sources: [
-      { key: "newsletter", label: "Newsletter or blog", channel: "newsletter", how: "Upload .txt or .md, or paste. Separate several pieces with a --- line" },
+      { key: "newsletter", label: "Newsletter or blog", channel: "newsletter", how: "Upload PDF, Word, .txt or .md, or paste. Separate several pieces with a --- line" },
     ],
   },
   {
     group: "Spoken",
     sources: [
-      { key: "spoken", label: "Podcast, video or talk", channel: "spoken", how: "Paste or upload a transcript" },
+      { key: "spoken", label: "Podcast, video or talk", channel: "spoken", how: "Paste or upload a transcript (captions, PDF or Word work too)" },
     ],
   },
   {
     group: "Private",
     private: true,
     sources: [
-      { key: "email", label: "Sent email", channel: "email", how: "Paste sent emails. Quoted replies and signatures are removed" },
+      { key: "email", label: "Sent email (Gmail)", channel: "email", how: "Connect Gmail below, or paste sent emails. Quoted replies and signatures are removed" },
+      { key: "outlook", label: "Outlook", channel: "email", how: "Paste sent emails from Outlook. Quoted replies and signatures are removed" },
       { key: "whatsapp", label: "WhatsApp", channel: "whatsapp", how: "Upload a chat export (.txt). Only your own messages are kept" },
-      { key: "slack", label: "Slack or Teams", channel: "slack", how: "Paste your own messages" },
+      { key: "slack", label: "Slack", channel: "slack", how: "Paste your own messages" },
+      { key: "teams", label: "Microsoft Teams", channel: "slack", how: "Paste your own messages from Teams chats or channels" },
     ],
   },
   {
     group: "Documents",
     sources: [
-      { key: "documents", label: "Proposals, decks, reports", channel: "documents", how: "Upload .txt or .md, or paste" },
+      { key: "documents", label: "Proposals, decks, reports", channel: "documents", how: "Upload PDF, Word (.docx), .txt or .md, or paste" },
     ],
   },
 ];

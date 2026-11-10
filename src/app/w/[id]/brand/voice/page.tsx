@@ -1,4 +1,4 @@
-import { Mic, ScanLine, Quote, Lock, AlertTriangle, CheckCircle2, Trash2, EyeOff, Eye } from "lucide-react";
+import { Mic, ScanLine, Quote, Lock, AlertTriangle, CheckCircle2, Circle, Trash2, EyeOff, Eye, Download } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { listSamples, listVersions, loadPackForWorkspace, previewRescan } from "@/lib/data/voice-pack";
 import { coreState, diffPacks, rescanDue } from "@/lib/voice/lifecycle";
@@ -8,23 +8,31 @@ import { corpusLevel, CORPUS_MINIMUM_PIECES, DIAL_LABELS, DIAL_KEYS } from "@/li
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import { DocPage } from "@/components/doc-page";
 import { btnClass } from "@/components/btn";
-import { EmptyState, SubmitButton } from "@/components/ui";
+import { EmptyState, SubmitButton, Alert } from "@/components/ui";
 import Link from "next/link";
 import { BrandCoreCard } from "@/components/composites";
-import { confidence } from "@/lib/voice/derive";
-import { nextDeepQuestions } from "@/lib/voice/questions";
+import { coreCardFacts } from "@/lib/voice/core-card";
+import { confidence, deriveHardRules, deriveSelfCheck, readyChecklist, skipDeep, suggestVoiceLine, voiceMeter } from "@/lib/voice/derive";
+import { nextDeepQuestions, QUESTIONS } from "@/lib/voice/questions";
+import { VOICE_FILES } from "@/lib/voice/export";
 import { approvedPieceCount, approvedSince, listEditProposals, listProposals, ownsVoice } from "@/lib/data/training";
 import { QuestionField } from "../../onboarding/steps";
 import {
-  addSamplesAction, decideEditAction, decideProposalAction, deleteSampleAction, excludeSampleAction, previewRescanAction, rescanAction,
-  resolveSignatureAction, restoreVersionAction, saveVoiceAction,
+  addSamplesAction, decideEditAction, decidePatternAction, decideProposalAction, deleteSampleAction, excludeSampleAction, previewRescanAction, rescanAction,
+  resolveSignatureAction, restoreVersionAction, saveSelfCheckAction, saveVoiceAction, setAntiSampleAction, setBenchmarkNoteAction,
 } from "./actions";
+import { patternsFor } from "@/lib/data/patterns";
+import { learningLog } from "@/lib/data/learning";
+import { perceptionMirror } from "@/lib/voice/mirror";
+import { BeliefsEditor } from "../../onboarding/enrich-ui";
+import { LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
+import { Select } from "@/components/select";
 
 export const metadata = { title: "Voice" };
 export const dynamic = "force-dynamic";
 
 const Card = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <section className="bg-paper border border-hairline rounded-[14px] p-5">
+  <section className="border-t border-hairline pt-6">
     <p className="label-mono text-ink-faint mb-3">{label}</p>
     {children}
   </section>
@@ -36,7 +44,7 @@ function Tag({ confidence, count }: { confidence?: string; count?: number }) {
   const measured = confidence === "measured";
   return (
     <span
-      className={`label-mono text-[0.6rem] px-1.5 h-5 inline-flex items-center rounded-[4px] ${
+      className={`label-mono px-1.5 h-5 inline-flex items-center rounded-xs ${
         measured ? "bg-ok-soft text-ok" : "bg-field text-ink-faint"
       }`}
       title={measured ? `Measured across ${count ?? 0} pieces of your writing` : "Not measured — you told us, or we inferred it"}
@@ -64,14 +72,14 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   if (!pack) {
     return (
       <DocPage eyebrow="Brand core · Voice" title="No voice yet." accent="Let's build one." sub="A Voice Pack belongs to a person. Sign in as the person whose brand this is and it will be created for them.">
-        <div className="bg-paper border border-hairline rounded-[14px]">
+        <div className="border-y border-hairline">
           <EmptyState icon={<Mic size={18} />} title="No pack on file" sub="Voice packs are created for the person whose writing they describe." />
         </div>
       </DocPage>
     );
   }
 
-  const [samples, versions, proposals, learned, approved, sinceScan, preview] = await Promise.all([
+  const [samples, versions, proposals, learned, approved, sinceScan, preview, studio] = await Promise.all([
     listSamples(scope, pack.id, { includeExcluded: true }),
     listVersions(scope, pack.id, 8),
     listProposals(scope, pack.id),
@@ -79,8 +87,10 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
     approvedPieceCount(scope),
     approvedSince(scope, pack.scannedAt),
     sp.preview ? previewRescan(scope, pack.id) : Promise.resolve(null),
+    learningLog(scope, pack.id),
   ]);
-  const now = Date.now();
+  const mirror = perceptionMirror(pack);
+  const now = await requestTime();
   const state = coreState(pack, now);
   const due = rescanDue(pack, sinceScan, now);
   // Each saved version is the state a change replaced; diff it against the
@@ -88,32 +98,30 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
   const changedFrom = (i: number) => diffPacks(versions[i].snapshot, i === 0 ? pack : versions[i - 1].snapshot);
   const owner = ownsVoice({ userId: session.userId, role: session.role }, pack);
   const conf = confidence(pack);
-  const deep = nextDeepQuestions(pack.onboarding.answered ?? [], approved);
+  const deep = nextDeepQuestions(pack.onboarding.answered ?? [], approved, 3, skipDeep(pack));
   const moved = ([] as string[]).concat(sp.moved ?? []);
   const level = corpusLevel(pack.corpusStats);
   const lines = mechanicsLines(pack);
   const never = pack.index.neverWords.length ? pack.index.neverWords : (pack.redPen.neverList?.value ?? []);
   const contexts = Object.values(pack.contexts);
   const signatures = pack.mechanics.signaturePhrases?.value ?? [];
-  const Hidden = () => <input type="hidden" name="tenantId" value={id} />;
+  // Across sources: phrases they use in more than one place, said publicly at least once.
+  const noticed = await patternsFor(scope, pack, samples);
 
   // §15.1 brand core card — the coloured summary of the measured voice.
-  const coreAttrs = (pack.identity.toneDescriptors?.value ?? []).slice(0, 5);
-  const words = pack.corpusStats.words;
-  const coreCard = {
-    name: pack.displayName || "Your voice",
-    seed: pack.id,
-    subtitle: `${pack.corpusStats.channels[0] ? pack.corpusStats.channels.join(", ") + " · " : ""}core v${pack.version}${pack.scannedAt ? ` · measured ${new Date(pack.scannedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}`,
-    trained: conf.trained,
-    state,
-    attributes: coreAttrs,
-    confidence: conf.score,
-    stats: [
-      { label: "Samples", value: String(pack.corpusStats.pieces) },
-      { label: "Words read", value: words >= 1000 ? `${(words / 1000).toFixed(1)}k` : String(words) },
-      { label: "Channels", value: String(pack.corpusStats.channels.length) },
-    ],
-  };
+  const coreCard = coreCardFacts(pack, now);
+
+  // The meter (Core = 70%, Deep fills the rest) and what "ready to write" still needs.
+  const meter = voiceMeter(pack, QUESTIONS.filter((q) => q.tier === "deep").length);
+  const ready = readyChecklist(pack, CORPUS_MINIMUM_PIECES);
+  const benchmarks = samples.filter((s) => s.kind === "benchmark" && s.visibility === "public");
+  const notes = pack.onboarding.benchmarkNotes ?? {};
+  const anti = pack.onboarding.antiSample;
+  // Candidates for the anti-sample: public pieces that aren't benchmarks. Quoted in prompts, so never private.
+  const antiPool = samples.filter((s) => s.visibility === "public" && s.kind !== "benchmark" && (!s.excluded || s.id === anti?.sampleId)).slice(0, 8);
+  const selfCheck = pack.redPen.selfCheck?.value?.length ? pack.redPen.selfCheck.value : deriveSelfCheck(pack);
+  const suggestedLine = pack.voiceLine.trim() ? "" : suggestVoiceLine(pack);
+  const rules = pack.hardRules.length ? pack.hardRules : deriveHardRules(pack);
 
   return (
     <DocPage
@@ -126,58 +134,80 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
       <div className="mb-6 flex flex-col gap-3"><BrandCoreCard {...coreCard} /><CoreWatcher state={state} pieces={pack.corpusStats.pieces} /></div>
       <div className="flex flex-col gap-5">
         {due.due && !preview && (
-          <div role="status" className="text-[0.85rem] bg-accent-soft rounded-[10px] px-4 py-3 flex flex-wrap items-center gap-3">
-            <span className="flex-1 min-w-0">It&apos;s been {due.days} days since we measured your writing, and you&apos;ve approved {sinceScan} new {sinceScan === 1 ? "piece" : "pieces"} since. Worth a fresh look?</span>
-            <form action={previewRescanAction}><Hidden /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>
-          </div>
+          <Alert tone="info" action={<form action={previewRescanAction}><Hidden id={id} /><SubmitButton pendingLabel="Measuring…" size="sm" variant="secondary">See what would change</SubmitButton></form>}>
+            It&apos;s been {due.days} days since we measured your writing, and you&apos;ve approved {sinceScan} new {sinceScan === 1 ? "piece" : "pieces"} since. Worth a fresh look?
+          </Alert>
         )}
         {preview && (
-          <div id="remeasure" role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3 flex flex-col gap-2">
+          <div id="remeasure" role="status" className="text-sm bg-field rounded-md px-4 py-3 flex flex-col gap-2">
             <p className="font-medium">{preview.length ? "If we re-measure now:" : "Re-measuring now would change nothing."}</p>
             {preview.length > 0 && <ul className="flex flex-col gap-0.5 text-ink-muted">{preview.map((m) => <li key={m}>{m}</li>)}</ul>}
-            <p className="text-[0.78rem] text-ink-faint">Only what was measured changes. Anything you typed or decided stays yours.</p>
+            <p className="text-xs text-ink-faint">Only what was measured changes. Anything you typed or decided stays yours.</p>
             <div className="flex flex-wrap gap-2">
               {preview.length > 0 && (
-                <form action={rescanAction}><Hidden /><SubmitButton pendingLabel="Applying…" size="sm">Apply</SubmitButton></form>
+                <form action={rescanAction}><Hidden id={id} /><SubmitButton pendingLabel="Applying…" size="sm">Apply</SubmitButton></form>
               )}
               <a href={`/w/${id}/brand/voice`} className={btnClass("ghost", "sm")}>{preview.length ? "Keep it as it is" : "Close"}</a>
             </div>
           </div>
         )}
         {sp.proposed && (
-          <p role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3">Sent to {pack.displayName || "the owner"} to approve. It&apos;s their voice, so a coach&apos;s change waits for a yes.</p>
+          <p role="status" className="text-sm bg-field rounded-md px-4 py-3">Sent to {pack.displayName || "the owner"} to approve. It&apos;s their voice, so a coach&apos;s change waits for a yes.</p>
         )}
         {sp.scanned && (
-          <div role="status" className="text-[0.85rem] bg-field rounded-[10px] px-4 py-3">
+          <div role="status" className="text-sm bg-field rounded-md px-4 py-3">
             <p className="font-medium">{moved.length ? "Re-measured. What moved:" : "Re-measured. Nothing moved."}</p>
             {moved.length > 0 && <ul className="mt-1.5 flex flex-col gap-0.5 text-ink-muted">{moved.map((m) => <li key={m}>{m}</li>)}</ul>}
           </div>
         )}
 
         {conf.score < 70 && (
-          <p className="flex items-start gap-2 text-[0.85rem] text-warn bg-warn-soft rounded-[10px] px-4 py-3">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            <span>
-              {conf.score}% confident, so still learning. {conf.missing.slice(0, 2).map((m) => `${m}.`).join(" ")}{" "}
-              {!pack.onboarding.completedAt && <Link href={`/w/${id}/onboarding`} className="underline underline-offset-2">Carry on setting up</Link>}
-            </span>
-          </p>
+          <Alert tone="warning" title={`${conf.score}% confident, so still learning`}>
+            {conf.missing.slice(0, 2).map((m) => `${m}.`).join(" ")}{" "}
+            {!pack.onboarding.completedAt && <Link href={`/w/${id}/onboarding`}>Carry on setting up</Link>}
+          </Alert>
         )}
+
+        <Card label="Ready to write">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-xl font-medium tabular-nums">{meter.score}%</span>
+            <span className="flex-1 h-1.5 bg-field rounded-full overflow-hidden" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={meter.score} aria-label="How complete your voice is">
+              <span className="block h-full bg-ink rounded-full" style={{ width: `${meter.score}%` }} />
+            </span>
+            <span className="text-xs text-ink-faint tabular-nums">core {meter.coreDone}/{meter.coreTotal}</span>
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+            {ready.map((r) => (
+              <li key={r.label} className={`flex items-start gap-2 ${r.done ? "text-ink-muted" : ""}`}>
+                {r.done ? <CheckCircle2 size={14} className="text-ok mt-0.5 shrink-0" /> : <Circle size={14} className="text-ink-faint mt-0.5 shrink-0" />}
+                {r.label}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 pt-3 border-t border-hairline flex flex-wrap items-center gap-2">
+            <span className="label-mono text-ink-faint mr-1">Download</span>
+            <a href={`/w/${id}/brand/voice/export`} className={btnClass("secondary", "sm")}><Download size={12} /> Whole pack</a>
+            {VOICE_FILES.map((f) => (
+              <a key={f} href={`/w/${id}/brand/voice/export?file=${encodeURIComponent(f)}`} className={btnClass("ghost", "sm")}>{f}</a>
+            ))}
+          </div>
+          <p className="text-xs text-ink-faint mt-2">The same pack, as the eight files. Private writing is counted in them, never included.</p>
+        </Card>
 
         {(proposals.length > 0 || learned.length > 0) && (
           <Card label="Waiting for a decision">
             <div className="flex flex-col gap-2">
               {proposals.map((p) => (
-                <div key={p.id} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
-                  <span className="flex-1 min-w-0 text-[0.88rem]">
+                <div key={p.id} className="border border-hairline rounded-md px-3 py-2.5 flex flex-wrap items-center gap-2">
+                  <span className="flex-1 min-w-0 text-sm">
                     {p.note ?? "A change"} <span className="text-ink-faint">· from {p.proposedBy ?? "a coach"} · {p.fields.join(", ")}</span>
                   </span>
                   {owner ? (
                     <>
-                      <form action={decideProposalAction}><Hidden /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="1" />
+                      <form action={decideProposalAction}><Hidden id={id} /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="1" />
                         <SubmitButton pendingLabel="…" size="sm">Approve</SubmitButton>
                       </form>
-                      <form action={decideProposalAction}><Hidden /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="0" />
+                      <form action={decideProposalAction}><Hidden id={id} /><input type="hidden" name="proposalId" value={p.id} /><input type="hidden" name="approve" value="0" />
                         <SubmitButton pendingLabel="…" size="sm" variant="ghost">Reject</SubmitButton>
                       </form>
                     </>
@@ -187,14 +217,14 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                 </div>
               ))}
               {learned.map((l) => (
-                <div key={l.id} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
-                  <span className="flex-1 min-w-0 text-[0.88rem]">
+                <div key={l.id} className="border border-hairline rounded-md px-3 py-2.5 flex flex-wrap items-center gap-2">
+                  <span className="flex-1 min-w-0 text-sm">
                     You&apos;ve cut &ldquo;{l.value}&rdquo; from {l.count} drafts. Never use it?
                   </span>
-                  <form action={decideEditAction}><Hidden /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="1" />
+                  <form action={decideEditAction}><Hidden id={id} /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="1" />
                     <SubmitButton pendingLabel="…" size="sm">Add to never-list</SubmitButton>
                   </form>
-                  <form action={decideEditAction}><Hidden /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="0" />
+                  <form action={decideEditAction}><Hidden id={id} /><input type="hidden" name="signalId" value={l.id} /><input type="hidden" name="accept" value="0" />
                     <SubmitButton pendingLabel="…" size="sm" variant="ghost">It was a one-off</SubmitButton>
                   </form>
                 </div>
@@ -205,7 +235,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {deep.length > 0 && (
           <Card label="A few deeper questions">
-            <p className="text-[0.82rem] text-ink-muted mb-3">
+            <p className="text-sm text-ink-muted mb-3">
               You&apos;ve approved {approved} {approved === 1 ? "piece" : "pieces"}. These are the next few that sharpen your voice. Answer any, skip the rest.
             </p>
             <div className="flex flex-col gap-4">
@@ -215,22 +245,102 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             </div>
           </Card>
         )}
-        <Card label="01 · Your writing">
+        {noticed.everywhere.length > 0 && (
+          <div id="noticed">
+            <Card label="What we noticed">
+              <p className="text-[0.82rem] text-ink-muted mb-3">
+                Phrases you use across your writing, in more than one place. Keep what&apos;s really you; anything you say no to won&apos;t come back.
+              </p>
+              <div className="flex flex-col gap-2">
+                {noticed.everywhere.map((e) => (
+                  <div key={e.phrase} className="border border-hairline rounded-[10px] px-3 py-2.5 flex flex-wrap items-center gap-2">
+                    <span className="flex-1 min-w-0 text-[0.88rem]">
+                      &ldquo;{e.phrase}&rdquo;{" "}
+                      <span className="text-ink-faint">· {e.pieces} pieces across {e.channels.map((c) => PLATFORM_RULES[c]?.label ?? c).join(", ")}</span>
+                    </span>
+                    {owner && (
+                      <>
+                        <form action={decidePatternAction}><Hidden id={id} /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="1" />
+                          <SubmitButton pendingLabel="…" size="sm">Keep it</SubmitButton>
+                        </form>
+                        <form action={decidePatternAction}><Hidden id={id} /><input type="hidden" name="value" value={e.phrase} /><input type="hidden" name="keep" value="0" />
+                          <SubmitButton pendingLabel="…" size="sm" variant="ghost">Not me</SubmitButton>
+                        </form>
+                      </>
+                    )}
+                  </div>
+                ))}
+                <p className="text-[0.75rem] text-ink-faint">Only phrases you&apos;ve also said publicly are shown. Kept phrases become signature phrases: drafts use one now and then, never in every piece.</p>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Perception Mirror (M2): what you intend, against what your writing shows. */}
+        <Card label="Seen vs intended">
+          {mirror.length === 0 ? (
+            <p className="text-sm text-ink-faint">Set your tone dials and add some writing, and this shows where the tone you intend and the tone you write differ.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-ink-faint"><th className="font-normal py-2 pr-4">Dimension</th><th className="font-normal py-2 pr-4">You intend</th><th className="font-normal py-2 pr-4">Your writing shows</th><th className="font-normal py-2">Read</th></tr></thead>
+              <tbody>
+                {mirror.map((r) => (
+                  <tr key={r.label} className="border-t border-hairline align-top">
+                    <td className="py-2.5 pr-4 font-medium">{r.label}</td>
+                    <td className="py-2.5 pr-4">{r.intended}</td>
+                    <td className="py-2.5 pr-4">{r.seen}</td>
+                    <td className={`py-2.5 ${r.gap === "wide" ? "text-danger" : r.gap === "small" ? "text-warn" : "text-ok"}`}>{r.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        <Card label="Your point of view">
+          <BeliefsEditor tenantId={id} initial={pack.identity.beliefs?.value ?? []} />
+        </Card>
+
+        {/* The voice keeps learning from use (lib/voice/learn): approvals in your own words feed it. */}
+        <Card label="Learning from you">
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink-muted max-w-[68ch]">
+              When you approve a piece you wrote, or rewrote at least {Math.round(LEARN_MIN_EDIT * 100)}% of, it joins your writing here and every {RELEARN_EVERY} such pieces your voice re-measures itself. Drafts approved as written don&apos;t count, so the voice never learns its own habits. A coach&apos;s approvals don&apos;t count either: only your words teach your voice.
+            </p>
+            {studio.total === 0 ? (
+              <p className="text-sm text-ink-faint">Nothing learned from the studio yet. Edit a draft until it sounds like you, then approve it.</p>
+            ) : (
+              <>
+                <p className="text-sm"><span className="num font-medium">{studio.total}</span> {studio.total === 1 ? "piece" : "pieces"} learned from the studio</p>
+                <ul className="flex flex-col divide-y divide-[var(--hairline)] border-y border-hairline">
+                  {studio.pieces.map((p) => (
+                    <li key={p.id} className="flex items-center gap-3 py-2.5 text-sm">
+                      <span className="flex-1 min-w-0 truncate">{p.excerpt}</span>
+                      <span className="text-xs text-ink-faint num shrink-0">{p.words} words · {new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        </Card>
+
+        <Card label="Your writing">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[1.6rem] font-medium tabular-nums">{pack.corpusStats.pieces}</span>
-            <span className="text-[0.85rem] text-ink-faint">
+            <span className="text-xl font-medium tabular-nums">{pack.corpusStats.pieces}</span>
+            <span className="text-sm text-ink-faint">
               {pack.corpusStats.pieces === 1 ? "piece" : "pieces"} · {pack.corpusStats.words.toLocaleString()} words
               {pack.corpusStats.channels.length > 0 && ` · ${pack.corpusStats.channels.join(", ")}`}
             </span>
             <span className="flex-1" />
             <form action={previewRescanAction}>
-              <Hidden />
+              <Hidden id={id} />
               <SubmitButton pendingLabel="Measuring…" size="sm" variant="ghost"><ScanLine size={13} /> Re-measure</SubmitButton>
             </form>
           </div>
 
           {level !== "good" && (
-            <p className="mt-3 flex items-start gap-2 text-[0.82rem] text-ink-muted">
+            <p className="mt-3 flex items-start gap-2 text-sm text-ink-muted">
               <AlertTriangle size={14} className="text-warn mt-0.5 shrink-0" />
               {level === "empty" || level === "thin"
                 ? `Under ${CORPUS_MINIMUM_PIECES} pieces, so this voice is provisional. Paste more and the numbers below stop being guesses.`
@@ -239,25 +349,19 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           )}
 
           <form action={addSamplesAction} className="mt-4 flex flex-col gap-2">
-            <Hidden />
+            <Hidden id={id} />
             <textarea
               name="text"
               rows={5}
               required
-              placeholder={"Paste your writing. Separate each piece with a blank line.\n\nA post keeps its own line breaks — only a blank line starts a new piece."}
+              placeholder={"Paste your writing. Put a line with --- between pieces.\n\nA post keeps its own paragraphs: a single blank line never splits it."}
               className="field font-[inherit] leading-relaxed"
             />
             <div className="flex items-center gap-2 flex-wrap">
-              <select name="channel" className="h-8 rounded-[7px] bg-field px-2 text-[0.78rem]">
-                {Object.values(PLATFORM_RULES).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-                <option value="unknown">Not sure</option>
-              </select>
-              <select name="visibility" className="h-8 rounded-[7px] bg-field px-2 text-[0.78rem]" defaultValue="public">
-                <option value="public">Public writing</option>
-                <option value="private">Private (email, chat)</option>
-              </select>
+              <Select name="channel" label="Channel" variant="pill" options={[...Object.values(PLATFORM_RULES).map((p) => ({ value: p.key, label: p.label })), { value: "unknown", label: "Not sure" }]} />
+              <Select name="visibility" label="Who can see it" variant="pill" defaultValue="public" options={[{ value: "public", label: "Public writing" }, { value: "private", label: "Private (email, chat)" }]} />
               <SubmitButton pendingLabel="Measuring…" size="sm">Add and measure</SubmitButton>
-              <span className="text-[0.72rem] text-ink-faint flex items-center gap-1">
+              <span className="text-xs text-ink-faint flex items-center gap-1">
                 <Lock size={11} /> Private writing is measured but never quoted in a draft.
               </span>
             </div>
@@ -265,20 +369,20 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         </Card>
 
         {/* ---- the measured fingerprint ---------------------------------- */}
-        <Card label="02 · The fingerprint">
+        <Card label="The fingerprint">
           {lines.length === 0 ? (
-            <p className="text-[0.85rem] text-ink-faint">Nothing measured yet. Add some writing above.</p>
+            <p className="text-sm text-ink-faint">Nothing measured yet. Add some writing above.</p>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-3">
                 <Tag confidence={pack.mechanics.sentences?.confidence} count={pack.mechanics.sentences?.count} />
                 {pack.scannedAt && (
-                  <span className="text-[0.72rem] text-ink-faint">
+                  <span className="text-xs text-ink-faint">
                     last measured {new Date(pack.scannedAt).toLocaleDateString()}
                   </span>
                 )}
               </div>
-              <ul className="flex flex-col gap-1.5 text-[0.88rem] leading-relaxed">
+              <ul className="flex flex-col gap-1.5 text-sm leading-relaxed">
                 {lines.map((l, i) => (
                   <li key={i} className={l.startsWith("  ·") ? "pl-4 text-ink-muted" : ""}>{l}</li>
                 ))}
@@ -287,7 +391,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                 <div className="mt-4 pt-4 border-t border-hairline">
                   <p className="label-mono text-ink-faint mb-2">Why we think so</p>
                   {(pack.mechanics.punctuation?.evidence ?? []).map((e, i) => (
-                    <p key={i} className="flex gap-2 text-[0.82rem] text-ink-muted italic">
+                    <p key={i} className="flex gap-2 text-sm text-ink-muted italic">
                       <Quote size={12} className="mt-1 shrink-0 text-ink-faint" />
                       {e.quote}
                     </p>
@@ -300,19 +404,19 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {/* ---- signature phrases: keep or drop --------------------------- */}
         {signatures.length > 0 && (
-          <Card label="03 · Phrases you repeat">
-            <p className="text-[0.82rem] text-ink-muted mb-3">
+          <Card label="Phrases you repeat">
+            <p className="text-sm text-ink-muted mb-3">
               A signature or a habit? Keeping one protects it from the anti-AI rules; dropping it adds it to your never-list.
             </p>
             <div className="flex flex-col gap-2">
               {signatures.slice(0, 6).map((s) => (
-                <div key={s.phrase} className="flex items-center gap-2 border border-hairline rounded-[10px] px-3 py-2">
-                  <span className="flex-1 text-[0.88rem]">&ldquo;{s.phrase}&rdquo;</span>
-                  <span className="text-[0.72rem] text-ink-faint tabular-nums">{s.count} pieces</span>
-                  <form action={resolveSignatureAction}><Hidden /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="1" />
+                <div key={s.phrase} className="flex items-center gap-2 border border-hairline rounded-md px-3 py-2">
+                  <span className="flex-1 text-sm">&ldquo;{s.phrase}&rdquo;</span>
+                  <span className="text-xs text-ink-faint tabular-nums">{s.count} pieces</span>
+                  <form action={resolveSignatureAction}><Hidden id={id} /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="1" />
                     <SubmitButton pendingLabel="…" size="sm" variant="ghost">Keep</SubmitButton>
                   </form>
-                  <form action={resolveSignatureAction}><Hidden /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="0" />
+                  <form action={resolveSignatureAction}><Hidden id={id} /><input type="hidden" name="phrase" value={s.phrase} /><input type="hidden" name="keep" value="0" />
                     <SubmitButton pendingLabel="…" size="sm" variant="ghost">Drop</SubmitButton>
                   </form>
                 </div>
@@ -323,12 +427,13 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {/* ---- the parts a person writes themselves ---------------------- */}
         <form action={saveVoiceAction}>
-          <Card label="04 · In your words">
-            <Hidden />
+          <Card label="In your words">
+            <Hidden id={id} />
             <div className="flex flex-col gap-4">
               <label className="block">
                 <span className="label-mono text-ink-faint">Your voice in one line</span>
-                <input name="voiceLine" defaultValue={pack.voiceLine} placeholder="An essayist who finds the big idea in a small moment." className="field mt-1.5" />
+                <input name="voiceLine" defaultValue={pack.voiceLine || suggestedLine} placeholder="An essayist who finds the big idea in a small moment." className="field mt-1.5" />
+                {suggestedLine && <span className="block text-xs text-ink-faint mt-1">Suggested from your answers. Rewrite it in your words, or save it as it is.</span>}
               </label>
               <label className="block">
                 <span className="label-mono text-ink-faint">The one reader you picture</span>
@@ -340,7 +445,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               </label>
               <label className="block">
                 <span className="label-mono text-ink-faint">Hard rules — one per line. These beat every other instruction.</span>
-                <textarea name="hardRules" rows={3} defaultValue={pack.hardRules.join("\n")} placeholder="Never claim a title. Let the reader conclude it." className="field mt-1.5" />
+                <textarea name="hardRules" rows={3} defaultValue={rules.join("\n")} placeholder="Never claim a title. Let the reader conclude it." className="field mt-1.5" />
+                {!pack.hardRules.length && <span className="block text-xs text-ink-faint mt-1">Drafted from your lines and habits. The facts rule always stays one of the three.</span>}
               </label>
               <label className="block">
                 <span className="label-mono text-ink-faint">Words you&apos;d never use</span>
@@ -351,32 +457,99 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           </Card>
         </form>
 
+        {/* ---- G3: why these three are them ------------------------------ */}
+        {benchmarks.length > 0 && (
+          <Card label="Your benchmarks · why they're you">
+            <p className="text-sm text-ink-muted mb-3">We drafted a line for each from what the piece does. Put it in your words: drafts are matched against these.</p>
+            <div className="flex flex-col gap-3">
+              {benchmarks.map((b) => (
+                <form key={b.id} action={setBenchmarkNoteAction} className="border border-hairline rounded-md p-3 flex flex-col gap-2">
+                  <Hidden id={id} /><input type="hidden" name="sampleId" value={b.id} />
+                  <div className="flex items-center gap-2">
+                    <span className="label-mono text-ink-faint">{PLATFORM_RULES[b.channel]?.label ?? b.channel}</span>
+                    {notes[b.id]?.confirmed && <span className="label-mono px-1.5 h-5 inline-flex items-center rounded-xs bg-ok-soft text-ok">confirmed</span>}
+                  </div>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-3 text-ink-muted">{b.body}</p>
+                  <textarea name="note" rows={2} defaultValue={notes[b.id]?.note ?? ""} placeholder="What makes this one unmistakably you?" className="field font-[inherit]" readOnly={!owner} />
+                  {owner && <div><SubmitButton pendingLabel="Saving…" size="sm" variant={notes[b.id]?.confirmed ? "ghost" : "secondary"}>{notes[b.id]?.confirmed ? "Update" : "That's it"}</SubmitButton></div>}
+                </form>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* ---- G4: the one that isn't them ------------------------------- */}
+        {(anti || (owner && antiPool.length > 0)) && (
+          <Card label="The one that isn't you">
+            {anti && (
+              <div className="mb-4 border border-hairline rounded-md p-3 text-sm flex flex-col gap-1.5">
+                <p className="whitespace-pre-wrap line-clamp-3 text-ink-muted">{anti.text}</p>
+                <p><span className="text-ink-faint">What&apos;s off:</span> {anti.off}</p>
+                {anti.fixed && <p><span className="text-ink-faint">How you&apos;d write it:</span> {anti.fixed}</p>}
+              </div>
+            )}
+            {owner && antiPool.length > 0 && (
+              <details open={!anti}>
+                <summary className="cursor-pointer min-h-11 flex items-center text-sm text-ink-muted">{anti ? "Pick a different one" : "Pick a piece that sounds almost like you, but not quite"}</summary>
+                <form action={setAntiSampleAction} className="flex flex-col gap-2 pt-1">
+                  <Hidden id={id} />
+                  <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Piece">
+                    {antiPool.map((s, i) => (
+                      <label key={s.id} className="border border-hairline rounded-md px-3 py-2 text-sm cursor-pointer has-[:checked]:border-ink has-[:checked]:bg-field has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink">
+                        <input type="radio" name="sampleId" value={s.id} required defaultChecked={s.id === anti?.sampleId || (!anti && i === 0)} className="sr-only" />
+                        <span className="label-mono text-ink-faint mr-2">{PLATFORM_RULES[s.channel]?.label ?? s.channel}</span>
+                        <span className="line-clamp-2">{s.body}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <input name="off" required placeholder="What's off about it? (too salesy, too formal, not how I'd open)" className="field" />
+                  <textarea name="fixed" rows={2} placeholder="Optional: the first line, the way you'd actually write it" className="field font-[inherit]" />
+                  <p className="text-xs text-ink-faint">It stops shaping your measured voice, and drafts are told to avoid exactly this.</p>
+                  <div><SubmitButton pendingLabel="Saving…" size="sm">Save</SubmitButton></div>
+                </form>
+              </details>
+            )}
+          </Card>
+        )}
+
+        {/* ---- the red-pen self-check ------------------------------------ */}
+        <form action={saveSelfCheckAction}>
+          <Card label="Self-check · run on every draft">
+            <Hidden id={id} />
+            <p className="text-sm text-ink-muted mb-2">
+              {pack.redPen.selfCheck?.value?.length ? "Your questions." : "Drafted from your measurements. Edit any line, add your own, or clear it to go back to the drafted list."}
+            </p>
+            <textarea name="selfCheck" rows={Math.min(10, selfCheck.length + 1)} defaultValue={selfCheck.join("\n")} className="field font-[inherit] leading-relaxed" />
+            <div className="mt-2"><SubmitButton pendingLabel="Saving…" size="sm" variant="secondary">Save self-check</SubmitButton></div>
+          </Card>
+        </form>
+
         {/* ---- per-platform, measured or inferred ------------------------ */}
-        <Card label="05 · How you sound in each place">
+        <Card label="How you sound in each place">
           {contexts.length === 0 ? (
-            <p className="text-[0.85rem] text-ink-faint">Nothing yet. Add writing from a platform and its block appears here.</p>
+            <p className="text-sm text-ink-faint">Nothing yet. Add writing from a platform and its block appears here.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {contexts.map((c) => (
-                <div key={c.channel} className="border border-hairline rounded-[10px] px-3 py-2.5 flex items-center gap-2">
-                  <span className="flex-1 text-[0.88rem]">{PLATFORM_RULES[c.channel]?.label ?? c.channel}</span>
-                  <span className="text-[0.72rem] text-ink-faint tabular-nums">{c.pieceCount}</span>
+                <div key={c.channel} className="border border-hairline rounded-md px-3 py-2.5 flex items-center gap-2">
+                  <span className="flex-1 text-sm">{PLATFORM_RULES[c.channel]?.label ?? c.channel}</span>
+                  <span className="text-xs text-ink-faint tabular-nums">{c.pieceCount}</span>
                   <Tag confidence={c.tag === "measured" ? "measured" : "inferred"} count={c.pieceCount} />
                 </div>
               ))}
             </div>
           )}
-          <p className="text-[0.75rem] text-ink-faint mt-3">
+          <p className="text-xs text-ink-faint mt-3">
             A block is only &ldquo;measured&rdquo; with five real pieces from that platform. Below that we write from your general voice and say so.
           </p>
         </Card>
 
         {/* ---- the dials, shown only when they've been set ---------------- */}
         {Object.keys(pack.index.dials).length > 0 && (
-          <Card label="06 · Dials">
+          <Card label="Dials">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {DIAL_KEYS.filter((k) => pack.index.dials[k] != null).map((k) => (
-                <div key={k} className="flex items-center gap-3 text-[0.8rem]">
+                <div key={k} className="flex items-center gap-3 text-sm">
                   <span className="w-24 text-right text-ink-faint">{DIAL_LABELS[k][0]}</span>
                   <span className="flex-1 h-1 bg-field rounded-full relative">
                     <span className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-ink" style={{ left: `${((pack.index.dials[k]! - 1) / 9) * 100}%` }} />
@@ -391,22 +564,22 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         {/* ---- the corpus itself ----------------------------------------- */}
         <Card label={`07 · On file · ${samples.length}`}>
           {samples.length === 0 ? (
-            <p className="text-[0.85rem] text-ink-faint">Nothing yet.</p>
+            <p className="text-sm text-ink-faint">Nothing yet.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {samples.map((s) => (
-                <div key={s.id} className={`border border-hairline rounded-[10px] p-3 ${s.excluded ? "opacity-45" : ""}`}>
+                <div key={s.id} className={`border border-hairline rounded-md p-3 ${s.excluded ? "opacity-45" : ""}`}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="label-mono text-ink-faint">{PLATFORM_RULES[s.channel]?.label ?? s.channel}</span>
                     {s.visibility === "private" && (
-                      <span className="label-mono text-[0.6rem] px-1.5 h-5 inline-flex items-center gap-1 rounded-[4px] bg-field text-ink-faint">
+                      <span className="label-mono px-1.5 h-5 inline-flex items-center gap-1 rounded-xs bg-field text-ink-faint">
                         <Lock size={9} /> private
                       </span>
                     )}
-                    <span className="text-[0.72rem] text-ink-faint tabular-nums">{s.wordCount} words</span>
+                    <span className="text-xs text-ink-faint tabular-nums">{s.wordCount} words</span>
                     <span className="flex-1" />
                     <form action={excludeSampleAction}>
-                      <Hidden />
+                      <Hidden id={id} />
                       <input type="hidden" name="sampleId" value={s.id} />
                       <input type="hidden" name="excluded" value={s.excluded ? "0" : "1"} />
                       <SubmitButton pendingLabel="…" size="sm" variant="ghost">
@@ -414,15 +587,15 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                       </SubmitButton>
                     </form>
                     <form action={deleteSampleAction}>
-                      <Hidden />
+                      <Hidden id={id} />
                       <input type="hidden" name="sampleId" value={s.id} />
                       <SubmitButton pendingLabel="…" size="sm" variant="ghost"><Trash2 size={12} /></SubmitButton>
                     </form>
                   </div>
                   {s.visibility === "private" && !owner ? (
-                    <p className="text-[0.82rem] text-ink-faint italic">Private writing. Measured, but only its owner can read it.</p>
+                    <p className="text-sm text-ink-faint italic">Private writing. Measured, but only its owner can read it.</p>
                   ) : (
-                    <p className="text-[0.85rem] leading-relaxed whitespace-pre-wrap line-clamp-4">{s.body}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-4">{s.body}</p>
                   )}
                 </div>
               ))}
@@ -431,8 +604,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         </Card>
 
         {/* ---- history: every save keeps what it replaced ----------------- */}
-        <Card label="08 · History">
-          <ul className="flex flex-col gap-2 text-[0.82rem]">
+        <Card label="History">
+          <ul className="flex flex-col gap-2 text-sm">
             {versions.map((v, i) => {
               const changed = changedFrom(i);
               const back = diffPacks(pack, v.snapshot);
@@ -448,7 +621,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                     <ul className="pl-6 text-ink-muted flex flex-col gap-0.5">{changed.slice(0, 6).map((c) => <li key={c}>{c}</li>)}</ul>
                   )}
                   <details className="pl-6">
-                    <summary className="cursor-pointer min-h-9 flex items-center text-ink-faint">Restore v{v.version}</summary>
+                    <summary className="cursor-pointer min-h-11 flex items-center text-ink-faint">Restore v{v.version}</summary>
                     <div className="flex flex-col gap-2 pt-1">
                       {back.length ? (
                         <>
@@ -458,7 +631,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                       ) : (
                         <p className="text-ink-muted">Nothing you decided differs from now.</p>
                       )}
-                      <form action={restoreVersionAction}><Hidden /><input type="hidden" name="version" value={v.version} />
+                      <form action={restoreVersionAction}><Hidden id={id} /><input type="hidden" name="version" value={v.version} />
                         <SubmitButton pendingLabel="Restoring…" size="sm" variant="secondary">Restore this version</SubmitButton>
                       </form>
                     </div>
@@ -476,4 +649,14 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
       </div>
     </DocPage>
   );
+}
+
+/** The workspace every form on this page acts in. */
+function Hidden({ id }: { id: string }) {
+  return <input type="hidden" name="tenantId" value={id} />;
+}
+
+/** One clock for the whole render, read outside it (render stays pure). */
+async function requestTime(): Promise<number> {
+  return Date.now();
 }

@@ -13,6 +13,11 @@
  */
 import "server-only";
 import { withTenantSession } from "@/db/session";
+import { runTask } from "@/lib/ai";
+import { calendarPlan } from "@/lib/ai/tasks";
+import { loadBrandContext } from "@/lib/context/context-loader";
+import { CALENDAR_DAYS, planSlots } from "@/lib/content/calendar-plan";
+import { FORMATS, formatByKey } from "@/lib/content/formats";
 import type { WorkspaceScope } from "./projects";
 
 // ---------------------------------------------------------------- pillars ---
@@ -187,6 +192,8 @@ export interface CalendarEntryView {
   cta: string | null;
   status: string;
   contentItemId: string | null;
+  /** The piece "Start" made from this slot (0019), or null while it is still only planned. */
+  startedProjectId: string | null;
 }
 
 export async function listCalendar(scope: WorkspaceScope, from: string, to: string): Promise<CalendarEntryView[]> {
@@ -209,7 +216,33 @@ export async function listCalendar(scope: WorkspaceScope, from: string, to: stri
       cta: r.cta,
       status: r.status,
       contentItemId: r.content_item_id,
+      startedProjectId: r.started_project_id ?? null,
     })),
+  );
+}
+
+/** One slot of the workspace calendar, for starting a piece from it. */
+export async function getCalendarEntry(scope: WorkspaceScope, id: string): Promise<CalendarEntryView | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const r = (
+    await withTenantSession(scope, (c) =>
+      c.query(
+        `SELECT e.*, to_char(e.entry_date, 'YYYY-MM-DD') AS d, p.name AS pillar_name
+           FROM calendar_entries e LEFT JOIN pillars p ON p.id = e.pillar_id
+          WHERE e.id = $1 AND e.project_id IS NULL`,
+        [id],
+      ),
+    )
+  ).rows[0];
+  return r
+    ? { id: r.id, date: r.d, pillarId: r.pillar_id, pillarName: r.pillar_name, channel: r.channel, topic: r.topic, hookAngle: r.hook_angle, cta: r.cta, status: r.status, contentItemId: r.content_item_id, startedProjectId: r.started_project_id ?? null }
+    : null;
+}
+
+/** Remember the piece a slot started, so the slot shows "Open" instead of starting another. */
+export async function markSlotStarted(scope: WorkspaceScope, id: string, projectId: string): Promise<void> {
+  await withTenantSession(scope, (c) =>
+    c.query("UPDATE calendar_entries SET started_project_id = $2 WHERE id = $1 AND project_id IS NULL", [id, projectId]),
   );
 }
 
@@ -224,6 +257,61 @@ export async function addCalendarEntry(
       [scope.tenantId, e.date, e.pillarId, e.channel || null, e.topic || null, e.hookAngle || null, e.cta || null],
     ),
   );
+}
+
+/**
+ * The 90-day generator (brief §4.2, P3-1). The skeleton (days, channels) is
+ * planned in code; one model call fills every slot from the pillars; the rows
+ * are written in one transaction so a failure leaves the calendar as it was.
+ * Days that already hold a slot are left alone, so running it twice adds
+ * nothing on top of a plan the person has already edited.
+ */
+export async function generateCalendar(
+  scope: WorkspaceScope,
+  opts: { start: string; perWeek: number; channels: string[] },
+): Promise<{ planned: number; skipped: number }> {
+  const pillars = await listPillars(scope);
+  const taken = await withTenantSession(scope, async (c) =>
+    (
+      await c.query<{ d: string }>(
+        `SELECT DISTINCT to_char(entry_date, 'YYYY-MM-DD') AS d FROM calendar_entries
+          WHERE project_id IS NULL AND entry_date BETWEEN $1::date AND $1::date + ${CALENDAR_DAYS - 1}`,
+        [opts.start],
+      )
+    ).rows.map((r) => r.d),
+  );
+  const all = planSlots({ ...opts });
+  const slots = planSlots({ ...opts, skip: new Set(taken) });
+  if (slots.length === 0) return { planned: 0, skipped: all.length };
+
+  const fmt = formatByKey(FORMATS.find((f) => f.channel === opts.channels[0])?.key ?? "linkedin_post");
+  const { slots: filled } = await runTask(scope, calendarPlan, {
+    context: await loadBrandContext(scope, "en", fmt.platform, "write"),
+    taskInput: [
+      // Names only: what each pillar means is in the context block (INV-2).
+      ...pillars.map((p) => `Pillar: ${p.name}`),
+      ...slots.map((s) => `Slot: ${s.slot} | ${s.label} | ${s.channel}`),
+    ].join("\n"),
+  });
+
+  const byName = new Map(pillars.map((p) => [p.name.toLowerCase(), p.id]));
+  const bySlot = new Map(filled.map((f) => [f.slot, f]));
+  // The model can return fewer slots than asked; only what was written counts.
+  let written = 0;
+  await withTenantSession(scope, async (c) => {
+    for (const s of slots) {
+      const f = bySlot.get(s.slot);
+      if (!f) continue;
+      written++;
+      const pillarId = byName.get(f.pillar.trim().toLowerCase()) ?? null;
+      await c.query(
+        `INSERT INTO calendar_entries (tenant_id, project_id, entry_date, pillar_id, channel, topic, hook_angle, cta)
+         VALUES ($1,NULL,$2,$3,$4,$5,$6,$7)`,
+        [scope.tenantId, s.date, pillarId, s.channel, f.topic.trim() || null, f.hookAngle.trim() || null, f.cta.trim() || null],
+      );
+    }
+  });
+  return { planned: written, skipped: all.length - slots.length };
 }
 
 export async function deleteCalendarEntry(scope: WorkspaceScope, id: string): Promise<void> {
@@ -267,6 +355,66 @@ export async function createOffer(
   );
 }
 
+export async function updateOffer(
+  scope: WorkspaceScope,
+  id: string,
+  o: { name: string; format: string; promise: string; deliverables: string[]; pricingLogic: string },
+): Promise<void> {
+  await withTenantSession(scope, (c) =>
+    c.query(
+      `UPDATE offers SET name=$2, format=$3, promise=$4, deliverables=$5, pricing_logic_notes=$6
+        WHERE id=$1 AND project_id IS NULL`,
+      [id, o.name, o.format || null, o.promise || null, JSON.stringify(o.deliverables), o.pricingLogic || null],
+    ),
+  );
+}
+
 export async function deleteOffer(scope: WorkspaceScope, id: string): Promise<void> {
   await withTenantSession(scope, (c) => c.query("DELETE FROM offers WHERE id=$1 AND project_id IS NULL", [id]));
+}
+
+// ---- one pillar, connected (Brand core › Pillars › a pillar) -----------------------
+
+export interface PillarDetail {
+  pillar: { id: string; name: string; description: string | null };
+  ideas: { id: string; text: string; status: string }[];
+  slots: { id: string; date: string; topic: string | null; channel: string | null }[];
+  pieces: { id: string; projectId: string | null; hook: string; status: string; format: string }[];
+}
+
+/**
+ * Everything that grows from one pillar: the ideas tagged to it, its calendar
+ * slots (upcoming first) and the pieces written under it. RLS-scoped like
+ * every read; a pillar from another workspace reads as null.
+ */
+export async function pillarDetail(scope: WorkspaceScope, pillarId: string): Promise<PillarDetail | null> {
+  return withTenantSession(scope, async (c) => {
+    const p = (
+      await c.query<{ id: string; name: string; description: string | null }>(
+        `SELECT id, name, description FROM pillars WHERE id = $1 AND project_id IS NULL`,
+        [pillarId],
+      )
+    ).rows[0];
+    if (!p) return null;
+    const ideas = (
+      await c.query<{ id: string; raw_text: string; status: string }>(
+        `SELECT id, raw_text, status FROM ideas WHERE pillar_id = $1 AND status <> 'archived' ORDER BY created_at DESC LIMIT 6`,
+        [pillarId],
+      )
+    ).rows.map((r) => ({ id: r.id, text: r.raw_text, status: r.status }));
+    const slots = (
+      await c.query<{ id: string; entry_date: string; topic: string | null; channel: string | null }>(
+        `SELECT id, to_char(entry_date, 'YYYY-MM-DD') AS entry_date, topic, channel FROM calendar_entries
+          WHERE pillar_id = $1 ORDER BY (entry_date < current_date), entry_date LIMIT 6`,
+        [pillarId],
+      )
+    ).rows.map((r) => ({ id: r.id, date: r.entry_date, topic: r.topic, channel: r.channel }));
+    const pieces = (
+      await c.query<{ id: string; project_id: string | null; hook: string | null; status: string; format: string }>(
+        `SELECT id, project_id, hook, status, format FROM content_items WHERE pillar_id = $1 ORDER BY created_at DESC LIMIT 6`,
+        [pillarId],
+      )
+    ).rows.map((r) => ({ id: r.id, projectId: r.project_id, hook: r.hook ?? "", status: r.status, format: r.format }));
+    return { pillar: p, ideas, slots, pieces };
+  });
 }

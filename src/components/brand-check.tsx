@@ -76,20 +76,20 @@ export function BrandCheck({ tenantId, projectId, itemId }: { tenantId: string; 
   const list = (
     <div className="flex flex-col gap-2">
       {codeFindings.length > 0 && <Findings items={codeFindings} />}
-      {judging && <p className="text-[0.75rem] text-ink-muted flex items-center gap-2"><AgentDots /> Reading it line by line</p>}
+      {judging && <p className="text-xs text-ink-muted flex items-center gap-2"><AgentDots /> Reading it line by line</p>}
       {(lines ?? []).map((f) => (
-        <div key={f.line} className="border border-hairline rounded-[10px] p-3 flex flex-col gap-1.5">
-          <p className="text-[0.8rem] italic">“{f.line}”</p>
-          <p className="text-[0.75rem] text-ink-muted"><span className="font-medium text-ink">{f.attribute}.</span> {f.why}</p>
+        <div key={f.line} className="border border-hairline rounded-md p-3 flex flex-col gap-1.5">
+          <p className="text-sm italic">“{f.line}”</p>
+          <p className="text-xs text-ink-muted"><span className="font-medium text-ink">{f.attribute}.</span> {f.why}</p>
           {f.fix && (
             <>
-              <p className="text-[0.8rem]"><span className="text-ink-faint">In your voice: </span>{f.fix}</p>
+              <p className="text-sm"><span className="text-ink-faint">In your voice: </span>{f.fix}</p>
               <button type="button" disabled={working} onClick={() => apply(f.line, f.fix)} className={`${btnClass("secondary", "sm")} self-start`}>Apply</button>
             </>
           )}
         </div>
       ))}
-      {!judging && lines && codeFindings.length === 0 && lines.length === 0 && <p className="text-[0.75rem] text-ink-muted">Nothing to change.</p>}
+      {!judging && lines && codeFindings.length === 0 && lines.length === 0 && <p className="text-xs text-ink-muted">Nothing to change.</p>}
     </div>
   );
 
@@ -114,7 +114,7 @@ export function BrandCheck({ tenantId, projectId, itemId }: { tenantId: string; 
           )}
           {band === "on" ? (
             <details>
-              <summary className="cursor-pointer min-h-11 flex items-center text-[0.78rem] text-ink-muted">Details</summary>
+              <summary className="cursor-pointer min-h-11 flex items-center text-xs text-ink-muted">Details</summary>
               {list}
             </details>
           ) : (
@@ -123,7 +123,7 @@ export function BrandCheck({ tenantId, projectId, itemId }: { tenantId: string; 
           <button onClick={run} disabled={checking} className={btnClass("ghost", "sm")}>{checking ? "Re-checking" : "Check again"}</button>
         </>
       )}
-      {error && <p role="alert" className="text-[0.78rem] text-danger">{error}</p>}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
     </div>
   );
 }

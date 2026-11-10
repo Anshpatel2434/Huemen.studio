@@ -2,15 +2,17 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
-import { Plus, X, Flag, Trash2, History, Wand2, PenLine, AlertTriangle, Globe, ThumbsUp, MessageCircle, Repeat2, Send } from "lucide-react";
+import { Plus, X, Flag, Trash2, History, Wand2, PenLine, Pencil, AlertTriangle, Globe, ThumbsUp, MessageCircle, Repeat2, Send } from "lucide-react";
 import { Canvas, Artboard, type Device } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory, useDeleteKey } from "@/components/canvas-edit";
 import { DraftModal } from "@/components/draft-modal";
-import { AgentDots, Badge, EmptyState, Avatar, useToast } from "@/components/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
+import { AgentDots, Badge, EmptyState, Avatar, IconButton, Segmented, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
 import type { ContentItemView } from "@/lib/data/content";
-import { deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
+import { askRewriteAction, deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
+import { Select } from "@/components/select";
 
 const WIDTH: Record<Device, number> = { desktop: 520, tablet: 440, mobile: 360 };
 const STATUS_TONE = { draft: "neutral", edited: "dark", approved: "ok" } as const;
@@ -69,11 +71,20 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       .filter((c) => c.items.length > 0 || c.pillarId !== null || pillarFilter === c.key);
   }, [items, pillars, pillarFilter]);
 
-  const patch = useCallback((item: ContentItemView, next: Patch, label: string) => {
+  const patch = useCallback((item: ContentItemView, next: Patch, label: string, asked = false) => {
     const prev = Object.fromEntries(Object.keys(next).map((k) => [k, item[k as keyof Patch]])) as Patch;
-    history.push({ label, undo: () => patchContentAction(tenantId, projectId, item.id, prev), redo: () => patchContentAction(tenantId, projectId, item.id, next) });
-    return patchContentAction(tenantId, projectId, item.id, next);
+    // A rewrite the person asked for is the model's words, so it is not learned from.
+    const opts = { learn: !asked };
+    history.push({ label, undo: () => patchContentAction(tenantId, projectId, item.id, prev, opts), redo: () => patchContentAction(tenantId, projectId, item.id, next, opts) });
+    return patchContentAction(tenantId, projectId, item.id, next, opts);
   }, [history, tenantId, projectId]);
+
+  /** Select and instruct: the model's version of one part, committed by the canvas like an edit. */
+  const askFor = useCallback((item: ContentItemView, part: string) => async (instruction: string, current: string) => {
+    const r = await askRewriteAction(tenantId, projectId, item.id, { part, text: current, instruction });
+    if (!r.ok) throw new Error(r.error);
+    return r.text;
+  }, [tenantId, projectId]);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -86,7 +97,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     const name = pillarId ? pillars.find((p) => p.id === pillarId)?.name : "No pillar";
     patchContentAction(tenantId, projectId, itemId, { pillarId }).then(
       () => toast(`Moved to ${name}`),
-      () => { setMoves((m) => { const n = { ...m }; delete n[itemId]; return n; }); toast("Couldn't move that piece."); },
+      () => { setMoves((m) => { const n = { ...m }; delete n[itemId]; return n; }); toast("Couldn't move that piece.", "danger"); },
     );
     history.push({
       label: "move piece",
@@ -95,20 +106,25 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     });
   };
 
-  const remove = useCallback((item: ContentItemView) => {
-    if (!confirm("Delete this piece and its history?")) return;
+  // Delete asks first, in the app's own dialog (never the browser's confirm()).
+  const [toDelete, setToDelete] = useState<ContentItemView | null>(null);
+  const remove = useCallback((item: ContentItemView) => setToDelete(item), []);
+  const confirmDelete = () => {
+    const item = toDelete;
+    if (!item) return;
+    setToDelete(null);
     deleteContentAction(tenantId, projectId, item.id).then(
-      () => { toast("Deleted"); select(null); },
-      () => toast("Couldn't delete that piece."),
+      () => { toast("Deleted"); select(null); router.refresh(); },
+      () => toast("Couldn't delete that piece.", "danger"),
     );
-  }, [tenantId, projectId, toast, select]);
+  };
   useDeleteKey(selected ? () => remove(selected) : null);
 
   return (
     <>
       {items.length === 0 ? (
         <div className="absolute inset-0 canvas-dots flex items-center justify-center p-6">
-          <div className="bg-paper border border-hairline rounded-[14px] max-w-md w-full shadow-[var(--shadow)]">
+          <div className="bg-paper border border-hairline rounded-md max-w-md w-full shadow-[var(--shadow)]">
             <EmptyState
               icon={<PenLine size={18} />}
               title="Nothing drafted yet"
@@ -127,12 +143,12 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                 onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (over !== g.key) setOver(g.key); } }}
                 onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === g.key ? null : o)); }}
                 onDrop={(e) => { e.preventDefault(); if (dragId) moveTo(dragId, g.pillarId); setDragId(null); setOver(null); }}
-                className={`rounded-[10px] -m-3 p-3 transition-colors ${dragId && over === g.key ? "bg-accent-soft ring-2 ring-ink/60" : ""}`}
+                className={`rounded-md -m-3 p-3 transition-colors ${dragId && over === g.key ? "bg-accent-soft ring-2 ring-ink/60" : ""}`}
               >
                 <p className="label-mono text-ink-faint mb-4 truncate" style={{ maxWidth: WIDTH[device] }}>{g.name} · {g.items.length}</p>
                 <div className="flex flex-col gap-10 items-start" data-canvas-bg="1">
                   {g.items.length === 0 && (
-                    <div data-canvas-bg="1" className="rounded-[6px] border-2 border-dashed border-line text-ink-faint text-[0.8rem] flex items-center justify-center text-center px-6" style={{ width: WIDTH[device], height: 160 }}>
+                    <div data-canvas-bg="1" className="rounded-sm border-2 border-dashed border-line text-ink-faint text-sm flex items-center justify-center text-center px-6" style={{ width: WIDTH[device], height: 160 }}>
                       {dragId ? "Drop here to move it to this pillar" : "No pieces yet. Drag one here."}
                     </div>
                   )}
@@ -144,6 +160,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                       width={WIDTH[device]}
                       selected={selected?.id === i.id}
                       onSelect={() => select(i.id)}
+                      onEdit={() => select(i.id)}
                       dimmed={dragId === i.id}
                       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", i.hook); setDragId(i.id); }}
                       onDragEnd={() => { setDragId(null); setOver(null); }}
@@ -154,7 +171,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                         </>
                       }
                     >
-                      <PostPreview item={i} brandName={brandName} dontWords={dontWords} onPatch={(next, label) => patch(i, next, label)} />
+                      <PostPreview item={i} brandName={brandName} dontWords={dontWords} onPatch={(next, label, asked) => patch(i, next, label, asked)} onAsk={(part) => askFor(i, part)} />
                     </Artboard>
                   ))}
                 </div>
@@ -168,23 +185,41 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       {items.length > 0 && (
         <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
           <button onClick={() => setDrafting(true)} className={`${btnClass("primary", "sm")} shadow-[var(--shadow)]`}><Plus size={14} /> Draft</button>
-          <select value={pillarFilter} onChange={(e) => setPillarFilter(e.target.value)} className="h-8 rounded-[8px] bg-paper border border-hairline px-2 text-[0.8rem] shadow-[var(--shadow-sm)]">
-            <option value="all">All pillars</option>
-            {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            <option value="none">No pillar</option>
-          </select>
-          {degraded && <span className="flex items-center gap-1.5 h-8 px-2.5 rounded-[8px] bg-accent-soft text-accent-ink text-[0.78rem]"><AlertTriangle size={13} /> Thin brief: drafts will read generic</span>}
+          <Select
+            value={pillarFilter}
+            onChange={setPillarFilter}
+            label="Pillar"
+            variant="pill"
+            className="shadow-[var(--shadow-sm)] rounded-full"
+            options={[{ value: "all", label: "All pillars" }, ...pillars.map((p) => ({ value: p.id, label: p.name })), { value: "none", label: "No pillar" }]}
+          />
+          {degraded && <span className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-accent-soft text-accent-ink text-xs"><AlertTriangle size={13} /> Thin brief: drafts will read generic</span>}
         </div>
       )}
 
-      {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} onClose={() => select(null)} />}
-      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} onDone={(id) => select(id)} />}
+      {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} onClose={() => select(null)} onDelete={() => remove(selected)} />}
+      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} />}
+      <ConfirmModal
+        open={toDelete !== null}
+        title="Delete this piece?"
+        confirmLabel="Delete piece"
+        danger
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+      >
+        {toDelete?.hook ? <>“{toDelete.hook.slice(0, 80)}{toDelete.hook.length > 80 ? "…" : ""}” and its {toDelete.history.length} saved version{toDelete.history.length === 1 ? "" : "s"} go with it. </> : null}
+        This can&apos;t be undone.
+      </ConfirmModal>
     </>
   );
 }
 
 /** Channel-shaped wireframe of the post: real copy, greyscale chrome. Copy is editable in place. */
-function PostPreview({ item, brandName, dontWords, onPatch }: { item: ContentItemView; brandName: string; dontWords: string[]; onPatch: (p: Patch, label: string) => Promise<unknown> }) {
+function PostPreview({ item, brandName, dontWords, onPatch, onAsk }: {
+  item: ContentItemView; brandName: string; dontWords: string[];
+  onPatch: (p: Patch, label: string, asked?: boolean) => Promise<unknown>;
+  onAsk: (part: string) => (instruction: string, current: string) => Promise<string>;
+}) {
   return (
     <div className="p-5">
       <div className="flex items-start gap-2.5">
@@ -196,15 +231,15 @@ function PostPreview({ item, brandName, dontWords, onPatch }: { item: ContentIte
         </div>
       </div>
       <div className="mt-3.5 text-[0.95rem] font-semibold leading-snug">
-        <EditableText value={item.hook} required label="Hook" display={<Marked text={item.hook} words={dontWords} />} onCommit={(hook) => onPatch({ hook }, "edit hook")} />
+        <EditableText value={item.hook} required label="Hook" display={<Marked text={item.hook} words={dontWords} />} onAsk={onAsk("Hook")} onCommit={(hook, _p, m) => onPatch({ hook }, m?.asked ? "rewrite hook" : "edit hook", m?.asked)} />
       </div>
       <div className="mt-2 text-[0.85rem] leading-relaxed text-ink/85">
-        <EditableText value={item.body} multiline label="Body" placeholder="Add body copy" display={<Marked text={item.body} words={dontWords} />} onCommit={(body) => onPatch({ body }, "edit body")} />
+        <EditableText value={item.body} multiline label="Body" placeholder="Add body copy" display={<Marked text={item.body} words={dontWords} />} onAsk={onAsk("Body")} onCommit={(body, _p, m) => onPatch({ body }, m?.asked ? "rewrite body" : "edit body", m?.asked)} />
       </div>
       <div className="mt-3 text-[0.85rem] font-medium flex gap-1">
         <span className="shrink-0">→</span>
         <div className="flex-1 min-w-0">
-          <EditableText value={item.cta} label="Call to action" placeholder="Add a call to action" display={<Marked text={item.cta} words={dontWords} />} onCommit={(cta) => onPatch({ cta }, "edit call to action")} />
+          <EditableText value={item.cta} label="Call to action" placeholder="Add a call to action" display={<Marked text={item.cta} words={dontWords} />} onAsk={onAsk("Call to action")} onCommit={(cta, _p, m) => onPatch({ cta }, m?.asked ? "rewrite call to action" : "edit call to action", m?.asked)} />
         </div>
       </div>
       <div className="grid grid-cols-4 mt-4 pt-2 border-t border-hairline text-ink-faint">
@@ -219,15 +254,16 @@ function Marked({ text, words }: { text: string; words: string[] }) {
   const ws = words.map((w) => w.trim()).filter(Boolean);
   if (!ws.length || !text) return <>{text}</>;
   const re = new RegExp(`(${ws.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
-  return <>{text.split(re).map((part, i) => (ws.some((w) => w.toLowerCase() === part.toLowerCase()) ? <mark key={i} className="bg-accent-soft text-accent-ink rounded-[3px] px-0.5">{part}</mark> : <span key={i}>{part}</span>))}</>;
+  return <>{text.split(re).map((part, i) => (ws.some((w) => w.toLowerCase() === part.toLowerCase()) ? <mark key={i} className="bg-accent-soft text-accent-ink rounded-xs px-0.5">{part}</mark> : <span key={i}>{part}</span>))}</>;
 }
 
-function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
-  tenantId: string; projectId: string; item: ContentItemView; pillars: { id: string; name: string }[]; dontWords: string[]; onClose: () => void;
+function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onDelete }: {
+  tenantId: string; projectId: string; item: ContentItemView; pillars: { id: string; name: string }[]; dontWords: string[]; onClose: () => void; onDelete: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [hook, setHook] = useState(item.hook);
+  const [askText, setAskText] = useState("");
   const [body, setBody] = useState(item.body);
   const [cta, setCta] = useState(item.cta);
   const [pillarId, setPillarId] = useState(item.pillarId ?? "");
@@ -238,77 +274,105 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose }: {
   const liveViolations = findViolations(`${hook}\n${body}\n${cta}`, dontWords);
   const dirty = hook !== item.hook || body !== item.body || cta !== item.cta || (pillarId || null) !== item.pillarId;
 
-  const run = (label: string, fn: () => Promise<void>, done: string) =>
+  const run = (label: string, fn: () => Promise<void | { error?: string }>, done: string) =>
     start(async () => {
       setBusy(label);
-      try { await fn(); toast(done); router.refresh(); } catch { toast("That failed and was logged. Try again."); }
+      try {
+        const r = await fn();
+        if (r && r.error) toast(r.error, "danger");
+        else { toast(done); router.refresh(); }
+      } catch { toast("That failed and was logged. Try again.", "danger"); }
       setBusy(null);
     });
 
   const save = (status: "edited" | "approved") =>
-    run(status, () => saveContentAction(tenantId, projectId, item.id, { hook, body, cta, pillarId: pillarId || null, status }), status === "approved" ? "Approved" : "Saved");
+    start(async () => {
+      setBusy(status);
+      try {
+        const learned = await saveContentAction(tenantId, projectId, item.id, { hook, body, cta, pillarId: pillarId || null, status });
+        // Say what the voice took from it, so learning is never silent.
+        toast(
+          status !== "approved" ? "Saved"
+          : learned?.learned ? `Approved. Your voice learned from it: ${learned.why.toLowerCase()}${learned.remeasured ? " It re-measured itself." : ""}`
+          : "Approved",
+        );
+        router.refresh();
+      } catch { toast("That failed and was logged. Try again.", "danger"); }
+      setBusy(null);
+    });
 
   return (
-    <aside className="absolute top-0 right-0 bottom-0 z-30 w-[360px] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
-      <div className="h-11 shrink-0 flex items-center gap-2 px-3 border-b border-hairline">
-        <span className="text-[0.85rem] font-medium flex-1 truncate">{formatByKey(item.format).label}</span>
-        <div className="flex bg-field rounded-[8px] p-[2px]">
-          {(["edit", "history"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`h-7 px-2.5 rounded-[6px] text-[0.75rem] capitalize ${tab === t ? "bg-paper shadow-[var(--shadow-sm)] font-medium" : "text-ink-muted"}`}>{t === "history" ? `History · ${item.history.length}` : t}</button>
-          ))}
-        </div>
-        <button onClick={onClose} className="w-7 h-7 rounded-[7px] flex items-center justify-center text-ink-muted hover:bg-field" aria-label="Close"><X size={15} /></button>
+    <aside className="absolute top-0 right-0 bottom-0 min-[900px]:top-1 min-[900px]:right-3 min-[900px]:bottom-3 min-[900px]:rounded-2xl min-[900px]:border overflow-hidden z-30 w-[min(360px,100%)] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
+      <div className="min-h-14 shrink-0 flex items-center gap-2 pl-4 pr-2 border-b border-hairline">
+        <span className="text-sm font-semibold flex-1 truncate">{formatByKey(item.format).label}</span>
+        <Segmented
+          label="Panel view"
+          value={tab}
+          onChange={setTab}
+          items={[{ value: "edit", label: "Edit" }, { value: "history", label: `History · ${item.history.length}` }]}
+        />
+        <IconButton label="Close" onClick={onClose}><X size={17} /></IconButton>
       </div>
 
       {tab === "edit" ? (
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
           {liveViolations.length > 0 && (
-            <div className="bg-accent-soft rounded-[10px] px-3 py-2.5 text-[0.8rem]">
+            <div className="bg-accent-soft rounded-md px-3 py-2.5 text-sm">
               <p className="font-medium text-accent-ink flex items-center gap-1.5"><Flag size={13} /> Don&apos;t-words found</p>
               <p className="text-ink-muted mt-0.5">{liveViolations.join(", ")}. Flagged, not removed: your call.</p>
             </div>
           )}
-          <label className="block"><span className="text-[0.75rem] font-medium mb-1 block">Hook</span><textarea value={hook} onChange={(e) => setHook(e.target.value)} rows={2} className="field" /></label>
-          <label className="block"><span className="text-[0.75rem] font-medium mb-1 block">Body</span><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="field" /></label>
-          <label className="block"><span className="text-[0.75rem] font-medium mb-1 block">Call to action</span><input value={cta} onChange={(e) => setCta(e.target.value)} className="field" placeholder="Missing: add one" /></label>
+          <label className="block"><span className="hu-label !flex mb-2">Hook</span><textarea value={hook} onChange={(e) => setHook(e.target.value)} rows={2} className="field" /></label>
+          <label className="block"><span className="hu-label !flex mb-2">Body</span><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} className="field" /></label>
+          <label className="block"><span className="hu-label !flex mb-2">Call to action</span><input value={cta} onChange={(e) => setCta(e.target.value)} className="field" placeholder="Missing: add one" /></label>
           <label className="block">
-            <span className="text-[0.75rem] font-medium mb-1 block">Pillar</span>
-            <select value={pillarId} onChange={(e) => setPillarId(e.target.value)} className="field">
-              <option value="">No pillar</option>
-              {pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <span className="hu-label !flex mb-2">Pillar</span>
+            <Select value={pillarId} onChange={setPillarId} label="Pillar" options={[{ value: "", label: "No pillar" }, ...pillars.map((p) => ({ value: p.id, label: p.name }))]} />
           </label>
           <div>
-            <p className="text-[0.75rem] font-medium mb-1.5 flex items-center gap-1.5"><Wand2 size={12} /> Regenerate with a steer</p>
+            <p className="text-xs font-medium mb-1.5 flex items-center gap-1.5"><Wand2 size={12} /> Regenerate with a steer</p>
             <div className="flex flex-wrap gap-1.5">
               {STEERS.map((s) => (
-                <button key={s} disabled={pending} onClick={() => run(s, () => steerAction(tenantId, projectId, item.id, s), "New version added to history")} className="h-7 px-2.5 rounded-[7px] border border-line text-[0.75rem] hover:border-ink disabled:opacity-50 flex items-center gap-1">
+                <button key={s} disabled={pending} onClick={() => run(s, () => steerAction(tenantId, projectId, item.id, s), "New version added to history")} className="min-h-11 px-3.5 rounded-full border border-line text-sm hover:border-line-strong hover:bg-hover disabled:opacity-50 flex items-center gap-1.5">
                   {busy === s && <AgentDots />} {s}
                 </button>
               ))}
             </div>
-            <p className="text-[0.7rem] text-ink-faint mt-1.5">The previous version stays in History.</p>
+            {/* Ask for a change in your own words: the same steer, without a preset. */}
+            <form
+              className="hu-composer !p-2 !pl-3.5 !flex-row !items-center mt-2"
+              onSubmit={(e) => { e.preventDefault(); const ask = askText.trim(); if (!ask || pending) return; run("ask", () => steerAction(tenantId, projectId, item.id, ask), "New version added to history"); setAskText(""); }}
+            >
+              <input type="text" value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="Ask for a change: shorter, add a story, end on a question" aria-label="Ask for a change" />
+              <button type="submit" disabled={!askText.trim() || pending} className={`${btnClass("secondary", "sm")} shrink-0`}>{busy === "ask" ? <AgentDots /> : "Ask"}</button>
+            </form>
+            <p className="text-xs text-ink-faint mt-1.5">The previous version stays in History.</p>
           </div>
-          <p className="text-[0.7rem] text-ink-faint" suppressHydrationWarning>Template v{item.promptVersion ?? "–"} · {new Date(item.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+          <p className="text-xs text-ink-faint" suppressHydrationWarning>Template v{item.promptVersion ?? "–"} · {new Date(item.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5">
           {item.history.slice().reverse().map((g) => (
-            <div key={g.id} className="border border-hairline rounded-[10px] p-3">
+            <div key={g.id} className="border border-hairline rounded-md p-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <History size={12} className="text-ink-faint" />
-                <span className="text-[0.72rem] text-ink-muted flex-1">{g.steer ? `Steer: ${g.steer}` : `Variant ${g.variantIndex + 1}`} · {g.model}</span>
-                <button disabled={pending} onClick={() => run("v" + g.id, () => applyVariantAction(tenantId, projectId, item.id, g.id), "Variant applied")} className="text-[0.72rem] font-medium hover:text-accent-ink">Use</button>
+                <span className="text-xs text-ink-muted flex-1">
+                  {/* A version with no model is one you typed, not one we wrote. */}
+                  {g.model
+                    ? <>{g.steer ? `Steer: ${g.steer}` : `Version ${g.variantIndex + 1}`}</>
+                    : <><Pencil size={11} className="inline mb-0.5 mr-1" aria-hidden="true" />{g.steer || "Edited by you"}</>}
+                </span>
+                <button disabled={pending} onClick={() => run("v" + g.id, () => applyVariantAction(tenantId, projectId, item.id, g.id), "Variant applied")} className="text-xs font-medium hover:text-accent-ink">Use</button>
               </div>
-              <p className="text-[0.8rem] font-medium">{g.hook}</p>
-              <p className="text-[0.75rem] text-ink-muted line-clamp-3 whitespace-pre-wrap mt-0.5">{g.body}</p>
+              <p className="text-sm font-medium">{g.hook}</p>
+              <p className="text-xs text-ink-muted line-clamp-3 whitespace-pre-wrap mt-0.5">{g.body}</p>
             </div>
           ))}
         </div>
       )}
 
       <div className="shrink-0 border-t border-hairline p-3 flex items-center gap-2">
-        <button onClick={() => { if (confirm("Delete this piece and its history?")) run("delete", async () => { await deleteContentAction(tenantId, projectId, item.id); onClose(); }, "Deleted"); }} className={btnClass("danger", "sm")} aria-label="Delete"><Trash2 size={14} /></button>
+        <button onClick={onDelete} disabled={pending} className={btnClass("danger", "sm")} aria-label="Delete piece" title="Delete piece"><Trash2 size={14} /></button>
         <span className="flex-1" />
         <button disabled={pending || !dirty} onClick={() => save("edited")} className={btnClass("secondary", "sm")}>{busy === "edited" ? <AgentDots /> : "Save"}</button>
         <button disabled={pending} onClick={() => save("approved")} className={btnClass("primary", "sm")}>{busy === "approved" ? <AgentDots /> : item.status === "approved" && !dirty ? "Approved" : "Approve"}</button>

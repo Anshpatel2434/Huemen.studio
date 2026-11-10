@@ -4,24 +4,24 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { actionProjectScope, actionScope } from "@/lib/auth/workspace";
-import { archiveProject, createProject, deleteProject, duplicateProjectBrief, renameProject, restoreProject, setProjectStar } from "@/lib/data/projects";
+import { archiveProject, createProject, deleteProject, duplicateProject, renameProject, restoreProject, setProjectStar } from "@/lib/data/projects";
 import { loadFoundation, saveFoundation } from "@/lib/data/foundation";
-import { mergeIntake, parseIntake } from "@/lib/intake/parse";
+import { fillIntake, parseIntake } from "@/lib/intake/parse";
 
-/** New project → straight into its intake (the brief is step one). */
+/**
+ * New project → straight to Ideate. The brief is the workspace's and every
+ * project writes from it, so there is nothing to fill in first. "Like a past
+ * project" copies that one's format, platform, angle and pillar.
+ */
 export async function createProjectAction(fd: FormData): Promise<void> {
   const tenantId = String(fd.get("tenantId"));
   const name = String(fd.get("name") ?? "").trim() || "Untitled project";
   const from = String(fd.get("fromProject") ?? "");
-  if (from) {
-    // Same person, new push: reuse a brief instead of re-briefing (the product's core idea).
-    const id = await duplicateProjectBrief(await actionProjectScope(tenantId, from), name);
-    revalidatePath(`/w/${tenantId}`);
-    redirect(`/w/${tenantId}/p/${id}/brief/questions`);
-  }
-  const id = await createProject(await actionScope(tenantId), name, String(fd.get("description") ?? ""));
+  const id = from
+    ? await duplicateProject(await actionProjectScope(tenantId, from), name)
+    : await createProject(await actionScope(tenantId), name, String(fd.get("description") ?? ""));
   revalidatePath(`/w/${tenantId}`);
-  redirect(`/w/${tenantId}/p/${id}/intake`);
+  redirect(`/w/${tenantId}/p/${id}/ideate`);
 }
 
 export async function renameProjectAction(tenantId: string, projectId: string, name: string) {
@@ -30,9 +30,9 @@ export async function renameProjectAction(tenantId: string, projectId: string, n
   revalidatePath(`/w/${tenantId}`, "layout");
 }
 
-export async function duplicateProjectAction(tenantId: string, projectId: string): Promise<string> {
+export async function duplicateProjectAction(tenantId: string, projectId: string, name?: string): Promise<string> {
   const scope = await actionProjectScope(tenantId, projectId);
-  const id = await duplicateProjectBrief(scope, "New project (from brief)");
+  const id = await duplicateProject(scope, name?.trim() || "New project");
   revalidatePath(`/w/${tenantId}`, "layout");
   return id;
 }
@@ -49,10 +49,12 @@ export async function deleteProjectAction(tenantId: string, projectId: string) {
 }
 
 /**
- * The home hero: "describe your brand" → a new project whose brief is started
- * from the description. Labelled lines are parsed as in intake; a free-form
+ * The home hero: "describe your brand" → the workspace brief is started from
+ * the description. Labelled lines are parsed as in intake; a free-form
  * description becomes the positioning (and its first sentence the niche) so
- * nothing typed is lost. The questions step then fills the gaps.
+ * nothing typed is lost. It only FILLS what is empty: a brief already written
+ * is never overwritten from here (the brief's own Paste notes page can). The
+ * questions step then fills the gaps.
  */
 export async function createFromPromptAction(fd: FormData): Promise<void> {
   const tenantId = String(fd.get("tenantId"));
@@ -65,13 +67,11 @@ export async function createFromPromptAction(fd: FormData): Promise<void> {
     if (!parsed.fields.positioning) parsed.fields.positioning = parsed.unplaced || text;
     parsed.placedCount = Object.keys(parsed.fields).length;
   }
-  const name = (parsed.fields.niche ?? firstSentence).slice(0, 60) || "Untitled project";
   const ws = await actionScope(tenantId);
-  const id = await createProject(ws, name);
-  const scope = { ...ws, projectId: id };
-  await saveFoundation(scope, mergeIntake(await loadFoundation(scope), parsed));
-  revalidatePath(`/w/${tenantId}`);
-  redirect(`/w/${tenantId}/p/${id}/brief/questions?placed=${parsed.placedCount}`);
+  const { form, filled } = fillIntake(await loadFoundation(ws), parsed);
+  if (filled > 0) await saveFoundation(ws, form);
+  revalidatePath(`/w/${tenantId}`, "layout");
+  redirect(`/w/${tenantId}/brand/questions?placed=${filled}`);
 }
 
 export async function starProjectAction(tenantId: string, projectId: string, starred: boolean) {

@@ -1,23 +1,29 @@
 "use server";
 
 /**
- * The agent panel ("Ask Huemen…"). A command router over the project's real
- * actions — every one grounded in the project's brief (INV-2) — not a
- * free-form chatbot. It respects the step gates: it won't draft content before
- * pillars exist, and says so.
+ * The agent panel ("Ask Huemen…"). Commands first: a request to draft, add a
+ * pillar or capture an idea runs the project's real action directly, grounded
+ * in the brief (INV-2) and the step gates (no drafting before pillars exist).
+ * Anything else is a question, answered live in cards by the agent stream
+ * (agent/stream, lib/agent-ui), whose buttons come back through runAgentAction.
  */
 import { revalidatePath } from "next/cache";
 import { actionProjectScope } from "@/lib/auth/workspace";
-import { loadBrandContext } from "@/lib/context/context-loader";
 import { generateContent } from "@/lib/data/content";
+import { parseAgentAction } from "@/lib/agent-ui/actions";
 import { captureIdea, createPillar, listPillars } from "@/lib/data/planning";
 import { getProject, unlockStage } from "@/lib/data/projects";
 import { stageIndex } from "@/lib/projects/stages";
 import { FORMATS } from "@/lib/content/formats";
+import { scoreProject } from "@/lib/data/check";
 
 export interface AgentReply {
   text: string;
   tasks: { label: string; detail?: string; href?: string }[];
+  /** Not a command: the panel asks the agent stream instead (lib/agent-ui), which answers in cards. */
+  stream?: boolean;
+  /** A draft to write live on the Content canvas (components/live-draft), beside the panel. */
+  liveDraft?: { format: string; topic: string; pillarId: string | null };
 }
 
 const FORMAT_WORDS: [RegExp, string][] = [
@@ -42,13 +48,14 @@ export async function askAgent(tenantId: string, projectId: string, message: str
   if (/\b(write|draft|generate|create|make)\b/i.test(msg) && FORMAT_WORDS.some(([re]) => re.test(msg))) {
     const pillars = await listPillars(scope);
     if (!project || pillars.length === 0) {
-      return { text: "There are no pillars yet. They are set up once for the whole workspace, in onboarding — generate them and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
+      return { text: "There are no pillars yet. They are set up once for the whole workspace, in onboarding — generate them and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `/w/${tenantId}/brand/questions` }] };
     }
     const format = FORMAT_WORDS.find(([re]) => re.test(msg))![1];
     const label = FORMATS.find((f) => f.key === format)!.label;
     const topic = topicOf(msg);
     const pillar = pillars.find((p) => msg.toLowerCase().includes(p.name.toLowerCase()));
     const id = await generateContent(scope, { format, topic, pillarId: pillar?.id ?? null });
+    await scoreProject(scope).catch(() => undefined);
     await unlockStage(scope, "content");
     refresh();
     return {
@@ -63,32 +70,75 @@ export async function askAgent(tenantId: string, projectId: string, message: str
   const pillarMatch = msg.match(/\b(?:add|create|new)\s+(?:a\s+)?pillar\s*(?:called|named|:)?\s*(.+)$/i);
   if (pillarMatch) {
     if (!project) {
-      return { text: "Pillars are generated from the brief questions. Answer those and I can add more.", tasks: [{ label: "Open brief questions", href: `${base}/brief/questions` }] };
+      return { text: "Pillars are generated from the brief questions. Answer those and I can add more.", tasks: [{ label: "Open brief questions", href: `/w/${tenantId}/brand/questions` }] };
     }
     const name = pillarMatch[1].replace(/^["“]|["”.]$/g, "").trim();
     await createPillar(scope, name);
     refresh();
-    return { text: `Added “${name}” as a pillar.`, tasks: [{ label: "Pillar map updated", detail: name, href: `${base}/pillars` }] };
+    return { text: `Added “${name}” as a pillar.`, tasks: [{ label: "Pillar map updated", detail: name, href: `/w/${tenantId}/brand/pillars` }] };
   }
 
   const ideaMatch = msg.match(/^(?:idea|note|capture)\s*[:\-]\s*(.+)$/i);
   if (ideaMatch) {
     await captureIdea(scope, ideaMatch[1].trim());
     refresh();
-    return { text: "Captured in the idea inbox and tagged to the closest pillar.", tasks: [{ label: "Idea captured", href: `${base}/ideas` }] };
+    return { text: "Captured in the idea inbox, tagged to a pillar where its words match one.", tasks: [{ label: "Idea captured", href: `/w/${tenantId}/plan/ideas` }] };
   }
 
-  if (/\b(brief|foundation|missing|complete|ready|next)\b/i.test(msg)) {
-    const ctx = await loadBrandContext(scope);
-    const next = project?.stage === "ideate" ? "Next: pick the angle for this piece, then draft it." : "";
-    const text = ctx.degraded
-      ? `The brief is ${ctx.completeness}% complete, so drafts will read generic. Fix these first: ${ctx.warnings.slice(0, 3).join(" ")} ${next}`
-      : `The brief is ${ctx.completeness}% complete.${ctx.warnings.length ? ` Worth tightening: ${ctx.warnings.slice(0, 2).join(" ")}` : ""} ${next}`;
-    return { text: text.trim(), tasks: [{ label: "Open the brief", href: `${base}/brief` }] };
+  // Everything that is not a command is a question: answered live, in cards.
+  return { text: "", tasks: [], stream: true };
+}
+
+/**
+ * A button in an agent answer was pressed. The browser's request is
+ * re-validated against the allow-list (lib/agent-ui/actions) before anything
+ * runs, and every action goes through the same data functions, scope and
+ * step gates as the commands above. "ask" and "open" never reach here: the
+ * panel handles them without a write.
+ */
+export async function runAgentAction(tenantId: string, projectId: string, raw: unknown): Promise<AgentReply> {
+  const action = parseAgentAction(raw);
+  if (!action || action.type === "ask" || action.type === "open") return { text: "That button no longer works. Ask again and I'll make a fresh one.", tasks: [] };
+  const scope = await actionProjectScope(tenantId, projectId);
+  const base = `/w/${tenantId}/p/${projectId}`;
+
+  // The draft itself is written live on the Content canvas, beside the panel
+  // (components/live-draft, through content/stream, which saves and scores it).
+  // Here: the step gate, the Content step opened, and the pillar named by the
+  // card turned into this workspace's pillar.
+  if (action.type === "draft_piece") {
+    const pillars = await listPillars(scope);
+    if (pillars.length === 0) {
+      return { text: "There are no pillars yet. Generate them first and I'll draft from them.", tasks: [{ label: "Open brief questions", href: `/w/${tenantId}/brand/questions` }] };
+    }
+    try {
+      await unlockStage(scope, "content");
+    } catch {
+      return { text: "This project isn't ready to draft yet. Say what it's about in Ideate first.", tasks: [{ label: "Open Ideate", href: `${base}/ideate` }] };
+    }
+    const { format, topic } = action.params;
+    const want = action.params.pillar?.toLowerCase();
+    const pillar = want ? pillars.find((p) => p.name.toLowerCase() === want) : undefined;
+    const label = FORMATS.find((f) => f.key === format)!.label;
+    revalidatePath(base, "layout");
+    return {
+      text: `Writing “${topic}” on the canvas, in your voice${pillar ? `, under ${pillar.name}` : ""}.`,
+      tasks: [{ label: `${label}, two versions`, detail: "Saved to the project when it finishes" }],
+      liveDraft: { format, topic, pillarId: pillar?.id ?? null },
+    };
   }
 
-  return {
-    text: "I work from this project's brief. Try “Write a LinkedIn post about pricing”, “Add pillar Behind the scenes”, “Idea: my first client story”, or “What's missing from my brief?”",
-    tasks: [],
-  };
+  if (action.type === "add_pillar") {
+    const pillars = await listPillars(scope);
+    if (pillars.some((p) => p.name.toLowerCase() === action.params.name.toLowerCase())) {
+      return { text: `“${action.params.name}” is already one of your pillars.`, tasks: [{ label: "Open pillars", href: `/w/${tenantId}/brand/pillars` }] };
+    }
+    await createPillar(scope, action.params.name, action.params.description);
+    revalidatePath(base, "layout");
+    return { text: `Added “${action.params.name}” as a pillar.`, tasks: [{ label: "Pillar map updated", detail: action.params.name, href: `/w/${tenantId}/brand/pillars` }] };
+  }
+
+  await captureIdea(scope, action.params.text);
+  revalidatePath(base, "layout");
+  return { text: "Saved to the idea inbox.", tasks: [{ label: "Idea captured", href: `/w/${tenantId}/plan/ideas` }] };
 }

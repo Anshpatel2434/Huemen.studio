@@ -35,16 +35,18 @@ export function BrandCoreCard({
     : trained ? { tone: "ok" as const, word: "Trained" }
     : { tone: "warn" as const, word: "Provisional" };
   return (
-    <div className="bg-paper border border-hairline rounded-[16px] overflow-hidden">
+    <div className="@container bg-paper border border-hairline rounded-md overflow-hidden">
       <HueStrip count={8} className="!rounded-none" />
       <div className="p-6">
-        <div className="flex items-center gap-3.5">
+        {/* Sized by its own width (container query), so it reads the same in a
+            360px column on Brand home and full width in Brand core. */}
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-3">
           <Avatar seed={seed} label={name} size="lg" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[1.15rem] font-medium truncate">{name}</p>
-            <p className="text-[0.82rem] text-ink-muted truncate">{subtitle}</p>
+          <div className="min-w-0 flex-1 basis-[12ch]">
+            <p className="text-lg font-medium leading-snug break-words">{name}</p>
+            <p className="text-sm text-ink-muted break-words">{subtitle}</p>
           </div>
-          <Badge tone={badge.tone}>{badge.word}</Badge>
+          <span className="@md:order-none order-last w-full @md:w-auto"><Badge tone={badge.tone}>{badge.word}</Badge></span>
         </div>
 
         {attributes.length > 0 && (
@@ -52,20 +54,20 @@ export function BrandCoreCard({
             <p className="label-mono text-ink-faint mb-2">Voice</p>
             <div className="flex flex-wrap gap-1.5">
               {attributes.map((a) => (
-                <span key={a} className="label-mono px-2.5 h-6 inline-flex items-center rounded-[7px] bg-accent-soft text-accent-ink">{a}</span>
+                <span key={a} className="label-mono px-2.5 h-6 inline-flex items-center rounded-sm bg-accent-soft text-accent-ink">{a}</span>
               ))}
             </div>
           </div>
         )}
 
-        <div className="mt-5 pt-5 border-t border-hairline grid grid-cols-4 gap-3">
+        <div className="mt-5 pt-5 border-t border-hairline grid grid-cols-2 @md:grid-cols-4 gap-x-3 gap-y-4">
           <div>
-            <p className="text-[1.5rem] font-medium tabular-nums leading-none" style={{ color: trained ? "var(--ok)" : "var(--ink)" }}>{confidence}<span className="text-[0.85rem] text-ink-faint">%</span></p>
+            <p className="num text-xl font-medium leading-none" style={{ color: trained ? "var(--ok)" : "var(--ink)" }}>{confidence}<span className="text-sm text-ink-faint">%</span></p>
             <p className="label-mono text-ink-faint mt-1">Confidence</p>
           </div>
           {stats.map((s) => (
             <div key={s.label}>
-              <p className="text-[1.5rem] font-medium tabular-nums leading-none">{s.value}</p>
+              <p className="num text-xl font-medium leading-none">{s.value}</p>
               <p className="label-mono text-ink-faint mt-1">{s.label}</p>
             </div>
           ))}
@@ -108,11 +110,11 @@ export function ScoreMeter({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <span className="text-[1.9rem] font-medium tabular-nums leading-none">{score}<span className="text-[0.9rem] text-ink-faint">{out}</span></span>
+        <span className="num text-2xl font-medium leading-none">{score}<span className="text-sm text-ink-faint">{out}</span></span>
         <Badge tone={t.tone}>{word ?? t.word}</Badge>
       </div>
       <div className="mt-3 h-2 rounded-full bg-field overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: t.fill }} />
+        <div className="hu-meter-fill h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: t.fill }} />
       </div>
       <div className="mt-1.5 flex justify-between label-mono text-ink-faint">
         {scale.map((s) => <span key={s}>{s}</span>)}
@@ -126,20 +128,82 @@ export type Finding = { verdict: Band; text: string; why?: ReactNode; fix?: stri
 export function Findings({ items }: { items: Finding[] }) {
   const label: Record<Band, string> = { on: "On", drift: "Drift", off: "Off" };
   return (
-    <div className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-[12px] overflow-hidden">
+    <div className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md overflow-hidden">
       {items.map((f, i) => {
         const t = BAND_TONE[f.verdict];
         return (
           <div key={i} className="flex gap-3 p-3.5" style={{ background: f.verdict === "on" ? undefined : `color-mix(in srgb, var(--${t.tone}-soft) 55%, transparent)` }}>
             <span className="label-mono h-5 px-2 rounded-full inline-flex items-center shrink-0" style={{ color: `var(--${t.tone})`, background: `var(--${t.tone}-soft)` }}>{label[f.verdict]}</span>
             <div className="min-w-0">
-              <p className="text-[0.85rem] leading-relaxed">{f.text}</p>
-              {f.why && <p className="text-[0.78rem] text-ink-muted mt-1">{f.why}</p>}
-              {f.fix && <p className="text-[0.78rem] mt-1"><span className="text-ink-faint">Suggested: </span>{f.fix}</p>}
+              <p className="text-sm leading-relaxed">{f.text}</p>
+              {f.why && <p className="text-xs text-ink-muted mt-1">{f.why}</p>}
+              {f.fix && <p className="text-xs mt-1"><span className="text-ink-faint">Suggested: </span>{f.fix}</p>}
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The composer's collapsed core §15.7: whose voice is in use, how sure the
+ * system is, and the words it learned. Sits beside every draft.
+ */
+export function CoreAside({ name, seed, confidence, attributes, trained, children }: {
+  name: string; seed: string; confidence: number; attributes: string[]; trained: boolean; children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <Avatar seed={seed} label={name} size="md" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold truncate">{name}</p>
+          <p className="label-mono text-ink-faint">
+            <span className="num" style={{ color: trained ? "var(--ok)" : undefined }}>{confidence}%</span> confident
+          </p>
+        </div>
+      </div>
+      {attributes.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {attributes.map((a) => <span key={a} className="hu-tag">{a}</span>)}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Usage and limits §15.5: shown before it becomes a wall, always with the
+ * reset date so a limit reads as a rhythm, not a punishment.
+ */
+export function UsageMeter({ rows, resets, footer }: {
+  rows: { label: string; used: number; cap: number | null }[];
+  /** e.g. "1 November". */
+  resets: string;
+  footer?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      {rows.map((r) => {
+        const pct = r.cap ? Math.min(100, (r.used / r.cap) * 100) : 0;
+        const near = r.cap ? r.used / r.cap >= 0.8 : false;
+        return (
+          <div key={r.label}>
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span>{r.label}</span>
+              <span className="num text-ink-muted">{r.used}{r.cap ? <span className="text-ink-faint"> / {r.cap}</span> : <span className="text-ink-faint"> · no cap</span>}</span>
+            </div>
+            {r.cap ? (
+              <div className="mt-2 h-1.5 rounded-full bg-active overflow-hidden" role="progressbar" aria-label={r.label} aria-valuemin={0} aria-valuemax={r.cap} aria-valuenow={r.used}>
+                <div className="hu-meter-fill h-full rounded-full" style={{ width: `${pct}%`, background: near ? "var(--warn-line)" : "var(--accent)" }} />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+      <p className="text-xs text-ink-faint">Resets {resets}.{footer ? <> {footer}</> : null}</p>
     </div>
   );
 }

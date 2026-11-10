@@ -113,3 +113,17 @@ export function mergeIntake(base: FoundationForm, r: IntakeResult): FoundationFo
     }),
   };
 }
+
+/**
+ * Like mergeIntake, but only into what is still empty: nothing already
+ * written is replaced. Returns how many fields it filled.
+ */
+export function fillIntake(base: FoundationForm, r: IntakeResult): { form: FoundationForm; filled: number } {
+  const blank = (k: string) => {
+    if (/^ch[012]$/.test(k)) return !base.chapters[Number(k[2])]?.body?.trim();
+    const v = (base as unknown as Record<string, unknown>)[k];
+    return typeof v !== "string" || !v.trim();
+  };
+  const fields = Object.fromEntries(Object.entries(r.fields).filter(([k]) => blank(k)));
+  return { form: mergeIntake(base, { ...r, fields }), filled: Object.keys(fields).length };
+}

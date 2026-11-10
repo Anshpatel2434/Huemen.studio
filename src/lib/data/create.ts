@@ -14,10 +14,11 @@
  */
 import "server-only";
 import { withTenantSession } from "@/db/session";
-import { runTask } from "@/lib/ai";
+import { runTask, runTaskStamped } from "@/lib/ai";
 import { coWriteOutline, topicProposals } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { formatByKey } from "@/lib/content/formats";
+import { clip } from "@/lib/voice/derive";
 import { createProject, setIdeate, unlockStage, type ProjectScope, type WorkspaceScope } from "./projects";
 import { listPillars } from "./planning";
 import { createContentItem } from "./content";
@@ -55,7 +56,8 @@ export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boole
     ),
   ]);
   const taskInput = [
-    ...pillars.map((p) => `Pillar: ${p.name}${p.description ? ` (${p.description})` : ""}`),
+    // Names only: what each pillar means is in the context block (INV-2).
+    ...pillars.map((p) => `Pillar: ${p.name}`),
     ...recent.map((r) => `Recent: ${r}`),
     ...(opts.force ? pack.topicSuggestions.map((t) => `Recent: ${t.title}`) : []),
   ].join("\n");
@@ -74,10 +76,10 @@ export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boole
 /** A new piece at Ideate. Returns the project id. */
 export async function startPiece(
   scope: WorkspaceScope,
-  input: { topic: string; format?: string | null; pillarName?: string | null; ideaId?: string | null },
+  input: { topic: string; format?: string | null; pillarName?: string | null; pillarId?: string | null; angle?: string | null; ideaId?: string | null },
 ): Promise<string> {
   const topic = input.topic.trim() || "Untitled piece";
-  const projectId = await createProject(scope, topic.slice(0, 120));
+  const projectId = await createProject(scope, clip(topic, 120));
   const p: ProjectScope = { ...scope, projectId };
   const pillars = input.pillarName ? await listPillars(scope) : [];
   // A suggestion names its pillar the way the prompt listed it, which can carry
@@ -88,8 +90,8 @@ export async function startPiece(
     [...pillars].sort((a, b) => b.name.length - a.name.length).find((x) => want.startsWith(x.name.toLowerCase()));
   await setIdeate(p, {
     format: input.format ?? null,
-    pillarId: pillar?.id ?? null,
-    angle: null,
+    pillarId: input.pillarId ?? pillar?.id ?? null,
+    angle: input.angle?.trim() || null,
     ideaId: input.ideaId ?? null,
     topic,
   });
@@ -121,8 +123,8 @@ export async function coWrite(
   input: { format: string; topic: string; angle?: string | null; pillarId?: string | null },
 ): Promise<string> {
   const fmt = formatByKey(input.format);
-  const outline = await runTask(scope, coWriteOutline, {
-    context: await loadBrandContext(scope, "en", fmt.platform),
+  const { data: outline, template } = await runTaskStamped(scope, coWriteOutline, {
+    context: await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write"),
     taskInput: [`Format: ${fmt.label}`, `Topic: ${input.topic}`, input.angle ? `Angle: ${input.angle}` : ""].filter(Boolean).join("\n"),
   });
   const id = await createContentItem(scope, {
@@ -134,6 +136,7 @@ export async function coWrite(
     pillarId: input.pillarId,
     status: "draft",
     origin: "co-write-outline",
+    stamp: { templateId: template.id, version: template.version },
   });
   await unlockStage(scope, "content").catch(() => undefined);
   return id;

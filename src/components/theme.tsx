@@ -63,23 +63,24 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       onClick={() => setTheme(next)}
       title={`Switch to ${next} view`}
       aria-label={`Switch to ${next} view`}
-      className={`w-8 h-8 rounded-[8px] flex items-center justify-center text-ink-muted hover:bg-field hover:text-ink transition-colors ${className}`}
+      className={`hu-iconbtn ${className}`}
     >
-      <Icon size={16} />
+      <Icon size={17} aria-hidden="true" />
     </button>
   );
 }
 
-/** Two-segment Light | Dark control (sidebar, menus). "System" shows neither as pressed. */
+/** Light | Dark | Auto control (sidebar, menus). Auto follows the device, the default. */
 export function ThemeSwitch({ className = "" }: { className?: string }) {
   const { pref, setTheme } = useTheme();
-  const opts: { v: Theme; label: string; icon: typeof Sun }[] = [
-    { v: "light", label: "Light", icon: Sun },
-    { v: "dark", label: "Dark", icon: Moon },
+  const opts: { v: ThemePref; label: string; icon: typeof Sun; title: string }[] = [
+    { v: "light", label: "Light", icon: Sun, title: "Light view" },
+    { v: "dark", label: "Dark", icon: Moon, title: "Dark view" },
+    { v: "system", label: "Auto", icon: Monitor, title: "Follow this device" },
   ];
   return (
-    <div role="radiogroup" aria-label="Appearance" className={`grid grid-cols-2 gap-0.5 p-0.5 rounded-[9px] bg-field ${className}`}>
-      {opts.map(({ v, label, icon: Icon }) => {
+    <div role="radiogroup" aria-label="Appearance" className={`hu-seg !grid grid-cols-3 w-full ${className}`}>
+      {opts.map(({ v, label, icon: Icon, title }) => {
         const on = pref === v;
         return (
           <button
@@ -87,10 +88,11 @@ export function ThemeSwitch({ className = "" }: { className?: string }) {
             type="button"
             role="radio"
             aria-checked={on}
+            title={title}
             onClick={() => setTheme(v)}
-            className={`h-7 rounded-[7px] flex items-center justify-center gap-1.5 text-[0.76rem] font-medium transition-colors ${on ? "bg-paper text-ink shadow-[var(--shadow-sm)]" : "text-ink-muted hover:text-ink"}`}
+            className="hu-seg__item !px-2"
           >
-            <Icon size={13} /> {label}
+            <Icon size={14} aria-hidden="true" /> {label}
           </button>
         );
       })}
@@ -117,9 +119,9 @@ export function ThemePicker() {
             role="radio"
             aria-checked={on}
             onClick={() => setTheme(v)}
-            className={`w-full rounded-[10px] border p-3 text-left transition-colors ${on ? "border-ink ring-1 ring-ink" : "border-hairline hover:border-line"}`}
+            className={`w-full rounded-md border p-3 text-left transition-colors ${on ? "border-ink ring-1 ring-ink" : "border-hairline hover:border-line"}`}
           >
-            <span className="flex h-20 rounded-[6px] mb-2.5 border border-hairline overflow-hidden">
+            <span className="flex h-20 rounded-sm mb-2.5 border border-hairline overflow-hidden">
               {v === "system" ? (
                 <>
                   <Preview tone="light" half />
@@ -129,8 +131,8 @@ export function ThemePicker() {
                 <Preview tone={v} />
               )}
             </span>
-            <span className="flex items-center gap-1.5 text-[0.82rem] font-medium"><Icon size={13} /> {label}</span>
-            <span className="block text-[0.72rem] text-ink-faint mt-0.5">{hint}</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium"><Icon size={13} /> {label}</span>
+            <span className="block text-xs text-ink-faint mt-0.5">{hint}</span>
           </button>
         );
       })}
@@ -158,7 +160,7 @@ function Preview({ tone, half = false }: { tone: Theme; half?: boolean }) {
           </span>
         )}
         <span className="flex-1 flex items-center justify-center">
-          <span className="w-9 h-9 rounded-[3px] bg-white flex flex-col gap-[3px] p-1.5 shadow-sm">
+          <span className="w-9 h-9 rounded-xs bg-white flex flex-col gap-[3px] p-1.5 shadow-sm">
             <span className="h-[3px] rounded-full bg-[#0a0a0a]" />
             <span className="h-[3px] w-2/3 rounded-full bg-[#dcdcdc]" />
             <span className="h-[3px] w-1/2 rounded-full bg-[#dcdcdc]" />

@@ -9,10 +9,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { actionScope } from "@/lib/auth/workspace";
 import {
-  addCalendarEntry, archiveIdea, captureIdea, createOffer, deleteCalendarEntry, deleteOffer,
-  getIdea, markIdeaStarted, setIdeaPillar,
+  addCalendarEntry, archiveIdea, captureIdea, createOffer, deleteCalendarEntry, deleteOffer, updateOffer,
+  generateCalendar, getCalendarEntry, getIdea, markIdeaStarted, markSlotStarted, setIdeaPillar,
 } from "@/lib/data/planning";
+import { FORMATS } from "@/lib/content/formats";
 import { startPiece } from "@/lib/data/create";
+import { CALENDAR_CHANNELS } from "@/lib/content/calendar-plan";
 
 async function ctx(fd: FormData) {
   const t = String(fd.get("tenantId"));
@@ -54,11 +56,25 @@ export async function convertIdeaAction(fd: FormData) {
   redirect(`/w/${t}/p/${projectId}/ideate`);
 }
 
-/** A planned calendar slot becomes a new piece with its topic filled in. */
+/**
+ * A planned calendar slot becomes a new piece with everything the plan said:
+ * topic, platform, pillar, and the hook angle and call to action as the
+ * piece's angle (which the writing step reads). The slot then points at the
+ * piece, so it shows "Open" rather than starting another one.
+ */
 export async function startFromSlotAction(fd: FormData) {
   const { t, scope } = await ctx(fd);
-  const topic = String(fd.get("topic") ?? "").trim() || "Planned piece";
-  const projectId = await startPiece(scope, { topic });
+  const slot = await getCalendarEntry(scope, String(fd.get("id") ?? ""));
+  if (!slot) return refresh(t);
+  if (slot.startedProjectId) redirect(`/w/${t}/p/${slot.startedProjectId}/ideate`);
+  const angle = [slot.hookAngle?.trim(), slot.cta?.trim() && `Close with: ${slot.cta.trim()}`].filter(Boolean).join(". ");
+  const projectId = await startPiece(scope, {
+    topic: slot.topic?.trim() || "Planned piece",
+    format: slot.channel ? FORMATS.find((f) => f.channel === slot.channel)?.key ?? null : null,
+    pillarId: slot.pillarId,
+    angle: angle || null,
+  });
+  await markSlotStarted(scope, slot.id, projectId);
   refresh(t);
   redirect(`/w/${t}/p/${projectId}/ideate`);
 }
@@ -78,24 +94,47 @@ export async function addCalendarEntryAction(fd: FormData) {
   refresh(t);
 }
 
+/** The 90-day plan. Returns what was planned and how many days were already taken. */
+export async function generateCalendarAction(
+  tenantId: string,
+  opts: { start: string; perWeek: number; channels: string[] },
+): Promise<{ planned: number; skipped: number }> {
+  const scope = await actionScope(tenantId);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.start)) throw new Error("bad start date");
+  const channels = opts.channels.filter((c) => CALENDAR_CHANNELS.some((k) => k.key === c));
+  const out = await generateCalendar(scope, { start: opts.start, perWeek: opts.perWeek, channels });
+  refresh(tenantId);
+  return out;
+}
+
 export async function deleteCalendarEntryAction(fd: FormData) {
   const { t, scope } = await ctx(fd);
   await deleteCalendarEntry(scope, String(fd.get("id")));
   refresh(t);
 }
 
+const offerFrom = (fd: FormData, name: string) => ({
+  name,
+  format: String(fd.get("format") ?? ""),
+  promise: String(fd.get("promise") ?? ""),
+  deliverables: String(fd.get("deliverables") ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
+  pricingLogic: String(fd.get("pricingLogic") ?? ""),
+});
+
 export async function createOfferAction(fd: FormData) {
   const { t, scope } = await ctx(fd);
   const name = String(fd.get("name") ?? "").trim();
   if (!name) return;
-  await createOffer(scope, {
-    name,
-    format: String(fd.get("format") ?? ""),
-    promise: String(fd.get("promise") ?? ""),
-    deliverables: String(fd.get("deliverables") ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
-    pricingLogic: String(fd.get("pricingLogic") ?? ""),
-  });
+  await createOffer(scope, offerFrom(fd, name));
   refresh(t);
+}
+
+export async function updateOfferAction(fd: FormData) {
+  const { t, scope } = await ctx(fd);
+  const name = String(fd.get("name") ?? "").trim();
+  if (name) await updateOffer(scope, String(fd.get("id")), offerFrom(fd, name));
+  refresh(t);
+  redirect(`/w/${t}/plan/offers`);
 }
 
 export async function deleteOfferAction(fd: FormData) {

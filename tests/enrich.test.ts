@@ -7,7 +7,7 @@ import "dotenv/config";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Pool } from "pg";
 import { extractAnswers, dialPairs, voicePreview, previewSource, TASKS } from "@/lib/ai/tasks";
-import { buildBrandContext } from "@/lib/context/context-builder";
+import { buildBrandContext, CONTEXT_VERSION } from "@/lib/context/context-builder";
 import { prefill } from "@/lib/voice/lifecycle";
 import { DIAL_KEYS, emptyIndex, type VoicePack } from "@/lib/voice/types";
 import { extractArticle, findFeedLink, htmlToText, looksLikeFeed, parseCaptions, parseFeed } from "@/lib/integrations/text";
@@ -88,7 +88,7 @@ describe("context v3 carries what a draft can't invent", () => {
         preferences: [{ chosen: "Get out of the car.", over: "Step back further." }],
       },
     });
-    expect(ctx.version).toBe(3);
+    expect(ctx.version).toBe(CONTEXT_VERSION);
     expect(ctx.serialized).toContain("The client who fired me: In 2019 a client let me go. (shows: Listen first)");
     expect(ctx.serialized).toContain("ONLY numbers, results and client details a draft may use");
     expect(ctx.serialized).toContain("140 managers coached [my records]");
@@ -314,7 +314,7 @@ describe("enrichment in the database", () => {
     const png = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], "me.png", { type: "image/png" });
     await uploadAsset(W, png, "headshot");
     expect((await listAssets(W)).some((a) => a.kind === "headshot")).toBe(true);
-    await expect(uploadAsset(W, new File(["x"], "me.svg", { type: "image/svg+xml" }), "headshot")).rejects.toThrow(/unsupported/);
+    await expect(uploadAsset(W, new File(["x"], "me.svg", { type: "image/svg+xml" }), "headshot")).rejects.toThrow(/isn't one we can use/);
   });
 });
 

@@ -88,10 +88,12 @@ describe("where answers go", () => {
     expect(lex?.value).toEqual(["clarity", "attention", "ownership"]);
   });
 
-  it("keeps a long party answer as a spoken sample", () => {
+  it("keeps a long party answer as a spoken sample only when it was spoken", () => {
     const long = "I'd be the one asking people what they actually do all day, then telling a story about the worst client brief I ever got, and laughing at myself first.";
-    expect(applyAnswer(pack(), "C1", long).spokenSample).toBe(long);
-    expect(applyAnswer(pack(), "C1", "Quiet.").spokenSample).toBeUndefined();
+    expect(applyAnswer(pack(), "C1", long, { spoken: true }).spokenSample).toBe(long);
+    // Typed is writing, not speech: it must not count as their spoken voice.
+    expect(applyAnswer(pack(), "C1", long).spokenSample).toBeUndefined();
+    expect(applyAnswer(pack(), "C1", "Quiet.", { spoken: true }).spokenSample).toBeUndefined();
   });
 
   it("keeps the scan's dial estimate beside the person's choice", () => {

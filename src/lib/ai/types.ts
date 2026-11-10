@@ -83,6 +83,31 @@ export interface TextProvider {
   ): Promise<StructuredResult<T>>;
 }
 
+/**
+ * A draft as it is written (brief §07: "anything the user waits on streams").
+ * Deltas are plain text; versions are separated by a line holding only
+ * STREAM_SEPARATOR (lib/ai/prompt), so the canvas can show each version
+ * filling in. The last event is always "done", carrying the usage to log.
+ */
+export type TextStreamEvent =
+  | { type: "delta"; text: string }
+  | {
+      type: "done";
+      model: string;
+      tokensIn: number;
+      tokensOut: number;
+      /** The final text, when the provider knows it better than the deltas (a mid-stream fallback). */
+      text?: string;
+    };
+
+export interface StreamingTextProvider extends TextProvider {
+  stream(
+    req: TextGenRequest & { prompt: AssembledPrompt },
+    model: string,
+    opts?: TextCallOptions,
+  ): AsyncIterable<TextStreamEvent>;
+}
+
 export interface StructuredResult<T> {
   data: T;
   model: string;

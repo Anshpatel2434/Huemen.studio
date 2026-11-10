@@ -83,6 +83,7 @@ export interface HealthCheck {
 
 export function brandHealth(ctx: BrandContext, content: ContentItemView[], pillars: PillarView[]) {
   const flagged = content.filter((c) => c.violations.length > 0);
+  const hasGuardrails = (ctx.guardrails?.dontWords ?? []).length > 0;
   const missingCta = content.filter((c) => !c.cta.trim());
   const untagged = content.filter((c) => !c.pillarId);
   const approved = content.filter((c) => c.status === "approved");
@@ -97,9 +98,15 @@ export function brandHealth(ctx: BrandContext, content: ContentItemView[], pilla
     {
       key: "voice",
       label: "Voice guardrails",
-      ok: flagged.length === 0,
-      value: flagged.length ? `${flagged.length} flagged` : "No don't-words",
-      detail: flagged.length ? `Don't-words found in ${flagged.length} piece${flagged.length > 1 ? "s" : ""}.` : undefined,
+      // Having no guardrails is not a pass: nothing was checked. Only a list
+      // that exists and caught nothing earns the tick.
+      ok: flagged.length === 0 && hasGuardrails,
+      value: flagged.length ? `${flagged.length} flagged` : hasGuardrails ? "Nothing flagged" : "None set",
+      detail: flagged.length
+        ? `Don't-words found in ${flagged.length} piece${flagged.length > 1 ? "s" : ""}.`
+        : hasGuardrails
+          ? undefined
+          : "Say what you'd never write, and every piece gets checked against it.",
     },
     {
       key: "cta",

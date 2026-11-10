@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Mic, Square } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { AgentDots } from "@/components/ui";
+import { sendToStorage } from "@/lib/upload-client";
 
 const LIMIT_S = 180;
 
@@ -26,12 +27,13 @@ export function VoiceRecorder({ tenantId, enabled, onText }: { tenantId: string;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser support is only knowable after hydration
     setSupported(typeof window !== "undefined" && "MediaRecorder" in window && !!navigator.mediaDevices?.getUserMedia);
     return () => { if (timer.current) clearInterval(timer.current); rec.current?.stream.getTracks().forEach((t) => t.stop()); };
   }, []);
 
-  if (!enabled) return <p className="text-[0.75rem] text-ink-faint">Recording isn&apos;t switched on here yet. Type it, or paste a transcript.</p>;
-  if (!supported) return <p className="text-[0.75rem] text-ink-faint">This browser can&apos;t record. Type it, or paste a transcript.</p>;
+  if (!enabled) return <p className="text-xs text-ink-faint">Recording isn&apos;t switched on here yet. Type it, or paste a transcript.</p>;
+  if (!supported) return <p className="text-xs text-ink-faint">This browser can&apos;t record. Type it, or paste a transcript.</p>;
 
   const stop = () => {
     if (timer.current) clearInterval(timer.current);
@@ -57,9 +59,12 @@ export function VoiceRecorder({ tenantId, enabled, onText }: { tenantId: string;
       try {
         const type = r.mimeType || "audio/webm";
         const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-        const fd = new FormData();
-        fd.append("audio", new File(chunks, `note.${ext}`, { type }));
-        const res = await fetch(`/w/${tenantId}/onboarding/transcribe`, { method: "POST", body: fd });
+        const key = await sendToStorage(tenantId, "audio", new Blob(chunks, { type }), `note.${ext}`);
+        const res = await fetch(`/w/${tenantId}/onboarding/transcribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, name: `note.${ext}`, type }),
+        });
         const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
         if (!res.ok || !body.text) setError(body.error ?? "That didn't work. Try again, or type it.");
         else onText(body.text);
@@ -93,8 +98,8 @@ export function VoiceRecorder({ tenantId, enabled, onText }: { tenantId: string;
           {state === "sending" ? <><AgentDots /> Writing it down</> : <><Mic size={14} aria-hidden="true" /> Record</>}
         </button>
       )}
-      {state === "recording" && <span role="status" className="text-[0.78rem] text-ink-muted">Recording. Talk the way you would to a friend.</span>}
-      {error && <span role="alert" className="text-[0.78rem] text-danger">{error}</span>}
+      {state === "recording" && <span role="status" className="text-xs text-ink-muted">Recording. Talk the way you would to a friend.</span>}
+      {error && <span role="alert" className="text-xs text-danger">{error}</span>}
     </div>
   );
 }
