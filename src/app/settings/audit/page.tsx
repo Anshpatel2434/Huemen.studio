@@ -55,7 +55,7 @@ export default async function AuditPage() {
                   {ACTIONS[r.action] ?? r.action}
                   {r.workspace && <span className="text-ink-muted"> · {r.workspace}</span>}
                 </p>
-                <p className="text-xs text-ink-faint truncate">{[detail(r.target), r.actor && `by ${r.actor}`].filter(Boolean).join(" · ")}</p>
+                <p className="text-xs text-ink-faint break-words md:truncate">{[detail(r.target), r.actor && `by ${r.actor}`].filter(Boolean).join(" · ")}</p>
               </div>
             </li>
           ))}

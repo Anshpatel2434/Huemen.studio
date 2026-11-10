@@ -13,6 +13,7 @@ import { STEERS, findViolations, formatByKey } from "@/lib/content/formats";
 import type { ContentItemView } from "@/lib/data/content";
 import { askRewriteAction, deleteContentAction, saveContentAction, steerAction, applyVariantAction, patchContentAction } from "./actions";
 import { Select } from "@/components/select";
+import { guardedLeave, unsavedKey, useUnsavedChanges } from "@/components/unsaved-guard";
 
 const WIDTH: Record<Device, number> = { desktop: 520, tablet: 440, mobile: 360 };
 const STATUS_TONE = { draft: "neutral", edited: "dark", approved: "ok" } as const;
@@ -54,9 +55,14 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
   }), [serverItems, moves, pillars]);
   const selected = items.find((i) => i.id === selectedId) ?? null;
 
+  // Moving to another piece (or closing the editor) asks first when the open
+  // one has unsaved edits.
   const select = useCallback(
-    (id: string | null) => router.replace(id ? `${pathname}?item=${id}` : pathname, { scroll: false }),
-    [router, pathname],
+    (id: string | null) => {
+      if (id === selectedId) return;
+      guardedLeave(() => router.replace(id ? `${pathname}?item=${id}` : pathname, { scroll: false }));
+    },
+    [router, pathname, selectedId],
   );
 
   // Every pillar is a column (empty ones are drop targets), then "No pillar".
@@ -114,7 +120,8 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
     if (!item) return;
     setToDelete(null);
     deleteContentAction(tenantId, projectId, item.id).then(
-      () => { toast("Deleted"); select(null); router.refresh(); },
+      // Gone, so there is nothing left to save: no "leave without saving?".
+      () => { toast("Deleted"); router.replace(pathname, { scroll: false }); router.refresh(); },
       () => toast("Couldn't delete that piece.", "danger"),
     );
   };
@@ -273,6 +280,13 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
 
   const liveViolations = findViolations(`${hook}\n${body}\n${cta}`, dontWords);
   const dirty = hook !== item.hook || body !== item.body || cta !== item.cta || (pillarId || null) !== item.pillarId;
+  const { bar } = useUnsavedChanges<{ hook: string; body: string; cta: string; pillarId: string }>({
+    dirty,
+    storageKey: unsavedKey(tenantId, `piece:${item.id}`),
+    value: { hook, body, cta, pillarId },
+    onRestore: (v) => { setHook(v.hook); setBody(v.body); setCta(v.cta); setPillarId(v.pillarId); setTab("edit"); },
+    isSaved: (v) => v.hook === item.hook && v.body === item.body && v.cta === item.cta && (v.pillarId || null) === item.pillarId,
+  });
 
   const run = (label: string, fn: () => Promise<void | { error?: string }>, done: string) =>
     start(async () => {
@@ -302,7 +316,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
     });
 
   return (
-    <aside className="absolute top-0 right-0 bottom-0 min-[900px]:top-1 min-[900px]:right-3 min-[900px]:bottom-3 min-[900px]:rounded-2xl min-[900px]:border overflow-hidden z-30 w-[min(360px,100%)] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
+    <aside className="absolute top-0 right-0 bottom-0 max-sm:top-auto max-sm:left-0 max-sm:w-full max-sm:h-[85%] max-sm:rounded-t-2xl max-sm:border-t max-sm:border-l-0 min-[900px]:top-1 min-[900px]:right-3 min-[900px]:bottom-3 min-[900px]:rounded-2xl min-[900px]:border overflow-hidden z-30 w-[min(360px,100%)] bg-paper border-l border-hairline shadow-[var(--shadow-lg)] flex flex-col fade-in">
       <div className="min-h-14 shrink-0 flex items-center gap-2 pl-4 pr-2 border-b border-hairline">
         <span className="text-sm font-semibold flex-1 truncate">{formatByKey(item.format).label}</span>
         <Segmented
@@ -316,6 +330,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
 
       {tab === "edit" ? (
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+          {bar}
           {liveViolations.length > 0 && (
             <div className="bg-accent-soft rounded-md px-3 py-2.5 text-sm">
               <p className="font-medium text-accent-ink flex items-center gap-1.5"><Flag size={13} /> Don&apos;t-words found</p>
@@ -343,7 +358,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
               className="hu-composer !p-2 !pl-3.5 !flex-row !items-center mt-2"
               onSubmit={(e) => { e.preventDefault(); const ask = askText.trim(); if (!ask || pending) return; run("ask", () => steerAction(tenantId, projectId, item.id, ask), "New version added to history"); setAskText(""); }}
             >
-              <input type="text" value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="Ask for a change: shorter, add a story, end on a question" aria-label="Ask for a change" />
+              <input type="text" value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="Ask for a change: shorter, add a story, end on a question" aria-label="Ask for a change" className="max-sm:min-h-10" />
               <button type="submit" disabled={!askText.trim() || pending} className={`${btnClass("secondary", "sm")} shrink-0`}>{busy === "ask" ? <AgentDots /> : "Ask"}</button>
             </form>
             <p className="text-xs text-ink-faint mt-1.5">The previous version stays in History.</p>

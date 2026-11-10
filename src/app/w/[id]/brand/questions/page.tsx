@@ -10,6 +10,8 @@ import { buildQuestions, MIN_SEEDS } from "@/lib/brief/questions";
 import { SubmitButton, Alert } from "@/components/ui";
 import { answerQuestionsAction } from "../actions";
 import { btnClass } from "@/components/btn";
+import { GuardedForm } from "@/components/unsaved-guard";
+import { unsavedKey } from "@/lib/ui/unsaved";
 
 export const metadata = { title: "Brief questions" };
 
@@ -60,7 +62,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
             </Alert>
           )}
 
-          <form action={answerQuestionsAction} className="mt-6 flex flex-col gap-3 pb-24">
+          <GuardedForm storageKey={unsavedKey(id, "brief-questions")} action={answerQuestionsAction} className="mt-6 flex flex-col gap-3 pb-24">
             <input type="hidden" name="tenantId" value={id} />
 
             {gaps.length > 0 && (
@@ -78,7 +80,7 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
                 {pillarsDone ? "Add more pillars →" : "Generate pillars →"}
               </SubmitButton>
             </div>
-          </form>
+          </GuardedForm>
         </div>
 
         <aside className="hidden lg:block">

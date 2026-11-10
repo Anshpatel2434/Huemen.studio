@@ -105,11 +105,7 @@ export function AppShell({ nav, section, tabs, actions, children }: {
               <ThemeToggle />
             </div>
             {tabs && tabs.length > 0 && (
-              <nav className="hu-tabs !border-b-0 px-2 min-[900px]:px-3 overflow-x-auto !flex-nowrap" aria-label={section ?? "Section"}>
-                {tabs.map((t) => (
-                  <Link key={t.href} href={t.href} aria-current={tabOn(t, path) ? "page" : undefined} className="hu-tab">{t.label}</Link>
-                ))}
-              </nav>
+              <SectionTabs tabs={tabs} path={path} label={section ?? "Section"} />
             )}
           </header>
           <main className="flex-1 min-h-0 relative">
@@ -118,6 +114,26 @@ export function AppShell({ nav, section, tabs, actions, children }: {
         </div>
       </div>
     </ToastProvider>
+  );
+}
+
+/**
+ * The section's tabs. On a narrow screen they scroll sideways (no scrollbar
+ * drawn over them), and the one you're on is brought into view.
+ */
+function SectionTabs({ tabs, path, label }: { tabs: ShellTab[]; path: string; label: string }) {
+  const nav = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = nav.current;
+    const on = el?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (el && on && el.scrollWidth > el.clientWidth) el.scrollLeft = on.offsetLeft - (el.clientWidth - on.offsetWidth) / 2;
+  }, [path]);
+  return (
+    <nav ref={nav} className="hu-tabs !border-b-0 px-2 min-[900px]:px-3 overflow-x-auto !flex-nowrap no-scrollbar [scrollbar-width:none]" aria-label={label}>
+      {tabs.map((t) => (
+        <Link key={t.href} href={t.href} aria-current={tabOn(t, path) ? "page" : undefined} className="hu-tab">{t.label}</Link>
+      ))}
+    </nav>
   );
 }
 
@@ -140,7 +156,8 @@ function Crumbs({ nav, section, tabs }: { nav: ShellNav; section?: string; tabs?
       <ol className="hu-crumbs">
         <li className="min-w-0 flex"><Link href={home} className="truncate max-w-[22ch]">{nav.workspace.name}</Link></li>
         {here.map((c, i) => (
-          <li key={c.label} className="min-w-0 flex items-center gap-2">
+          // On a phone the middle steps go, so the workspace and the page you're on both fit.
+          <li key={c.label} className={`min-w-0 flex items-center gap-2 ${i < here.length - 1 ? "max-sm:hidden" : ""}`}>
             <span className="sep" aria-hidden="true">/</span>
             {c.href && i < here.length - 1 ? <Link href={c.href}>{c.label}</Link> : <span aria-current="page">{c.label}</span>}
           </li>

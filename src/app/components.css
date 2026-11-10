@@ -517,3 +517,13 @@
 @layer components {
   label:has(input.sr-only:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 }
+
+/* An alert's action drops under its text on a phone, so the text keeps the
+   width instead of wrapping a word to a line beside a button. */
+@layer components {
+  @media (max-width: 639px) {
+    .hu-alert { grid-template-columns: 20px 1fr; }
+    .hu-alert > :nth-child(3) { grid-column: 2; justify-self: start; }
+    .hu-alert > span:nth-child(3):empty { display: none; }
+  }
+}

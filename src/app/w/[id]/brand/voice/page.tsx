@@ -27,6 +27,8 @@ import { perceptionMirror } from "@/lib/voice/mirror";
 import { BeliefsEditor } from "../../onboarding/enrich-ui";
 import { LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
 import { Select } from "@/components/select";
+import { GuardedForm } from "@/components/unsaved-guard";
+import { unsavedKey } from "@/lib/ui/unsaved";
 
 export const metadata = { title: "Voice" };
 export const dynamic = "force-dynamic";
@@ -348,7 +350,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             </p>
           )}
 
-          <form action={addSamplesAction} className="mt-4 flex flex-col gap-2">
+          <GuardedForm storageKey={unsavedKey(id, "voice:samples")} action={addSamplesAction} className="mt-4 flex flex-col gap-2">
             <Hidden id={id} />
             <textarea
               name="text"
@@ -365,7 +367,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                 <Lock size={11} /> Private writing is measured but never quoted in a draft.
               </span>
             </div>
-          </form>
+          </GuardedForm>
         </Card>
 
         {/* ---- the measured fingerprint ---------------------------------- */}
@@ -426,7 +428,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         )}
 
         {/* ---- the parts a person writes themselves ---------------------- */}
-        <form action={saveVoiceAction}>
+        <GuardedForm storageKey={unsavedKey(id, "voice:words")} action={saveVoiceAction}>
           <Card label="In your words">
             <Hidden id={id} />
             <div className="flex flex-col gap-4">
@@ -455,7 +457,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
               <div><SubmitButton pendingLabel="Saving…" size="md">Save</SubmitButton></div>
             </div>
           </Card>
-        </form>
+        </GuardedForm>
 
         {/* ---- G3: why these three are them ------------------------------ */}
         {benchmarks.length > 0 && (
@@ -463,7 +465,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             <p className="text-sm text-ink-muted mb-3">We drafted a line for each from what the piece does. Put it in your words: drafts are matched against these.</p>
             <div className="flex flex-col gap-3">
               {benchmarks.map((b) => (
-                <form key={b.id} action={setBenchmarkNoteAction} className="border border-hairline rounded-md p-3 flex flex-col gap-2">
+                <GuardedForm key={b.id} storageKey={unsavedKey(id, `voice:benchmark:${b.id}`)} action={setBenchmarkNoteAction} className="border border-hairline rounded-md p-3 flex flex-col gap-2">
                   <Hidden id={id} /><input type="hidden" name="sampleId" value={b.id} />
                   <div className="flex items-center gap-2">
                     <span className="label-mono text-ink-faint">{PLATFORM_RULES[b.channel]?.label ?? b.channel}</span>
@@ -472,7 +474,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                   <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-3 text-ink-muted">{b.body}</p>
                   <textarea name="note" rows={2} defaultValue={notes[b.id]?.note ?? ""} placeholder="What makes this one unmistakably you?" className="field font-[inherit]" readOnly={!owner} />
                   {owner && <div><SubmitButton pendingLabel="Saving…" size="sm" variant={notes[b.id]?.confirmed ? "ghost" : "secondary"}>{notes[b.id]?.confirmed ? "Update" : "That's it"}</SubmitButton></div>}
-                </form>
+                </GuardedForm>
               ))}
             </div>
           </Card>
@@ -491,7 +493,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             {owner && antiPool.length > 0 && (
               <details open={!anti}>
                 <summary className="cursor-pointer min-h-11 flex items-center text-sm text-ink-muted">{anti ? "Pick a different one" : "Pick a piece that sounds almost like you, but not quite"}</summary>
-                <form action={setAntiSampleAction} className="flex flex-col gap-2 pt-1">
+                <GuardedForm storageKey={unsavedKey(id, "voice:anti")} action={setAntiSampleAction} className="flex flex-col gap-2 pt-1">
                   <Hidden id={id} />
                   <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Piece">
                     {antiPool.map((s, i) => (
@@ -506,14 +508,14 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                   <textarea name="fixed" rows={2} placeholder="Optional: the first line, the way you'd actually write it" className="field font-[inherit]" />
                   <p className="text-xs text-ink-faint">It stops shaping your measured voice, and drafts are told to avoid exactly this.</p>
                   <div><SubmitButton pendingLabel="Saving…" size="sm">Save</SubmitButton></div>
-                </form>
+                </GuardedForm>
               </details>
             )}
           </Card>
         )}
 
         {/* ---- the red-pen self-check ------------------------------------ */}
-        <form action={saveSelfCheckAction}>
+        <GuardedForm storageKey={unsavedKey(id, "voice:selfcheck")} action={saveSelfCheckAction}>
           <Card label="Self-check · run on every draft">
             <Hidden id={id} />
             <p className="text-sm text-ink-muted mb-2">
@@ -522,7 +524,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             <textarea name="selfCheck" rows={Math.min(10, selfCheck.length + 1)} defaultValue={selfCheck.join("\n")} className="field font-[inherit] leading-relaxed" />
             <div className="mt-2"><SubmitButton pendingLabel="Saving…" size="sm" variant="secondary">Save self-check</SubmitButton></div>
           </Card>
-        </form>
+        </GuardedForm>
 
         {/* ---- per-platform, measured or inferred ------------------------ */}
         <Card label="How you sound in each place">

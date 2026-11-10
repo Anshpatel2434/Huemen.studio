@@ -253,7 +253,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
       >
         <SlidersHorizontal size={15} aria-hidden="true" /> Design
       </button>
-      <aside aria-label="Design and style guide" className={`${details ? "flex" : "hidden"} min-[900px]:flex absolute min-[900px]:static inset-y-0 right-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mr-3 min-[900px]:mb-3 min-[900px]:rounded-2xl min-[900px]:border min-[900px]:shadow-[var(--shadow)] overflow-hidden shadow-[var(--shadow-overlay)] shrink-0 border-l border-hairline bg-paper flex-col min-h-0`}>
+      <aside aria-label="Design and style guide" className={`${details ? "flex" : "hidden"} min-[900px]:flex absolute min-[900px]:static inset-y-0 right-0 max-sm:top-auto max-sm:left-0 max-sm:h-[75%] max-sm:w-full max-sm:rounded-t-2xl max-sm:border-t max-sm:border-l-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mr-3 min-[900px]:mb-3 min-[900px]:rounded-2xl min-[900px]:border min-[900px]:shadow-[var(--shadow)] overflow-hidden shadow-[var(--shadow-overlay)] shrink-0 border-l border-hairline bg-paper flex-col min-h-0`}>
         <div className="min-h-10 shrink-0 flex items-center pl-3 pr-1 border-b border-hairline">
           <span className="label-mono text-ink-faint flex-1">{stepLabel("visual")} · Visual</span>
           <span className="min-[900px]:hidden"><IconButton label="Close design panel" onClick={() => setDetails(false)}><X size={17} /></IconButton></span>
