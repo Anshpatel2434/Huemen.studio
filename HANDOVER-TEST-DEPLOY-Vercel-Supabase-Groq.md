@@ -87,7 +87,7 @@ answer quality from this test as a floor, not the real thing.
 1. **Import** `Anshpatel2434/Huemen.studio` and set the branch `audit-fixes` (or `main` once merged) as the one to deploy (or deploy it as a preview).
 2. **Function region:** Project Settings > Functions > **Mumbai (bom1)**, next to Supabase. Every query crosses this hop, so the wrong region makes every page slow.
 3. **Deployment Protection:** turn it **on** (Standard Protection). Required if you use `AUTH_DRIVER=dev`, which lets anyone with the URL sign in as anyone.
-   **Function time limit:** Project Settings > Functions > Max Duration, as high as the plan allows (300 s on Pro). There is no job queue, so a long generation runs inside one request.
+   **Function time limit:** Project Settings > Functions > Max Duration, as high as the plan allows (300 s). Batches (a draft from every pillar, the 90-day plan) run in the job queue after the request that starts them, inside that limit (README, Background jobs).
 4. **Environment variables** (Project Settings > Environment Variables). Set them all **before** the first build:
 
    | Name | Value |
@@ -109,6 +109,7 @@ answer quality from this test as a floor, not the real thing.
    | `AI_TRANSCRIBE_PROVIDER` | `off` |
    | `OPENUI_TELEMETRY_DISABLED` | `1` (OpenUI's install script sends anonymous telemetry unless this is set during the build) |
    | `CONNECTIONS_KEY` | optional; only for the Gmail/Google connections, which this test skips |
+   | `CRON_SECRET` | optional for this test: 16+ random characters if you add a Cron Job on `/api/cron` (Vercel Pro allows every few minutes; Hobby only daily). Without it, queued jobs still run while their page is open. |
 
    Leave every `GOOGLE_*`, `LINKEDIN_*` and `ANTHROPIC_API_KEY` blank. Google sign-in and Gmail import need the Vercel URL added as a redirect URI in a Google Cloud project; skip them for this test.
 5. **Deploy.** The build is plain `next build`; nothing else is needed. The lockfile already includes the `@emnapi/*` entries that Linux `npm ci` needs. If you ever run `npm install` on Windows and commit the lockfile, check those entries are still there.
