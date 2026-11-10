@@ -16,6 +16,7 @@ import { addCalendarEntry, getCalendarEntry, listCalendar, markSlotStarted } fro
 import { startPiece } from "@/lib/data/create";
 import { duplicateProject, getProject } from "@/lib/data/projects";
 import { deleteAsset, uploadAsset } from "@/lib/data/assets";
+import { TINY_PNG } from "./fixtures/images";
 import { generateContent, regenerateWithSteer, listContent, EDIT_STEER } from "@/lib/data/content";
 
 const EMPTY_FOUNDATION: FoundationForm = {
@@ -93,7 +94,7 @@ describe("New project like this", () => {
 describe("removing an upload", () => {
   it("deletes the asset and drops it from the reference designs", async () => {
     if (!ok) return expect(ok).toBe(false);
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+    const png = TINY_PNG;
     await uploadAsset(scope(), new File([png], "ref.png", { type: "image/png" }), "reference_image");
     const id = (await withTenantSession(scope(), (c) => c.query<{ id: string }>("SELECT id FROM assets ORDER BY created_at DESC LIMIT 1"))).rows[0].id;
     await withTenantSession(scope(), async (c) => {

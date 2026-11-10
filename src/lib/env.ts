@@ -113,6 +113,13 @@ const schema = z.object({
   // Reading a member's own posts needs LinkedIn partner approval
   // (r_member_social). Leave false until LinkedIn has granted it.
   LINKEDIN_POSTS_APPROVED: z.preprocess(blankIsUnset, z.enum(["true", "false"]).default("false").transform((v) => v === "true")),
+
+  // Error tracking (lib/observability/report). Optional: without a DSN errors
+  // are only written to the log. The Sentry account must be in the client's
+  // own name; the DSN is the project's "Client Keys (DSN)" value.
+  SENTRY_DSN: z.preprocess(blankIsUnset, z.string().url().optional()),
+  /** Tags each event, e.g. "production" or "preview". Defaults to NODE_ENV. */
+  SENTRY_ENVIRONMENT: z.preprocess(blankIsUnset, z.string().max(64).optional()),
 });
 
 export type Env = z.infer<typeof schema>;

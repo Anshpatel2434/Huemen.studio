@@ -5,11 +5,13 @@ import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import { AuthFoot, AuthIcon, AuthShell, AuthTitle } from "@/components/auth-shell";
 import { btnClass } from "@/components/btn";
+import { sendClientError } from "@/lib/observability/client-send";
 
 /** Branded error boundary: a calm message, a retry, and the error reference for support. */
 export default function AppError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
-    console.error(error);
+    console.error(error); // the browser's own console, for whoever is looking
+    sendClientError(error); // browser-only failures to the server log / error tracking (server ones are already there)
   }, [error]);
 
   return (

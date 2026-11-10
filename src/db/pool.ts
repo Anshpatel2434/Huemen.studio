@@ -12,6 +12,7 @@
  */
 import { Pool, type PoolClient } from "pg";
 import { getEnv } from "@/lib/env";
+import { logger } from "@/lib/observability/log";
 
 let _appPool: Pool | null = null;
 
@@ -23,7 +24,7 @@ let _appPool: Pool | null = null;
  * query, so logging it is all that's needed.
  */
 function onIdleError(err: Error) {
-  console.warn(`[db] an idle connection was closed by the server: ${err.message}`);
+  logger.warn("database idle connection closed by the server", { err });
 }
 
 export function appPool(): Pool {

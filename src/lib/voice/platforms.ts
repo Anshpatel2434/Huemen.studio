@@ -13,6 +13,7 @@
  * a count, not a claim. That is what lets Richa keep her ellipsis while Rohan
  * bans his.
  */
+import { logger } from "@/lib/observability/log";
 
 export interface PlatformRule {
   key: string;
@@ -177,7 +178,7 @@ function applyOverrides(): void {
       if (PLATFORM_RULES[k] && v && typeof v === "object") PLATFORM_RULES[k] = { ...PLATFORM_RULES[k], ...v, key: k };
     }
   } catch {
-    console.error("[platforms] PLATFORM_RULES_OVERRIDES is not valid JSON; using the built-in rules.");
+    logger.error("PLATFORM_RULES_OVERRIDES is not valid JSON; using the built-in rules");
   }
 }
 applyOverrides();
