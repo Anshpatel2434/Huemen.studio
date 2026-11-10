@@ -59,7 +59,25 @@ function withContextHints(req: TextGenRequest): string {
     } catch { /* already plain text */ }
     if (said.trim()) hints.push(`Audience: ${said.trim()}`);
   }
+  if (req.templateKey === "voice_preview") hints.push(...previewHints(req.context.serialized));
   return hints.length ? `${hints.join("\n")}\n${req.taskInput}` : req.taskInput;
+}
+
+/**
+ * The live preview's hints, read from the context block the way the real
+ * model reads them (INV-2): the casual-formal dial, a punctuation ban, the
+ * measured sentence length and a closing question. The task input carries
+ * only the paragraph.
+ */
+export function previewHints(s: string): string[] {
+  const out: string[] = [];
+  const casual = s.match(/Casual[–-]Formal (\d+)/)?.[1];
+  if (casual) out.push(`Casual to formal: ${casual}`);
+  if (/No [^.\n]*exclamation marks|free of [^?\n]*exclamation marks/.test(s)) out.push("Exclamation marks: never");
+  const avg = s.match(/Sentences average (\d+(?:\.\d+)?) words/)?.[1];
+  if (avg) out.push(`Average sentence words: ${Math.round(Number(avg))}`);
+  if (/Does it end on a question\?/.test(s)) out.push("Asks questions: often");
+  return out;
 }
 
 function mockPillars(req: TextGenRequest): string {

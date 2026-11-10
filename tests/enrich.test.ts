@@ -52,6 +52,20 @@ describe("the new tasks are registered and their stand-ins behave", () => {
     expect(pairs.every((p) => p.left !== p.right)).toBe(true);
   });
 
+  it("takes the preview's voice from the context block, not the task input (INV-2)", async () => {
+    const { previewHints } = await import("@/lib/ai/providers/mock");
+    const { previewInput } = await import("@/lib/data/enrich");
+    expect(previewInput("leadership")).toBe(`Paragraph:\n${previewSource("leadership")}\n`);
+    const ctx = [
+      "Dials, 1 to 10: Casual–Formal 2 (casual)",
+      "Sentences average 9 words (median 8).",
+      "No exclamation marks.",
+      "Does it end on a question?",
+    ].join("\n");
+    expect(previewHints(ctx)).toEqual(["Casual to formal: 2", "Exclamation marks: never", "Average sentence words: 9", "Asks questions: often"]);
+    expect(previewHints("Niche: leadership")).toEqual([]);
+  });
+
   it("moves the preview as the voice changes", () => {
     const base = `Paragraph:\n${previewSource("leadership")}\n`;
     const plain = voicePreview.mock(base).text;
