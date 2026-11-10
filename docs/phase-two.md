@@ -4,7 +4,7 @@ Deferred, not cancelled (brief §08). Anything parked mid-build lands here **and
 the client is told the same day** — never silently absorbed. Handed over with the
 code at the end (DoD §11).
 
-**Status as of 2026-11-02** (branch `launch-blockers`), checked against the code.
+**Status as of 2026-11-03** (branch `audit-fixes`), checked against the code.
 Items keep the date they were first raised; fixed ones say so. Hosting steps for
 a first deploy are in `HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md`.
 
@@ -41,17 +41,18 @@ is left around them:
 
 ## Interface debt (in scope)
 - 2026-11-01 · build team · **Clutter.** A measured review of nine screens found seven patterns that make the studio feel heavy (always-on chrome, competing primary buttons, instruction paragraphs, the same fact in up to ten places, panels crowding the canvas, too many label styles, empty states first). The review, the clean-UI rules and a five-phase plan (about 3.5 days) were shared as a report; the owner chose to review it with the client before any code changes. Not started.
-- 2026-11-01 · build team · **Native dropdowns.** 16 browser `<select>`s remain (the brief editor's asset type became chips on 2026-11-02), against the no-system-UI rule; one shared Huemen dropdown replaces them all. Part of the clutter plan. Not started.
+- 2026-11-01 · build team · **Native dropdowns.** **Fixed 2026-11-03:** one shared Huemen dropdown (`components/select.tsx`) replaced all 16.
 
 ## Architecture debt (in scope, not demo-visible)
-- 2026-10-13 · build team · **Job queue and streaming** (P2-4): the `jobs` table and `QUEUE_DRIVER` exist unused; everything runs in the request thread. Needed before batch work runs for many clients at once. **Still open.**
+- 2026-10-13 · build team · **Job queue and streaming** (P2-4): the `jobs` table exists unused (`QUEUE_DRIVER` was removed 2026-11-03); everything runs in the request thread. Needed before batch work runs for many clients at once. On Vercel, raise the function time limit meanwhile. **Still open.**
 - 2026-10-13 · build team · **Failed draft as a retryable state** (P2-3): **partly fixed.** A live draft (the Content step's Draft and the agent's Draft buttons) that fails keeps its topic and format and offers Try again. Other generations still show a toast, and the request is not saved before the model call.
-- 2026-10-13 · build team · **Cross-tenant tests over HTTP routes and server actions**: today they cover tables and data functions; `resolveScope` and the storage route are untested. **Still open.**
+- 2026-10-13 · build team · **Cross-tenant tests over HTTP routes and server actions**: **partly fixed 2026-11-03.** `resolveScope` is tested for every role; every table is checked for RLS from the catalog; a static test fails the build if a server action or route has no session, scope or signed-link check. Per-route HTTP tests are still to write.
 - 2026-10-14 · build team · **Context builder bypasses** (INV-2): **fixed.** Pillars (with descriptions) and strategy answers now ride in the context block; never-words were removed from the check, rewrite-part and preview inputs (the stand-in reads them from the context, as the real model does); calendar and topic inputs name pillars only. `tests/context-invariant.test.ts` fails the build if a data module writes brand data into a task input again. The live-preview stand-in still reads a few measured hints (dials, sentence length) from its input; they duplicate the block and are the next to go.
-- 2026-10-13 · build team · **Observability**: no error tracking, no structured logger, no health endpoint. **Still open.**
+- 2026-10-13 · build team · **Observability**: **partly fixed 2026-11-03:** `GET /api/health` (database check) and an app-wide error page. Still no error tracking (needs a service in the client's account, e.g. Sentry) and no structured logger.
 - 2026-10-13 · build team · **Background sync for connections** (docs/integrations.md), Microsoft 365. **Still open.**
 
 ## Done since the 2026-10-13 audit
+- 2026-11-03 · **Audit fixes** (branch `audit-fixes`): production refuses the dev sign-in and the example secret; sessions expire and re-check the account; admin console for access, roles, coaches, accent and an audit log; admin invites limited to the owner's organisation; questionnaire links expire; transcription and abandoned streams are capped and logged; seeded one-line templates no longer shadow the defaults (0018); one Huemen dropdown; new projects open at Ideate, "like a past one" copies the setup; calendar slots link to the piece they start (0019); the logo signs visuals; uploads removable; offers editable and in the brand context; health check, error page, rollbacks for every migration; docs rewritten.
 - 2026-11-02 · **Production sign-in and email**: one-time sign-in links and invites sent through Resend; `AUTH_DRIVER=email` refuses to start without a sender (`6a261e9`).
 - 2026-11-02 · **S3 storage driver** for AWS S3, Supabase Storage or Cloudflare R2, in the client's own account (`8b3f4f1`).
 - 2026-11-02 · **Upload safety**: the type is read from the file's bytes, SVGs with active content are refused, stored files are served with nosniff, a sandboxing CSP and download-unless-image (`f990da2`).

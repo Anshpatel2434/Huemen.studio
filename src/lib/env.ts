@@ -80,14 +80,17 @@ const schema = z.object({
   AI_TRANSCRIBE_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
-  REPLICATE_API_TOKEN: z.string().optional(),
-  // Contractual: client data never used for provider training/eval (brief §07).
+  // Contractual: client data is never used for provider training or
+  // evaluation (brief §07). The operator confirms the provider account is set
+  // up that way by leaving this true; a real provider refuses to start
+  // without it (configProblems). Recorded in docs/decisions.md.
   AI_PROVIDER_NO_TRAINING: z
     .string()
     .default("true")
     .transform((v) => v === "true"),
-
-  QUEUE_DRIVER: z.enum(["pg", "redis"]).default("pg"),
+  // Client demos on the stand-in writer: hide the "Mock AI" badge in the
+  // editor header. The copy is still sample copy.
+  HIDE_MOCK_BADGE: z.preprocess(blankIsUnset, z.enum(["0", "1"]).default("0")).transform((v) => v === "1"),
 
   // Connections (Gmail, Google Docs, Google Calendar, LinkedIn). Each provider
   // is off until its client id and secret are set; the page says so instead of
@@ -115,6 +118,9 @@ export type Env = z.infer<typeof schema>;
  */
 export function configProblems(env: Env, phase?: string): string[] {
   const out: string[] = [];
+  if (env.AI_TEXT_PROVIDER !== "mock" && !env.AI_PROVIDER_NO_TRAINING) {
+    out.push("AI_PROVIDER_NO_TRAINING is false: client data must never be used for model training (brief §07). Set the provider account to no-training, then set AI_PROVIDER_NO_TRAINING=true.");
+  }
   // Production refusals. Not while `next build` collects pages: the build
   // runs as production but serves nobody, and CI builds with test settings.
   if (env.NODE_ENV === "production" && phase !== "phase-production-build") {

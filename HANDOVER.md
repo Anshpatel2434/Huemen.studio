@@ -1,5 +1,13 @@
 # HANDOVER.md — Huemen.studio
 
+> **Superseded (2026-11-03).** This is the hand-over note as of 13 October
+> (branch `voice-pack-v2`). Much has changed since: email sign-in, S3 storage,
+> rate limits, the workspace-level brief, the admin console. For the current
+> state read [`README.md`](README.md), [`docs/architecture.md`](docs/architecture.md),
+> [`docs/phase-two.md`](docs/phase-two.md) (what is left) and, to deploy,
+> [`HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md`](HANDOVER-TEST-DEPLOY-Vercel-Supabase-Groq.md).
+> Kept for its history and its notes on how the earlier pieces were built.
+
 > **You are picking up an in-progress build.** This file is the fast path to
 > being productive. Read it fully, then start at the "Next work" section.
 > Authority order: [`AGENTS.md`](AGENTS.md) (invariants + design) →

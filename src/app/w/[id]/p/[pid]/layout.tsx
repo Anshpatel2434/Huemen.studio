@@ -40,7 +40,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
         members={members}
         questionnaireUrl={session.role === "client" ? null : `${env.APP_URL}/q/${signQuestionnaireToken(id)}`}
         // HIDE_MOCK_BADGE=1 keeps the badge off for client demos; the copy is still sample copy.
-        aiMock={env.AI_TEXT_PROVIDER === "mock" && process.env.HIDE_MOCK_BADGE !== "1"}
+        aiMock={env.AI_TEXT_PROVIDER === "mock" && !env.HIDE_MOCK_BADGE}
       >
         {children}
       </ProjectShell>

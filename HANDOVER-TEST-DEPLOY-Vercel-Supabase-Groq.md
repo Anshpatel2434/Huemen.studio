@@ -5,14 +5,16 @@ whole flow end to end, with Groq's free API standing in for Claude. This is a
 **flow test, not the launch**: demo data only, a protected URL, throwaway
 accounts.
 
-**Branch to deploy:** `launch-blockers`. It includes everything: the short
-onboarding, Getting started, the Relume-style brand core, the agent's card
-answers (OpenUI), and the launch-blocker fixes (sign-in email, S3 storage,
-upload safety, rate limits, hosting fixes, direct uploads).
+**Branch to deploy:** `audit-fixes` (or `main` once its pull request is merged).
+It includes everything: the short onboarding, Getting started, the
+Relume-style brand core, the agent's card answers (OpenUI), the launch-blocker
+fixes (sign-in email, S3 storage, upload safety, rate limits, hosting fixes,
+direct uploads) and the 3 November audit fixes (security, admin console,
+product connections).
 
-**State on 2 November 2026:** everything works locally on Docker Postgres with
+**State on 3 November 2026:** everything works locally on Docker Postgres with
 the built-in stand-in writer (`AI_TEXT_PROVIDER=mock`). Typecheck and lint are
-clean, and all 388 tests pass. The migration step was also run against a
+clean, and all 415 tests pass. The migration step was also run against a
 Postgres where the migrating user is not a superuser, as on Supabase. Nothing
 has been deployed yet, and no real model has been connected yet.
 
@@ -34,7 +36,7 @@ Fixed on 2 November (the old workarounds are no longer needed):
 
 | # | Was | Now |
 |---|---|---|
-| B2 | Sign-in emails were never sent. | `AUTH_DRIVER=email` with `MAIL_PROVIDER=resend` sends one-time sign-in links and invites. It refuses to start without `RESEND_API_KEY` and `MAIL_FROM`. For this test you may still use `AUTH_DRIVER=dev` behind Deployment Protection if you have no Resend account. |
+| B2 | Sign-in emails were never sent. | `AUTH_DRIVER=email` with `MAIL_PROVIDER=resend` sends one-time sign-in links and invites. It refuses to start without `RESEND_API_KEY` and `MAIL_FROM`. With no Resend account, use `AUTH_DRIVER=dev` **and** `AUTH_ALLOW_DEV_SIGNIN=true` behind Deployment Protection: a production server refuses the dev sign-in without that second setting, because it lets anyone sign in as anyone. |
 | B3 | No S3 storage driver. | `STORAGE_DRIVER=s3` works with Supabase Storage, AWS S3 or R2. Use a private Supabase Storage bucket (section 2, step 7). |
 | B4 | Migration role step might fail on a re-run on Supabase. | Fixed and tested as a non-superuser. Migrate also refuses to finish if `huemen_app` could bypass row-level security. |
 | B5 | Uploads over 4.5 MB failed (and brand assets over 1 MB). | Files go from the browser straight to the bucket. Files over 4 MB need a CORS rule on the bucket (section 2, step 7); smaller ones work without it. |
@@ -82,9 +84,10 @@ answer quality from this test as a floor, not the real thing.
 
 ## 3. Vercel (about 20 minutes)
 
-1. **Import** `Anshpatel2434/Huemen.studio` and set the branch `openui-agent` as the one to deploy (or deploy it as a preview).
+1. **Import** `Anshpatel2434/Huemen.studio` and set the branch `audit-fixes` (or `main` once merged) as the one to deploy (or deploy it as a preview).
 2. **Function region:** Project Settings > Functions > **Mumbai (bom1)**, next to Supabase. Every query crosses this hop, so the wrong region makes every page slow.
 3. **Deployment Protection:** turn it **on** (Standard Protection). Required if you use `AUTH_DRIVER=dev`, which lets anyone with the URL sign in as anyone.
+   **Function time limit:** Project Settings > Functions > Max Duration, as high as the plan allows (300 s on Pro). There is no job queue, so a long generation runs inside one request.
 4. **Environment variables** (Project Settings > Environment Variables). Set them all **before** the first build:
 
    | Name | Value |
@@ -95,13 +98,12 @@ answer quality from this test as a floor, not the real thing.
    | `DATABASE_APP_PASSWORD` | the app password |
    | `AUTH_SECRET` | 32+ random characters: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `DATABASE_POOL_MAX` | `2` |
-   | `AUTH_DRIVER` | `dev`, or `email` if you set up Resend (then also `MAIL_PROVIDER=resend`, `RESEND_API_KEY`, `MAIL_FROM`) |
+   | `AUTH_DRIVER` | `dev` plus `AUTH_ALLOW_DEV_SIGNIN=true` (test only, behind Deployment Protection), or `email` if you set up Resend (then also `MAIL_PROVIDER=resend`, `RESEND_API_KEY`, `MAIL_FROM`) |
    | `STORAGE_DRIVER` | `s3` |
    | `STORAGE_S3_BUCKET` | `huemen` |
    | `STORAGE_S3_REGION` | the project's region, e.g. `ap-south-1` |
    | `STORAGE_S3_ENDPOINT` | `https://<project-ref>.supabase.co/storage/v1/s3` |
    | `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | the key pair from section 2, step 7 |
-   | `QUEUE_DRIVER` | `pg` |
    | `AI_TEXT_PROVIDER` | `mock` for the first deploy, then your Groq provider (section 4) |
    | `AI_TEXT_FALLBACKS` | `off` (the server-side fallback is an Anthropic feature) |
    | `AI_TRANSCRIBE_PROVIDER` | `off` |
@@ -110,7 +112,8 @@ answer quality from this test as a floor, not the real thing.
 
    Leave every `GOOGLE_*`, `LINKEDIN_*` and `ANTHROPIC_API_KEY` blank. Google sign-in and Gmail import need the Vercel URL added as a redirect URI in a Google Cloud project; skip them for this test.
 5. **Deploy.** The build is plain `next build`; nothing else is needed. The lockfile already includes the `@emnapi/*` entries that Linux `npm ci` needs. If you ever run `npm install` on Windows and commit the lockfile, check those entries are still there.
-6. **First check, on `mock`:** open the URL, sign in as `demo@client.test` (one click on the dev sign-in page), and click through. If this works, Vercel, Supabase, the region, the role and row-level security are all right. Only then switch the AI.
+6. **Health check:** open `/api/health` on the Vercel URL. `{"ok":true}` means the app reaches Supabase as `huemen_app`; a 503 means the connection string, password or pooler user is wrong.
+7. **First check, on `mock`:** open the URL, sign in as `demo@client.test` (one click on the dev sign-in page), and click through. If this works, Vercel, Supabase, the region, the role and row-level security are all right. Only then switch the AI.
 
 ---
 
@@ -184,6 +187,6 @@ card answers are in `docs/agent-answers.md`.
 
 - Never commit `.env` or any key. Keys go in Vercel's settings, not in files or chat.
 - Never run `npm run db:reset` against anything you care about; it wipes the database.
-- Do not push to `main`. Work on a branch off `launch-blockers`.
+- Do not push to `main`. Work on a branch off `audit-fixes` (or `main` once merged).
 - No emojis in UI copy or docs.
 - `AGENTS.md` explains the two rules the whole codebase rests on: tenant isolation in the database, and one brand-context builder for every prompt. Read it before changing data access or prompts.

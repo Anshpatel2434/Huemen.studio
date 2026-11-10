@@ -8,7 +8,7 @@ Code: `src/lib/integrations/*` (providers, OAuth, importers), `src/lib/data/conn
 
 | Capability | Scope | Reads | Kept as | Google/LinkedIn review |
 |---|---|---|---|---|
-| Sent email | `gmail.readonly` | The whole sent folder, last 2 years, up to 2,000 messages, **read once**. Body only: quotes, forwards and signatures stripped. Messages under 25 words are skipped. Never the inbox. | **Private**: measured, never quoted | **Restricted**: fine for up to 100 invited people in Testing mode; public launch needs verification plus an annual security assessment (CASA) |
+| Sent email | `gmail.readonly` | A sample of about 200 sent emails, spread across a range the person picks (6, 12 or 24 months; up to 2,000 read to choose from), **read once**; access is withdrawn when the read is done. Body only: quotes, forwards and signatures stripped. Messages under 25 words are skipped. | **Private**: measured, never quoted | **Restricted**: fine for up to 100 invited people in Testing mode; public launch needs verification plus an annual security assessment (CASA) |
 | Docs and Slides | `drive.file` + Google Picker | Only the files the person picks. Exported as plain text and capped at 3,000 words. | Public if they tick "Published", otherwise private | None |
 | Calendar | `calendar.events.readonly` | Next 60 days: title, date, short description. **Never attendees.** | Chosen events become ideas, not writing | Sensitive: verification, no assessment |
 | YouTube captions | `youtube.force-ssl` | Captions from up to 10 of the person's latest videos on their own channel: uploaded captions first, automatic ones otherwise. `captions.download` costs 200 quota units, so one run reads at most 10. | Public, spoken | Sensitive: verification. **Check this scope's current classification on Google's list before submitting.** |
@@ -39,7 +39,7 @@ The server fetches what a person typed, so `src/lib/integrations/web.ts` guards 
 2. **APIs & Services → Library**: enable the **Gmail API**, **Google Drive API**, **Google Picker API**, **Google Calendar API** and **YouTube Data API v3**.
 3. **OAuth consent screen**: External, app name and logo from the client's branding, support email, privacy policy URL, home page. Add these scopes: `openid`, `email`, `profile`, `gmail.readonly`, `drive.file`, `calendar.events.readonly`, `youtube.force-ssl`.
 4. **Credentials → Create credentials → OAuth client ID → Web application.** Authorised redirect URIs:
-   - `http://localhost:3120/connections/callback/google` (development)
+   - `http://localhost:3000/connections/callback/google` (development)
    - `https://<production domain>/connections/callback/google`
 
    Copy the client ID and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
@@ -60,7 +60,7 @@ In onboarding step 2 the person clicks **Sign in with Google**, approves, and la
 
 1. At [linkedin.com/developers](https://www.linkedin.com/developers/apps), create an app linked to The Brand Professor's LinkedIn Page.
 2. **Products**: add **Sign In with LinkedIn using OpenID Connect**.
-3. **Auth**: add redirect URLs `http://localhost:3120/connections/callback/linkedin` and the production one. Copy the client ID and secret into `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`.
+3. **Auth**: add redirect URLs `http://localhost:3000/connections/callback/linkedin` and the production one. Copy the client ID and secret into `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`.
 4. **Posts:** reading a member's own posts (`r_member_social`) is limited to approved partners (Community Management API). Apply if wanted. Until it's granted, keep `LINKEDIN_POSTS_APPROVED=false`; people upload LinkedIn's data export (Shares.csv) instead, which the Voice page already reads. When granted, set it to `true` and check `LINKEDIN_VERSION` in `src/lib/integrations/linkedin.ts` against LinkedIn's current API version.
 
 LinkedIn access tokens last 60 days, and only partners get refresh tokens. After that the page asks the person to reconnect.

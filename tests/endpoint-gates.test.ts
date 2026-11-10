@@ -21,6 +21,7 @@ const GATES = [
 const PUBLIC: Record<string, string> = {
   "src/app/login/actions.ts#signInWithEmail": "sign-in itself: looks up an invited account and emails a link",
   "src/app/logout/route.ts#GET": "ends the caller's own session",
+  "src/app/api/health/route.ts#GET": "uptime check: says only whether the database answers",
   "src/app/login/actions.ts#signInAs": "dev-only one-click sign-in; refuses unless AUTH_DRIVER=dev, which production refuses (lib/env)",
   "src/app/dashboard/actions.ts#signOutAction": "ends the caller's own session",
   "src/app/settings/actions.ts#saveThemeAction": "sets the caller's own theme cookie",

@@ -10,6 +10,15 @@
 > **Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked (note why).
 > Task IDs (P0-1, etc.) are stable — reference them in commits.
 >
+> **Build status (2026-11-03).** Audited against the code on branch
+> `audit-fixes` and re-ticked below. Since 13 Oct: email sign-in and invites
+> (Resend), the S3 driver, upload safety and direct uploads, rate limits,
+> managed-Postgres migrations, the admin console (access, roles, coaches,
+> accent, audit log), the security fixes from the 3 Nov audit, and the
+> half-made product connections joined up. Still open for production: an image
+> model, a job queue, image re-encoding, error tracking, and the real-model and
+> client-review checks (P4-4, P4-5). Parked items are in `docs/phase-two.md`.
+>
 > **Build status (2026-10-13).** Audited against the code on branch
 > `voice-pack-v2` and re-ticked below (the earlier ticks had gone stale). Built
 > and demo-ready: the whole studio on the mock provider, onboarding, voice pack,
@@ -97,6 +106,7 @@ Treat these as acceptance criteria on *all* work, not a separate task:
 - [x] **P0-3 — Postgres + migration tooling. [infra]** Local Postgres, migration runner
   chosen, migrations directory checked into repo.
   - **Done when:** an empty DB migrates clean from zero; a rollback works.
+  - _2026-11-03:_ Every migration has a rollback in `migrations/rollback/`; 0019's was run down and back up locally. Those for 0001, 0002 and 0007 undo the schema only and say which data needs a backup.
 - [x] **P0-4 — CI pipeline skeleton. [infra]** Lint, typecheck, test, migrate-from-empty
   jobs. Placeholder for the cross-tenant test suite (P1-3) that **blocks merge**.
   - **Done when:** CI runs on PRs; a failing test blocks merge.
@@ -104,6 +114,7 @@ Treat these as acceptance criteria on *all* work, not a separate task:
   role claims. Email-invite flow only (no public sign-up).
   - **Done when:** a seeded user can log in; the session exposes a **tenant claim
     + role claim** usable by RLS (feeds P1-2).
+  - _2026-11-03:_ Built as passwordless email sign-in (signed one-time links and invites through Resend) rather than a third-party provider; see the decisions log. Sessions expire after 8 hours and re-read the account on every request.
 - [x] **P0-6 — Object storage wired.** Bucket + signed-URL helper with
   **tenant-prefixed keys**.
   - **Done when:** an upload lands under a tenant-prefixed key; a scoped,
@@ -159,11 +170,12 @@ Treat these as acceptance criteria on *all* work, not a separate task:
 - [x] **P1-7 — Voice guide capture.** Tone descriptors/sliders, do-words,
   don't-words, 3–5 sample posts (pasted), reading level, formatting rules →
   `voice_guides`.
-- [x] **P1-8 — Visual identity capture.** Palette hex inputs, font selection or
+- [~] **P1-8 — Visual identity capture.** Palette hex inputs, font selection or
   upload, logo upload, image style notes, reference-image uploads →
   `visual_identities` + `assets`.
   - **Constraint:** uploads validated (type/size), image re-encoded, no execution
     paths; stored under tenant-prefixed keys.
+  - _2026-11-03:_ Type read from the file's bytes, size-limited, SVGs with active content refused, served locked down, tenant-prefixed. **Not done:** re-encoding images (needs an image library). The newest logo signs the visual templates.
 - [x] **P1-9 — Pre-workshop questionnaire (public tokenised form).** A public,
   tokenised form that writes straight into a **draft** brand profile (workshop =
   onboarding). Post-workshop summary paste-in parsed into fields.
@@ -241,9 +253,10 @@ upload + questionnaire), context builder written + unit-tested.
     progress and retained partial results on failure.
   - _2026-10-13:_ No queue, no streaming: generation runs in the request thread (`AI_TEXT_TIMEOUT_MS`). The `jobs` table and `QUEUE_DRIVER` exist unused. Parked, client to be told.
   - _2026-10-14:_ Streaming built: single drafts are written live onto the canvas (NDJSON route, provider `stream()`). Queue still parked.
-- [ ] **P2-5 — Rate limiting on generation endpoints.** Per user **and** per
+- [x] **P2-5 — Rate limiting on generation endpoints.** Per user **and** per
   tenant (§07). **Done when:** limits enforced + surfaced clearly when hit.
   - _2026-10-13:_ Not built. Only the hard usage cap (P3-9) bounds spend.
+  - _2026-11-02:_ Built (migration 0017, `lib/ratelimit`): 20 model calls a minute per person and 60 per workspace (settings), counted in Postgres under an advisory lock; transcription included (11-03). Refusals say how long to wait. Sign-in emails: five per account per 15 minutes.
 
 ### 2b. AI Content Studio — text (§4.2)
 - [x] **P2-6 — All text formats.** LinkedIn post, LinkedIn hook set, Instagram
@@ -364,10 +377,12 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 - [~] **P3-12 — Branding config applied everywhere.** Logo/palette/fonts applied to
   client-facing UI **and transactional emails**.
   - _2026-10-13:_ Only `branding.accent` is applied to the chrome. No logo/palette/fonts, no edit UI, nothing in exports; emails do not exist yet.
+  - _2026-11-03:_ The accent is now set in Settings › Workspaces & access. Emails exist (sign-in, invites) and carry the product name, not the client's branding. Exports still use fixed type and ink. Remains phase two.
 - [~] **P3-13 — No-Okra-marks pass.** Verify **specifically**: email templates,
   page titles, favicons, error pages, PDF exports.
   - **Done when:** a reviewer finds zero Okra marks across all client-facing surfaces.
   - _2026-10-13:_ A sweep of `src/` finds no Okra marks in page titles, exports, error pages or the icon. Emails cannot be checked until a sender exists. Formal reviewer pass still to do.
+  - _2026-11-03:_ Swept again including the emails and the new error pages: the only mentions are code comments. Formal reviewer pass still to do.
 
 **Phase 3 preview gate:** all Week-3 features live; white-label pass complete.
 
@@ -377,14 +392,16 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 *Brief §11. "The build is complete when every line below is true, not when the last feature merges."*
 
 ### Security review & hardening (brief §06 Week 3 close)
-- [ ] **P4-1 — Security review.** Verify §07 across the app: RLS, storage scoping,
+- [~] **P4-1 — Security review.** Verify §07 across the app: RLS, storage scoping,
   rate limits, upload validation, provider "no-training" setting recorded.
+  - _2026-11-03:_ Audited and fixed: production refuses the dev sign-in and the example secret; session expiry and re-check; admin invites limited to the owner's organisation; admin flag forced off in workspace handlers; questionnaire links expire; storage signatures compared in constant time; RLS checked on every table from the catalog; every endpoint checked for a gate; rate limits; upload validation; no-training enforced and recorded (decisions log). Open: image re-encoding, a formal external review.
 - [x] **P4-2 — Seed data.** Realistic seed for a demo/reference workspace.
   - _2026-10-13:_ Owner org, a finished demo client (pieces, pillars, voice pack, caps) and a fresh client for onboarding.
 
 ### Product DoD (§11)
-- [ ] **P4-3** — A new client workspace can be created, invited, and used end to
+- [~] **P4-3** — A new client workspace can be created, invited, and used end to
   end **without developer involvement**.
+  - _2026-11-03:_ All of it is in the admin console (create, invite, assign, access, caps, archive). Proven end to end once a deployment has a Resend sender.
 - [ ] **P4-4** — Brand foundation, content studio, visual studio, calendar, idea
   inbox, and offer designer all work against a **real** brand profile with **real
   assets**.
@@ -392,9 +409,11 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 - [ ] **P4-6** — Exports produce **clean PDF + Markdown** with client branding.
 
 ### Engineering DoD (§11)
-- [ ] **P4-7** — Cross-tenant access tests **pass in CI on every endpoint**.
-- [ ] **P4-8** — **No Okra marks** in any client-facing surface (emails, exports,
+- [~] **P4-7** — Cross-tenant access tests **pass in CI on every endpoint**.
+  - _2026-11-03:_ Every table (catalog check), every data function family (isolation tests) and every server action and route (static gate check) are covered; per-route HTTP tests are not written. In CI an unreachable database now fails the run.
+- [~] **P4-8** — **No Okra marks** in any client-facing surface (emails, exports,
   error pages).
+  - _2026-11-03:_ Clean in code (see P3-13); formal reviewer pass to do.
 - [ ] **P4-9** — **Secrets rotated**; no credentials in repo or its history.
 - [x] **P4-10** — Migrations **run clean from empty** on a fresh database.
   - _2026-10-13:_ Runs clean from empty in CI and locally (13 Oct).
@@ -404,12 +423,15 @@ verified. **Sahil signs off voice this week** (risk §10 — cannot be deferred)
 - [ ] **P4-12** — Hosting, DB, storage, domain, and model-provider accounts in the
   **client's name**; access transferred and **Okra's access removed on
   confirmation**.
-- [~] **P4-13** — **README** covering local setup, env vars, deployment, and **how
+- [x] **P4-13** — **README** covering local setup, env vars, deployment, and **how
   to edit prompt templates**.
   - _2026-10-13:_ README covers setup, env vars and prompt editing. No deployment section yet.
-- [ ] **P4-14** — **Architecture note + data-model diagram** checked into the repo.
-- [ ] **P4-15** — **Phase-two list** written up from everything parked during the
+  - _2026-11-03:_ Rewritten for the current product, with a deployment section and the admin console.
+- [x] **P4-14** — **Architecture note + data-model diagram** checked into the repo.
+  - _2026-11-03:_ `docs/architecture.md`, with a Mermaid data-model diagram.
+- [x] **P4-15** — **Phase-two list** written up from everything parked during the
   build, handed over with the code.
+  - _2026-11-03:_ `docs/phase-two.md`, kept current.
 
 ---
 
@@ -420,7 +442,7 @@ client self-serve sign-up + billing · native mobile apps · paid-ads/landing/CR
 published-post performance analytics.
 
 - _2026-10-13 · build team_ · Background job queue and streaming (P2-4): generation runs in the request thread, bounded by a timeout. Needed before 90-day plans and carousel sets run for many clients at once.
-- _2026-10-13 · build team_ · Rate limiting per user and per tenant (P2-5). The hard usage cap bounds spend in the meantime.
+- _2026-10-13 · build team_ · Rate limiting per user and per tenant (P2-5). The hard usage cap bounds spend in the meantime. **Built 2026-11-02.**
 - _2026-10-13 · build team_ · Image model (P2-13): visuals are templated by the brief's own default; an AI-image provider is a client decision (cost) and a provider choice.
 - _2026-10-13 · build team_ · Strategy tools (P3-2), AEO page generator (P3-4), repurposing pipeline (P3-6), AI offer designer (P3-3): proposal modules not started.
 - _2026-10-13 · build team_ · Custom domain + TLS (P3-11); full tenant branding on chrome, emails and exports (P3-12).
