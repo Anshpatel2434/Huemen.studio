@@ -21,6 +21,7 @@ import { streamText } from "@/lib/ai";
 import { resolveTemplate } from "@/lib/ai/templates";
 import { userMessage } from "@/lib/ai/errors";
 import { AGENT_CONTRACT, AGENT_TEMPLATE_KEY, agentSpec, agentTask, answerErrors } from "@/lib/agent-ui/prompt";
+import { logger } from "@/lib/observability/log";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,9 @@ export async function POST(req: Request, ctx: RouteContext<"/w/[id]/p/[pid]/agen
             const check = answerErrors(ev.text);
             const ok = check.hasRoot;
             // Structured, on stdout: a malformed answer is a quality signal, not a server error.
-            if (!ok || check.errors.length) console.info(JSON.stringify({ event: "agent_answer_invalid", hasRoot: check.hasRoot, errors: check.errors.map((e) => e.code), model: ev.model }));
+            if (!ok || check.errors.length) {
+              logger.info("agent_answer_invalid", { tenantId: scope.tenantId, route: "/w/[id]/p/[pid]/agent/stream", hasRoot: check.hasRoot, errors: check.errors.map((e) => e.code), model: ev.model });
+            }
             send({ t: "done", ok });
           }
         }
