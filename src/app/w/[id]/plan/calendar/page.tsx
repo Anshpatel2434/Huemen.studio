@@ -6,7 +6,7 @@ import { listCalendar, listPillars } from "@/lib/data/planning";
 import { DocPage } from "@/components/doc-page";
 import { btnClass } from "@/components/btn";
 import { deleteCalendarEntryAction, startFromSlotAction } from "../actions";
-import { CALENDAR_DAYS } from "@/lib/content/calendar-plan";
+import { CALENDAR_CHANNELS, CALENDAR_DAYS } from "@/lib/content/calendar-plan";
 import { AddSlotButton, GenerateCalendarButton } from "./calendar-tools";
 
 /** A slot's channel to the format a piece for it starts in. */
@@ -55,7 +55,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
         </div>
       }
     >
-      <p className="text-sm text-ink-muted">Hover a day and press + to add a slot, or plan the next {CALENDAR_DAYS} days from your pillars. A slot starts a piece with its topic filled in.</p>
+      <p className="text-sm text-ink-muted">Press + on a day to add a slot, or plan the next {CALENDAR_DAYS} days from your pillars. A slot starts a piece with its topic filled in.</p>
 
       <div className="mt-6 bg-paper border border-hairline rounded-md overflow-hidden">
         <div className="grid grid-cols-7 border-b border-hairline">
@@ -70,7 +70,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
                 {(byDay.get(c.key) ?? []).map((e) => (
                   <div key={e.id} className="group relative rounded-sm pl-2 pr-5 py-1 text-xs leading-tight bg-panel border-l-[3px]" style={{ borderLeftColor: shade(e.pillarId) }}>
                     <p className="font-medium truncate">{e.topic ?? "Untitled"}</p>
-                    <p className="text-ink-faint truncate capitalize">{e.channel ?? ""}{e.pillarName ? ` · ${e.pillarName}` : ""}</p>
+                    <p className="text-ink-faint truncate">{CALENDAR_CHANNELS.find((c) => c.key === e.channel)?.label ?? e.channel ?? ""}{e.pillarName ? ` · ${e.pillarName}` : ""}</p>
                     {e.startedProjectId ? (
                       <Link href={`/w/${id}/p/${e.startedProjectId}`} className="hu-hit mt-1 inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-ink hover:underline underline-offset-2">
                         Open <ArrowRight size={10} aria-hidden="true" />

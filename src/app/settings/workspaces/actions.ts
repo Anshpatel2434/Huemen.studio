@@ -44,7 +44,8 @@ const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 export async function createWorkspaceAction(formData: FormData) {
   const session = await requireSession();
   const name = str(formData, "name");
-  if (name) await run(() => createWorkspace(session, name));
+  if (!name) redirect(`${PAGE}?e=${encodeURIComponent("Give the workspace a name.")}`);
+  await run(() => createWorkspace(session, name));
 }
 
 /**
@@ -56,9 +57,17 @@ export async function inviteUserAction(formData: FormData) {
   const tenantId = str(formData, "tenantId");
   const email = str(formData, "email").toLowerCase();
   const role = str(formData, "role") as Role;
-  if (!email) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) redirect(`${PAGE}?e=${encodeURIComponent("That doesn't look like an email address.")}`);
+  let note: string | null = null;
   await run(async () => {
     const invited = await inviteUser(session, tenantId, email, role);
+    if (invited?.existing) {
+      note = invited.status === "invited"
+        ? `${email} was already invited to ${invited.workspace}; the invite was sent again.`
+        : invited.status === "active"
+          ? `${email} is already in ${invited.workspace}.`
+          : `${email} is in ${invited.workspace} with access off. Turn their access on below instead.`;
+    }
     if (invited?.status === "invited") {
       await sendAuthMail({
         to: email,
@@ -69,6 +78,7 @@ export async function inviteUserAction(formData: FormData) {
       }).catch((e) => console.error(`[invite] email to ${email} not sent: ${e instanceof Error ? e.message : e}`));
     }
   });
+  if (note) redirect(`${PAGE}?n=${encodeURIComponent(note)}`);
 }
 
 export async function assignCoachAction(formData: FormData) {

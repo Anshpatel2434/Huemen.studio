@@ -5,6 +5,7 @@ import "./globals.css";
 import { PageTransition } from "@/components/page-transition";
 import { ThemeProvider } from "@/components/theme";
 import { StudioCursor } from "@/components/cursor";
+import { FieldErrors } from "@/components/field-errors";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 import { CANVAS_COOKIE, parseCanvasBg } from "@/lib/canvas-bg";
 
@@ -33,6 +34,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider initial={theme}>
           <PageTransition level="section">{children}</PageTransition>
+          <FieldErrors />
         </ThemeProvider>
         <StudioCursor />
       </body>

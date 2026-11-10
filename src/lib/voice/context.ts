@@ -58,10 +58,10 @@ export function mechanicsLines(pack: VoicePack): string[] {
   if (typeof contractions === "number")
     out.push(
       contractions >= 0.6
-        ? "Contracts almost everything they can."
+        ? "Uses contractions almost everywhere (it's, don't, we're)."
         : contractions <= 0.2
-          ? "Rarely contracts — writes it out."
-          : `Contracts about ${pctWord(contractions * 100)} of the time.`,
+          ? "Rarely uses contractions: writes it is, do not, we are."
+          : `Uses contractions (it's, don't) about ${pctWord(contractions * 100)} of the time.`,
     );
 
   const initials = (m.sentenceInitial?.value ?? []).filter((w) => ["and", "but", "so", "which"].includes(w.word));

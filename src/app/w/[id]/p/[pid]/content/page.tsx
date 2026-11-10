@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { LiveDraftLayer } from "@/components/live-draft";
@@ -47,7 +48,12 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
   return (
     <>
       <div className="absolute inset-0 min-[900px]:right-[280px]">
-        {items.length === 0 ? (
+        {items.length > 0 && sp.write === "1" && (
+          <Link href={`/w/${id}/p/${pid}/content`} className="absolute top-3 left-3 z-10 inline-flex items-center min-h-11 px-4 rounded-full bg-paper border border-hairline text-sm text-ink-muted hover:text-ink">
+            ← Back to {items.length === 1 ? "the draft" : `the ${items.length} drafts`}
+          </Link>
+        )}
+        {items.length === 0 || sp.write === "1" ? (
           <WritePiece
             tenantId={id}
             projectId={pid}
@@ -92,7 +98,8 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           return checkItem ? (
             <PanelSection title="Brand check">
               <p className="text-xs text-ink-muted mb-2.5 leading-relaxed">Score {checkItem.hook ? `“${checkItem.hook.slice(0, 32)}${checkItem.hook.length > 32 ? "…" : ""}”` : "the selected post"} against your voice. Findings cite your own writing, never block publishing.</p>
-              <BrandCheck key={checkItem.id} tenantId={id} projectId={pid} itemId={checkItem.id} />
+              {/* Keyed by the text too: a regenerate or an edit clears a score that no longer describes it. */}
+              <BrandCheck key={`${checkItem.id}:${checkItem.hook}:${checkItem.body}:${checkItem.cta}`} tenantId={id} projectId={pid} itemId={checkItem.id} />
             </PanelSection>
           ) : null;
         })()}

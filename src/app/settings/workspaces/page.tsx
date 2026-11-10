@@ -13,6 +13,7 @@ import { Alert, Badge, SubmitButton } from "@/components/ui";
 import { ChipChoice } from "@/components/chip-choice";
 import { Select } from "@/components/select";
 import { CopyField } from "./copy-field";
+import { ConfirmSubmit } from "@/components/confirm-submit";
 import {
   accentAction,
   assignCoachAction,
@@ -46,6 +47,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
   if (!isPlatformAdmin(session.role)) redirect("/settings");
   const sp = await searchParams;
   const refused = typeof sp.e === "string" ? sp.e : null;
+  const note = typeof sp.n === "string" ? sp.n : null;
   const [workspaces, coaches, caps, assignments] = await Promise.all([
     listWorkspaces(session),
     listCoaches(session),
@@ -66,6 +68,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
       <h1 className="text-3xl">Workspaces &amp; access</h1>
       <p className="text-ink-muted text-sm mt-2">Every change here is written to the audit log.</p>
       {refused && <Alert tone="warning" className="mt-6">{refused}</Alert>}
+      {note && <Alert tone="info" className="mt-6">{note}</Alert>}
 
       <form action={createWorkspaceAction} className="mt-8 bg-paper border border-hairline rounded-md p-5 flex gap-2">
         <input name="name" placeholder="New workspace name" className="field flex-1 min-w-0" required />
@@ -90,7 +93,11 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                   <form action={setStatusAction} className="ml-auto">
                     <input type="hidden" name="tenantId" value={w.id} />
                     <input type="hidden" name="status" value={w.status === "active" ? "archived" : "active"} />
-                    <SubmitButton variant={w.status === "active" ? "danger" : "secondary"} size="sm" pendingLabel="…">{w.status === "active" ? "Archive" : "Restore"}</SubmitButton>
+                    {w.status === "active" ? (
+                      <ConfirmSubmit variant="danger" title={`Archive ${w.name}?`} confirmLabel="Archive workspace" body="Nobody can sign in to it or use it while it is archived, including anyone signed in right now. Nothing is deleted; Restore opens it again.">Archive</ConfirmSubmit>
+                    ) : (
+                      <SubmitButton variant="secondary" size="sm" pendingLabel="…">Restore</SubmitButton>
+                    )}
                   </form>
                 )}
               </div>
@@ -148,12 +155,14 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                     <ul className="rounded-md border border-hairline divide-y divide-[var(--hairline)]">
                       {people.map((m) => {
                         const self = m.id === session.userId;
+                        // Turned off before they ever joined: that was a withdrawn invite.
+                        const revoked = m.status === "disabled" && !m.lastSeen;
                         return (
                           <li key={m.id} className="px-3 py-2 flex flex-col gap-1.5 min-w-0">
                             <div className="flex items-center gap-2 min-w-0 flex-wrap">
                               <span className="text-sm truncate flex-1 min-w-0">{m.email}{self && <span className="text-ink-faint"> (you)</span>}</span>
                               <span className="text-xs text-ink-faint shrink-0">{ROLE[m.role]}</span>
-                              <Badge tone={m.status === "active" ? "ok" : m.status === "invited" ? "accent" : "warn"}>{m.status === "invited" ? "invite pending" : m.status === "disabled" ? "access off" : m.status}</Badge>
+                              <Badge tone={m.status === "active" ? "ok" : m.status === "invited" ? "accent" : "warn"}>{m.status === "invited" ? "invite pending" : revoked ? "invite revoked" : m.status === "disabled" ? "access off" : m.status}</Badge>
                               {!self && home && m.role !== "client" && (
                                 <form action={memberRoleAction}>
                                   <input type="hidden" name="userId" value={m.id} />
@@ -165,9 +174,13 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                                 <form action={memberAccessAction}>
                                   <input type="hidden" name="userId" value={m.id} />
                                   <input type="hidden" name="on" value={m.status === "disabled" ? "true" : "false"} />
-                                  <SubmitButton variant={m.status === "disabled" ? "secondary" : "ghost"} size="sm" pendingLabel="…">
-                                    {m.status === "disabled" ? "Turn access on" : m.status === "invited" ? "Revoke invite" : "Turn access off"}
-                                  </SubmitButton>
+                                  {m.status === "disabled" ? (
+                                    <SubmitButton variant="secondary" size="sm" pendingLabel="…">{revoked ? "Restore invite" : "Turn access on"}</SubmitButton>
+                                  ) : m.status === "invited" ? (
+                                    <ConfirmSubmit title={`Withdraw ${m.email}'s invite?`} confirmLabel="Revoke invite" body="The invite link stops working. You can restore the invite later.">Revoke invite</ConfirmSubmit>
+                                  ) : (
+                                    <ConfirmSubmit title={`Turn off ${m.email}'s access?`} confirmLabel="Turn access off" body="They are signed out on their next click and can't sign in again until you turn access back on. Nothing of theirs is deleted.">Turn access off</ConfirmSubmit>
+                                  )}
                                 </form>
                               )}
                             </div>

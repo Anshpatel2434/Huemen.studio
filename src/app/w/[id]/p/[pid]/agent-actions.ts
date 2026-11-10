@@ -82,7 +82,7 @@ export async function askAgent(tenantId: string, projectId: string, message: str
   if (ideaMatch) {
     await captureIdea(scope, ideaMatch[1].trim());
     refresh();
-    return { text: "Captured in the idea inbox and tagged to the closest pillar.", tasks: [{ label: "Idea captured", href: `/w/${tenantId}/plan/ideas` }] };
+    return { text: "Captured in the idea inbox, tagged to a pillar where its words match one.", tasks: [{ label: "Idea captured", href: `/w/${tenantId}/plan/ideas` }] };
   }
 
   // Everything that is not a command is a question: answered live, in cards.

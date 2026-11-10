@@ -187,6 +187,16 @@ describe("admin changes", () => {
     if (!ok) return expect(ok).toBe(false);
     await expect(setWorkspaceStatus(admin, ids.org, "archived")).rejects.toBeInstanceOf(AdminError);
   });
+  it("refuses caps that can't work: a stop below the warning, or a negative number", async () => {
+    if (!ok) return expect(ok).toBe(false);
+    await expect(setUsageCaps(admin, ids.other, { textSoft: 10, textHard: 5, imageSoft: null, imageHard: null })).rejects.toBeInstanceOf(AdminError);
+    await expect(setUsageCaps(admin, ids.other, { textSoft: null, textHard: -1, imageSoft: null, imageHard: null })).rejects.toBeInstanceOf(AdminError);
+  });
+  it("says when an invite already exists instead of doing nothing", async () => {
+    if (!ok) return expect(ok).toBe(false);
+    const again = await inviteUser(admin, ids.client, "new-client@sec.test", "client");
+    expect(again?.existing).toBe(true);
+  });
   it("a hard cap of 0 switches drafting off", async () => {
     if (!ok) return expect(ok).toBe(false);
     const scope = { tenantId: ids.other, userId: null, isPlatformAdmin: false };

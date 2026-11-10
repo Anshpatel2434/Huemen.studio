@@ -16,6 +16,7 @@ import { addCalendarEntry, getCalendarEntry, listCalendar, markSlotStarted } fro
 import { startPiece } from "@/lib/data/create";
 import { duplicateProject, getProject } from "@/lib/data/projects";
 import { deleteAsset, uploadAsset } from "@/lib/data/assets";
+import { generateContent, regenerateWithSteer, listContent, EDIT_STEER } from "@/lib/data/content";
 
 const EMPTY_FOUNDATION: FoundationForm = {
   niche: "", positioning: "", offers: "", audience: "",
@@ -107,5 +108,17 @@ describe("removing an upload", () => {
     expect(left.assets).toBe(0);
     expect(left.refs).toEqual(["other"]);
     expect(await deleteAsset({ ...scope(), tenantId: "00000000-0000-4000-8000-000000000000" }, id)).toBe(false);
+  });
+});
+
+describe("history labels", () => {
+  it("never calls an untouched draft an edit when it is regenerated", async () => {
+    if (!ok) return expect(ok).toBe(false);
+    const projectId = await startPiece(scope(), { topic: "History check", format: "linkedin_post" });
+    const ps = { ...scope(), projectId };
+    const itemId = await generateContent(ps, { format: "linkedin_post", topic: "History check" });
+    await regenerateWithSteer(ps, itemId, "Shorter");
+    const item = (await listContent(ps)).find((i) => i.id === itemId)!;
+    expect(item.history.filter((h) => !h.model && h.steer === EDIT_STEER)).toEqual([]);
   });
 });

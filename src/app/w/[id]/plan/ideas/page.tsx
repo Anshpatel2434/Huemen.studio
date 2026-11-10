@@ -20,7 +20,7 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
   const done = ideas.filter((i) => i.status === "converted");
 
   return (
-    <DocPage eyebrow={`${(ws?.name ?? "Your brand")} · Idea inbox`} title="Catch it now." accent="Shape it later." sub="Paste a thought; it's auto-tagged to the closest pillar. One click turns it into a new piece, ready to write.">
+    <DocPage eyebrow={`${(ws?.name ?? "Your brand")} · Idea inbox`} title="Catch it now." accent="Shape it later." sub="Paste a thought. If its words match a pillar it's tagged to it; otherwise tag it yourself. One click turns it into a new piece, ready to write.">
       <form action={captureIdeaAction} className="hu-composer max-w-4xl">
         <input type="hidden" name="tenantId" value={id} />
         <textarea name="text" rows={3} required aria-label="New idea" placeholder="e.g. The client who fired me taught me more than the ones who stayed" />

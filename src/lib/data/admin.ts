@@ -68,7 +68,7 @@ export async function listWorkspaces(session: Session): Promise<WorkspaceRow[]> 
     await withTenantSession(scope, (c) =>
       c.query<WorkspaceRow>(
         `SELECT t.id, t.name, t.status,
-                (SELECT count(*)::int FROM users u WHERE u.tenant_id = t.id) AS user_count,
+                (SELECT count(*)::int FROM users u WHERE u.tenant_id = t.id AND u.status <> 'disabled') AS user_count,
                 t.created_at, t.branding->>'accent' AS accent
            FROM tenants t ORDER BY (t.id = $1) DESC, t.created_at DESC`,
         [session.tenantId],
@@ -146,7 +146,7 @@ export async function inviteUser(
   tenantId: string,
   email: string,
   role: Role,
-): Promise<{ userId: string; status: string; workspace: string } | null> {
+): Promise<{ userId: string; status: string; workspace: string; existing: boolean; role: Role } | null> {
   if (!rolesFor(session, tenantId).includes(role)) {
     throw new AdminError(
       tenantId === session.tenantId
@@ -175,7 +175,7 @@ export async function inviteUser(
     ).rows[0];
     // What was actually recorded: a repeat invite keeps the existing role.
     await audit(c, scope, tenantId, created ? "user.invite" : "user.reinvite", { email, role: row?.role ?? role });
-    return row ? { userId: row.id, status: row.status, workspace: row.workspace } : null;
+    return row ? { userId: row.id, status: row.status, workspace: row.workspace, existing: !created, role: row.role } : null;
   });
 }
 
@@ -307,8 +307,13 @@ export async function listCaps(session: Session): Promise<Map<string, CapsRow>> 
  * because a cap change is a cost decision (§07).
  */
 export async function setUsageCaps(session: Session, tenantId: string, caps: Omit<CapsRow, "tenantId">): Promise<void> {
-  const clean = (n: number | null) => (n !== null && Number.isFinite(n) && n >= 0 ? Math.round(n) : null);
+  for (const v of Object.values(caps)) {
+    if (v !== null && (!Number.isFinite(v) || v < 0)) throw new AdminError("Caps are whole numbers, 0 or more. Leave a field empty for no limit.");
+  }
+  const clean = (n: number | null) => (n === null ? null : Math.round(n));
   const next = { textSoft: clean(caps.textSoft), textHard: clean(caps.textHard), imageSoft: clean(caps.imageSoft), imageHard: clean(caps.imageHard) };
+  if (next.textSoft !== null && next.textHard !== null && next.textSoft > next.textHard) throw new AdminError("The text warning has to come before the stop: set \"warn at\" no higher than \"stop at\".");
+  if (next.imageSoft !== null && next.imageHard !== null && next.imageSoft > next.imageHard) throw new AdminError("The image warning has to come before the stop: set \"warn at\" no higher than \"stop at\".");
   await change(session, async (c, scope) => {
     await c.query(
       `INSERT INTO tenant_usage_caps (tenant_id, monthly_text_soft, monthly_text_hard, monthly_image_soft, monthly_image_hard, updated_by)

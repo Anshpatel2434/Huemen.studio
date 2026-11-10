@@ -274,10 +274,14 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
   const liveViolations = findViolations(`${hook}\n${body}\n${cta}`, dontWords);
   const dirty = hook !== item.hook || body !== item.body || cta !== item.cta || (pillarId || null) !== item.pillarId;
 
-  const run = (label: string, fn: () => Promise<void>, done: string) =>
+  const run = (label: string, fn: () => Promise<void | { error?: string }>, done: string) =>
     start(async () => {
       setBusy(label);
-      try { await fn(); toast(done); router.refresh(); } catch { toast("That failed and was logged. Try again.", "danger"); }
+      try {
+        const r = await fn();
+        if (r && r.error) toast(r.error, "danger");
+        else { toast(done); router.refresh(); }
+      } catch { toast("That failed and was logged. Try again.", "danger"); }
       setBusy(null);
     });
 
@@ -355,7 +359,7 @@ function Inspector({ tenantId, projectId, item, pillars, dontWords, onClose, onD
                 <span className="text-xs text-ink-muted flex-1">
                   {/* A version with no model is one you typed, not one we wrote. */}
                   {g.model
-                    ? <>{g.steer ? `Steer: ${g.steer}` : `Variant ${g.variantIndex + 1}`} · {g.model}</>
+                    ? <>{g.steer ? `Steer: ${g.steer}` : `Version ${g.variantIndex + 1}`}</>
                     : <><Pencil size={11} className="inline mb-0.5 mr-1" aria-hidden="true" />{g.steer || "Edited by you"}</>}
                 </span>
                 <button disabled={pending} onClick={() => run("v" + g.id, () => applyVariantAction(tenantId, projectId, item.id, g.id), "Variant applied")} className="text-xs font-medium hover:text-accent-ink">Use</button>

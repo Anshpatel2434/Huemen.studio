@@ -271,7 +271,7 @@ export async function applyVariant(scope: ProjectScope, itemId: string, generati
  * Keep what is on the piece right now as a version, so nothing a person typed
  * can be lost by the next generation (brief §07). A row with no model is a
  * human edit; history labels it that way and it can be restored like any
- * variant. Skipped when the text already matches the newest version, so
+ * variant. Skipped when the text already matches a version on file, so
  * re-saving the same words doesn't pile up entries.
  */
 async function snapshotCurrent(scope: ProjectScope, c: PoolClient, itemId: string): Promise<void> {
@@ -282,13 +282,16 @@ async function snapshotCurrent(scope: ProjectScope, c: PoolClient, itemId: strin
     )
   ).rows[0];
   if (!item || !(item.hook || item.body)) return;
-  const last = (
-    await c.query<{ hook: string | null; body: string | null; cta: string | null }>(
-      "SELECT hook, body, cta FROM content_generations WHERE content_item_id=$1 ORDER BY variant_index DESC LIMIT 1",
-      [itemId],
-    )
-  ).rows[0];
-  if (last && last.hook === item.hook && last.body === item.body && last.cta === item.cta) return;
+  // Already in history (any version, not only the newest: a fresh draft shows
+  // version 1 while version 2 is the latest row): nothing was typed, so no
+  // "Edited by you" row.
+  const known = await c.query(
+    `SELECT 1 FROM content_generations
+      WHERE content_item_id=$1 AND hook IS NOT DISTINCT FROM $2 AND body IS NOT DISTINCT FROM $3 AND cta IS NOT DISTINCT FROM $4
+      LIMIT 1`,
+    [itemId, item.hook, item.body, item.cta],
+  );
+  if (known.rowCount) return;
   const next = (
     await c.query<{ n: number }>(
       "SELECT coalesce(max(variant_index),-1)+1 AS n FROM content_generations WHERE content_item_id=$1",

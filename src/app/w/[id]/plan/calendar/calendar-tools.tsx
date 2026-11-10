@@ -135,7 +135,7 @@ export function AddSlotButton({ tenantId, date, label, pillars }: { tenantId: st
         onClick={() => setOpen(true)}
         aria-label={`Add a slot on ${label}`}
         title="Add a slot"
-        className="hu-hit absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center text-ink-faint opacity-0 group-hover/day:opacity-100 focus-visible:opacity-100 hover:text-ink hover:bg-hover"
+        className="hu-hit absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center text-ink-faint opacity-0 group-hover/day:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 hover:text-ink hover:bg-hover"
       >
         <Plus size={14} aria-hidden="true" />
       </button>

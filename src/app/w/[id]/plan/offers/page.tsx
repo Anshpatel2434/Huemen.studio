@@ -3,6 +3,7 @@ import { Package, Pencil, Trash2 } from "lucide-react";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { getWorkspace } from "@/lib/data/workspaces";
 import { listOffers } from "@/lib/data/planning";
+import { loadFoundation } from "@/lib/data/foundation";
 import { DocPage } from "@/components/doc-page";
 import { EmptyState, SubmitButton } from "@/components/ui";
 import { createOfferAction, deleteOfferAction, updateOfferAction } from "../actions";
@@ -28,14 +29,19 @@ export default async function OffersPage({ params, searchParams }: PageProps<"/w
   const editing = typeof sp.edit === "string" ? sp.edit : null;
   const { scope } = await workspaceScope(id);
   const ws = await getWorkspace(scope);
-  const offers = await listOffers(scope);
+  const [offers, brief] = await Promise.all([listOffers(scope), loadFoundation(scope)]);
+  const fromBrief = brief.offers.trim();
 
   return (
     <DocPage eyebrow={`${(ws?.name ?? "Your brand")} · Offer designer`} title="Expertise in." accent="Offer out." sub="Package what you know into something people can buy. Every draft knows your offers: what each promises, what is in it and how it is priced.">
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
         <div className="flex flex-col gap-3">
           {offers.length === 0 ? (
-            <div><EmptyState icon={<Package size={18} />} title="No offers yet" sub="Start with the one you already sell. Name it, say what it promises, list what's in the box." /></div>
+            <div><EmptyState
+                icon={<Package size={18} />}
+                title={fromBrief ? "Your brief names an offer" : "No offers yet"}
+                sub={fromBrief ? `“${fromBrief.slice(0, 160)}${fromBrief.length > 160 ? "…" : ""}” Add it here to say what's in it and how it's priced; drafts then know it in full.` : "Start with the one you already sell. Name it, say what it promises, list what's in the box."}
+              /></div>
           ) : (
             offers.map((o) => editing === o.id ? (
               <form key={o.id} action={updateOfferAction} className="bg-field rounded-xl p-5 flex flex-col gap-3">

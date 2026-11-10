@@ -184,8 +184,9 @@ export async function archiveProject(scope: ProjectScope): Promise<void> {
 }
 
 /**
- * Permanently delete a project. Its brief, pillars, content (with history),
- * visuals, ideas, calendar and offers go with it (ON DELETE CASCADE).
+ * Permanently delete a project: one piece, its content (with history) and its
+ * visuals (ON DELETE CASCADE). The brief, pillars, ideas, calendar and offers
+ * are the workspace's since 0007 and are untouched.
  * generation_logs rows stay for usage and audit (their content link is
  * nulled). Stored files are removed after the rows, best effort: a leftover
  * file is harmless, a missing row is not.

@@ -750,7 +750,13 @@ export function DraftScreen({ tenantId, name, first, state }: {
             <input type="hidden" name="tenantId" value={tenantId} />
             <button type="submit" className={cta} disabled={busy}>Yes, that&apos;s me. Open my studio</button>
           </form>
-          {has && first && <Link href={`/w/${tenantId}/p/${first.id}/content`} className={quiet}>Edit it first</Link>}
+          {has && first && (
+            <form action={finishOnboardingAction} className="w-full flex justify-center">
+              <input type="hidden" name="tenantId" value={tenantId} />
+              <input type="hidden" name="editPiece" value={first.id} />
+              <button type="submit" className={quiet} disabled={busy}>Edit it first</button>
+            </form>
+          )}
         </>
       }
       panel={

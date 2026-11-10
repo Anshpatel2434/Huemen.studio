@@ -92,7 +92,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/sett
               )}
               {c?.lastError && <p className="text-sm text-warn">{c.lastError}</p>}
               {!configured && (
-                <p className="text-sm text-ink-faint">Your admin adds the {p.label} app details to switch this on. Until then, upload exports when you add writing.</p>
+                <p className="text-sm text-ink-faint">{session.role === "owner_admin" ? `Switched on by adding the ${p.label} app details to the hosting settings (see docs/integrations.md).` : `Your admin adds the ${p.label} app details to switch this on.`} Until then, upload exports when you add writing.</p>
               )}
 
               <ul className="flex flex-col divide-y divide-[var(--hairline)] border-t border-hairline">

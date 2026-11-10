@@ -325,7 +325,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           </div>
         </Card>
 
-        <Card label="01 · Your writing">
+        <Card label="Your writing">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xl font-medium tabular-nums">{pack.corpusStats.pieces}</span>
             <span className="text-sm text-ink-faint">
@@ -369,7 +369,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         </Card>
 
         {/* ---- the measured fingerprint ---------------------------------- */}
-        <Card label="02 · The fingerprint">
+        <Card label="The fingerprint">
           {lines.length === 0 ? (
             <p className="text-sm text-ink-faint">Nothing measured yet. Add some writing above.</p>
           ) : (
@@ -404,7 +404,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {/* ---- signature phrases: keep or drop --------------------------- */}
         {signatures.length > 0 && (
-          <Card label="03 · Phrases you repeat">
+          <Card label="Phrases you repeat">
             <p className="text-sm text-ink-muted mb-3">
               A signature or a habit? Keeping one protects it from the anti-AI rules; dropping it adds it to your never-list.
             </p>
@@ -427,7 +427,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {/* ---- the parts a person writes themselves ---------------------- */}
         <form action={saveVoiceAction}>
-          <Card label="04 · In your words">
+          <Card label="In your words">
             <Hidden id={id} />
             <div className="flex flex-col gap-4">
               <label className="block">
@@ -525,7 +525,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         </form>
 
         {/* ---- per-platform, measured or inferred ------------------------ */}
-        <Card label="05 · How you sound in each place">
+        <Card label="How you sound in each place">
           {contexts.length === 0 ? (
             <p className="text-sm text-ink-faint">Nothing yet. Add writing from a platform and its block appears here.</p>
           ) : (
@@ -546,7 +546,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {/* ---- the dials, shown only when they've been set ---------------- */}
         {Object.keys(pack.index.dials).length > 0 && (
-          <Card label="06 · Dials">
+          <Card label="Dials">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {DIAL_KEYS.filter((k) => pack.index.dials[k] != null).map((k) => (
                 <div key={k} className="flex items-center gap-3 text-sm">
@@ -604,7 +604,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
         </Card>
 
         {/* ---- history: every save keeps what it replaced ----------------- */}
-        <Card label="08 · History">
+        <Card label="History">
           <ul className="flex flex-col gap-2 text-sm">
             {versions.map((v, i) => {
               const changed = changedFrom(i);

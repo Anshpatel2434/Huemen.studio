@@ -239,6 +239,8 @@ export async function workModeAction(tenantId: string, mode: WorkMode) {
 /**
  * "Yes, that's me": the last item on the spec's definition of done, and the
  * end of the flow. They land in their studio, with their first piece in it.
+ * "Edit it first" finishes the same way and opens that piece instead, so the
+ * studio doesn't send them back into onboarding afterwards.
  */
 export async function finishOnboardingAction(fd: FormData) {
   const tenantId = String(fd.get("tenantId"));
@@ -247,7 +249,8 @@ export async function finishOnboardingAction(fd: FormData) {
   await completeOnboarding(scope, pack);
   (await cookies()).delete(LATER_COOKIE);
   refresh(tenantId);
-  redirect(`/w/${tenantId}?ready=1`);
+  const piece = String(fd.get("editPiece") ?? "");
+  redirect(/^[0-9a-f-]{36}$/i.test(piece) ? `/w/${tenantId}/p/${piece}/content` : `/w/${tenantId}?ready=1`);
 }
 
 /** Their own writing, checked: shown on the payoff screen. */

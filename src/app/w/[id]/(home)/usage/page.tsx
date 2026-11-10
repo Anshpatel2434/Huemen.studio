@@ -7,8 +7,10 @@ export const metadata = { title: "Usage" };
 
 export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) {
   const { id } = await params;
-  const { scope } = await workspaceScope(id);
+  const { scope, session } = await workspaceScope(id);
   const u = await loadUsage(scope);
+  // Model names and timings help an admin or coach; to a client they are noise.
+  const staff = session.role !== "client";
   const max = Math.max(1, ...u.daily.map((d) => d.n));
   const capPct = u.caps.textHard ? Math.round((u.textThisMonth / u.caps.textHard) * 100) : null;
   const reset = new Date();
@@ -24,7 +26,7 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
   ];
 
   return (
-    <DocPage back={`/w/${id}`} backLabel="Projects" eyebrow="Usage" title="Usage" accent="this month." sub="Every model call is logged before it returns. Provider costs are billed to the account owner, so runaway usage shows up here." width={1000}>
+    <DocPage back={`/w/${id}`} backLabel="Projects" eyebrow="Usage" title="Usage" accent="this month." sub="Every draft, check, rewrite and suggestion counts here. Your coach or admin sets the monthly limit." width={1000}>
       <div className="border-t border-hairline pt-6">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {stats.map(([k, v]) => (
@@ -75,8 +77,8 @@ export default async function UsagePage({ params }: PageProps<"/w/[id]/usage">) 
                 <li key={i} className="flex items-center gap-2 text-sm">
                   <Badge tone={r.status === "ok" ? "ok" : "accent"}>{r.status}</Badge>
                   <span className="capitalize">{r.kind}</span>
-                  <span className="text-ink-faint truncate flex-1">{r.model}</span>
-                  <span className="text-ink-faint tabular-nums">{r.latencyMs ?? "–"} ms</span>
+                  <span className="text-ink-faint truncate flex-1">{staff ? r.model : ""}</span>
+                  {staff && <span className="text-ink-faint tabular-nums">{r.latencyMs ?? "–"} ms</span>}
                 </li>
               ))}
             </ul>

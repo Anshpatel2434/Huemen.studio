@@ -72,10 +72,16 @@ export async function draftAction(tenantId: string, projectId: string, input: { 
   return id;
 }
 
-export async function steerAction(tenantId: string, projectId: string, itemId: string, steer: string) {
+/** A refusal (monthly cap, rate limit, provider) comes back as words to show; a thrown message never reaches the browser in production. */
+export async function steerAction(tenantId: string, projectId: string, itemId: string, steer: string): Promise<{ error?: string }> {
   const scope = await actionProjectScope(tenantId, projectId);
-  await regenerateWithSteer(scope, itemId, steer);
+  try {
+    await regenerateWithSteer(scope, itemId, steer);
+  } catch (e) {
+    return { error: userMessage(e) };
+  }
   await settle(scope, tenantId, projectId);
+  return {};
 }
 
 export async function applyVariantAction(tenantId: string, projectId: string, itemId: string, generationId: string) {
