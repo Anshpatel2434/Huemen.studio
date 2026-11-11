@@ -549,6 +549,89 @@ export const siteProfile: TaskDef<SiteProfile> = {
   },
 };
 
+// ---- pictures: the brief an image model draws from (ChatGPT Image) ----------
+
+const ImageBrief = z.object({ scene: z.string(), avoid: z.string() });
+export type ImageBriefResult = z.infer<typeof ImageBrief>;
+
+/**
+ * Claude writes what the picture should show, from the brand context block
+ * (palette, image style, audience: INV-2) and the piece. The image model only
+ * ever sees this brief plus the code-owned lines about text (lib/visual/picture).
+ */
+export const imageBrief: TaskDef<ImageBriefResult> = {
+  key: "image_brief",
+  schema: ImageBrief,
+  template:
+    "You are an art director for a personal brand. From the brand context and the piece, describe one picture that would stop the scroll and still feel like this person: the subject, the setting, the light and mood, the composition, and the palette taken from the brand's colours. Prefer real, specific scenes to abstract stock imagery. Never show a real person's face unless the piece names them, and never invent a logo.",
+  contract: [
+    "Return scene: one paragraph, at most 120 words, describing the picture for an image model.",
+    "Return avoid: a short comma-separated list of things that would make it generic or off brand.",
+    "Do not put any words, letters or captions in the scene unless the task input gives text to show.",
+  ].join("\n"),
+  mock(input) {
+    const piece = field(input, "Piece") || "the work";
+    const shape = field(input, "Shape") || "square";
+    const space = field(input, "Leave space");
+    return {
+      scene: `An editorial ${shape} picture about ${piece.toLowerCase().replace(/[.!?]+$/, "")}: a calm, specific scene in the brand palette, soft natural light, one clear subject${space ? `, with quiet empty space at the ${space} for a headline` : ""}.`,
+      avoid: "stock-photo handshakes, glossy 3D renders, clip art, neon gradients",
+    };
+  },
+};
+
+// ---- a comment on a visual's design: the change, as a design patch ----------
+
+const DesignChange = z.object({
+  scale: z.number().nullable(),
+  align: z.enum(["left", "center"]).nullable(),
+  accent: z.enum(["none", "subtle", "bold"]).nullable(),
+  background: z.enum(["scheme", "inverse", "tint"]).nullable(),
+  logo: z.enum(["small", "medium", "large", "hidden"]).nullable(),
+  scrim: z.enum(["none", "light", "strong"]).nullable(),
+  note: z.string(),
+});
+export type DesignChangeResult = z.infer<typeof DesignChange>;
+
+/**
+ * A comment pinned on a template part (logo, background, accent, the layout)
+ * becomes a change to the visual's design settings. Only the settings the
+ * design has are offered; anything else is answered in `note` and changes
+ * nothing, so a comment can never produce a design the board can't draw.
+ */
+export const designChange: TaskDef<DesignChangeResult> = {
+  key: "design_change",
+  schema: DesignChange,
+  template:
+    "You adjust one visual's design settings to do what the person's comment asks, within the brand. Change as little as possible: only the settings the comment is about.",
+  contract: [
+    "Return each setting as its new value, or null to leave it as it is.",
+    "scale: the type size, 0.8 to 1.4. align: left or center. accent: none, subtle or bold.",
+    "background: scheme, inverse or tint. logo: small, medium, large or hidden. scrim (the shade behind text on a picture): none, light or strong.",
+    "Return note: one short sentence saying what you changed, or why nothing could be changed.",
+  ].join("\n"),
+  mock(input) {
+    const c = field(input, "Comment").toLowerCase();
+    const part = field(input, "Part");
+    const has = (re: RegExp) => re.test(c);
+    const out: DesignChangeResult = { scale: null, align: null, accent: null, background: null, logo: null, scrim: null, note: "" };
+    if (part === "logo" || has(/logo/)) {
+      out.logo = has(/hide|remove|no logo/) ? "hidden" : has(/small|tiny|less/) ? "small" : has(/big|bigger|larger|more/) ? "large" : "medium";
+    }
+    if (has(/bigger text|larger text|bigger heading|more impact/)) out.scale = 1.2;
+    if (has(/smaller text|smaller heading|quieter/)) out.scale = 0.9;
+    if (has(/centre|center/)) out.align = "center";
+    if (has(/left/)) out.align = "left";
+    if (has(/dark|invert|inverse/)) out.background = "inverse";
+    if (has(/light|tint|softer background/)) out.background = "tint";
+    if (has(/read|contrast|legib/)) out.scrim = "strong";
+    if (has(/bold|pop|stronger accent/)) out.accent = "bold";
+    const changed = Object.entries(out).filter(([k, v]) => k !== "note" && v !== null).map(([k]) => k);
+    out.note = changed.length ? `Changed ${changed.join(", ")}.` : "That isn't something these design settings can change.";
+    return out;
+  },
+};
+
 export const TASKS = {
   [siteProfile.key]: siteProfile,
   [topicProposals.key]: topicProposals,
@@ -560,5 +643,7 @@ export const TASKS = {
   [extractAnswers.key]: extractAnswers,
   [dialPairs.key]: dialPairs,
   [voicePreview.key]: voicePreview,
+  [imageBrief.key]: imageBrief,
+  [designChange.key]: designChange,
 } as Record<string, TaskDef<unknown>>;
 

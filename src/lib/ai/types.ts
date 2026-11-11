@@ -31,13 +31,31 @@ export interface TextGenResult {
   tokensOut: number;
 }
 
+/** The picture's shape. Providers map it to a size they support; the visual crops to its frame. */
+export type ImageShape = "square" | "portrait" | "landscape";
+
 export interface ImageGenRequest {
   context: BrandContext;
-  /** Task description of the desired image. */
+  /** Task description of the desired image (written by the image_brief task, INV-2). */
   prompt: string;
+  shape?: ImageShape;
   aspectRatio?: string;
   /** Negative prompt to fight the generic AI look (brief §4.3). */
   negativePrompt?: string;
+}
+
+/**
+ * Redraw one area of a picture. `mask` is a PNG the same size as `source`:
+ * transparent where the picture may change, opaque elsewhere. Providers treat
+ * it as guidance, so the caller composites the result back over the original
+ * outside the area (lib/visual/region) and nothing else can move.
+ */
+export interface ImageEditRequest {
+  context: BrandContext;
+  prompt: string;
+  source: Uint8Array;
+  mask: Uint8Array;
+  shape?: ImageShape;
 }
 
 export interface ImageGenResult {
@@ -118,4 +136,5 @@ export interface StructuredResult<T> {
 export interface ImageProvider {
   readonly name: string;
   generate(req: ImageGenRequest, model: string): Promise<ImageGenResult>;
+  edit(req: ImageEditRequest, model: string): Promise<ImageGenResult>;
 }

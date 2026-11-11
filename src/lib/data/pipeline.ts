@@ -116,12 +116,13 @@ export async function generateVisuals(scope: ProjectScope, opts: { scheme: numbe
       // person chose for this piece carry over.
       const kept = (
         await c.query<{ params: Record<string, unknown> }>(
-          "SELECT params FROM image_assets WHERE content_item_id=$1 AND project_id=$2 ORDER BY created_at LIMIT 1",
+          "SELECT params FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND kind <> 'picture' ORDER BY created_at LIMIT 1",
           [it.id, scope.projectId],
         )
       ).rows[0]?.params;
       const design = parseDesign(kept);
-      await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2", [it.id, scope.projectId]);
+      // Pictures stay: a regenerate redraws the templates, not the pictures they carry.
+      await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND kind <> 'picture'", [it.id, scope.projectId]);
       const f = formatByKey(it.format).frame;
       const rows: [string, number, number][] = [["single", f.w, f.h], ["quote_card", 1080, 1080], ["carousel_frame", 1080, 1350]];
       for (const [kind, w, h] of rows) {
@@ -146,15 +147,28 @@ export async function saveDesign(scope: ProjectScope, contentItemId: string, des
   const clean = parseDesign(design);
   const patch = scheme === undefined ? clean : { ...clean, scheme: Math.max(0, Math.floor(scheme)) };
   return withTenantSession(scope, async (c) =>
-    ((await c.query("UPDATE image_assets SET params = params || $1::jsonb WHERE content_item_id=$2 AND project_id=$3", [JSON.stringify(patch), contentItemId, scope.projectId])).rowCount ?? 0) > 0,
+    ((await c.query("UPDATE image_assets SET params = params || $1::jsonb WHERE content_item_id=$2 AND project_id=$3 AND kind <> 'picture'", [JSON.stringify(patch), contentItemId, scope.projectId])).rowCount ?? 0) > 0,
   );
 }
 
-/** Remove one piece's visual set. The copy stays; only the artboards go. */
+/** Remove one piece's visual set, its pictures included. The copy stays; only the artboards go. */
 export async function deleteVisuals(scope: ProjectScope, contentItemId: string): Promise<number> {
-  return withTenantSession(scope, async (c) =>
-    (await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2", [contentItemId, scope.projectId])).rowCount ?? 0,
-  );
+  const { n, keys } = await withTenantSession(scope, async (c) => {
+    const keys = (
+      await c.query<{ storage_key: string }>(
+        "SELECT storage_key FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND storage_key IS NOT NULL",
+        [contentItemId, scope.projectId],
+      )
+    ).rows.map((r) => r.storage_key);
+    const del = await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND kind <> 'picture'", [contentItemId, scope.projectId]);
+    await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND kind = 'picture'", [contentItemId, scope.projectId]);
+    return { n: del.rowCount ?? 0, keys };
+  });
+  if (keys.length) {
+    const { storage } = await import("@/lib/storage");
+    await Promise.allSettled(keys.map((k) => storage().delete(k)));
+  }
+  return n;
 }
 
 export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
@@ -162,7 +176,7 @@ export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
     (
       await c.query(
         `SELECT id, content_item_id, kind, params, width, height, created_at FROM image_assets
-          WHERE project_id=$1 AND content_item_id IS NOT NULL ORDER BY created_at`,
+          WHERE project_id=$1 AND content_item_id IS NOT NULL AND kind <> 'picture' ORDER BY created_at`,
         [scope.projectId],
       )
     ).rows.map((r) => ({

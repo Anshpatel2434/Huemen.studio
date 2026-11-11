@@ -73,7 +73,11 @@ const schema = z.object({
   // workspace, per minute. 0 turns one off. The monthly cap is separate.
   AI_RATE_PER_USER_MINUTE: z.preprocess(blankIsUnset, z.coerce.number().int().min(0).default(20)),
   AI_RATE_PER_WORKSPACE_MINUTE: z.preprocess(blankIsUnset, z.coerce.number().int().min(0).default(60)),
-  AI_IMAGE_MODEL: z.string().optional(),
+  // Pictures (ChatGPT Image through OpenAI's Images API). The model name is
+  // config, e.g. the current GPT Image model; the app never guesses one.
+  AI_IMAGE_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
+  // A picture or an area redraw can take a while; bounded per call.
+  AI_IMAGE_TIMEOUT_MS: z.preprocess(blankIsUnset, z.coerce.number().int().positive().default(180000)),
   // Speech to text for voice notes. Claude reads text, not audio, so this is a
   // separate provider. "off" means the page offers typing instead of recording.
   AI_TRANSCRIBE_PROVIDER: z.preprocess(blankIsUnset, z.enum(["off", "openai"]).default("off")),
@@ -131,7 +135,11 @@ export type Env = z.infer<typeof schema>;
  */
 export function configProblems(env: Env, phase?: string): string[] {
   const out: string[] = [];
-  if (env.AI_TEXT_PROVIDER !== "mock" && !env.AI_PROVIDER_NO_TRAINING) {
+  if (env.AI_IMAGE_PROVIDER === "openai") {
+    if (!env.OPENAI_API_KEY) out.push("AI_IMAGE_PROVIDER=openai needs OPENAI_API_KEY (paste it in the hosting settings, never in code).");
+    if (!env.AI_IMAGE_MODEL) out.push("AI_IMAGE_PROVIDER=openai needs AI_IMAGE_MODEL, the current GPT Image model name.");
+  }
+  if ((env.AI_TEXT_PROVIDER !== "mock" || env.AI_IMAGE_PROVIDER !== "mock") && !env.AI_PROVIDER_NO_TRAINING) {
     out.push("AI_PROVIDER_NO_TRAINING is false: client data must never be used for model training (brief §07). Set the provider account to no-training, then set AI_PROVIDER_NO_TRAINING=true.");
   }
   // Production refusals. Not while `next build` collects pages: the build
