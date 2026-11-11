@@ -142,19 +142,20 @@ export async function cancelJob(scope: SessionScope, id: string): Promise<boolea
   });
 }
 
-async function claim(): Promise<JobRecord | null> {
+async function claim(onlyTenants: string[] | null): Promise<JobRecord | null> {
   return withTenantSession(ADMIN, async (c) => {
     const { rows } = await c.query<JobRecord>(
       `UPDATE jobs SET status = 'running', locked_until = now() + make_interval(secs => $1)
         WHERE id = (
           SELECT id FROM jobs
-           WHERE (status = 'queued' AND run_after <= now())
-              OR (status = 'running' AND (locked_until IS NULL OR locked_until < now()))
+           WHERE ((status = 'queued' AND run_after <= now())
+              OR (status = 'running' AND (locked_until IS NULL OR locked_until < now())))
+             AND ($2::uuid[] IS NULL OR tenant_id = ANY($2::uuid[]))
            ORDER BY run_after
            LIMIT 1
            FOR UPDATE SKIP LOCKED)
         RETURNING *`,
-      [LEASE_SECONDS],
+      [LEASE_SECONDS, onlyTenants],
     );
     return rows[0] ?? null;
   });
@@ -250,14 +251,23 @@ async function runOne(job: JobRecord, deadline: number): Promise<void> {
  * Claim and run due jobs until none are due or the time budget is spent.
  * Returns how many slices ran. Never throws: it runs after responses.
  */
-export async function drainJobs(opts: { budgetMs?: number; maxJobs?: number } = {}): Promise<number> {
+export async function drainJobs(opts: {
+  budgetMs?: number;
+  maxJobs?: number;
+  /**
+   * Only these workspaces' jobs. For tests, which share one database and run
+   * side by side: a test's worker must never run another test's jobs.
+   * Production workers leave it out and run every workspace's.
+   */
+  onlyTenants?: string[];
+} = {}): Promise<number> {
   const start = Date.now();
   const deadline = start + (opts.budgetMs ?? DEFAULT_BUDGET_MS);
   let ran = 0;
   while (Date.now() < deadline - 5_000 && ran < (opts.maxJobs ?? 50)) {
     let job: JobRecord | null;
     try {
-      job = await claim();
+      job = await claim(opts.onlyTenants?.length ? opts.onlyTenants : null);
     } catch {
       break;
     }
