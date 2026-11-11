@@ -16,6 +16,7 @@ import type {
   TextStreamEvent,
   StructuredResult,
   ImageGenRequest,
+  ImageEditRequest,
   ImageGenResult,
   ImageProvider,
   TextGenRequest,
@@ -180,14 +181,82 @@ export const mockTextProvider: StreamingTextProvider = {
   },
 };
 
+/** A stable number from a string: the same brief always draws the same picture. */
+function seedOf(s: string): number {
+  let h = 2166136261;
+  for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return h;
+}
+
+/** The brand palette from the context block ("Palette: #111, #f4f4f4"), or ink and paper. */
+function paletteOf(serialized: string): string[] {
+  const line = serialized.match(/^Palette: (.+)$/m)?.[1] ?? "";
+  const hex = [...line.matchAll(/#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/gi)].map((m) => m[0]);
+  return hex.length >= 2 ? hex.slice(0, 5) : ["#111111", "#f4f4f4", "#ff3429"];
+}
+
+const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+/**
+ * The stand-in picture maker: a real image in the brand's colours (gradient
+ * and shapes seeded by the brief), so the whole picture flow can be used and
+ * tested without a key. A brief that asks for exact text ("Text: ...") gets it
+ * drawn in, like "text in the picture" on the real model.
+ */
 export const mockImageProvider: ImageProvider = {
   name: "mock",
-  async generate(_req: ImageGenRequest, model: string): Promise<ImageGenResult> {
-    // 1x1 transparent PNG.
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-      "base64",
-    );
-    return { bytes: new Uint8Array(png), mime: "image/png", model, width: 1, height: 1 };
+  async generate(req: ImageGenRequest, model: string): Promise<ImageGenResult> {
+    const { default: sharp } = await import("sharp");
+    const { SIZES } = await import("./openai-image");
+    const { width, height } = SIZES[req.shape ?? "square"];
+    const pal = paletteOf(req.context.serialized);
+    const seed = seedOf(req.prompt);
+    const pick = (i: number) => pal[(seed >>> (i * 3)) % pal.length];
+    const shapes = Array.from({ length: 5 }, (_, i) => {
+      const r = 80 + ((seed >>> (i * 4)) % 260);
+      const cx = (seed >>> (i * 5)) % width;
+      const cy = (seed >>> (i * 6 + 1)) % height;
+      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${pick(i + 2)}" fill-opacity="0.35"/>`;
+    }).join("");
+    const text = req.prompt.match(/^Text: "?(.+?)"?$/m)?.[1]?.slice(0, 80);
+    const words = text ? text.split(/\s+/) : [];
+    const lines: string[] = [];
+    for (const w of words) {
+      const last = lines.at(-1);
+      if (last && (last + " " + w).length <= 22) lines[lines.length - 1] = `${last} ${w}`;
+      else lines.push(w);
+    }
+    const textSvg = lines
+      .map((l, i) => `<text x="${width * 0.08}" y="${height * 0.62 + i * 74}" font-family="Arial, sans-serif" font-size="64" font-weight="700" fill="#ffffff">${esc(l)}</text>`)
+      .join("");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${pick(0)}"/><stop offset="1" stop-color="${pick(1)}"/></linearGradient></defs>
+      <rect width="100%" height="100%" fill="url(#g)"/>${shapes}${textSvg}</svg>`;
+    const png = await sharp(Buffer.from(svg)).png().toBuffer();
+    return { bytes: new Uint8Array(png), mime: "image/png", model, width, height };
+  },
+  /** Tints and stripes only where the mask is transparent: visibly "that part changed". */
+  async edit(req: ImageEditRequest, model: string): Promise<ImageGenResult> {
+    const { default: sharp } = await import("sharp");
+    const src = sharp(Buffer.from(req.source)).ensureAlpha();
+    const { width, height } = await src.metadata();
+    if (!width || !height) throw new Error("The stand-in couldn't read the picture.");
+    const raw = await src.raw().toBuffer();
+    const mask = await sharp(Buffer.from(req.mask)).resize(width, height, { fit: "fill" }).ensureAlpha().raw().toBuffer();
+    const tint = paletteOf(req.context.serialized)[seedOf(req.prompt) % 3].replace("#", "");
+    const full = tint.length === 3 ? tint.split("").map((c) => c + c).join("") : tint;
+    const [tr, tg, tb] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (mask[i + 3] >= 128) continue;
+        const stripe = ((x + y) >> 4) % 2 === 0 ? 0.65 : 0.45;
+        raw[i] = Math.round(raw[i] * (1 - stripe) + tr * stripe);
+        raw[i + 1] = Math.round(raw[i + 1] * (1 - stripe) + tg * stripe);
+        raw[i + 2] = Math.round(raw[i + 2] * (1 - stripe) + tb * stripe);
+      }
+    }
+    const png = await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    return { bytes: new Uint8Array(png), mime: "image/png", model, width, height };
   },
 };

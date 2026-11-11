@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy } from "lucide-react";
+import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy, MessageSquare } from "lucide-react";
 import { AgentDots, Badge, IconButton, Modal, Segmented, SubmitButton, Tabs, useToast } from "@/components/ui";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { fileSlug, nodeToPngBlob, saveBlob, zipBlobs } from "@/lib/ui/png";
@@ -21,10 +21,18 @@ import {
 } from "@/lib/visual/design";
 import { CarouselFrames, PostImage, QuoteCard, schemesFrom, type Fonts, type RenderText, type Scheme } from "./visual-layouts";
 import { lookCheck, type LookResult } from "@/lib/visual/look-check";
+import type { PictureMode } from "@/lib/visual/design";
+import type { VisualComment } from "@/lib/data/visual-comments";
+import type { JobView } from "@/lib/jobs/types";
+import { addCommentAction, dismissCommentAction, setPictureAction, startPictureAction } from "./picture-actions";
+import { retryJobAction } from "../../../jobs/actions";
+import { CommentSurface, PictureMenu, TARGET_LABEL, WorkingOverlay, useJobWatch, type Watched } from "./visual-comments-ui";
 
 type Item = {
   id: string; format: string; hook: string; body: string; cta: string; status: string; pillarName: string | null;
   scheme: number | null; design: Design | null;
+  /** The image_assets row of each visual, for comments. */
+  visuals: Partial<Record<ArtboardKind, string>>;
 };
 
 /** Where a carousel slide's text lives in the post, so a slide edit writes back to it. */
@@ -64,6 +72,11 @@ const KIND_LABEL: Record<ArtboardKind, string> = { post: "Post image", quote: "Q
 
 type BoardProps = {
   tenantId: string; projectId: string; brandName: string; logo: string | null; items: Item[]; palette: string[]; fonts: string[]; imageStyle: string; selectedId: string | null; initialScheme: number;
+  /** Pictures in use: same-origin link and the version each was made from. */
+  pictures: Record<string, { url: string; parentId: string | null }>;
+  comments: VisualComment[];
+  /** Picture work still queued or running when the page loaded. */
+  jobs: Watched[];
 };
 
 /**
@@ -86,10 +99,58 @@ export function VisualBoard(props: BoardProps) {
   );
 }
 
-function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, imageStyle, selectedId, initialScheme }: BoardProps) {
+function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, imageStyle, selectedId, initialScheme, pictures, comments: savedComments, jobs }: BoardProps) {
   const history = useCanvasHistory();
   const router = useRouter();
   const toast = useToast();
+
+  // ---- pictures: drawn and changed in the queue, watched until they finish ----
+  const pictureFor = (i: Item, k: ArtboardKind) => {
+    const ref = i.design?.pictures?.[k];
+    const info = ref ? pictures[ref.id] : undefined;
+    return ref && info ? { id: ref.id, url: info.url, mode: ref.mode, parentId: info.parentId } : null;
+  };
+  // Try again (from a toast) watches the job again; the watcher is created just below.
+  const watchRef = useRef<(w: Watched) => void>(() => {});
+  const setPicture = useCallback(async (i: Item, k: ArtboardKind, id: string | null) => {
+    const r = await setPictureAction(tenantId, projectId, i.id, k, id);
+    if (!r.ok) throw new Error(r.error);
+    router.refresh();
+  }, [tenantId, projectId, router]);
+  const onJobDone = useCallback((w: Watched, job: JobView) => {
+    const made = (job.result as { pictureId?: string } | null)?.pictureId;
+    if (job.status === "succeeded" && made) {
+      const i = items.find((x) => x.id === w.contentItemId);
+      const k = w.artboard as ArtboardKind;
+      if (i) history.push({ label: w.label.toLowerCase(), undo: () => setPicture(i, k, w.prev ?? null), redo: () => setPicture(i, k, made) });
+      toast(w.label === "Changing the picture" ? "Picture changed. Only the marked area was redrawn." : "Picture ready");
+    } else {
+      toast(job.error ?? "That didn't go through.", "danger", {
+        label: "Try again",
+        run: () => void retryJobAction(tenantId, w.jobId).then((ok) => { if (ok) watchRef.current(w); }),
+      });
+    }
+    router.refresh();
+  }, [items, history, setPicture, toast, router, tenantId]);
+  const { watching, watch } = useJobWatch(tenantId, jobs, onJobDone);
+  useEffect(() => { watchRef.current = watch; }, [watch]);
+  const working = (i: Item, k: ArtboardKind) => watching.find((w) => w.contentItemId === i.id && w.artboard === k);
+  const drawPicture = async (i: Item, k: ArtboardKind, mode: PictureMode) => {
+    const r = await startPictureAction(tenantId, projectId, i.id, k, mode);
+    if (!r.ok) return toast(r.error, "danger");
+    watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Drawing a picture", prev: pictureFor(i, k)?.id ?? null });
+  };
+
+  // ---- comments pinned on a spot ---------------------------------------------------
+  const [commenting, setCommenting] = useState(false);
+  const [extraComments, setExtraComments] = useState<VisualComment[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const allComments = useMemo(() => {
+    const byId = new Map(extraComments.map((c) => [c.id, c]));
+    for (const c of savedComments) byId.set(c.id, c);
+    return [...byId.values()].filter((c) => !dismissed.has(c.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [extraComments, savedComments, dismissed]);
+  const commentsOn = (visualId: string | undefined) => (visualId ? allComments.filter((c) => c.visualId === visualId) : []);
 
   // ---- copy: edit and ask ----------------------------------------------------
   const edit = useCallback((i: Item, next: { hook?: string; body?: string; cta?: string }, label: string, asked = false) => {
@@ -142,6 +203,44 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
     }, delay));
   }, [designOf, history, put, tenantId, projectId, toast]);
   useEffect(() => () => { for (const t of timers.current.values()) clearTimeout(t); }, []);
+
+  const sendComment = (i: Item, k: ArtboardKind) => async (d: { target: VisualComment["target"]; box: { x: number; y: number; w: number; h: number }; note: string }) => {
+    const visualId = i.visuals[k];
+    if (!visualId) return false;
+    const before = { hook: i.hook, body: i.body, cta: i.cta };
+    const prevDesign = designOf(i);
+    const r = await addCommentAction(tenantId, projectId, { visualId, target: d.target, box: d.box, note: d.note });
+    if (!r.ok) {
+      toast(r.error, "danger");
+      return false;
+    }
+    setExtraComments((all) => [...all.filter((c) => c.id !== r.comment.id), r.comment]);
+    if (r.jobId) {
+      watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Changing the picture", prev: pictureFor(i, k)?.id ?? null });
+      toast("Redrawing the marked area. It takes a moment.", "neutral");
+      return true;
+    }
+    if (r.comment.status === "applied" && r.after) {
+      if (d.target === "headline" || d.target === "body" || d.target === "cta") {
+        const after = { hook: r.after.hook, body: r.after.body, cta: r.after.cta };
+        const opts = { learn: false };
+        history.push({ label: `comment on the ${TARGET_LABEL[d.target].toLowerCase()}`, undo: () => patchContentAction(tenantId, projectId, i.id, before, opts), redo: () => patchContentAction(tenantId, projectId, i.id, after, opts) });
+      } else if (r.after.design) {
+        const next = r.after.design;
+        setDesigns((all) => ({ ...all, [i.id]: next }));
+        history.push({ label: `comment on the ${TARGET_LABEL[d.target].toLowerCase()}`, undo: () => put(i.id, prevDesign), redo: () => put(i.id, next) });
+      }
+      toast(r.comment.result ?? "Done");
+    } else {
+      toast(r.comment.result ?? "That didn't change anything.", "danger");
+    }
+    router.refresh();
+    return true;
+  };
+  const dismissComment = (id: string) => {
+    setDismissed((all) => new Set(all).add(id));
+    void dismissCommentAction(tenantId, projectId, id);
+  };
 
   const designed = items.filter((i) => i.scheme !== null);
   const undesigned = items.length - designed.length;
@@ -283,6 +382,28 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
             </Section>
           )}
 
+          {focus && (() => {
+            const mine = allComments.filter((c) => c.contentItemId === focus.id);
+            return (
+              <Section id="comments" icon={MessageSquare} title={`Comments${mine.length ? ` · ${mine.length}` : ""}`} open={open} setOpen={setOpen}>
+                {mine.length === 0 ? (
+                  <p className="text-sm text-ink-muted">Pick the comment tool in the bar under the canvas (or press C), drag a box on a visual and say what to change. A box on a picture redraws only that area.</p>
+                ) : (
+                  <ol className="flex flex-col gap-2.5">
+                    {mine.map((c, n) => (
+                      <li key={c.id} className="text-sm border border-hairline rounded-md p-2.5">
+                        <p className="text-xs text-ink-faint">{n + 1} · {TARGET_LABEL[c.target]} · {c.status === "working" ? "working" : c.status === "applied" ? "done" : c.status === "failed" ? "didn't go through" : "waiting"}</p>
+                        <p className="mt-0.5">{c.note}</p>
+                        {c.result && <p className="text-xs text-ink-muted mt-1">{c.result}</p>}
+                        {c.status !== "working" && <button type="button" onClick={() => dismissComment(c.id)} className={`${btnClass("ghost", "sm")} mt-1.5`}>Clear</button>}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </Section>
+            );
+          })()}
+
           <div className="p-3 grid grid-cols-2 gap-2 border-t border-hairline">
             {schemes.map((sc, i) => (
               <button key={sc.name} onClick={() => setScheme(i)} className={`rounded-md overflow-hidden border text-left transition-colors ${i === scheme ? "border-ink ring-1 ring-ink" : "border-hairline hover:border-line"}`}>
@@ -335,11 +456,6 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
               <button type="button" role="radio" aria-checked={wire} onClick={() => setView("wireframe")} className="hu-seg__item">Wireframe</button>
               <button type="button" role="radio" aria-checked={!wire} disabled={!designed.length} title={designed.length ? undefined : "Generate visuals first"} onClick={() => setView("design")} className="hu-seg__item disabled:opacity-45">Design</button>
             </div>
-            {!designed.length && (
-              <p className="text-sm bg-paper border border-hairline rounded-full px-4 min-h-10 inline-flex items-center shadow-[var(--shadow-sm)]">
-                Laid out, not designed yet. Pick a scheme on the right and press Generate visuals.
-              </p>
-            )}
           </div>
         )}
         {items.length === 0 ? (
@@ -349,7 +465,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
             </div>
           </div>
         ) : (
-          <Canvas>
+          <Canvas comment={wire ? undefined : { on: commenting, onChange: setCommenting }}>
             <div className="flex flex-col gap-16 p-4 pt-16" data-canvas-bg="1">
               {shown.map((i) => {
                 const fmt = formatByKey(i.format);
@@ -359,6 +475,25 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                 const d = designOf(i);
                 const text = textFor(i, slides);
                 const isFocus = focus?.id === i.id;
+                // Pictures and comments belong to the designed view; the wireframe stays plain.
+                const pic = (k: ArtboardKind) => (wire ? null : pictureFor(i, k));
+                const picMenu = (k: ArtboardKind) => !wire && i.visuals[k] && (
+                  <PictureMenu
+                    has={!!pic(k)}
+                    mode={pic(k)?.mode ?? null}
+                    hasPrevious={!!pic(k)?.parentId}
+                    busy={!!working(i, k)}
+                    onDraw={(mode) => void drawPicture(i, k, mode)}
+                    onPrevious={() => { const p0 = pic(k); if (p0?.parentId) { const cur = p0.id; const prev = p0.parentId; history.push({ label: "previous picture", undo: () => setPicture(i, k, cur), redo: () => setPicture(i, k, prev) }); void setPicture(i, k, prev).catch(() => toast("Couldn't go back a version.", "danger")); } }}
+                    onRemove={() => { const cur = pic(k)?.id ?? null; history.push({ label: "remove picture", undo: () => setPicture(i, k, cur), redo: () => setPicture(i, k, null) }); void setPicture(i, k, null).catch(() => toast("Couldn't take the picture off.", "danger")); }}
+                  />
+                );
+                const surface = (k: ArtboardKind, child: React.ReactNode, frameOf?: (el: Element) => HTMLElement | null) => (
+                  <CommentSurface enabled={commenting && !wire} comments={commentsOn(i.visuals[k])} frameOf={frameOf} onSend={sendComment(i, k)} onDismiss={dismissComment}>
+                    {child}
+                    {working(i, k) && <WorkingOverlay label={working(i, k)!.label} />}
+                  </CommentSurface>
+                );
                 return (
                   <section key={i.id} data-canvas-bg="1" onPointerDownCapture={() => setFocusId(i.id)} className={`rounded-xs ${isFocus ? "outline outline-2 outline-accent outline-offset-[14px]" : ""}`}>
                     <div className="flex items-center gap-3 mb-4" data-canvas-bg="1">
@@ -383,25 +518,25 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                         label={`Post image · ${POST_LAYOUTS.find((l) => l.key === d.layouts.post)?.label}`}
                         meta={fmt.frame.label}
                         width={DISPLAY_W}
-                        actions={<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(`${i.id}:single`, fmt.frame.w, fmt.frame.h, `${fileSlug(brandName)}-post-${fmt.frame.w}x${fmt.frame.h}`)} />}
+                        actions={<>{picMenu("post")}<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(`${i.id}:single`, fmt.frame.w, fmt.frame.h, `${fileSlug(brandName)}-post-${fmt.frame.w}x${fmt.frame.h}`)} /></>}
                       >
-                        <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} />
+                        {surface("post", <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} picture={pic("post")} />)}
                       </Artboard>
                       <Artboard
                         label={`Quote card · ${QUOTE_LAYOUTS.find((l) => l.key === d.layouts.quote)?.label}`}
                         meta="1:1 · 1080×1080"
                         width={DISPLAY_W}
-                        actions={<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(`${i.id}:quote`, 1080, 1080, `${fileSlug(brandName)}-quote-1080x1080`)} />}
+                        actions={<>{picMenu("quote")}<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(`${i.id}:quote`, 1080, 1080, `${fileSlug(brandName)}-quote-1080x1080`)} /></>}
                       >
-                        <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} text={text} frameRef={frameRef(`${i.id}:quote`)} />
+                        {surface("quote", <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} text={text} frameRef={frameRef(`${i.id}:quote`)} picture={pic("quote")} />)}
                       </Artboard>
                       <Artboard
                         label={`Carousel · ${CAROUSEL_LAYOUTS.find((l) => l.key === d.layouts.carousel)?.label}`}
                         meta={`${slides.length} frames · 1080×1350`}
                         width={slides.length * 170 + (slides.length - 1) * 8 + 16}
-                        actions={<ExportButton label="Download all frames" busy={busy === `${i.id}:set`} onClick={() => exportSet(i, slides)} />}
+                        actions={<>{picMenu("carousel")}<ExportButton label="Download all frames" busy={busy === `${i.id}:set`} onClick={() => exportSet(i, slides)} /></>}
                       >
-                        <CarouselFrames
+                        {surface("carousel", <CarouselFrames
                           layout={d.layouts.carousel}
                           slides={slides.map((x) => x.text)}
                           ctaIndex={slides.findIndex((x) => x.src.kind === "cta")}
@@ -411,7 +546,10 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                           frameWidth={170}
                           text={text}
                           frameRef={(k) => frameRef(`${i.id}:carousel:${k}`)}
-                        />
+                          cover={pic("carousel")}
+                          brand={brandName}
+                          logo={logo}
+                        />)}
                       </Artboard>
                     </div>
                   </section>

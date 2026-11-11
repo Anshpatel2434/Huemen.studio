@@ -15,6 +15,11 @@ import { startPiece } from "@/lib/data/create";
 import { generateContent } from "@/lib/data/content";
 import { scoreProject } from "@/lib/data/check";
 import { unlockStage } from "@/lib/data/projects";
+import { getProject, type ProjectScope } from "@/lib/data/projects";
+import { drawPicture } from "@/lib/data/pictures";
+import { applyPictureComment, finishComment } from "@/lib/data/visual-comments";
+import { ARTBOARDS, type ArtboardKind } from "@/lib/visual/design";
+import type { SessionScope } from "@/db/session";
 import { JobStop, type JobHandler } from "./types";
 
 /**
@@ -88,9 +93,50 @@ const calendarPlan: JobHandler = async ({ scope, payload }) => {
   return { done: true, result: out };
 };
 
+/** The project a picture job works in, checked to still be there and visible to its starter. */
+async function projectOf(scope: SessionScope & { tenantId: string }, payload: Record<string, unknown>): Promise<ProjectScope> {
+  const projectId = String(payload.projectId ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(projectId) || !(await getProject(scope, projectId))) throw new JobStop("That project isn't there any more.");
+  return { ...scope, projectId };
+}
+
+const artboardOf = (v: unknown): ArtboardKind => {
+  if (!ARTBOARDS.includes(v as ArtboardKind)) throw new JobStop("That visual isn't one that takes a picture.");
+  return v as ArtboardKind;
+};
+
+/** A new picture for one visual: Claude writes the brief, the image model draws it. */
+const pictureGenerate: JobHandler = async ({ scope, payload, progress, save }) => {
+  if (typeof progress.pictureId === "string") return { done: true, result: { pictureId: progress.pictureId } };
+  const ps = await projectOf(scope, payload);
+  const id = await drawPicture(ps, String(payload.contentItemId ?? ""), artboardOf(payload.artboard), payload.mode === "with_text" ? "with_text" : "live_text");
+  await save({ pictureId: id });
+  return { done: true, result: { pictureId: id } };
+};
+
+/** One comment on a picture: redraw only its box. */
+const pictureEdit: JobHandler = async ({ scope, payload, progress, save }) => {
+  if (typeof progress.pictureId === "string") return { done: true, result: { pictureId: progress.pictureId } };
+  const ps = await projectOf(scope, payload);
+  const id = await applyPictureComment(ps, String(payload.commentId ?? ""));
+  await save({ pictureId: id });
+  return { done: true, result: { pictureId: id } };
+};
+
 export const JOB_HANDLERS = {
   pillar_drafts: pillarDrafts,
   calendar_plan: calendarPlan,
+  picture_generate: pictureGenerate,
+  picture_edit: pictureEdit,
 } satisfies Record<string, JobHandler>;
 
 export type JobKind = keyof typeof JOB_HANDLERS;
+
+/** Called once when a job stops for good (failed or dead), with the plain reason. */
+export const JOB_ON_STOP: Partial<Record<JobKind, (scope: SessionScope & { tenantId: string }, payload: Record<string, unknown>, message: string) => Promise<void>>> = {
+  picture_edit: async (scope, payload, message) => {
+    const projectId = String(payload.projectId ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(projectId)) return;
+    await finishComment({ ...scope, projectId }, String(payload.commentId ?? ""), { status: "failed", result: message });
+  },
+};

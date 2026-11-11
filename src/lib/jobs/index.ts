@@ -28,7 +28,7 @@ import "server-only";
 import { after } from "next/server";
 import { withTenantSession, type SessionScope } from "@/db/session";
 import { AiConfigError, ProviderError, RateLimitError, UsageCapError, userMessage } from "@/lib/ai/errors";
-import { JOB_HANDLERS, type JobKind } from "./handlers";
+import { JOB_HANDLERS, JOB_ON_STOP, type JobKind } from "./handlers";
 import { JobStop, type JobRecord, type JobView } from "./types";
 
 export { JobStop } from "./types";
@@ -103,6 +103,18 @@ export async function latestJob(scope: SessionScope, kind: JobKind): Promise<Job
     )).rows[0],
   );
   return row ? view(row) : null;
+}
+
+/** This project's jobs of these kinds that are still waiting or running (the visual board shows them). */
+export async function activeJobsFor(scope: SessionScope, kinds: JobKind[], projectId: string): Promise<(JobView & { payload: Record<string, unknown> })[]> {
+  const rows = await withTenantSession(scope, async (c) =>
+    (await c.query<JobRecord>(
+      `SELECT * FROM jobs WHERE kind = ANY($1) AND status IN ('queued', 'running') AND payload->>'projectId' = $2
+        ORDER BY created_at`,
+      [kinds, projectId],
+    )).rows,
+  );
+  return rows.map((r) => ({ ...view(r), payload: r.payload ?? {} }));
 }
 
 /** Try again: a stopped job goes back in the queue and carries on from its progress. */
@@ -185,6 +197,7 @@ async function runOne(job: JobRecord, deadline: number): Promise<void> {
   const handler = JOB_HANDLERS[job.kind as JobKind];
   const attempt = job.attempts + 1;
   let progress: Record<string, unknown> = job.progress ?? {};
+  let scope: (SessionScope & { tenantId: string }) | null = null;
   const save = async (p: Record<string, unknown>) => {
     progress = p;
     await withTenantSession(ADMIN, (c) =>
@@ -193,7 +206,7 @@ async function runOne(job: JobRecord, deadline: number): Promise<void> {
   };
   try {
     if (!handler) throw new JobStop(`Nothing runs jobs of kind "${job.kind}".`);
-    const scope = await actorScope(job);
+    scope = await actorScope(job);
     const out = await handler({ scope, payload: job.payload ?? {}, progress, save, deadline });
     if (out.done) {
       await withTenantSession(ADMIN, (c) =>
@@ -227,6 +240,9 @@ async function runOne(job: JobRecord, deadline: number): Promise<void> {
         [job.id, attempt, message, JSON.stringify(progress), final ? (retry ? "dead" : "failed") : "queued", final ? 0 : afterSeconds],
       ),
     ).catch(() => undefined);
+    // A job that has stopped for good tells whatever was waiting on it (a comment's pin, say).
+    const onStop = JOB_ON_STOP[job.kind as JobKind];
+    if (final && onStop && scope) await onStop(scope, job.payload ?? {}, message).catch(() => undefined);
   }
 }
 

@@ -19,10 +19,13 @@ import type {
   ImageProvider,
   StreamingTextProvider,
   TextGenRequest,
+  ImageEditRequest,
+  ImageGenResult,
 } from "./types";
 import { mockImageProvider, mockTextProvider } from "./providers/mock";
 import { anthropicTextProvider } from "./providers/anthropic";
 import { openaiTranscriber, type FetchLike, type Transcriber } from "./providers/openai-transcribe";
+import { openaiImageProvider, type FetchLike as ImageFetch } from "./providers/openai-image";
 import { assemblePrompt } from "./prompt";
 import { AiConfigError, ProviderError, UsageCapError } from "./errors";
 import { takeHit } from "@/lib/ratelimit";
@@ -60,17 +63,21 @@ export function selectTextProvider(env: Env): StreamingTextProvider {
   }
 }
 
-export function selectImageProvider(env: Env): ImageProvider {
+/**
+ * Pictures: OpenAI's GPT Image ("ChatGPT Image") or the stand-in. Text stays
+ * on the text provider (Claude). A provider named without its key or model is
+ * a config error, never a silent fallback to the stand-in.
+ */
+export function selectImageProvider(env: Env, fetchImpl?: ImageFetch): ImageProvider {
   switch (env.AI_IMAGE_PROVIDER) {
     case "mock":
       return mockImageProvider;
     case "openai":
+      if (!env.OPENAI_API_KEY) throw new AiConfigError("AI_IMAGE_PROVIDER=openai needs OPENAI_API_KEY.");
+      if (!env.AI_IMAGE_MODEL) throw new AiConfigError("AI_IMAGE_PROVIDER=openai needs AI_IMAGE_MODEL (the current GPT Image model name).");
+      return openaiImageProvider({ apiKey: env.OPENAI_API_KEY, timeoutMs: env.AI_IMAGE_TIMEOUT_MS }, fetchImpl);
     case "replicate":
-      // Visuals are templated by design (brief §09: image models misspell
-      // text), so no image model is wired. Say so instead of faking one.
-      throw new AiConfigError(
-        `AI_IMAGE_PROVIDER=${env.AI_IMAGE_PROVIDER} is not built. Visuals are rendered from templates; use "mock".`,
-      );
+      throw new AiConfigError('AI_IMAGE_PROVIDER=replicate is not built. Use "openai", or "mock" for local development.');
   }
 }
 
@@ -324,13 +331,30 @@ export async function generateImage(
   scope: SessionScope,
   req: ImageGenRequest & { contentItemId?: string | null },
 ) {
+  return imageCall(scope, req.contentItemId ?? null, (p, model) => p.generate(req, model));
+}
+
+/** Redraw one area of a picture (the mask marks it). Same cap, limits, retry and log as a new picture. */
+export async function editImage(
+  scope: SessionScope,
+  req: ImageEditRequest & { contentItemId?: string | null },
+) {
+  return imageCall(scope, req.contentItemId ?? null, (p, model) => p.edit(req, model));
+}
+
+async function imageCall(
+  scope: SessionScope,
+  contentItemId: string | null,
+  run: (provider: ImageProvider, model: string) => Promise<ImageGenResult>,
+) {
   const env = getEnv();
-  const model = env.AI_IMAGE_MODEL || "mock-image";
+  const model = env.AI_IMAGE_PROVIDER === "mock" ? env.AI_IMAGE_MODEL || "mock-image" : env.AI_IMAGE_MODEL ?? "";
+  const req = { contentItemId };
   const started = Date.now();
   try {
     await enforceCap(scope, "image");
     const provider = selectImageProvider(env);
-    const result = await withRetry(() => provider.generate(req, model));
+    const result = await withRetry(() => run(provider, model));
     await logGeneration(scope, {
       kind: "image",
       model,

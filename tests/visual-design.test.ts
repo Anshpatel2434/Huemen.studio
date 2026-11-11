@@ -25,7 +25,7 @@ describe("the design model", () => {
     expect(parseDesign({ scheme: 2 })).toEqual(DEFAULT_DESIGN);
     const d = parseDesign({ layouts: { post: "split", quote: "nope" }, tweaks: { scale: 9, align: "center", accent: "loud", background: "tint" } });
     expect(d.layouts).toEqual({ post: "split", quote: "classic", carousel: "standard" });
-    expect(d.tweaks).toEqual({ scale: 1.4, align: "center", accent: "subtle", background: "tint" });
+    expect(d.tweaks).toEqual({ scale: 1.4, align: "center", accent: "subtle", background: "tint", logo: "medium", scrim: "light" });
   });
   it("tweaks change the paint: inverse flips, no accent hides marks, bold only when readable", () => {
     const s = { name: "S", bg: "#ffffff", fg: "#111111", accent: "#060E9F" };
@@ -79,7 +79,7 @@ describe("saving a piece's design", () => {
     await generateVisuals(A, { scheme: 0, approvedOnly: false });
     expect((await listVisuals(A))[0].design).toEqual(DEFAULT_DESIGN);
 
-    const chosen: Design = { layouts: { post: "editorial", quote: "minimal", carousel: "progress" }, tweaks: { scale: 1.2, align: "center", accent: "bold", background: "tint" } };
+    const chosen: Design = { layouts: { post: "editorial", quote: "minimal", carousel: "progress" }, tweaks: { scale: 1.2, align: "center", accent: "bold", background: "tint", logo: "small", scrim: "strong" }, pictures: {} };
     expect(await saveDesign(A, id, chosen)).toBe(true);
     const rows = await listVisuals(A);
     expect(rows.length).toBe(3);

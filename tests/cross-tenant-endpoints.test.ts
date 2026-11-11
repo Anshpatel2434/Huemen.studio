@@ -65,12 +65,14 @@ import * as agent from "@/app/w/[id]/p/[pid]/agent-actions";
 import * as content from "@/app/w/[id]/p/[pid]/content/actions";
 import * as ideate from "@/app/w/[id]/p/[pid]/ideate/actions";
 import * as pipeline from "@/app/w/[id]/p/[pid]/pipeline-actions";
+import * as pictures from "@/app/w/[id]/p/[pid]/visual/picture-actions";
 import * as plan from "@/app/w/[id]/plan/actions";
 import * as jobs from "@/app/w/[id]/jobs/actions";
 import * as jobRoute from "@/app/w/[id]/jobs/[jobId]/route";
 import * as cronRoute from "@/app/api/cron/route";
 import * as clientError from "@/app/api/client-error/route";
-import { newJob } from "./helpers/cross-tenant";
+import { newJob, newComment } from "./helpers/cross-tenant";
+import { generateVisuals } from "@/lib/data/pipeline";
 import * as projects from "@/app/w/[id]/project-actions";
 import * as setup from "@/app/w/[id]/setup/actions";
 import * as conn from "@/app/settings/connections/actions";
@@ -348,6 +350,33 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
   on(f, pipeline, "saveDesignAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, DEFAULT_DESIGN, 1), { ok: (o, c) => { returns((v) => v === true)(o); expect(c.length).toBeGreaterThan(0); } });
   on(f, pipeline, "generateVisualsAction", (fn, t) => fn(form({ tenantId: t.tenantId, projectId: t.projectId, scheme: 0 })), { ok: writesAndRedirects(/\/visual\?generated=/) });
   on(f, pipeline, "deleteVisualsAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId));
+}
+
+{
+  // A piece with its own visuals for each case, since other cases delete A's visuals.
+  const freshVisual = async (fx: Fixture) => {
+    const itemId = await newItem(fx.scopeA, fx.PA, null);
+    await generateVisuals({ ...fx.scopeA, projectId: fx.PA }, { scheme: 0, approvedOnly: false });
+    const visualId = (await one<{ id: string }>("SELECT id FROM image_assets WHERE content_item_id=$1 AND kind='single'", [itemId])).id;
+    return { itemId, visualId };
+  };
+  const f = "src/app/w/[id]/p/[pid]/visual/picture-actions.ts";
+  on(f, pictures, "startPictureAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, "post", "live_text"), {
+    fresh: freshVisual,
+    ok: (o, c) => { returns(isOk)(o); expect(c).toContain("jobs"); },
+  });
+  on(f, pictures, "setPictureAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, "post", null), { fresh: freshVisual, ok: returns(isOk) });
+  on(f, pictures, "addCommentAction", (fn, t) => fn(t.tenantId, t.projectId, { visualId: t.visualId, target: "headline", box: { x: 0.1, y: 0.1, w: 0.5, h: 0.3 }, note: "shorter" }), {
+    fresh: freshVisual,
+    ok: (o, c) => { returns(isOk)(o); expect(c).toContain("visual_comments"); },
+  });
+  on(f, pictures, "dismissCommentAction", (fn, t) => fn(t.tenantId, t.projectId, t.commentId), {
+    fresh: async (fx) => {
+      const v = await freshVisual(fx);
+      return { ...v, commentId: await newComment(fx.A, v.itemId, v.visualId, fx.scopeA.userId!) };
+    },
+    ok: (o, c) => { returns((v) => v === true)(o); expect(c).toContain("visual_comments"); },
+  });
 }
 
 // -- settings: connections, prompts, workspaces (admin console) ---------------------------------------------

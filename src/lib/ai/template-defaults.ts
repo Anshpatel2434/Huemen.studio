@@ -66,6 +66,8 @@ const TASK_META: Record<string, { label: string; about: string }> = {
   extract_answers: { label: "Onboarding pre-fill", about: "Proposes Core answers from their writing for one-tap confirm." },
   dial_pairs: { label: "This or that", about: "Paired lines for the voice dials in onboarding." },
   voice_preview: { label: "Live voice preview", about: "The paragraph that changes as answers are saved." },
+  image_brief: { label: "Picture brief", about: "What ChatGPT Image is asked to draw for a visual, from the brand context and the piece." },
+  design_change: { label: "Design comment", about: "A comment pinned on a visual's logo, background or layout, turned into a design change." },
   site_profile: { label: "Read your website", about: "Onboarding's first screen: name, what they do, who it's for and what they offer, from the site's own words." },
 };
 
@@ -85,13 +87,6 @@ export const TEMPLATE_CATALOG: TemplateEntry[] = [
     about: "Proposes the workspace's pillars from the brief and the strategy answers.",
     defaultBody:
       "You are a personal-brand strategist. From the brand context and the strategy answers, propose 3-5 distinct content pillars. Output one per line as: Name :: one-line description. No other text.",
-  },
-  {
-    key: "image_brief",
-    label: "Image brief",
-    group: "brand",
-    about: "Turns a post into a brand-aware image brief (reserved for an image model).",
-    defaultBody: "You turn a post into a brand-aware image brief: subject, mood, composition, palette from the brand context, and what to avoid.",
   },
   {
     key: "agent_answer",

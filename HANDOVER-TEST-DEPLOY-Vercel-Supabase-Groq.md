@@ -107,6 +107,7 @@ answer quality from this test as a floor, not the real thing.
    | `AI_TEXT_PROVIDER` | `mock` for the first deploy, then your Groq provider (section 4) |
    | `AI_TEXT_FALLBACKS` | `off` (the server-side fallback is an Anthropic feature) |
    | `AI_TRANSCRIBE_PROVIDER` | `off` |
+   | `AI_IMAGE_PROVIDER` | `mock` for this test (stand-in pictures). For ChatGPT Image later: `openai` plus `OPENAI_API_KEY` and `AI_IMAGE_MODEL` (README, Pictures). |
    | `OPENUI_TELEMETRY_DISABLED` | `1` (OpenUI's install script sends anonymous telemetry unless this is set during the build) |
    | `CONNECTIONS_KEY` | optional; only for the Gmail/Google connections, which this test skips |
    | `CRON_SECRET` | optional for this test: 16+ random characters if you add a Cron Job on `/api/cron` (Vercel Pro allows every few minutes; Hobby only daily). Without it, queued jobs still run while their page is open. |

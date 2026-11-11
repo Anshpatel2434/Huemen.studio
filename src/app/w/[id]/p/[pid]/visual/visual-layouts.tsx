@@ -11,12 +11,14 @@
  * askable while the options view shows it plain.
  */
 import type { CSSProperties, ReactNode } from "react";
-import type { CarouselLayout, PostLayout, QuoteLayout, Tweaks } from "@/lib/visual/design";
+import type { CarouselLayout, PictureMode, PostLayout, QuoteLayout, Tweaks } from "@/lib/visual/design";
 
 export type Scheme = { name: string; bg: string; fg: string; accent: string };
 export type TextSlot = { kind: "post" } | { kind: "quote" } | { kind: "slide"; index: number };
 export type RenderText = (slot: TextSlot) => ReactNode;
 export type Fonts = { display: string; accent: string };
+/** A picture on a visual: its same-origin link, and whether the heading is drawn into it. */
+export type Picture = { url: string; mode: PictureMode } | null;
 
 // ---- colour -----------------------------------------------------------------
 
@@ -75,7 +77,7 @@ export function paint(s: Scheme, t: Tweaks, base: "normal" | "inverse"): Paint {
  * PNG all keep the same proportions, and nothing overflows a smaller preview.
  */
 export function Frame({ w, h, bg, fg, children, frameRef, style }: { w: number; h: number; bg: string; fg: string; children: ReactNode; frameRef?: (el: HTMLDivElement | null) => void; style?: CSSProperties }) {
-  return <div ref={frameRef} style={{ aspectRatio: `${w} / ${h}`, background: bg, color: fg, containerType: "inline-size", ...style }} className="w-full overflow-hidden">{children}</div>;
+  return <div ref={frameRef} data-part="background" style={{ aspectRatio: `${w} / ${h}`, background: bg, color: fg, containerType: "inline-size", ...style }} className="w-full overflow-hidden relative">{children}</div>;
 }
 
 /**
@@ -87,32 +89,84 @@ const fz = (n: number, t: Tweaks | null, base = 300) => `${((n * 16 * 100) / bas
 const rem = (n: number, t: Tweaks) => fz(n, t);
 const MONO = "var(--font-mono)";
 
+const LOGO_EM = { small: 1.6, medium: 2.4, large: 3.4, hidden: 0 } as const;
+
 /** The sign-off: the workspace's logo, when it has one, beside the brand name. */
-function Signoff({ brand, logo, style, prefix = "" }: { brand: string; logo?: string | null; style: CSSProperties; prefix?: string }) {
+function Signoff({ brand, logo, style, prefix = "", size = "medium" }: { brand: string; logo?: string | null; style: CSSProperties; prefix?: string; size?: Tweaks["logo"] }) {
+  const em = LOGO_EM[size] ?? LOGO_EM.medium;
   return (
-    <span className="inline-flex items-center gap-[0.6em] max-w-full" style={style}>
+    <span data-part="logo" className="inline-flex items-center gap-[0.6em] max-w-full relative" style={style}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {logo && <img src={logo} alt="" crossOrigin="anonymous" className="w-auto object-contain shrink-0" style={{ height: "2.4em", maxWidth: "8em" }} />}
+      {logo && em > 0 && <img src={logo} alt="" crossOrigin="anonymous" className="w-auto object-contain shrink-0" style={{ height: `${em}em`, maxWidth: `${em * 3.4}em` }} />}
       <span className="tracking-[0.18em] uppercase font-medium truncate">{prefix}{brand}</span>
     </span>
   );
 }
 
+const SCRIM = { none: 0, light: 0.45, strong: 0.72 } as const;
+
+/** The picture, filling the frame. Drawn as an <img> so the PNG export rasterises it with the rest. */
+function PictureFill({ url }: { url: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img data-part="picture" src={url} alt="" crossOrigin="anonymous" draggable={false} className="absolute inset-0 w-full h-full object-cover" />
+  );
+}
+
+/**
+ * A visual with a picture. "with_text": the picture is the whole visual (the
+ * model drew the heading), with the sign-off in the corner. "live_text": the
+ * picture fills the frame, a shade keeps the words readable, and the heading
+ * is Huemen text on top, as editable as on any template.
+ */
+function PictureVisual({ w, h, picture, t, brand, logo, words, align }: {
+  w: number; h: number; picture: NonNullable<Picture>; t: Tweaks; brand: string; logo?: string | null; words: ReactNode; align: CSSProperties;
+}) {
+  const shade = SCRIM[t.scrim] ?? SCRIM.light;
+  const sign = <Signoff brand={brand} logo={logo} size={t.logo} style={{ color: "#ffffff", fontFamily: MONO, fontSize: fz(0.6, null), textShadow: "0 1px 6px rgba(0,0,0,.35)" }} />;
+  if (picture.mode === "with_text") {
+    return (
+      <Frame w={w} h={h} bg="#000" fg="#fff">
+        <PictureFill url={picture.url} />
+        {t.logo !== "hidden" && <div className="absolute right-[6%] bottom-[5%]">{sign}</div>}
+      </Frame>
+    );
+  }
+  return (
+    <Frame w={w} h={h} bg="#000" fg="#fff">
+      <PictureFill url={picture.url} />
+      {shade > 0 && <div className="absolute inset-0 pointer-events-none" style={{ background: `linear-gradient(to top, rgba(0,0,0,${shade}) 0%, rgba(0,0,0,${shade * 0.55}) 45%, rgba(0,0,0,0) 75%)` }} />}
+      <div className="absolute inset-0 flex flex-col justify-end gap-[4%] p-[9%]" style={align}>
+        {words}
+        {sign}
+      </div>
+    </Frame>
+  );
+}
+
 // ---- post image ---------------------------------------------------------------
 
-export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRef }: {
+export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRef, picture = null }: {
   layout: PostLayout; w: number; h: number; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; eyebrow?: string;
-  text: RenderText; frameRef?: (el: HTMLDivElement | null) => void;
+  text: RenderText; frameRef?: (el: HTMLDivElement | null) => void; picture?: Picture;
 }) {
   const p = paint(s, t, "normal");
   const center = t.align === "center";
   const al: CSSProperties = { textAlign: t.align, alignItems: center ? "center" : "flex-start" };
   const headline = (n: number, font = fonts.display, extra: CSSProperties = {}) => (
-    <div className="leading-[1.12] font-medium w-full" style={{ fontFamily: font, color: p.words, fontSize: rem(n, t), ...extra }}>{text({ kind: "post" })}</div>
+    <div data-part="headline" className="leading-[1.12] font-medium w-full relative" style={{ fontFamily: font, color: p.words, fontSize: rem(n, t), ...extra }}>{text({ kind: "post" })}</div>
   );
   const sign = (color = p.bold ? p.mark : p.fg) => (
-    <Signoff brand={brand} logo={logo} style={{ color: p.showMarks ? color : p.fg, fontFamily: MONO, fontSize: fz(0.62, null) }} />
+    <Signoff brand={brand} logo={logo} size={t.logo} style={{ color: p.showMarks ? color : p.fg, fontFamily: MONO, fontSize: fz(0.62, null) }} />
   );
+  if (picture) {
+    return (
+      <div ref={frameRef}>
+        <PictureVisual w={w} h={h} picture={picture} t={t} brand={brand} logo={logo} align={al}
+          words={headline(1.45, fonts.display, { color: "#ffffff", textShadow: "0 1px 12px rgba(0,0,0,.35)" })} />
+      </div>
+    );
+  }
 
   if (layout === "split") {
     return (
@@ -121,7 +175,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
           <div className="flex-[62] flex flex-col justify-center p-[9%]" style={al}>{headline(1.35)}</div>
           <div className="flex-[38] flex flex-col justify-end p-[9%] gap-2" style={{ ...al, background: p.showMarks ? s.accent : p.fg, color: p.showMarks ? (contrast(s.bg, s.accent) >= contrast(s.fg, s.accent) ? s.bg : s.fg) : p.bg }}>
             <span className="h-[2px] w-[16%] bg-current opacity-70" />
-            <Signoff brand={brand} logo={logo} style={{ fontFamily: MONO, fontSize: fz(0.62, null) }} />
+            <Signoff brand={brand} logo={logo} size={t.logo} style={{ fontFamily: MONO, fontSize: fz(0.62, null) }} />
           </div>
         </div>
       </Frame>
@@ -168,18 +222,25 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
 
 // ---- quote card ---------------------------------------------------------------
 
-export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef }: {
-  layout: QuoteLayout; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; text: RenderText; frameRef?: (el: HTMLDivElement | null) => void;
+export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, picture = null }: {
+  layout: QuoteLayout; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; text: RenderText; frameRef?: (el: HTMLDivElement | null) => void; picture?: Picture;
 }) {
   const p = paint(s, t, "inverse");
   const center = layout === "centered" || t.align === "center";
   const al: CSSProperties = { textAlign: center ? "center" : "left", alignItems: center ? "center" : "flex-start" };
-  const words = (n: number, italic = true, font = fonts.accent) => (
-    <div className="leading-snug w-full" style={{ fontFamily: font, fontStyle: italic ? "italic" : "normal", color: p.words, fontSize: rem(n, t) }}>{text({ kind: "quote" })}</div>
+  const words = (n: number, italic = true, font = fonts.accent, color = p.words) => (
+    <div data-part="headline" className="leading-snug w-full relative" style={{ fontFamily: font, fontStyle: italic ? "italic" : "normal", color, fontSize: rem(n, t) }}>{text({ kind: "quote" })}</div>
   );
   const sign = (dash = true) => (
-    <Signoff brand={brand} logo={logo} prefix={dash && !logo ? "— " : ""} style={{ color: p.showMarks ? s.accent : p.fg, fontFamily: MONO, fontSize: fz(0.6, null) }} />
+    <Signoff brand={brand} logo={logo} size={t.logo} prefix={dash && !logo ? "— " : ""} style={{ color: p.showMarks ? s.accent : p.fg, fontFamily: MONO, fontSize: fz(0.6, null) }} />
   );
+  if (picture) {
+    return (
+      <div ref={frameRef}>
+        <PictureVisual w={1080} h={1080} picture={picture} t={t} brand={brand} logo={logo} align={al} words={words(1.25, true, fonts.accent, "#ffffff")} />
+      </div>
+    );
+  }
 
   if (layout === "centered") {
     return (
@@ -222,11 +283,15 @@ export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef }: 
 
 // ---- carousel -------------------------------------------------------------------
 
-export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, frameRef, ctaIndex }: {
+export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, frameRef, ctaIndex, cover = null, brand = "", logo = null }: {
   layout: CarouselLayout; slides: string[]; s: Scheme; t: Tweaks; fonts: Fonts; frameWidth: number;
   text: RenderText; frameRef?: (k: number) => (el: HTMLDivElement | null) => void;
   /** The slide that is the call to action, if any (it gets the arrow). */
   ctaIndex?: number;
+  /** A picture on the first frame (the cover). */
+  cover?: Picture;
+  brand?: string;
+  logo?: string | null;
 }) {
   const n = slides.length;
   return (
@@ -236,14 +301,20 @@ export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, 
         const p = paint(s, t, alt ? "inverse" : "normal");
         const al: CSSProperties = { textAlign: t.align, alignItems: t.align === "center" ? "center" : "flex-start" };
         const first = k === 0;
+        const part = first ? "headline" : k === ctaIndex ? "cta" : "body";
         const body = (
-          <div className={`${first ? "font-medium" : ""} leading-snug flex gap-1 w-full`} style={{ fontFamily: fonts.display, color: p.words, fontSize: fz(first ? 0.95 : 0.72, t, 170), justifyContent: t.align === "center" ? "center" : "flex-start" }}>
+          <div data-part={part} className={`${first ? "font-medium" : ""} leading-snug flex gap-1 w-full relative`} style={{ fontFamily: fonts.display, color: first && cover ? "#ffffff" : p.words, fontSize: fz(first ? 0.95 : 0.72, t, 170), justifyContent: t.align === "center" ? "center" : "flex-start" }}>
             {k === ctaIndex && <span className="shrink-0">→</span>}
             <div className="min-w-0" style={{ flex: t.align === "center" ? "0 1 auto" : "1 1 0%" }}>{text({ kind: "slide", index: k })}</div>
           </div>
         );
         return (
           <div key={k} className="shrink-0" style={{ width: frameWidth }}>
+            {first && cover ? (
+              <div ref={frameRef?.(k)}>
+                <PictureVisual w={1080} h={1350} picture={cover} t={t} brand={brand} logo={logo} align={al} words={body} />
+              </div>
+            ) : (
             <Frame w={1080} h={1350} bg={p.bg} fg={p.fg} frameRef={frameRef?.(k)}>
               {layout === "numbered" ? (
                 <div className="h-full flex flex-col justify-between p-[10%]" style={al}>
@@ -267,6 +338,7 @@ export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, 
                 </div>
               )}
             </Frame>
+            )}
           </div>
         );
       })}

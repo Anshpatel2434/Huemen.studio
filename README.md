@@ -75,6 +75,28 @@ For any host:
 5. Point an uptime monitor at `GET /api/health` (200 when the database answers, 503 when not).
 6. Set `CRON_SECRET` (16+ random characters) and call `GET /api/cron` every few minutes with `Authorization: Bearer <CRON_SECRET>` (see Background jobs).
 
+## Pictures (ChatGPT Image)
+Claude writes everything; pictures come from ChatGPT Image (OpenAI's Images
+API, [`src/lib/ai/providers/openai-image.ts`](src/lib/ai/providers/openai-image.ts)).
+Until the key is set the stand-in draws pictures in the brand palette, so the
+whole flow works locally.
+- **A picture on a visual.** The picture button on a post image, quote card or
+  carousel cover adds one. The heading is chosen per visual: editable text on
+  top (default) or drawn into the picture. Claude writes what to draw from the
+  brand context (task `image_brief`, editable in Settings › Prompts).
+- **Comment on a spot.** Pick the comment tool in the canvas strip (or press
+  C), drag a box and say what to change. On a picture only that area is
+  redrawn, and [`src/lib/visual/region.ts`](src/lib/visual/region.ts) keeps
+  every pixel outside it, whatever the model returns. On the heading, body or
+  call to action the text is rewritten; on the logo or background the design
+  settings change. Every change is undoable, and picture versions are kept.
+- **Switching on.** `AI_IMAGE_PROVIDER=openai`, `OPENAI_API_KEY`,
+  `AI_IMAGE_MODEL` (the current GPT Image model name), then
+  `npm run smoke:pictures` once: it draws one picture, redraws one area, and
+  reports the time and that nothing outside the area changed.
+- Pictures and area changes run in the job queue and count against the
+  monthly image cap.
+
 ## Background jobs
 Work a person would wait more than ~10 seconds for runs in a queue
 ([`src/lib/jobs`](src/lib/jobs), the `jobs` table): today "Draft a piece from
