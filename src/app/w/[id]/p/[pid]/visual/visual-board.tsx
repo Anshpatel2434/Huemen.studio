@@ -456,11 +456,6 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
               <button type="button" role="radio" aria-checked={wire} onClick={() => setView("wireframe")} className="hu-seg__item">Wireframe</button>
               <button type="button" role="radio" aria-checked={!wire} disabled={!designed.length} title={designed.length ? undefined : "Generate visuals first"} onClick={() => setView("design")} className="hu-seg__item disabled:opacity-45">Design</button>
             </div>
-            {!designed.length && (
-              <p className="text-sm bg-paper border border-hairline rounded-full px-4 min-h-10 inline-flex items-center shadow-[var(--shadow-sm)]">
-                Laid out, not designed yet. Pick a scheme on the right and press Generate visuals.
-              </p>
-            )}
           </div>
         )}
         {items.length === 0 ? (

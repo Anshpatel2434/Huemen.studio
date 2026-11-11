@@ -67,7 +67,7 @@ export function useJobWatch(tenantId: string, initial: Watched[], onDone: (w: Wa
 export function WorkingOverlay({ label }: { label: string }) {
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--paper)_70%,transparent)] backdrop-blur-[2px] pointer-events-none">
-      <span className="inline-flex items-center gap-2 bg-paper border border-hairline rounded-full px-3 min-h-9 text-sm shadow-[var(--shadow-sm)]"><AgentDots /> {label}</span>
+      <span role="status" className="inline-flex items-center gap-2 text-sm font-medium text-ink"><AgentDots /> {label}</span>
     </div>
   );
 }
