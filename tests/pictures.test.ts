@@ -166,12 +166,11 @@ afterAll(async () => {
 const visual = async (s: ProjectScope, kind = "single") => (await listVisuals(s)).find((v) => v.kind === kind)!;
 
 /**
- * Run the queue until this job has finished. Other test files run workers on
- * the same database in parallel and may be holding it; wait for theirs too.
+ * Run the queue (this file's workspaces only) until this job has finished.
  */
 async function settle(s: ProjectScope, jobId: string) {
   for (let i = 0; i < 60; i++) {
-    await drainJobs({ budgetMs: 20_000 });
+    await drainJobs({ budgetMs: 20_000, onlyTenants: tenants });
     const j = await getJob(s, jobId);
     if (j && j.status !== "queued" && j.status !== "running") return j;
     await new Promise((r) => setTimeout(r, 250));

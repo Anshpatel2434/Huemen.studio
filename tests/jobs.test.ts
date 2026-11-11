@@ -70,7 +70,7 @@ describe("job queue", () => {
     expect((await getJob(A, id))?.status).toBe("queued");
     expect((await latestJob(A, "pillar_drafts"))?.id).toBe(id);
 
-    await drainJobs({ budgetMs: 60_000 });
+    await drainJobs({ budgetMs: 60_000, onlyTenants: tenants });
     const job = await getJob(A, id);
     expect(job?.status).toBe("succeeded");
     expect(job?.result).toMatchObject({ drafted: 3 });
@@ -89,7 +89,7 @@ describe("job queue", () => {
     await setUsageCaps(owner, A.tenantId, { textSoft: null, textHard: used + 1, imageSoft: null, imageHard: null });
 
     const id = await enqueueJob(A, "pillar_drafts", { format: "linkedin_post" }, { label: "Drafting from your pillars" });
-    await drainJobs({ budgetMs: 60_000 });
+    await drainJobs({ budgetMs: 60_000, onlyTenants: tenants });
     const stopped = await getJob(A, id);
     // The monthly cap is not something a retry fixes: it stops at once.
     expect(stopped?.status).toBe("failed");
@@ -102,7 +102,7 @@ describe("job queue", () => {
 
     await setUsageCaps(owner, A.tenantId, { textSoft: null, textHard: null, imageSoft: null, imageHard: null });
     expect(await retryJob(A, id)).toBe(true);
-    await drainJobs({ budgetMs: 60_000 });
+    await drainJobs({ budgetMs: 60_000, onlyTenants: tenants });
     const done = await getJob(A, id);
     expect(done?.status).toBe("succeeded");
     expect(done?.result).toMatchObject({ drafted: 3 });
@@ -119,17 +119,17 @@ describe("job queue", () => {
     };
     try {
       const id = await enqueueJob(A, "test_flaky" as JobKind, {}, { label: "Flaky", maxAttempts: 2 });
-      await drainJobs({ budgetMs: 10_000 });
+      await drainJobs({ budgetMs: 10_000, onlyTenants: tenants });
       const waiting = await getJob(A, id);
       expect(waiting?.status).toBe("queued");
       expect(waiting?.attempts).toBe(1);
       expect(new Date(waiting!.runAfter).getTime()).toBeGreaterThan(Date.now() + 20_000);
       // Not due yet: a worker leaves it alone.
-      await drainJobs({ budgetMs: 10_000 });
+      await drainJobs({ budgetMs: 10_000, onlyTenants: tenants });
       expect(calls).toBe(1);
 
       await makeDue(id);
-      await drainJobs({ budgetMs: 10_000 });
+      await drainJobs({ budgetMs: 10_000, onlyTenants: tenants });
       const dead = await getJob(A, id);
       expect(calls).toBe(2);
       expect(dead?.status).toBe("dead");
@@ -154,7 +154,7 @@ describe("job queue", () => {
       // A worker that died mid-run: running, lease long gone.
       await admin("UPDATE jobs SET status = 'running', locked_until = now() - interval '1 minute' WHERE id = $1", [id]);
       expect((await getJob(A, id))?.needsWorker).toBe(true);
-      await drainJobs({ budgetMs: 10_000 });
+      await drainJobs({ budgetMs: 10_000, onlyTenants: tenants });
       const job = await getJob(A, id);
       expect(job?.status).toBe("succeeded");
       expect(job?.result).toEqual({ n: 3 });
@@ -171,7 +171,7 @@ describe("job queue", () => {
     const id = await enqueueJob(A, "calendar_plan", { start: "2030-01-07", perWeek: 2, channels: ["linkedin"] }, { label: "Planning" });
     await admin("UPDATE users SET status = 'disabled' WHERE id = $1", [A.userId]);
     try {
-      await drainJobs({ budgetMs: 10_000 });
+      await drainJobs({ budgetMs: 10_000, onlyTenants: tenants });
       const job = await getJob(A, id);
       expect(job?.status).toBe("failed");
       expect(job?.error).toMatch(/no longer has access/);
@@ -183,7 +183,7 @@ describe("job queue", () => {
   it("plans the calendar in the background", async () => {
     if (!dbReachable) return;
     const id = await enqueueJob(A, "calendar_plan", { start: "2030-01-07", perWeek: 2, channels: ["linkedin"] }, { label: "Planning" });
-    await drainJobs({ budgetMs: 60_000 });
+    await drainJobs({ budgetMs: 60_000, onlyTenants: tenants });
     const job = await getJob(A, id);
     expect(job?.status).toBe("succeeded");
     expect((job?.result as { planned: number }).planned).toBeGreaterThan(0);
@@ -192,7 +192,7 @@ describe("job queue", () => {
   it("never shows, retries or stops another workspace's job", async () => {
     if (!dbReachable) return;
     const id = await enqueueJob(A, "calendar_plan", { start: "bad" }, { label: "Planning" });
-    await drainJobs({ budgetMs: 10_000 });
+    await drainJobs({ budgetMs: 10_000, onlyTenants: tenants });
     expect((await getJob(A, id))?.status).toBe("failed");
     expect(await getJob(B, id)).toBeNull();
     expect(await latestJob(B, "calendar_plan")).toBeNull();
