@@ -12,9 +12,8 @@
  *                model that treats the mask as a hint (they do) can't move a
  *                pixel outside the marked area.
  *
- * Server-only (sharp).
+ * Server-side (sharp); also used by the picture smoke test outside Next.
  */
-import "server-only";
 import sharp from "sharp";
 
 export interface Box {

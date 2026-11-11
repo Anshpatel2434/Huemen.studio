@@ -144,7 +144,10 @@ export async function generateVisuals(scope: ProjectScope, opts: { scheme: numbe
  * piece has no visuals in this project.
  */
 export async function saveDesign(scope: ProjectScope, contentItemId: string, design: Design, scheme?: number): Promise<boolean> {
-  const clean = parseDesign(design);
+  // Pictures are set only by lib/data/pictures: a design saved from the board
+  // (possibly from before a picture job finished) never overwrites them.
+  const { pictures: _ignored, ...clean } = parseDesign(design);
+  void _ignored;
   const patch = scheme === undefined ? clean : { ...clean, scheme: Math.max(0, Math.floor(scheme)) };
   return withTenantSession(scope, async (c) =>
     ((await c.query("UPDATE image_assets SET params = params || $1::jsonb WHERE content_item_id=$2 AND project_id=$3 AND kind <> 'picture'", [JSON.stringify(patch), contentItemId, scope.projectId])).rowCount ?? 0) > 0,

@@ -6,14 +6,14 @@
  * wheel, or the zoom menu), fit-to-content, and the floating tool strip.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil } from "lucide-react";
+import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, MessageSquare } from "lucide-react";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
 const ZOOMS = [25, 50, 75, 100, 150];
 
 export function Canvas({
-  children, device, onDevice, initialZoom, toolbarExtra, onBackground,
+  children, device, onDevice, initialZoom, toolbarExtra, onBackground, comment,
 }: {
   children: ReactNode;
   device?: Device;
@@ -22,6 +22,11 @@ export function Canvas({
   toolbarExtra?: ReactNode;
   /** A plain click on empty canvas (clears the selection). */
   onBackground?: () => void;
+  /**
+   * A Comment tool in the strip, beside Select and Hand (key C). Choosing
+   * Select or Hand leaves it; Escape too.
+   */
+  comment?: { on: boolean; onChange: (on: boolean) => void };
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -66,13 +71,20 @@ export function Canvas({
     }
   }, [fit, initialZoom]);
 
+  // The comment tool changes every render (a new object); the key handler reads it through a ref.
+  const commentRef = useRef(comment);
+  useEffect(() => { commentRef.current = comment; }, [comment]);
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      const comment = commentRef.current;
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, [contenteditable]")) return;
       if (e.code === "Space") { setSpace(true); e.preventDefault(); }
-      if (e.key === "h") setTool("hand");
-      if (e.key === "v") setTool("select");
+      if (e.key === "h") { setTool("hand"); comment?.onChange(false); }
+      if (e.key === "v") { setTool("select"); comment?.onChange(false); }
+      if (e.key === "c" && !e.metaKey && !e.ctrlKey && comment) comment.onChange(!comment.on);
+      if (e.key === "Escape" && comment?.on) comment.onChange(false);
       if (e.shiftKey && e.key === "!") fit();
     };
     const up = (e: KeyboardEvent) => { if (e.code === "Space") setSpace(false); };
@@ -148,8 +160,11 @@ export function Canvas({
       </div>
 
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-paper border border-hairline rounded-md p-1 shadow-[var(--shadow)]" onPointerDown={(e) => e.stopPropagation()}>
-        <ToolBtn on={tool === "select"} onClick={() => setTool("select")} title="Select (V)"><MousePointer2 size={18} /></ToolBtn>
-        <ToolBtn on={tool === "hand"} onClick={() => setTool("hand")} title="Hand (H, or hold Space)"><Hand size={18} /></ToolBtn>
+        <ToolBtn on={tool === "select" && !comment?.on} onClick={() => { setTool("select"); comment?.onChange(false); }} title="Select (V)"><MousePointer2 size={18} /></ToolBtn>
+        <ToolBtn on={tool === "hand" && !comment?.on} onClick={() => { setTool("hand"); comment?.onChange(false); }} title="Hand (H, or hold Space)"><Hand size={18} /></ToolBtn>
+        {comment && (
+          <ToolBtn on={comment.on} onClick={() => { setTool("select"); comment.onChange(!comment.on); }} title="Comment on a spot (C)"><MessageSquare size={18} /></ToolBtn>
+        )}
         <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
         <div className="relative">
           <button onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} aria-label={`Zoom, ${Math.round(zoom * 100)}%`} className="min-h-11 px-3 rounded-sm flex items-center gap-1 text-sm font-mono tabular-nums hover:bg-hover">

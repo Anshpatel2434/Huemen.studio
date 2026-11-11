@@ -262,3 +262,38 @@ export async function pictureDepth(scope: ProjectScope, id: string): Promise<num
     ).rows[0]?.n ?? 0,
   );
 }
+
+/**
+ * Point one visual at a specific version of its picture (undo and redo of a
+ * picture change). The version must be a picture of this piece, for this
+ * visual, in this project.
+ */
+export async function selectPictureVersion(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, pictureId: string): Promise<boolean> {
+  const row = await pictureRow(scope, pictureId);
+  if (!row || row.params?.artboard !== artboard) return false;
+  const owner = (
+    await withTenantSession(scope, (c) => c.query<{ content_item_id: string }>("SELECT content_item_id FROM image_assets WHERE id=$1", [pictureId]))
+  ).rows[0]?.content_item_id;
+  if (owner !== contentItemId) return false;
+  await withTenantSession(scope, async (c) => {
+    await c.query("UPDATE image_assets SET is_current=false WHERE content_item_id=$1 AND project_id=$2 AND kind='picture' AND params->>'artboard'=$3", [contentItemId, scope.projectId, artboard]);
+    await c.query("UPDATE image_assets SET is_current=true WHERE id=$1", [pictureId]);
+  });
+  await attach(scope, contentItemId, artboard, { id: pictureId, mode: row.params?.mode === "with_text" ? "with_text" : "live_text" });
+  return true;
+}
+
+/** For the board: each picture in use, its same-origin link (8 hours) and the version it was made from. */
+export async function pictureInfo(scope: ProjectScope, ids: string[]): Promise<Record<string, { url: string; parentId: string | null }>> {
+  const clean = ids.filter((i) => /^[0-9a-f-]{36}$/i.test(i));
+  if (!clean.length) return {};
+  const rows = (
+    await withTenantSession(scope, (c) =>
+      c.query<{ id: string; storage_key: string; parent_id: string | null }>(
+        "SELECT id, storage_key, parent_id FROM image_assets WHERE id = ANY($1::uuid[]) AND project_id=$2 AND kind='picture' AND storage_key IS NOT NULL",
+        [clean, scope.projectId],
+      ),
+    )
+  ).rows;
+  return Object.fromEntries(rows.map((r) => [r.id, { url: appSignedUrl(r.storage_key, 8 * 60 * 60), parentId: r.parent_id }]));
+}

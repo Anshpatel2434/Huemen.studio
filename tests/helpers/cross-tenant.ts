@@ -64,6 +64,9 @@ export interface Target {
   signalId: string;
   incomingKey: string;
   jobId: string;
+  /** A's post-image visual (image_assets) and a comment pinned on it. */
+  visualId: string;
+  commentId: string;
   memberId: string;
   coachId: string;
   assignedCoachId: string;
@@ -75,7 +78,7 @@ export interface Target {
 
 export const OBJECT_KEYS: (keyof Target)[] = [
   "itemId", "generationId", "assetId", "ideaId", "slotId", "offerId", "pillarId", "pillar2Id",
-  "sampleId", "proposalId", "signalId", "incomingKey", "jobId", "memberId", "coachId", "assignedCoachId",
+  "sampleId", "proposalId", "signalId", "incomingKey", "jobId", "visualId", "commentId", "memberId", "coachId", "assignedCoachId",
 ];
 
 export interface Person {
@@ -233,6 +236,15 @@ export async function newIncoming(tenantId: string, body: Uint8Array = new Uint8
   return key;
 }
 
+/** A finished comment pinned on one of A's visuals. */
+export async function newComment(tenantId: string, contentItemId: string, visualId: string, userId: string): Promise<string> {
+  return (await one<{ id: string }>(
+    `INSERT INTO visual_comments (tenant_id, content_item_id, visual_id, target, box_x, box_y, box_w, box_h, note, status, result, created_by)
+     VALUES ($1,$2,$3,'headline',0.1,0.1,0.5,0.3,$4,'applied','Done.',$5) RETURNING id`,
+    [tenantId, contentItemId, visualId, `${MARK} comment`, userId],
+  )).id;
+}
+
 /** A queued-work row of A's (lib/jobs). Due far in the future, so no worker ever picks it up. */
 export async function newJob(tenantId: string, userId: string, status: "failed" | "queued" = "failed"): Promise<string> {
   return (await one<{ id: string }>(
@@ -340,14 +352,16 @@ export async function buildFixture(): Promise<Fixture> {
   };
 
   const jobId = await newJob(A, clientA);
+  const visualId = (await one<{ id: string }>("SELECT id FROM image_assets WHERE content_item_id=$1 AND kind='single'", [itemId])).id;
+  const commentId = await newComment(A, itemId, visualId, clientA);
 
   const a: Target = {
     tenantId: A, projectId: PA, itemId, generationId, assetId, ideaId, slotId, offerId, pillarId, pillar2Id, sampleId,
-    proposalId, signalId, incomingKey, jobId, memberId: spareA, coachId, assignedCoachId: coach2, version, workspaceStatus: "archived",
+    proposalId, signalId, incomingKey, jobId, visualId, commentId, memberId: spareA, coachId, assignedCoachId: coach2, version, workspaceStatus: "archived",
   };
   const aIds: Record<string, string> = {
     tenant: A, project: PA, item: itemId, generation: generationId, asset: assetId, idea: ideaId, slot: slotId, offer: offerId,
-    pillar: pillarId, pillar2: pillar2Id, sample: sampleId, proposal: proposalId, signal: signalId, incoming: incomingKey, job: jobId,
+    pillar: pillarId, pillar2: pillar2Id, sample: sampleId, proposal: proposalId, signal: signalId, incoming: incomingKey, job: jobId, visual: visualId, comment: commentId,
     pack: pack.id, clientA, disabledA, spareA,
   };
   return { A, B, ORG, PA, PB, a, people, aIds, packA: pack.id, scopeA, scopeB, coach2 };

@@ -293,12 +293,13 @@ upload + questionnaire), context builder written + unit-tested.
 - [~] **P2-12 — Output types.** Single-image LinkedIn/Instagram post, carousel
   frame set, quote card, announcement graphic.
   - _2026-10-13:_ Post image, quote card, carousel frames. No announcement graphic.
-- [!] **P2-13 — Brand-aware prompting.** Palette, type treatment, style notes from
+- [x] **P2-13 — Brand-aware prompting.** Palette, type treatment, style notes from
   `visual_identities` **appended to every image prompt**, with **negative
   prompts** for the generic AI look.
   - **Constraint (risk §10):** generic/off-brand images are the highest-probability
     failure — tune against **real reference assets**.
   - _2026-10-13:_ No image model wired (brief §09 default: templates). `generateImage` has no callers. Image prompting with palette / negative prompts is not exercised. Client decision pending (AI images yes or no).
+  - _2026-11-11:_ Decided and built: ChatGPT Image (OpenAI) for pictures, on the stand-in until the key is set. Claude writes the brief from the brand context (palette, image style, audience) with a negative list (`image_brief`); pictures go on any visual, with the heading as live text or drawn in; a comment on a spot redraws only that area (`lib/visual/region` keeps every pixel outside it). Open: tune against real reference assets with the real model (`npm run smoke:pictures` first).
 - [x] **P2-14 — Templated carousel/quote-card rendering (per P1-12 default).**
   Templated canvas with **real text overlay** + model-generated backgrounds.
   - **Rationale:** image models misrender text; a typo on a client's carousel is a
@@ -447,7 +448,7 @@ published-post performance analytics.
 
 - _2026-10-13 · build team_ · Background job queue and streaming (P2-4): generation runs in the request thread, bounded by a timeout. Needed before 90-day plans and carousel sets run for many clients at once.
 - _2026-10-13 · build team_ · Rate limiting per user and per tenant (P2-5). The hard usage cap bounds spend in the meantime. **Built 2026-11-02.**
-- _2026-10-13 · build team_ · Image model (P2-13): visuals are templated by the brief's own default; an AI-image provider is a client decision (cost) and a provider choice.
+- _2026-10-13 · build team_ · Image model (P2-13): visuals are templated by the brief's own default; an AI-image provider is a client decision (cost) and a provider choice. **Decided and built 2026-11-11: ChatGPT Image, waiting on the key.**
 - _2026-10-13 · build team_ · Strategy tools (P3-2), AEO page generator (P3-4), repurposing pipeline (P3-6), AI offer designer (P3-3): proposal modules not started.
 - _2026-10-13 · build team_ · Custom domain + TLS (P3-11); full tenant branding on chrome, emails and exports (P3-12).
 - _2026-10-13 · build team_ · Production sign-in (managed auth or a real email sender), S3 storage driver, upload re-encoding and SVG hardening: not demo-blocking, launch-blocking. See `docs/phase-two.md`.

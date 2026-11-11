@@ -105,6 +105,18 @@ export async function latestJob(scope: SessionScope, kind: JobKind): Promise<Job
   return row ? view(row) : null;
 }
 
+/** This project's jobs of these kinds that are still waiting or running (the visual board shows them). */
+export async function activeJobsFor(scope: SessionScope, kinds: JobKind[], projectId: string): Promise<(JobView & { payload: Record<string, unknown> })[]> {
+  const rows = await withTenantSession(scope, async (c) =>
+    (await c.query<JobRecord>(
+      `SELECT * FROM jobs WHERE kind = ANY($1) AND status IN ('queued', 'running') AND payload->>'projectId' = $2
+        ORDER BY created_at`,
+      [kinds, projectId],
+    )).rows,
+  );
+  return rows.map((r) => ({ ...view(r), payload: r.payload ?? {} }));
+}
+
 /** Try again: a stopped job goes back in the queue and carries on from its progress. */
 export async function retryJob(scope: SessionScope, id: string): Promise<boolean> {
   return withTenantSession(scope, async (c) => {

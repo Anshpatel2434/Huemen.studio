@@ -153,7 +153,7 @@ beforeAll(async () => {
   await generateContent(B, { format: "linkedin_post", topic: "b" });
   await unlockStage(B, "content");
   await generateVisuals(B, { scheme: 0, approvedOnly: false });
-});
+}, 60_000);
 
 afterAll(async () => {
   if (!dbReachable) return;
@@ -164,6 +164,20 @@ afterAll(async () => {
 });
 
 const visual = async (s: ProjectScope, kind = "single") => (await listVisuals(s)).find((v) => v.kind === kind)!;
+
+/**
+ * Run the queue until this job has finished. Other test files run workers on
+ * the same database in parallel and may be holding it; wait for theirs too.
+ */
+async function settle(s: ProjectScope, jobId: string) {
+  for (let i = 0; i < 60; i++) {
+    await drainJobs({ budgetMs: 20_000 });
+    const j = await getJob(s, jobId);
+    if (j && j.status !== "queued" && j.status !== "running") return j;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return getJob(s, jobId);
+}
 
 describe("pictures on a visual", () => {
   it("draws a picture for one visual, stores it in the workspace, and only that visual carries it", async () => {
@@ -262,22 +276,20 @@ describe("comments pinned on a visual", () => {
     expect((await designOf(A, itemA))!.tweaks.logo).toBe("small");
   });
 
-  it("a comment on the picture runs as a job and redraws that area; at the image cap it stops and the pin says why", async () => {
+  it("a comment on the picture runs as a job and redraws that area; at the image cap it stops and the pin says why", { timeout: 60_000 }, async () => {
     if (!dbReachable) return;
     const v = await visual(A);
     const before = (await designOf(A, itemA))!.pictures.post!.id;
     const c = await addComment(A, { visualId: v.id, target: "picture", box: { x: 0.5, y: 0.5, w: 0.3, h: 0.3 }, note: "add a coffee cup here" });
     const jobId = await enqueueJob(A, "picture_edit", { projectId: A.projectId, commentId: c.id }, { label: "Changing the picture" });
-    await drainJobs({ budgetMs: 60_000 });
-    expect((await getJob(A, jobId))?.status).toBe("succeeded");
+    expect((await settle(A, jobId))?.status).toBe("succeeded");
     expect((await getComment(A, c.id))?.status).toBe("applied");
     expect((await designOf(A, itemA))!.pictures.post!.id).not.toBe(before);
 
     await admin("INSERT INTO tenant_usage_caps (tenant_id, monthly_image_hard) VALUES ($1, 0) ON CONFLICT (tenant_id) DO UPDATE SET monthly_image_hard = 0", [A.tenantId]);
     const c2 = await addComment(A, { visualId: v.id, target: "picture", box: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 }, note: "darker" });
     const j2 = await enqueueJob(A, "picture_edit", { projectId: A.projectId, commentId: c2.id }, { label: "Changing the picture" });
-    await drainJobs({ budgetMs: 60_000 });
-    expect((await getJob(A, j2))?.status).toBe("failed");
+    expect((await settle(A, j2))?.status).toBe("failed");
     const pin = await getComment(A, c2.id);
     expect(pin?.status).toBe("failed");
     expect(pin?.result).toMatch(/switched off|used its/i);
