@@ -390,8 +390,12 @@ export interface Onboarding {
     url: string; title: string; description: string; palette: string[]; fonts: string[]; logo: string | null; at: string;
     /** The site's own background is dark (its palette starts with that ground). */
     dark?: boolean;
-    /** What the site says about them, read by the site_profile task; absent when no model has read it. */
+    /** Name, what they do, who it's for, offers and line, read from the site by rules (lib/integrations/site-details profileFrom). */
     profile?: { name: string; whatTheyDo: string; audience: string; offers: string; positioning: string };
+    /** The pages worth reading, planned when the home page was read (lib/integrations/crawl). */
+    plan?: import("@/lib/integrations/crawl").PlannedPage[];
+    /** What those pages say: services, projects, testimonials, clients, contact (lib/integrations/site-details). */
+    details?: import("@/lib/integrations/site-details").SiteDetails;
   };
   /** When the Getting started window was first dismissed, so it opens itself only once. */
   guideSeenAt?: string;

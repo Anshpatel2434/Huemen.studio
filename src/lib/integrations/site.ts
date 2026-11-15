@@ -1,11 +1,12 @@
 /**
- * Reading someone's website for onboarding: the home page, up to three of its
- * stylesheets and its About page, all through the SSRF-guarded getter
- * (./web). Returns the brand (lib/visual/core), the page's name and
- * description, and the readable text of both pages, capped, for the "what you
- * do" read (the site_profile task). Nothing here saves anything.
+ * Reading someone's website for onboarding, first step: the home page, up to
+ * three of its stylesheets and its About page, all through the SSRF-guarded
+ * getter (./web), plus the plan of pages to read next (./crawl). Returns the
+ * brand (lib/visual/core), the page's name and description, the readable text
+ * of both pages (capped), and the plan. Nothing here saves anything.
  */
 import { safeGet, type Getter } from "./web";
+import { planCrawl, type PlannedPage } from "./crawl";
 import { extractArticle, htmlToText, wordCount } from "./text";
 import { extractSiteBrand, orderPalette, pageMeta } from "@/lib/visual/core";
 
@@ -23,6 +24,8 @@ export interface SiteRead {
   aboutUrl: string | null;
   /** The home and About pages as plain text, at most MAX_WORDS. */
   text: string;
+  /** The pages worth reading next, home first (./crawl planCrawl). */
+  plan: PlannedPage[];
 }
 
 const MAX_WORDS = 2500;
@@ -64,9 +67,10 @@ export async function readSite(raw: string, get: Getter = safeGet): Promise<Site
   const page = await get(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
   const first = extractSiteBrand(page.body, [], page.url);
   const aboutUrl = findAboutLink(page.body, page.url);
-  const [css, about] = await Promise.all([
+  const [css, about, plan] = await Promise.all([
     Promise.all(first.stylesheets.map((s) => get(s).then((r) => r.body).catch(() => ""))),
     aboutUrl ? get(aboutUrl).then((r) => r.body).catch(() => "") : Promise.resolve(""),
+    planCrawl(page, get).catch((): PlannedPage[] => [{ url: page.url, kind: "home" }]),
   ]);
   const brand = extractSiteBrand(page.body, css, page.url);
   const { title, description } = pageMeta(page.body);
@@ -84,5 +88,6 @@ export async function readSite(raw: string, get: Getter = safeGet): Promise<Site
     dark: !!brand.ground && isDark(brand.ground),
     aboutUrl: about ? aboutUrl : null,
     text,
+    plan,
   };
 }

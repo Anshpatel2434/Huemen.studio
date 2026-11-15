@@ -33,6 +33,18 @@ In onboarding step 1, people paste links to their own website, blog, Substack, M
 
 The server fetches what a person typed, so `src/lib/integrations/web.ts` guards it: http(s) only, ports 80 and 443 only, no logins in URLs. Every address a name resolves to is checked when the socket opens, so DNS rebinding can't sneak past an earlier check. Private, loopback, link-local and cloud-metadata ranges are refused. It allows at most 3 redirects (each re-checked), 2 MB and 10 seconds. Caption files (`.vtt`, `.srt`) can also be uploaded straight into the "Podcast, video or talk" source.
 
+## Reading their website (onboarding screen 1)
+
+The first onboarding screen reads the person's own website with a small crawler that runs inside the app: no separate service, no headless browser and no model. It works the same with or without an AI key.
+
+1. **Home page** (`lib/integrations/site`): the page, up to three stylesheets and the About page, for the name, description, colours, fonts and logo, plus a **plan** of pages to read next (`lib/integrations/crawl`). The plan comes from the site's `robots.txt` (whose rules are followed), its sitemap (an index is followed one level, page and project sitemaps before posts) and the links on the home page. It picks the best About, Services, Work, Testimonials, Team and Contact pages, up to 4 service pages and 8 project pages, 16 pages at most. Blog posts, shop, legal and account pages are never read.
+2. **Other pages** (`sitePagesAction`): read five at a time inside a 20-second budget; project and service pages linked only from the Work or Services page are read in a second wave. A page that fails or runs past the budget is skipped, never fatal. Typical sites take 1 to 5 seconds.
+3. **What they say, by rules** (`lib/integrations/site-details`): the site's own structured data (JSON-LD) first, then meta tags, then page structure. It finds services (a row of like headings, or service pages), projects (title, client, a result such as "$380M Raised", summary, image), testimonials (quote blocks and testimonial cards, with who said them), client logos (a row of logos under "Clients" or "Trusted by"), emails, phones, address and social profiles. Cookie banners are ignored. Every item keeps the page it came from; what the site doesn't say stays empty.
+4. **Pre-fill**: the name, what they do, who it's for (from phrases like "we help founders"), offers (the services) and their line go to the next two screens to confirm.
+5. **Facts**: ticked projects and testimonials can be kept as facts the drafts may use (`identity.proofs`, in every draft's context). The screen shows the wording first; nothing is kept until the person presses Keep. Facts already there stay, and the same fact is never added twice.
+
+Every fetch goes through the same guard as Links (below). Pages that build themselves in the browser (single-page apps) send almost no text, so less can be read there; the screen says so. `npm run smoke:site -- example.com` reads real sites from the command line and prints what was found and how long it took.
+
 ## Google: one-time setup
 
 1. In [Google Cloud console](https://console.cloud.google.com), create a project (e.g. "Huemen Studio") owned by The Brand Professor's Google Workspace, not by Okra.
