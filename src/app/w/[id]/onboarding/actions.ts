@@ -28,11 +28,11 @@ import type { DialKey, LanguageMix, Proof, Story, WorkMode } from "@/lib/voice/t
 import {
   pairsFor, previewFor, saveInfluences, saveLanguages, savePicks, saveBeliefs, saveProofs, saveStories, suggestAnswers, type DialPick,
 } from "@/lib/data/enrich";
-import { importFromUrl, safeGet, WebImportError } from "@/lib/integrations/web";
+import { importFromUrl, WebImportError } from "@/lib/integrations/web";
 import { readSite } from "@/lib/integrations/site";
-import { runTask } from "@/lib/ai";
-import { siteProfile as siteProfileTask } from "@/lib/ai/tasks";
-import { loadBrandContext } from "@/lib/context/context-loader";
+import { crawl, scriptOnly } from "@/lib/integrations/crawl";
+import { extractDetails, profileFrom } from "@/lib/integrations/site-details";
+import { proofsFromSite, type SitePicks } from "@/lib/onboarding/site-proofs";
 import { loadVisualIdentity, saveVisualIdentity } from "@/lib/data/foundation";
 import { listAssets } from "@/lib/data/assets";
 import { listPillars } from "@/lib/data/planning";
@@ -377,11 +377,11 @@ export async function advanceAction(tenantId: string, to: ScreenKey) {
 }
 
 /**
- * Screen 1: read their website (lib/integrations/site): the home page, up to
- * three stylesheets and its About page, behind the SSRF guard. The name and
- * description become the defaults on the next screens; colours and fonts go
- * into the hue when it has none yet (the Look screen shows them to change).
- * Returns the pages' text too, for siteProfileAction, the next step on screen.
+ * Screen 1, first step: their home page (lib/integrations/site), up to three
+ * stylesheets, and the plan of pages worth reading next (its sitemap and its
+ * own links, minus what robots.txt asks us to leave), all behind the SSRF
+ * guard. The name and description become the defaults on the next screens;
+ * colours and fonts go into the hue when it has none yet.
  */
 export async function siteAction(tenantId: string, url: string) {
   const { scope } = await actionActor(tenantId);
@@ -394,41 +394,68 @@ export async function siteAction(tenantId: string, url: string) {
     } catch {
       throw new WebImportError("We couldn't open that site. Check the address, or carry on without it.");
     }
-    const site = { url: read.url, title: read.title, description: read.description, palette: read.palette, fonts: read.fonts, logo: read.logo, dark: read.dark, at: new Date().toISOString() };
+    const at = new Date().toISOString();
+    const site = { url: read.url, title: read.title, description: read.description, palette: read.palette, fonts: read.fonts, logo: read.logo, dark: read.dark, at, plan: read.plan };
     await updateOnboarding(scope, await requirePack(scope), { site });
     const v = await loadVisualIdentity(scope);
     await saveVisualIdentity(scope, {
       ...v,
       palette: v.palette.length ? v.palette : site.palette,
       fonts: v.fonts.length ? v.fonts : site.fonts,
-      core: { ...(v.core ?? {}), site: { url: read.url, logo: read.logo, at: site.at } },
+      core: { ...(v.core ?? {}), site: { url: read.url, logo: read.logo, at } },
     });
     refresh(tenantId);
-    return { site, text: read.text };
+    return { site, pages: read.plan.length };
   });
 }
 
-const SITE_TEXT_MAX = 20_000;
+/** Time for the page reads; the rest of the request is parsing and one save. */
+const CRAWL_BUDGET_MS = 20_000;
 
 /**
- * Screen 1, second step: what the site says about them (the site_profile task,
- * on the cheap route), saved with the site so the name and audience screens can
- * offer it. A failure (no model yet, the monthly cap, a provider error) is
- * logged by the facade and leaves the title and description to fill in instead.
+ * Screen 1, second step: the planned pages, read a few at a time inside a
+ * budget (lib/integrations/crawl), then what they say, by rules alone (no
+ * model, lib/integrations/site-details): services, projects, testimonials,
+ * client logos, contact and socials, each with the page it came from. The
+ * plan comes from the saved site, never from the browser, and stays on that site.
  */
-export async function siteProfileAction(tenantId: string, text: string) {
+export async function sitePagesAction(tenantId: string) {
   const { scope } = await actionActor(tenantId);
   return attempt(async () => {
     const pack = await requirePack(scope);
     const site = pack.onboarding.site;
     if (!site) throw new WebImportError("Read your website first.");
-    const taskInput = [`Site: ${site.url}`, `Title: ${site.title}`, `Description: ${site.description}`, "", "Text:", text.slice(0, SITE_TEXT_MAX)].join("\n");
-    const p = await runTask(scope, siteProfileTask, { context: await loadBrandContext(scope), taskInput, route: "cheap" });
-    const line = (t: string, n: number) => t.replace(/\s+/g, " ").trim().slice(0, n);
-    const profile = { name: line(p.name, 80), whatTheyDo: line(p.whatTheyDo, 160), audience: line(p.audience, 200), offers: line(p.offers, 200), positioning: line(p.positioning, 200) };
-    await updateOnboarding(scope, pack, { site: { ...site, profile } });
+    const host = new URL(site.url).host.replace(/^www\./, "");
+    const plan = (site.plan ?? [{ url: site.url, kind: "home" as const }]).filter((p) => {
+      try { return new URL(p.url).host.replace(/^www\./, "") === host; } catch { return false; }
+    });
+    const read = await crawl(plan, { budgetMs: CRAWL_BUDGET_MS });
+    if (!read.pages.length) throw new WebImportError("We couldn't read any pages on that site. Carry on, and fill in the next screens yourself.");
+    const details = { ...extractDetails(read.pages, { title: site.title, description: site.description }), scriptOnly: read.pages.filter((p) => scriptOnly(p.html)).length };
+    const profile = profileFrom(details);
+    await updateOnboarding(scope, pack, { site: { ...site, title: site.title || details.name, details, profile } });
     refresh(tenantId);
-    return profile;
+    return { details, profile, skipped: read.skipped.length };
+  });
+}
+
+/**
+ * The projects and testimonials the person ticked on screen 1, kept as facts
+ * they can stand behind (identity.proofs, which every draft's context carries).
+ * Picks are positions in the saved read, so only what the site said is saved;
+ * facts already there stay, and the same one is never added twice.
+ */
+export async function siteProofsAction(tenantId: string, picks: SitePicks) {
+  const { scope, actor } = await actionActor(tenantId);
+  return attempt(async () => {
+    const pack = await requirePack(scope);
+    const details = pack.onboarding.site?.details;
+    if (!details) throw new WebImportError("Read your website first.");
+    const had = pack.identity.proofs?.value ?? [];
+    const add = proofsFromSite(details, picks).filter((p) => !had.some((h) => h.claim.trim().toLowerCase() === p.claim.trim().toLowerCase()));
+    if (add.length) await saveProofs(scope, actor, pack, [...had, ...add]);
+    refresh(tenantId);
+    return { added: add.length };
   });
 }
 

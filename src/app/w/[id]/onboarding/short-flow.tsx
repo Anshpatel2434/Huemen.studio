@@ -26,9 +26,11 @@ import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 import {
   advanceAction, audienceAction, finishIngestAction, finishOnboardingAction, firstPieceAction, ingestAction, lookAction,
-  markIngestingAction, nameAction, saveSourcesAction, siteAction, siteProfileAction, voiceNotesAction, wordsAction,
+  markIngestingAction, nameAction, saveSourcesAction, siteAction, sitePagesAction, voiceNotesAction, wordsAction,
 } from "./actions";
 import { useStepDraft } from "./draft";
+import { SiteDetailsCard } from "./site-details-card";
+import type { SiteDetails } from "@/lib/integrations/site-details";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -121,16 +123,23 @@ function Skip({ tenantId, to, label = "Skip for now" }: { tenantId: string; to: 
 export type SiteFound = {
   url: string; title: string; description: string; palette: string[]; fonts: string[]; logo: string | null;
   profile?: { name: string; whatTheyDo: string; audience: string; offers: string; positioning: string } | null;
+  details?: SiteDetails | null;
 };
 
-// Each step is real work: the address checked, the pages and styles fetched, then what the site says read by the model.
-const SITE_STEPS = ["Capture the address", "Read your website", "Understand what you do", "Show what we found"];
+// Each step is real work: the address checked, the home page and styles read with the plan of pages, then those pages read.
+const siteSteps = (pages: number | null) => [
+  "Capture the address",
+  "Read your home page",
+  pages && pages > 1 ? `Read ${pages - 1} more ${pages === 2 ? "page" : "pages"}` : "Read your other pages",
+  "Show what we found",
+];
 
 export function SiteScreen({ tenantId, found: initial }: { tenantId: string; found: SiteFound | null }) {
   const [url, setUrl] = useStepDraft("site:url", initial?.url.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "");
   // -1 idle · 0–3 the step running · 4 done
   const [phase, setPhase] = useState(initial ? 4 : -1);
   const [found, setFound] = useState<SiteFound | null>(initial);
+  const [pages, setPages] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moving, go] = useTransition();
   const running = phase >= 0 && phase < 4;
@@ -139,17 +148,19 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
     if (!url.trim() || running) return;
     setError(null);
     setFound(null);
+    setPages(null);
     setPhase(0);
     await wait(250);
     setPhase(1);
     const r = await siteAction(tenantId, url);
     if (!r.ok) { setPhase(-1); setError(r.error); return; }
+    setPages(r.value.pages);
     setPhase(2);
-    // The model's read is a bonus: if it fails, the page's own title and description stand in.
-    const p = r.value.text ? await siteProfileAction(tenantId, r.value.text) : null;
+    // The other pages are a bonus: if none can be read, the home page's name, colours and description stand.
+    const more = await sitePagesAction(tenantId);
     setPhase(3);
     await wait(300);
-    setFound({ ...r.value.site, profile: p?.ok ? p.value : null });
+    setFound({ ...r.value.site, profile: more.ok ? more.value.profile : null, details: more.ok ? more.value.details : null });
     setPhase(4);
   };
 
@@ -157,6 +168,7 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
     <Split
       tenantId={tenantId}
       at="site"
+      wide={!!found?.details && phase === 4}
       title={<>Help us learn your <span className="serif-accent">brand.</span></>}
       sub="Start with your website. We read what's public and fill in what we can, so you type less."
       actions={
@@ -191,11 +203,11 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
             <Card className="grid sm:grid-cols-[1fr_1.1fr] gap-6 items-start">
               <div>
                 <p className="text-lg">Analysing your website</p>
-                <p className="text-sm text-ink-muted mt-1.5">Reading your brand details to set up your workspace. This takes a few moments.</p>
+                <p className="text-sm text-ink-muted mt-1.5">Reading your pages for your brand, services, projects and what clients say. Usually a few seconds.</p>
               </div>
               <ol className="flex flex-col gap-2" aria-live="polite">
-                {SITE_STEPS.map((s, i) => (
-                  <li key={s} className={`flex items-center justify-between gap-3 rounded-xl px-4 min-h-12 text-sm transition-colors ${i === phase ? "bg-hover text-ink" : i < phase ? "text-ink" : "text-ink-faint bg-field"}`}>
+                {siteSteps(pages).map((s, i) => (
+                  <li key={i} className={`flex items-center justify-between gap-3 rounded-xl px-4 min-h-12 text-sm transition-colors ${i === phase ? "bg-hover text-ink" : i < phase ? "text-ink" : "text-ink-faint bg-field"}`}>
                     <span>{i + 1}. {s}</span>
                     {i < phase ? <Check size={16} className="text-ok" aria-label="done" /> : i === phase ? <Loader2 size={16} className="animate-spin" aria-label="working" /> : null}
                   </li>
@@ -211,10 +223,10 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={found.logo} alt="Logo from your site" className="w-14 h-14 object-contain rounded-xl border border-hairline p-1.5 bg-paper shrink-0" />
                 ) : (
-                  <span className="w-14 h-14 rounded-xl bg-field grid place-items-center text-xl font-medium shrink-0" aria-hidden="true">{(found.title || found.url.replace(/^https?:\/\/(www\.)?/, ""))[0]?.toUpperCase()}</span>
+                  <span className="w-14 h-14 rounded-xl bg-field grid place-items-center text-xl font-medium shrink-0" aria-hidden="true">{(found.profile?.name || found.title || found.url.replace(/^https?:\/\/(www\.)?/, ""))[0]?.toUpperCase()}</span>
                 )}
                 <div className="min-w-0">
-                  <p className="text-lg leading-snug truncate">{found.title || found.url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</p>
+                  <p className="text-lg leading-snug truncate">{found.profile?.name || found.title || found.url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</p>
                   <p className="text-sm text-ink-muted mt-1 line-clamp-3">{found.profile?.whatTheyDo || found.description || "No description on the home page. You'll add one in a moment."}</p>
                   {found.profile?.audience && <p className="text-sm text-ink-muted mt-1 line-clamp-2">Who it&apos;s for: {found.profile.audience.replace(/^for\s+/i, "")}</p>}
                 </div>
@@ -231,6 +243,8 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
               <p className="text-xs text-ink-faint flex items-center gap-1.5"><Check size={12} aria-hidden="true" /> Saved. You can change any of it on the next screens.</p>
             </Card>
           )}
+
+          {found?.details && phase === 4 && <SiteDetailsCard tenantId={tenantId} details={found.details} />}
         </div>
       }
     />

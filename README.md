@@ -165,7 +165,8 @@ A **workspace** is a tenant (one client, isolated by RLS). Its brand is set up
 once and every piece is written from it:
 
 - **Onboarding** (seven screens: website, name, audience, writing, look, words,
-  first draft) and **Getting started** (voice pairs, rules, stories, pillars, more
+  first draft). The website screen crawls the site in the app, without a model
+  (docs/integrations.md, "Reading their website") and **Getting started** (voice pairs, rules, stories, pillars, more
   writing).
 - **Brand core:** Brief (the one workspace brief, intake and questions), Voice
   (the Voice Pack: samples, measured voice, never-words, export), Pillars (a map),
