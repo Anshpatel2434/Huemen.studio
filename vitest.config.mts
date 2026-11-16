@@ -8,7 +8,19 @@ export default defineConfig({
     setupFiles: ["dotenv/config"],
     // The per-minute AI limits are off for the suite (many fast mock calls);
     // tests/ratelimit.test.ts checks the limiter with its own rules.
-    env: { AI_RATE_PER_USER_MINUTE: "0", AI_RATE_PER_WORKSPACE_MINUTE: "0" },
+    //
+    // The providers are pinned to the stand-ins here rather than left to
+    // `.env`. setupFiles loads dotenv, so a developer who points their .env at
+    // a real provider was sending the whole suite to it: real spend, real rate
+    // limits, and failures that depend on someone else's uptime. The comment
+    // above always assumed mock; now the config says so.
+    env: {
+      AI_RATE_PER_USER_MINUTE: "0",
+      AI_RATE_PER_WORKSPACE_MINUTE: "0",
+      AI_TEXT_PROVIDER: "mock",
+      AI_IMAGE_PROVIDER: "mock",
+      AI_TRANSCRIBE_PROVIDER: "off",
+    },
   },
   resolve: {
     alias: {
