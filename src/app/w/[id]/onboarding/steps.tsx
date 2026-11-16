@@ -10,6 +10,7 @@
  * Anything typed or picked and not yet saved is a draft (`useStepDraft`), so a
  * reload puts it back; saved answers come back from the server.
  */
+import { MIN_SPOKEN_WORDS, longEnough, spokenHint } from "@/lib/onboarding/spoken";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
@@ -407,26 +408,35 @@ export function SamplesStep({ tenantId, sources, writeFor, pieces, words, level,
       {thin && (
         <Section
           title="Not much writing yet?"
-          sub="No problem. Answer these three out loud, about two minutes each: record a voice note, or type it. You'll see the words before anything is kept."
+          sub={`No problem. Answer these three out loud, about two minutes each: record a voice note, or type it. About ${MIN_SPOKEN_WORDS} words or more each, and you will see the count before anything is kept.`}
         >
-          {["What you do, and why you do it.", "A story from your work that you tell often.", "Something most people in your field believe that you disagree with."].map((q, i) => (
+          {["What you do, and why you do it.", "A story from your work that you tell often.", "Something most people in your field believe that you disagree with."].map((q, i) => {
+            const hint = spokenHint(notes[i]);
+            return (
             <label key={q} className="block">
               <span className="block text-sm font-medium mb-1.5 flex items-center gap-1.5"><Mic size={14} aria-hidden="true" /> {q}</span>
               <textarea rows={4} value={notes[i]} onChange={(e) => setNotes(notes.map((n, j) => (j === i ? e.target.value : n)))} className="field" />
+              {/* The sub above promises they will see the words. This is that. */}
+              {hint && <span className={`block text-xs mt-1 ${hint.ok ? "text-ink-faint" : "text-accent-ink"}`}>{hint.text}</span>}
               <span className="block mt-2">
                 <VoiceRecorder tenantId={tenantId} enabled={canRecord} onText={(t) => setNotes((ns) => ns.map((n, j) => (j === i ? (n.trim() ? `${n.trim()}\n\n${t}` : t) : n)))} />
               </span>
             </label>
-          ))}
-          <div>
+            );
+          })}
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              disabled={pending || notes.every((n) => n.trim().split(/\s+/).length < 10)}
+              disabled={pending || !notes.some(longEnough)}
               onClick={() => start(async () => { await voiceNotesAction(tenantId, notes); setNotes(["", "", ""]); router.refresh(); })}
               className={btnClass("secondary", "sm")}
             >
               Add these as spoken samples
             </button>
+            {/* Say what is missing, rather than leaving a dead button. */}
+            {!notes.some(longEnough) && notes.some((n) => n.trim()) && (
+              <span className="text-sm text-ink-faint">One answer needs about {MIN_SPOKEN_WORDS} words.</span>
+            )}
           </div>
         </Section>
       )}

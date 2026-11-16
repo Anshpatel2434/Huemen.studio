@@ -11,6 +11,7 @@
  *
  * Typed answers are drafts (`useStepDraft`) until saved, so a reload keeps them.
  */
+import { MIN_SPOKEN_WORDS, spokenHint, wordsIn } from "@/lib/onboarding/spoken";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
@@ -345,6 +346,7 @@ const CHANNELS: { key: string; label: string; private?: boolean; accept: string 
 const PROMPTS = ["What you do, and why you do it.", "A story from your work that you tell often.", "Something most people in your field believe that you disagree with."];
 const TARGET = 10;
 
+
 export function WritingScreen({ tenantId, sources, writeFor, pieces, words, links }: {
   tenantId: string; sources: string[]; writeFor: string[]; pieces: number; words: number;
   /** Reading their own writing from a link (site, blog, Substack, Medium, podcast). */
@@ -365,7 +367,13 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, link
   const on = picked.includes(active) ? active : picked[0];
   const ch = CHANNELS.find((c) => c.key === on);
 
-  const pending = picked.some((k) => (pastes[k] ?? "").trim() || (files[k] ?? []).length) || notes.some((n) => n.trim().split(/\s+/).length >= 10);
+  const hasFiles = picked.some((k) => (pastes[k] ?? "").trim() || (files[k] ?? []).length);
+  const longEnough = notes.filter((n) => wordsIn(n) >= MIN_SPOKEN_WORDS).length;
+  // Someone has typed into the questions but not yet enough to be usable. The
+  // difference matters: "you have written nothing" and "keep going" are not
+  // the same message, and the screen used to give the first for both.
+  const startedNotes = notes.some((n) => wordsIn(n) > 0);
+  const pending = hasFiles || longEnough > 0;
   const toggle = (k: string) => {
     const next = picked.includes(k) ? picked.filter((x) => x !== k) : [...picked, k];
     setPicked(next);
@@ -464,7 +472,13 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, link
           busy={busy}
           disabled={pieces === 0 && !pending}
           onClick={next}
-          note={pieces === 0 && !pending ? "Add at least one piece, or answer the three questions." : undefined}
+          note={
+            pieces > 0 || pending
+              ? undefined
+              : startedNotes
+                ? `Keep going — one answer needs about ${MIN_SPOKEN_WORDS} words before it can teach us anything.`
+                : "Add at least one piece, or answer the three questions."
+          }
         />
       }
       panel={
@@ -522,13 +536,23 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, link
 
             {mode === "talk" && (
               <div className="flex flex-col gap-3 text-left">
-                <p className="text-sm text-ink-muted">Answer these the way you&apos;d say them out loud. A few sentences each is enough.</p>
-                {PROMPTS.map((q, i) => (
-                  <label key={q} className="block">
-                    <span className="block text-sm font-medium mb-1.5">{q}</span>
-                    <textarea rows={3} value={notes[i]} onChange={(e) => setNotes(notes.map((n, j) => (j === i ? e.target.value : n)))} className="field text-sm" />
-                  </label>
-                ))}
+                <p className="text-sm text-ink-muted">
+                  Answer these the way you&apos;d say them out loud — a sentence or two, about {MIN_SPOKEN_WORDS} words
+                  or more, so there is enough of you in it to measure.
+                </p>
+                {PROMPTS.map((q, i) => {
+                  const hint = spokenHint(notes[i]);
+                  return (
+                    <label key={q} className="block">
+                      <span className="block text-sm font-medium mb-1.5">{q}</span>
+                      <textarea rows={3} value={notes[i]} onChange={(e) => setNotes(notes.map((v, j) => (j === i ? e.target.value : v)))} className="field text-sm" />
+                      {/* Only once they have started: an empty box needs no scolding. */}
+                      {hint && (
+                        <span className={`block text-xs mt-1 ${hint.ok ? "text-ink-faint" : "text-accent-ink"}`}>{hint.text}</span>
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             )}
 
