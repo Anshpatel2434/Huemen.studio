@@ -78,7 +78,7 @@ describe("the Anthropic provider's stream", () => {
   const delta = (text: string) => ({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } });
   const usage = { input_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 900, output_tokens: 40 };
 
-  it("sends the cached system block with fallbacks, yields text deltas, and reports the final text", async () => {
+  it("sends the cached system block, yields text deltas, and reports the final text (audit H3: no fallback on a stream)", async () => {
     const { client, calls } = stub([delta("Hook\n"), delta("Body")], {
       model: "claude-opus-5-5", stop_reason: "end_turn", usage, content: [{ type: "text", text: "Hook\nBody" }],
     });
@@ -90,11 +90,20 @@ describe("the Anthropic provider's stream", () => {
       { type: "delta", text: "Body" },
       { type: "done", model: "claude-opus-5-5", tokensIn: 910, tokensOut: 40, text: "Hook\nBody" },
     ]);
-    const sent = calls[0] as { system: { cache_control: unknown }[]; fallbacks: string; betas: string[]; output_config: { effort: string } };
+    const sent = calls[0] as { system: { cache_control: unknown }[]; output_config: { effort: string } } & Record<string, unknown>;
     expect(sent.system[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(sent.fallbacks).toBe("default");
-    expect(sent.betas).toContain("server-side-fallback-2026-07-01");
     expect(sent.output_config.effort).toBe("medium");
+  });
+
+  it("never sends a server-side fallback on a stream, even when batch calls have them on (audit H3)", async () => {
+    const { client, calls } = stub([delta("Only text")], {
+      model: "claude-opus-5-5", stop_reason: "end_turn", usage, content: [{ type: "text", text: "Only text" }],
+    });
+    const p = anthropicTextProvider({ fallbacks: "default", timeoutMs: 1000 }, client);
+    for await (const _ of p.stream({ templateKey: "x", context, taskInput: "", prompt }, "claude-opus-5-5")) void _;
+    const sent = calls[0] as Record<string, unknown>;
+    expect("fallbacks" in sent).toBe(false);
+    expect("betas" in sent).toBe(false);
   });
 
   it("a refusal at the end is an error, never an empty draft", async () => {
@@ -146,7 +155,7 @@ describe("streamContent", () => {
     let id = "";
     for await (const ev of streamContent(A, { format: "linkedin_post", topic: "delegation" })) {
       if (ev.type === "delta") text += ev.text;
-      else id = ev.id;
+      else if (ev.type === "saved") id = ev.id;
     }
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     const item = (await listContent(A)).find((c) => c.id === id)!;

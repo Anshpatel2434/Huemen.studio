@@ -15,7 +15,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "smoke:pictures": "tsx src/ai-smoke/pictures.ts",
     "db:reset": "docker compose down -v && docker compose up -d db && node -e \"setTimeout(()=>{},3000)\"",
-    "smoke:site": "tsx src/ai-smoke/site-read.ts"
+    "smoke:site": "tsx src/ai-smoke/site-read.ts",
+    "smoke:text": "tsx --tsconfig tsconfig.smoke.json src/ai-smoke/text.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

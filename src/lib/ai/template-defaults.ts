@@ -68,6 +68,7 @@ const TASK_META: Record<string, { label: string; about: string }> = {
   voice_preview: { label: "Live voice preview", about: "The paragraph that changes as answers are saved." },
   image_brief: { label: "Picture brief", about: "What ChatGPT Image is asked to draw for a visual, from the brand context and the piece." },
   design_change: { label: "Design comment", about: "A comment pinned on a visual's logo, background or layout, turned into a design change." },
+  look_read: { label: "Read your designs", about: "Onboarding's Look screen and Brand core › Visual: what the reference designs share, matched to the voice. Runs on the vision model." },
   site_profile: { label: "Read your website", about: "Onboarding's first screen: name, what they do, who it's for and what they offer, from the site's own words." },
 };
 

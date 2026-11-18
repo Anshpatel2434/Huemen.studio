@@ -47,10 +47,15 @@ export function verifySignature(key: string, token: string): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-/** A short-lived link to read one object through /api/storage, whichever driver holds it. */
+/**
+ * A short-lived link to read one object through /api/storage, whichever driver
+ * holds it. Relative (same origin as the page), never built from APP_URL: an
+ * absolute link broke pictures, exports and uploads whenever the app was
+ * opened on any other host (www vs apex, preview deploys, custom domains).
+ */
 export function appSignedUrl(key: string, ttlSeconds?: number): string {
   const ttl = ttlSeconds ?? getEnv().STORAGE_SIGNED_URL_TTL_SECONDS;
-  return `${getEnv().APP_URL}/api/storage/${encodeURI(key)}?token=${signKey(key, Date.now() + ttl * 1000)}`;
+  return `/api/storage/${encodeURI(key)}?token=${signKey(key, Date.now() + ttl * 1000)}`;
 }
 
 let _driver: StorageDriver | null = null;

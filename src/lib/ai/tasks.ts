@@ -18,6 +18,7 @@
  */
 import { z } from "zod";
 import { ANTI_AI_PHRASES } from "@/lib/voice/platforms";
+import type { TaskRule } from "./prompt";
 
 export interface TaskDef<T> {
   key: string;
@@ -25,6 +26,17 @@ export interface TaskDef<T> {
   contract: string;
   template: string;
   mock: (taskInput: string) => T;
+  /**
+   * Shared rules appended to the contract by the facade (lib/ai/prompt
+   * taskRules): the facts rule, the ask rule, the measured length, plain
+   * characters. For the tasks that write or rewrite copy.
+   */
+  rules?: readonly TaskRule[];
+  /**
+   * Answer fields that QUOTE the input and so must come back untouched: the
+   * output clean-up (lib/content/clean) skips them.
+   */
+  verbatim?: readonly string[];
 }
 
 /** Read "Label: value" lines out of a task input. */
@@ -109,23 +121,42 @@ const Judge = z.object({
       line: z.string(),
       verdict: z.enum(["on", "drift", "off"]),
       attribute: z.string(),
+      /** The exact words in the line the finding is about. Checked in code: not in the line, no finding. */
+      quote: z.string(),
       why: z.string(),
+      /** The line rewritten, or an empty string to cut the line. */
       fix: z.string(),
     }),
   ),
 });
 export type JudgeResult = z.infer<typeof Judge>;
 
+/**
+ * A finding after the code has vetted it (lib/voice/judge): `remove` says the
+ * suggestion is to cut the line; an empty `fix` without it means the model's
+ * fix was rejected and there is nothing to apply.
+ */
+export type LineFinding = JudgeResult["findings"][number] & { remove: boolean };
+
 export const voiceJudge: TaskDef<JudgeResult> = {
   key: "voice_judge",
   schema: Judge,
   template:
-    "You check whether a draft sounds like a specific person, against the measured voice and guardrails in the brand context. You judge their voice, never the quality of the writing in general, and never whether it sounds machine-written.",
+    "You check whether a draft sounds like a specific person, against the measured voice and guardrails in the brand context. You judge their voice, never the quality of the writing in general, and never whether it sounds machine-written. Every finding points at words that are really in the line, and every fix is a sentence they could publish as it stands.",
   contract: [
     "Return the lines that matter: every line that drifts from their voice or breaks a guardrail, and at most two lines that are most like them.",
-    "For each: line (quoted exactly from the draft), verdict (on | drift | off), attribute (the named trait or guardrail from the brand context it is measured against), why (one sentence citing their own writing or a measured number, never a generic rule), fix (the line rewritten in their voice; for an 'on' line, repeat it unchanged).",
+    "For each finding:",
+    "- line: one line of the draft, copied character for character.",
+    "- verdict: on | drift | off.",
+    "- attribute: the named trait or guardrail from the brand context it is measured against.",
+    "- quote: the exact words inside that line the finding is about, copied character for character. They must be in the line. If the thing you want to point at is not in the line (a contraction that is not there, a word that is not there), there is no finding: leave it out.",
+    "- why: one sentence that names the quoted words and says what in their own writing or measured numbers they differ from. Never a generic writing rule.",
+    "- fix: the line rewritten in their voice. It must no longer contain the problem: not the quoted words when they are the problem, and no phrase listed under \"Already flagged\" in the task or on their never-list. It must read as complete, correct sentences: never two full clauses joined by only a comma (write \"It's risky to add features right up to launch.\", not \"add features right up to launch, it's risky\"). If nothing worth keeping is left once the problem is gone, return an empty string, which means cut the line. For an 'on' line, repeat it unchanged.",
+    "A fix adds no fact, name or number that is not in the draft or the brand context.",
     'Never say a line sounds like AI, sounds robotic, or sounds generic. Say what in their writing it differs from.',
   ].join("\n"),
+  // Both quote the draft: cleaned, they could no longer be found in it.
+  verbatim: ["line", "quote"],
   mock(input) {
     const draft = block(input, "Draft");
     const never = field(input, "Never use")
@@ -137,18 +168,22 @@ export const voiceJudge: TaskDef<JudgeResult> = {
     for (const line of lines) {
       const hit = never.find((w) => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(line));
       if (hit) {
+        const esc = hit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         findings.push({
           line,
           verdict: "off",
           attribute: "Never-list",
+          // As it is written in the line, so the quote is found there.
+          quote: line.match(new RegExp(`\\b${esc}\\b`, "i"))?.[0] ?? hit,
           why: `"${hit}" is on your never-list.`,
-          fix: line.replace(new RegExp(`\\b${hit}\\b`, "ig"), "").replace(/\s{2,}/g, " ").trim(),
+          fix: line.replace(new RegExp(`\\b${esc}\\b[,!]?`, "ig"), "").replace(/\s{2,}/g, " ").replace(/ +([,.!?])/g, "$1").trim(),
         });
       } else if (line.split(/\s+/).length > 32) {
         findings.push({
           line,
           verdict: "drift",
           attribute: "Sentence rhythm",
+          quote: line.split(/\s+/).slice(0, 6).join(" "),
           why: "Much longer than the sentences you usually write.",
           fix: line.split(/,\s+/).slice(0, 2).join(". ").replace(/\.\.$/, "."),
         });
@@ -170,8 +205,12 @@ export const rewriteInVoice: TaskDef<RewriteResult> = {
     "You rewrite a draft so it sounds like the person in the brand context. Keep their meaning, their facts and their structure where it already works. Change only what drifts from their measured voice and guardrails.",
   contract: [
     "Return text: the full rewritten draft, keeping its line breaks.",
-    "Do not add a fact, name, number or claim that is not in the draft or the brand context.",
+    "Take out every phrase on their never-list and every stock phrase the brand context warns about; do not carry one over because the draft had it.",
+    "Fix everything the task lists under \"Already flagged\" and under what the check says: hashtags, emoji and punctuation that are not theirs come out, they are not kept because the draft had them.",
+    "Say what the draft says. Do not bring in an offer, a story or an announcement the draft does not make, even one that is in the brand context.",
+    "Every sentence is complete and correct: never two full clauses joined by only a comma.",
   ].join("\n"),
+  rules: ["facts", "brief", "length", "chars"],
   mock(input) {
     const draft = block(input, "Draft");
     const never = field(input, "Never use")
@@ -210,11 +249,15 @@ export const coWriteOutline: TaskDef<OutlineResult> = {
   template:
     "You set up a piece for the person to write themselves. Give them a hook in their voice and the beats of the argument, but leave the writing to them.",
   contract: [
-    "Return hook (one line in their voice), points (three to five short beats, each a phrase not a paragraph), cta (one line, or an empty string if the format has no ask).",
+    "Return hook (one line in their voice), points (three to five short beats, each a phrase not a paragraph), cta (one line, or an empty string if the format has no ask or no offer fits).",
+    "The Topic, and the Pillar and Angle when the task gives them, are already decided: the beats follow that angle's shape.",
+    "A beat may tell them which of their own facts or stories to use; it never supplies a number, client or event of its own.",
   ].join("\n"),
+  rules: ["facts", "ask", "chars"],
   mock(input) {
     const topic = field(input, "Topic") || "this";
-    const angle = field(input, "Angle");
+    // The angle arrives with what it asks for in brackets (lib/content/angles); the label is the angle.
+    const angle = field(input, "Angle").replace(/\s*\(.*$/, "");
     return {
       hook: angle ? `${angle}: ${topic}.` : `Here is what I think about ${topic}.`,
       points: [
@@ -430,8 +473,11 @@ export const rewritePart: TaskDef<PartResult> = {
   contract: [
     "Return text: the new version of the part only, with no quotes, labels or commentary.",
     "Keep it the same kind of thing: a hook stays one line, a slide stays one idea, a call to action stays one ask.",
-    "Do not add a fact, name, number or claim that is not in the piece or the brand context.",
+    "Keep it about the same length unless the instruction asks for longer or shorter.",
+    "Do not add a fact, name, number or claim that is not in the piece or the brand context. If the instruction asks for one you do not have (\"add a number\", \"add a client story\"), write the part without it rather than making one up.",
+    "A call to action names an offer only exactly as the brand context writes it, and never promises a call, download, template or anything free that is not listed there.",
   ].join("\n"),
+  rules: ["facts", "brief", "chars"],
   mock(input) {
     const never = field(input, "Never use").split(",").map((w) => w.trim()).filter(Boolean);
     return { text: mockRewritePart(block(input, "Part"), field(input, "Instruction"), never) };
@@ -483,6 +529,9 @@ export const calendarPlan: TaskDef<CalendarPlan> = {
     "Fit the channel: a newsletter slot can carry a bigger idea than an X slot.",
     "Every topic must be different from every other one in the plan. A quarter of repeats is not a plan, so do not reuse a topic, and do not reach the same idea twice by rewording it.",
   ].join("\n"),
+  // Audit M2: a plan names topics and calls to action, so the shared facts and
+  // ask rules apply here as they do to a draft (no invented event, no pitch).
+  rules: ["facts", "ask"],
   mock(input) {
     const pillars = fields(input, "Pillar").map((p) => p.split(" (")[0].trim());
     const slots = fields(input, "Slot").map((s) => Number(s.split("|")[0]));
@@ -563,11 +612,15 @@ export const imageBrief: TaskDef<ImageBriefResult> = {
   key: "image_brief",
   schema: ImageBrief,
   template:
-    "You are an art director for a personal brand. From the brand context and the piece, describe one picture that would stop the scroll and still feel like this person: the subject, the setting, the light and mood, the composition, and the palette taken from the brand's colours. Prefer real, specific scenes to abstract stock imagery. Never show a real person's face unless the piece names them, and never invent a logo.",
+    "You are an art director for a personal brand. You turn the IDEA of one piece of writing into one picture. Work in three steps. First find the idea: what is this piece actually saying (its claim, its tension, its turn), in a few words. Second, name the obvious object a keyword would suggest and reject it: a price tag for pricing, a calendar for time, a lightbulb for ideas, a pen on paper for writing, a laptop or a desk flat-lay. Third, find one concrete, physical image that carries the idea as a visual metaphor: a specific object, material, tool, place or small scene that someone would only choose for THIS piece. The picture illustrates the idea, never the author and never the job title. The task input gives the brand palette and this visual's colours in hex: the picture is drawn in those colours, so describe them in colour words in the scene. The brand context gives the image style notes and the audience: follow the style notes over your own taste.",
   contract: [
-    "Return scene: one paragraph, at most 120 words, describing the picture for an image model.",
-    "Return avoid: a short comma-separated list of things that would make it generic or off brand.",
-    "Do not put any words, letters or captions in the scene unless the task input gives text to show.",
+    "Return scene: one paragraph, at most 110 words, for an image model: the one subject, where it is, the material and light, the camera angle and framing, and which colours appear where, in colour words (for example 'deep forest green ground', 'warm off-white'), never as hex codes.",
+    "The scene shows NO people: no faces, no bodies, no silhouettes, no hands, unless the brand's image style notes ask for people.",
+    "Never use these, they are what every generic post uses: office towers or skylines, suits, handshakes, people at laptops or whiteboards, light bulbs, rockets, chess pieces, targets and arrows, puzzle pieces, mountains to climb, gears, upward charts, glowing brains, price tags, calendars, pens on paper, desk flat-lays.",
+    "The metaphor must be specific to this piece: not the first object a keyword of the piece suggests. Keep the one you rejected out of the scene and name it in avoid.",
+    "One clear subject, plain surroundings. If the task input says to leave space, keep that part of the frame calm and empty for a headline.",
+    "Do not put any words, letters, numbers, hex codes, colour codes, logos of any brand, UI or app mock-ups, chat windows, dashboards or devices with screens showing anything in the scene, unless the task input gives text to show.",
+    "Return avoid: a short comma-separated list of what would make this picture generic or off brand, including the obvious object you rejected.",
   ].join("\n"),
   mock(input) {
     const piece = field(input, "Piece") || "the work";
@@ -632,6 +685,83 @@ export const designChange: TaskDef<DesignChangeResult> = {
   },
 };
 
+// ---- the look: reading the person's reference designs (vision) ---------------
+
+const LookRead = z.object({
+  designs: z.array(z.object({ assetId: z.string(), summary: z.string() })),
+  mood: z.string(),
+  typeFeel: z.string(),
+  layout: z.string(),
+  photoStyle: z.string(),
+  motifs: z.string(),
+  colourUse: z.string(),
+  agrees: z.array(z.string()),
+  clashes: z.array(z.string()),
+  direction: z.string(),
+  avoid: z.array(z.string()),
+});
+export type LookReadResult = z.infer<typeof LookRead>;
+
+/** "Design 2: id <uuid>; measured colours: #112233, #F4F4F4" lines of the task input. */
+export function lookDesigns(input: string): { assetId: string; colours: string[] }[] {
+  return [...input.matchAll(/^Design \d+: id ([^;\n]+); measured colours: (.*)$/gm)].map((m) => ({
+    assetId: m[1].trim(),
+    colours: [...m[2].matchAll(/#[0-9a-f]{6}\b/gi)].map((c) => c[0].toUpperCase()),
+  }));
+}
+
+/**
+ * The person's own reference designs ("add up to 3 designs that look like
+ * you"), read by a vision model: what each one is, the look they share, and
+ * how that look sits with the voice in the brand context (INV-2: the voice
+ * comes from the block, never from the task input). The exact colours are
+ * MEASURED in code (lib/visual/look-read) and passed in as facts; the model
+ * only says how they are used. The answer lands in visual_identities.core.look
+ * and from there in every prompt (lib/visual/core visualCoreLines).
+ */
+export const lookRead: TaskDef<LookReadResult> = {
+  key: "look_read",
+  schema: LookRead,
+  template:
+    "You are an art director. The person picked these designs as \"this looks like me\": posts, ads or pages whose look they want for their own brand. Read the look the designs share and say it in plain words a designer could work from: the mood, how the type feels, how the space is laid out, the photo or illustration style, recurring motifs, and how colour is used. Describe the look, never the content, and never copy a design. Then hold that look against the person's voice in the brand context (tone, personality, who they write for) and say where they agree, where they pull apart, and the one visual direction that fits both. Say only what you can see in the designs and read in the brand context; never invent facts about the person.",
+  contract: [
+    "The pictures are the designs, in the order of the Design lines in the task. Each Design line gives its id and its colours, measured from the pixels.",
+    "Return designs: one entry per Design line, in order. assetId is that line's id, copied exactly. summary is one line, at most 140 characters: what the design is (a quote post, an ad, a landing page) and what in it reads as their look.",
+    "Return mood, typeFeel, layout, photoStyle, motifs, colourUse: each one or two short sentences, at most 200 characters, about the look the designs SHARE, not one design.",
+    "typeFeel says serif or sans, the weight, the case (all caps, sentence case) and how dense the text sits. photoStyle covers photos or illustration, whichever the designs use; say \"No photos or illustration\" when there are none.",
+    "colourUse says how the colours are used (a pale ground with one loud accent, colour blocks, dark and moody), using the measured colours given. Do not name hex codes the task did not give.",
+    "Return agrees: up to 3 short lines where the look and the voice in the brand context say the same thing. clashes: up to 3 short lines where they pull apart, or an empty list when they don't.",
+    "Return direction: one short paragraph, at most 400 characters, the visual direction that fits both the designs and the voice, for whoever makes their pictures next.",
+    "Return avoid: up to 5 short items of a few words each (a noun phrase, not a sentence), what pictures for this person should not do.",
+    "Describe what the pictures show now. Visual lines already in the brand context (layout, motifs, photo style, or an earlier reading of their designs) may be out of date: never copy them. Where they differ, the pictures win.",
+    "Plain words, no design jargon, no emojis, no marketing language. When the brand context has no voice yet, say so in direction and leave agrees and clashes empty.",
+  ].join("\n"),
+  mock(input) {
+    const designs = lookDesigns(input);
+    const tone = field(input, "Tone");
+    const all = [...new Set(designs.flatMap((d) => d.colours))];
+    const n = designs.length;
+    return {
+      designs: designs.map((d, i) => ({
+        assetId: d.assetId,
+        summary: `Stand-in reading of design ${i + 1}: a branded post built around ${d.colours[0] ?? "a quiet ground"}.`,
+      })),
+      mood: n > 1 ? `Calm and deliberate across all ${n} designs.` : "Calm and deliberate.",
+      typeFeel: "Sans serif, medium weight, sentence case, set with room around it.",
+      layout: "One clear focal point, generous margins, text aligned left.",
+      photoStyle: "No photos or illustration; colour and type do the work.",
+      motifs: "A single accent mark repeated as a signature.",
+      colourUse: all.length ? `A restrained palette led by ${all.slice(0, 3).join(", ")}, with one colour as the accent.` : "A restrained palette with one accent.",
+      agrees: tone ? [`The quiet layout suits a voice that is ${tone}.`] : [],
+      clashes: [],
+      direction: tone
+        ? `Keep the calm, roomy layouts and the one-accent palette, and let the pictures carry the same ${tone} feel as the writing: one idea per frame, no clutter.`
+        : "No voice on file yet, so this follows the designs alone: calm, roomy layouts, one idea per frame and a single accent colour.",
+      avoid: ["busy stock photos", "more than one accent colour", "crowded text"],
+    };
+  },
+};
+
 export const TASKS = {
   [siteProfile.key]: siteProfile,
   [topicProposals.key]: topicProposals,
@@ -645,5 +775,6 @@ export const TASKS = {
   [voicePreview.key]: voicePreview,
   [imageBrief.key]: imageBrief,
   [designChange.key]: designChange,
+  [lookRead.key]: lookRead,
 } as Record<string, TaskDef<unknown>>;
 

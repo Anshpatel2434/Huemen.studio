@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Archivo, Instrument_Serif, IBM_Plex_Mono } from "next/font/google";
+import { preload } from "react-dom";
+import "./fonts.css";
 import "./globals.css";
 import { PageTransition } from "@/components/page-transition";
 import { ThemeProvider } from "@/components/theme";
@@ -14,11 +15,16 @@ import { CANVAS_COOKIE, parseCanvasBg } from "@/lib/canvas-bg";
  * The design system's documented fallbacks (§03), in place of the licensed GT
  * America / GT Super / GT America Mono until Grilli Type's web licence lands:
  * Archivo carries the interface, Instrument Serif the editorial statements,
- * IBM Plex Mono the labels and numbers.
+ * IBM Plex Mono the labels and numbers. Self-hosted (fonts.css, public/fonts)
+ * so the build never fetches from Google; the Latin files load first.
  */
-const sans = Archivo({ variable: "--font-sans-src", subsets: ["latin", "latin-ext"], weight: ["400", "500", "600", "700"], display: "swap" });
-const serif = Instrument_Serif({ variable: "--font-serif-src", subsets: ["latin"], weight: "400", style: ["normal", "italic"], display: "swap" });
-const mono = IBM_Plex_Mono({ variable: "--font-mono-src", subsets: ["latin"], weight: ["400", "500"], display: "swap" });
+const PRELOAD = [
+  "archivo-latin-variable",
+  "instrument-serif-latin-400",
+  "instrument-serif-latin-400-italic",
+  "ibm-plex-mono-latin-400",
+  "ibm-plex-mono-latin-500",
+];
 
 export const metadata: Metadata = {
   title: { default: "Huemen.studio", template: "%s · Huemen.studio" },
@@ -30,8 +36,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const jar = await cookies();
   const theme = parseTheme(jar.get(THEME_COOKIE)?.value);
   const canvas = parseCanvasBg(jar.get(CANVAS_COOKIE)?.value);
+  for (const f of PRELOAD) preload(`/fonts/${f}.woff2`, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
   return (
-    <html lang="en" data-theme={theme} data-canvas={canvas} className={`${sans.variable} ${serif.variable} ${mono.variable} h-full`} suppressHydrationWarning>
+    <html lang="en" data-theme={theme} data-canvas={canvas} className="h-full" suppressHydrationWarning>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider initial={theme}>
           <PageTransition level="section">{children}</PageTransition>

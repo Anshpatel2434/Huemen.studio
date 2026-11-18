@@ -9,11 +9,39 @@
  * three words or fewer" far more reliably than it hits `{"mean":13,...}`, and a
  * user can read it back and tell us we got them wrong.
  */
-import type { VoicePackInput } from "@/lib/context/context-builder";
+import type { ContextCap, VoicePackInput } from "@/lib/context/context-builder";
 import { DIAL_KEYS, DIAL_LABELS, LANGUAGES, type VoiceContext, type VoicePack, type VoiceSample } from "./types";
 import { deriveHardRules, deriveSelfCheck } from "./derive";
 
 const pctWord = (n: number): string => `${Math.round(n)}%`;
+
+/** How many of each list the prompt carries. The rest is reported as a cap (packCaps). */
+export const OPENERS_MAX = 3;
+export const CLOSERS_MAX = 3;
+export const LEXICON_MAX = 12;
+export const SIGNATURE_MAX = 5;
+
+/** The signature phrases: what they confirmed, then what the scan measured, de-duplicated, in that order. */
+function signatureList(pack: VoicePack): string[] {
+  return [
+    ...new Set([...(pack.onboarding.patterns?.kept ?? []), ...(pack.mechanics.signaturePhrases?.value ?? []).map((s2) => s2.phrase)]),
+  ];
+}
+
+/**
+ * The lists in the fingerprint that the prompt cuts (lexicon, openers,
+ * closers, signature phrases), with how many there are. The loader passes these
+ * to the builder, which records a warning for each cap that bites (H2).
+ */
+export function packCaps(pack: VoicePack): ContextCap[] {
+  const m = pack.mechanics;
+  return [
+    { section: "Words they reach for", shown: Math.min(LEXICON_MAX, (m.lexicon?.value ?? []).length), total: (m.lexicon?.value ?? []).length },
+    { section: "Opening patterns", shown: Math.min(OPENERS_MAX, (m.openers?.value ?? []).length), total: (m.openers?.value ?? []).length },
+    { section: "Closing patterns", shown: Math.min(CLOSERS_MAX, (m.closers?.value ?? []).length), total: (m.closers?.value ?? []).length },
+    { section: "Signature phrases", shown: Math.min(SIGNATURE_MAX, signatureList(pack).length), total: signatureList(pack).length },
+  ];
+}
 
 /** The measured fingerprint, as lines a model can actually aim at. */
 export function mechanicsLines(pack: VoicePack): string[] {
@@ -68,13 +96,13 @@ export function mechanicsLines(pack: VoicePack): string[] {
   if (initials.length)
     out.push(`Starts sentences with ${initials.map((w) => `"${w.word}"`).join(", ")} more than most people do.`);
 
-  const openers = (m.openers?.value ?? []).slice(0, 3);
+  const openers = (m.openers?.value ?? []).slice(0, OPENERS_MAX);
   if (openers.length) {
     out.push("Opens like this (patterns, not text to reuse):");
     openers.forEach((o) => out.push(`  · ${o.pattern} — "${o.example}"`));
   }
 
-  const closers = (m.closers?.value ?? []).slice(0, 3);
+  const closers = (m.closers?.value ?? []).slice(0, CLOSERS_MAX);
   if (closers.length) {
     out.push("Closes like this:");
     closers.forEach((cl) => out.push(`  · ${cl.pattern} — "${cl.example}"`));
@@ -82,12 +110,12 @@ export function mechanicsLines(pack: VoicePack): string[] {
 
   if (m.bodyArc?.value) out.push(`A piece usually moves: ${m.bodyArc.value}`);
 
-  const lex = (m.lexicon?.value ?? []).slice(0, 12);
+  const lex = (m.lexicon?.value ?? []).slice(0, LEXICON_MAX);
   if (lex.length) out.push(`Words they reach for: ${lex.join(", ")}.`);
 
   // The ones they confirmed come first: a phrase they use across email, posts
   // and talks is theirs whether or not this scan counted it.
-  const sigs = [...new Set([...(pack.onboarding.patterns?.kept ?? []), ...(m.signaturePhrases?.value ?? []).map((s2) => s2.phrase)])].slice(0, 5);
+  const sigs = signatureList(pack).slice(0, SIGNATURE_MAX);
   if (sigs.length)
     out.push(
       `Signature phrases (at most ${pack.index.signaturePhraseMaxPerPiece} per piece, rotate them): ${sigs.map((s2) => `"${s2}"`).join(", ")}.`,
@@ -160,7 +188,21 @@ export function packToContextInput(
     exceptions: (pack.redPen.exceptions?.value ?? []).map((e) => `${e.item} (${e.evidence})`),
     selfCheck: pack.redPen.selfCheck?.value?.length ? pack.redPen.selfCheck.value : deriveSelfCheck(pack),
     antiSample: pack.onboarding.antiSample ?? null,
+    // The same range the check measures a draft against (lib/voice/check).
+    lengthWords: (channel && pack.index.lengthByFormat?.[channel]) || null,
+    noEmDash: banEmDash(pack),
   };
+}
+
+/**
+ * Em dashes are not theirs: the scan found none in their writing, or one of
+ * their own hard rules or guardrails says so. Model output is cleaned on this
+ * (lib/content/clean), so the rule holds even when a model ignores it.
+ */
+export function banEmDash(pack: VoicePack): boolean {
+  if (pack.index.punctuation?.emDash?.allowed === false) return true;
+  const said = [...(pack.hardRules ?? []), ...pack.guardrails.map((g) => g.rule)];
+  return said.some((r) => /\b(no|never|avoid|without|don'?t use)\b[^.]{0,40}\bem[ -]?dash/i.test(r));
 }
 
 /** Readable names for the must-have keys the scan derives (red-pen.md). */

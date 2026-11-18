@@ -51,7 +51,7 @@ export default async function IdeasPage({ params }: PageProps<"/w/[id]/plan/idea
                   <form action={archiveIdeaAction}>
                     <input type="hidden" name="tenantId" value={id} />
                     <input type="hidden" name="id" value={i.id} />
-                    <button className="hu-iconbtn" title="Archive" aria-label="Archive idea"><Archive size={14} /></button>
+                    <button className="hu-iconbtn" data-tip="Archive" aria-label="Archive idea"><Archive size={14} /></button>
                   </form>
                   <form action={convertIdeaAction} className="flex items-center gap-2 flex-1 justify-end">
                     <input type="hidden" name="tenantId" value={id} />

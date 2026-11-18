@@ -7,19 +7,47 @@
  * ========================================================================== */
 
 @layer base {
-  /* Native choices are the system's choice (§10): a real input at 20px, in
-     the accent. Consistent everywhere, without a wrapper. */
+  /* Choices (§10): a real input (keyboard, forms and screen readers all
+     work), drawn by the system rather than the browser: a 20px box with a
+     hairline, filled with ink when chosen. Consistent everywhere, in both
+     themes, without a wrapper. */
   input[type="checkbox"],
   input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
     width: 20px;
     height: 20px;
     flex: none;
     margin: 0;
-    accent-color: var(--accent);
+    display: inline-grid;
+    place-content: center;
+    vertical-align: middle;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-xs);
+    background: var(--paper);
     cursor: pointer;
+    transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
   }
+  input[type="radio"] { border-radius: 50%; }
+  input[type="checkbox"]::before,
+  input[type="radio"]::before {
+    content: "";
+    transform: scale(0);
+    background: var(--on-ink);
+  }
+  /* The tick is a shape, so it takes its colour from a token like everything else. */
+  input[type="checkbox"]::before { width: 12px; height: 12px; clip-path: polygon(14% 47%, 4% 59%, 40% 90%, 96% 22%, 85% 12%, 39% 68%); }
+  input[type="radio"]::before { width: 8px; height: 8px; border-radius: 50%; }
+  input[type="checkbox"]:hover:not(:disabled),
+  input[type="radio"]:hover:not(:disabled) { border-color: var(--line-strong); }
+  input[type="checkbox"]:checked,
+  input[type="radio"]:checked { background: var(--ink); border-color: var(--ink); }
+  input[type="checkbox"]:checked::before,
+  input[type="radio"]:checked::before { transform: scale(1); }
+  input[type="checkbox"]:focus-visible,
+  input[type="radio"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   input[type="checkbox"]:disabled,
-  input[type="radio"]:disabled { cursor: not-allowed; }
+  input[type="radio"]:disabled { cursor: not-allowed; opacity: 0.5; }
 
   /* Every select: the native control (keyboard, screen readers and mobile
      pickers all work), with the platform arrow replaced by the system's
@@ -79,6 +107,11 @@
   .hu-choice__text { font-size: 16px; line-height: 1.45; color: var(--ink); }
   .hu-choice__text small { display: block; font-size: 14px; color: var(--ink-faint); margin-top: 2px; }
   .hu-choice input:disabled + .hu-choice__text { color: var(--ink-faint); }
+  .hu-choice:has(input:disabled) { cursor: not-allowed; }
+  .hu-choice--dense { gap: 10px; }
+  .hu-choice--dense input { margin-top: 0; }
+  .hu-choice--dense .hu-choice__text { font-size: 14px; }
+  .hu-choice--dense .hu-choice__text small { font-size: 13px; }
   /* Boxed: the whole row is the target, the chosen row firms up. */
   .hu-choice--box {
     padding: 12px 14px;
@@ -196,20 +229,21 @@
 
   /* ---- Toast (§12): transient, out of the flow, above everything ------------ */
   .hu-toast {
-    display: grid;
-    grid-template-columns: 18px 1fr;
+    /* One row: icon, message, an optional follow-up, and the close button. */
+    display: flex;
     gap: var(--space-3);
-    align-items: start;
+    align-items: flex-start;
     padding: 14px var(--space-4);
     border-radius: var(--radius-md);
     background: var(--inverse);
     color: var(--on-inverse);
     box-shadow: var(--shadow-lg);
-    max-width: 400px;
+    max-width: min(400px, 100%);
     font-size: 14px;
     line-height: 1.45;
     border: 1px solid transparent;
   }
+  .hu-toast__icon { flex: none; margin-top: 1px; }
 
   /* ---- Spinner, skeleton (§12) ---------------------------------------------- */
   .hu-spinner {
@@ -344,6 +378,89 @@
     flex-wrap: wrap;
   }
 
+  /* ---- Docked panels of a canvas page (components/project-panels.tsx) ----------
+     The right slot. From 900px it is its own column, so the canvas is the
+     space beside it; below that it is a sheet over the canvas (from the bottom
+     on a phone). It holds the page's panel, or the post editor in its place. */
+  .hu-dock {
+    display: none;
+    flex-direction: column;
+    min-height: 0;
+    position: absolute;
+    z-index: 30;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 80%;
+  }
+  .hu-dock[data-open="true"],
+  .hu-dock:has(> [data-panel="edit"]) { display: flex; }
+  .hu-dock:has(> [data-panel="edit"]) > [data-panel="step"] { display: none; }
+  .hu-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--paper);
+    border-top: 1px solid var(--hairline);
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--shadow-overlay);
+  }
+  @media (min-width: 640px) {
+    .hu-dock { left: auto; top: 0; height: auto; width: min(360px, 100%); }
+    .hu-panel { border-top: 0; border-left: 1px solid var(--hairline); border-radius: 0; }
+  }
+  @media (min-width: 900px) {
+    .hu-dock { position: static; z-index: auto; flex: none; width: 320px; margin: 4px 12px 12px 0; }
+    .hu-dock[data-open="auto"] { display: flex; }
+    .hu-dock:has(> [data-panel="edit"]) { width: 360px; }
+    .hu-panel { border: 1px solid var(--hairline); border-radius: 16px; box-shadow: none; }
+  }
+
+  /* ---- Tool strip: the one home for controls that sit on the canvas ------------
+     Square-cornered and flat, anchored to an edge of the visible canvas. A
+     control on the canvas goes in a strip; it never floats there as a pill. */
+  .hu-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    max-width: 100%;
+    background: var(--paper);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .hu-strip__sep { flex: none; width: 1px; height: 24px; margin: 0 2px; background: var(--hairline); }
+  .hu-strip__btn {
+    min-height: var(--tap-min);
+    padding: 0 14px;
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--ink-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+  }
+  .hu-strip__btn:hover { background: var(--hover); color: var(--ink); }
+  .hu-strip__btn[aria-checked="true"],
+  .hu-strip__btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+  .hu-strip__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .hu-strip__btn--primary,
+  .hu-strip__btn--primary:hover { background: var(--ink); color: var(--on-ink); }
+  .hu-strip__btn--primary:hover { opacity: 0.9; }
+  /* A dropdown inside a strip takes the strip's shape, not a pill's. */
+  .hu-strip .hu-select__pill { border-radius: var(--radius-sm); border-color: transparent; background: none; font-size: 14px; }
+  .hu-strip .hu-select__pill:hover:not(:disabled) { border-color: transparent; background: var(--hover); }
+
   /* ---- Tabs (§14): an underline, never a fill --------------------------------- */
   .hu-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
   .hu-tab {
@@ -428,6 +545,32 @@
     height: 44px;
     transform: translate(-50%, -50%);
   }
+  /* The name of an icon button on hover or keyboard focus, drawn by the app (a
+     native title= tooltip is system UI). Above by default (tool strips sit at
+     the bottom); data-tip-below for buttons near the top of the screen. */
+  .hu-iconbtn[data-tip]::before {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translate(-50%, 2px);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--inverse);
+    color: var(--on-inverse);
+    font-size: 12px;
+    line-height: 1.3;
+    font-weight: 400;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    z-index: var(--z-tooltip);
+    transition: opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+  }
+  .hu-iconbtn[data-tip][data-tip-below]::before { bottom: auto; top: calc(100% + 8px); transform: translate(-50%, -2px); }
+  .hu-iconbtn[data-tip]:hover::before { opacity: 1; transform: translate(-50%, 0); transition-delay: 350ms; }
+  .hu-iconbtn[data-tip]:focus-visible::before { opacity: 1; transform: translate(-50%, 0); }
+  @media (hover: none) { .hu-iconbtn[data-tip]:hover::before { opacity: 0; } }
   .hu-iconbtn:hover { background: var(--hover); color: var(--ink); }
   .hu-iconbtn[aria-pressed="true"] { background: var(--active); color: var(--ink); }
   .hu-iconbtn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -527,3 +670,21 @@
     .hu-alert > span:nth-child(3):empty { display: none; }
   }
 }
+
+/* The choice box's border colours. Outside the layers on purpose: globals.css
+   sets every border to the hairline outside them too, and that would win over
+   the base layer and leave the box almost invisible. */
+input[type="checkbox"],
+input[type="radio"] { border-color: var(--line); }
+input[type="checkbox"]:hover:not(:disabled),
+input[type="radio"]:hover:not(:disabled) { border-color: var(--line-strong); }
+input[type="checkbox"]:checked,
+input[type="radio"]:checked { border-color: var(--ink); }
+
+/* A dialog's surface is solid from its first frame: it arrives with a small
+   move, never a fade, so what is behind it cannot show through while it opens
+   (or for good, if the browser pauses the animation). Outside the layers so it
+   outranks the shared `.pop` in globals.css. */
+@keyframes hu-pop-solid { from { transform: translateY(4px) scale(0.985); } to { transform: none; } }
+.hu-modal.pop,
+[role="dialog"].pop { animation-name: hu-pop-solid; }

@@ -54,12 +54,18 @@ const schema = z.object({
   STORAGE_S3_ENDPOINT: z.string().optional(),
 
   // AI layer — model choice is config, never hardcoded (brief §05).
-  AI_TEXT_PROVIDER: z.enum(["mock", "openai", "anthropic"]).default("mock"),
-  AI_IMAGE_PROVIDER: z.enum(["mock", "openai", "replicate"]).default("mock"),
+  AI_TEXT_PROVIDER: z.enum(["mock", "openai", "anthropic", "groq"]).default("mock"),
+  AI_IMAGE_PROVIDER: z.enum(["mock", "openai", "runpod", "replicate"]).default("mock"),
   // Required once a real text provider is chosen; the facade refuses to run
   // without them rather than guessing a model. See .env.example.
   AI_TEXT_MODEL_STRONG: z.string().optional(),
   AI_TEXT_MODEL_CHEAP: z.string().optional(),
+  // The model that LOOKS at pictures (reading a person's reference designs),
+  // on the same provider as text. On Groq name a vision model (e.g.
+  // qwen/qwen3.8-27b); on Anthropic, unset means the strong model. Not a
+  // start-up refusal when missing: only the design reading needs it, and it
+  // fails visibly (and is logged) with a config message until it is set.
+  AI_VISION_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
   // Thinking depth per route. Left unset, nothing is sent: some models reject
   // the parameter, so it is opt-in per deployment rather than assumed.
   AI_TEXT_EFFORT_STRONG: z.preprocess(blankIsUnset, z.enum(EFFORT).optional()),
@@ -76,14 +82,18 @@ const schema = z.object({
   // Pictures (ChatGPT Image through OpenAI's Images API). The model name is
   // config, e.g. the current GPT Image model; the app never guesses one.
   AI_IMAGE_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
+  // Runpod only: the endpoint that redraws an area (image in, image out).
+  AI_IMAGE_EDIT_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
+  RUNPOD_API_KEY: z.preprocess(blankIsUnset, z.string().optional()),
   // A picture or an area redraw can take a while; bounded per call.
   AI_IMAGE_TIMEOUT_MS: z.preprocess(blankIsUnset, z.coerce.number().int().positive().default(180000)),
   // Speech to text for voice notes. Claude reads text, not audio, so this is a
   // separate provider. "off" means the page offers typing instead of recording.
-  AI_TRANSCRIBE_PROVIDER: z.preprocess(blankIsUnset, z.enum(["off", "openai"]).default("off")),
+  AI_TRANSCRIBE_PROVIDER: z.preprocess(blankIsUnset, z.enum(["off", "openai", "groq"]).default("off")),
   AI_TRANSCRIBE_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
   // Contractual: client data is never used for provider training or
   // evaluation (brief §07). The operator confirms the provider account is set
   // up that way by leaving this true; a real provider refuses to start
@@ -139,12 +149,26 @@ export function configProblems(env: Env, phase?: string): string[] {
     if (!env.OPENAI_API_KEY) out.push("AI_IMAGE_PROVIDER=openai needs OPENAI_API_KEY (paste it in the hosting settings, never in code).");
     if (!env.AI_IMAGE_MODEL) out.push("AI_IMAGE_PROVIDER=openai needs AI_IMAGE_MODEL, the current GPT Image model name.");
   }
+  if (env.AI_IMAGE_PROVIDER === "runpod") {
+    if (!env.RUNPOD_API_KEY) out.push("AI_IMAGE_PROVIDER=runpod needs RUNPOD_API_KEY (paste it in the hosting settings, never in code).");
+    if (!env.AI_IMAGE_MODEL) out.push("AI_IMAGE_PROVIDER=runpod needs AI_IMAGE_MODEL, a Runpod public endpoint id such as qwen-image-t2i.");
+  }
+  if (env.AI_TEXT_PROVIDER === "groq" && !env.GROQ_API_KEY) out.push("AI_TEXT_PROVIDER=groq needs GROQ_API_KEY (paste it in the hosting settings, never in code).");
+  if (env.AI_TRANSCRIBE_PROVIDER === "groq" && !env.GROQ_API_KEY) out.push("AI_TRANSCRIBE_PROVIDER=groq needs GROQ_API_KEY.");
   if ((env.AI_TEXT_PROVIDER !== "mock" || env.AI_IMAGE_PROVIDER !== "mock") && !env.AI_PROVIDER_NO_TRAINING) {
     out.push("AI_PROVIDER_NO_TRAINING is false: client data must never be used for model training (brief §07). Set the provider account to no-training, then set AI_PROVIDER_NO_TRAINING=true.");
   }
   // Production refusals. Not while `next build` collects pages: the build
   // runs as production but serves nobody, and CI builds with test settings.
   if (env.NODE_ENV === "production" && phase !== "phase-production-build") {
+    // The stand-in writes sample copy that is saved as a real piece. It is for
+    // development and CI only; a production deployment must name a real provider.
+    if (env.AI_TEXT_PROVIDER === "mock") {
+      out.push("AI_TEXT_PROVIDER=mock is the stand-in writer (sample copy, saved as real pieces). Production needs AI_TEXT_PROVIDER=anthropic or groq.");
+    }
+    if (env.AI_IMAGE_PROVIDER === "mock") {
+      out.push("AI_IMAGE_PROVIDER=mock is the stand-in picture maker. Production needs AI_IMAGE_PROVIDER=openai or runpod.");
+    }
     if (env.AUTH_DRIVER === "dev" && !env.AUTH_ALLOW_DEV_SIGNIN) {
       out.push("AUTH_DRIVER=dev lets anyone sign in as anyone. Use AUTH_DRIVER=email in production (or AUTH_ALLOW_DEV_SIGNIN=true for a protected throwaway test only).");
     }

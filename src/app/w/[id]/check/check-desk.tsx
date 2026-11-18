@@ -12,17 +12,19 @@
  *   off brand → "Rewrite in my voice" becomes the primary action
  */
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { ReactNode } from "react";
-import { Check as CheckIcon, Copy, ScanText, Wand2 } from "lucide-react";
+import { Check as CheckIcon, Copy, ScanText, Undo2, Wand2 } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { AgentDots, Alert } from "@/components/ui";
 import { CoreAside, ScoreMeter, Findings, type Finding } from "@/components/composites";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import type { CheckOutcome } from "@/lib/data/check";
-import type { JudgeResult } from "@/lib/ai/tasks";
+import type { LineFinding } from "@/lib/ai/tasks";
 import type { IssueSeverity } from "@/lib/voice/check";
+import { applyFinding, hasLine, withLineFindings } from "@/lib/voice/judge";
 import { checkAction, judgeAction, rewriteAction } from "./actions";
+import { refusedClaims } from "./refused";
 import { Select } from "@/components/select";
 
 const BAND = { on_brand: "on", drifting: "drift", off_brand: "off" } as const;
@@ -39,16 +41,28 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
   const [text, setText] = useState("");
   const [platform, setPlatform] = useState<string>(platforms[0] ?? "linkedin");
   const [result, setResult] = useState<CheckOutcome | null>(null);
-  const [findings, setFindings] = useState<JudgeResult["findings"] | null>(null);
+  const [findings, setFindings] = useState<LineFinding[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The line-by-line reading didn't come through (usually the per-minute limit): said by the Check button, not as an error. */
+  const [later, setLater] = useState(false);
+  /** The draft as it was before each applied fix, newest last: "Undo fix" steps back through them. */
+  const [undo, setUndo] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  /** Claims the last rewrite left out because the brand facts don't back them (./refused). */
+  const [refused, setRefused] = useState<string[]>([]);
   const [checking, startCheck] = useTransition();
   const [judging, startJudge] = useTransition();
   const [rewriting, startRewrite] = useTransition();
   const [checkedText, setCheckedText] = useState("");
 
+  // In flight, as a ref: the transition flags turn true one render late, so a
+  // burst of clicks on "Check it" each started a paid model call (2026-11-17).
+  const checkBusy = useRef(false);
   const run = (draft: string) => {
+    if (checkBusy.current) return;
+    checkBusy.current = true;
     setError(null);
+    setLater(false);
     setFindings(null);
     setCheckedText(draft);
     startCheck(async () => {
@@ -58,40 +72,78 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
     });
     // The line findings are a model call: started alongside, shown when ready.
     startJudge(async () => {
-      const r = await judgeAction(tenantId, draft, platform);
-      if (!r.ok) return setError(r.error);
-      setFindings(r.value);
+      try {
+        const r = await judgeAction(tenantId, draft, platform).catch(() => null);
+        // The score above is computed without the model and is already in. A
+        // reading that didn't come through (right after a rewrite it is often
+        // the per-minute limit) is not an error on the draft: the old findings
+        // stay hidden and the Check button says when to try again.
+        if (!r?.ok) return setLater(true);
+        setFindings(r.value);
+      } finally {
+        checkBusy.current = false;
+      }
     });
   };
 
-  const applyFix = (line: string, fix: string) => {
-    const next = text.includes(line) ? text.replace(line, fix) : text;
+  // A fix changes the draft where the line stands (or cuts the line). The
+  // other findings stay, and the draft as it was goes on the undo stack.
+  const applyFix = (f: LineFinding) => {
+    const next = applyFinding(text, f);
+    if (next === null) return setError("That line has changed since the check. Check again.");
+    setError(null);
+    setUndo((u) => [...u.slice(-19), text]);
     setText(next);
-    setFindings((f) => f?.filter((x) => x.line !== line) ?? null);
+  };
+  const undoFix = () => {
+    const prev = undo[undo.length - 1];
+    if (prev === undefined) return;
+    setUndo((u) => u.slice(0, -1));
+    setText(prev);
+    setRefused([]);
   };
 
-  const rewrite = () => startRewrite(async () => {
-    setError(null);
-    const r = await rewriteAction(tenantId, text, platform);
-    if (!r.ok) return setError(r.error);
-    setText(r.value);
-    run(r.value);
-  });
+  // A ref, not the transition flag: `rewriting` turns true one render later, so
+  // fast repeat clicks could each start a paid model call (2026-11-17 test).
+  const rewriteBusy = useRef(false);
+  const rewrite = () => {
+    if (rewriteBusy.current) return;
+    rewriteBusy.current = true;
+    startRewrite(async () => {
+      try {
+        setError(null);
+        const r = await rewriteAction(tenantId, text, platform);
+        if (!r.ok) return setError(r.error);
+        // Say which claims it left out, from what the check already flagged.
+        setRefused(refusedClaims(result?.issues ?? [], text, r.value));
+        // The rewrite can be undone like a fix.
+        setUndo((u) => [...u.slice(-19), text]);
+        setText(r.value);
+        run(r.value);
+      } finally {
+        rewriteBusy.current = false;
+      }
+    });
+  };
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* the textarea is selectable */ }
   };
 
-  const band = result ? BAND[result.band] : null;
+  // Only findings whose line is still in the draft: an applied fix leaves the
+  // list, an undone one comes back, the rest stay where they were.
+  const lineFindings = (findings ?? []).filter((f) => f.verdict !== "on" && hasLine(text, f.line));
+  // The band follows the findings: a line read as off brand caps the score
+  // under "On brand" (lib/voice/judge), so the two never disagree.
+  const verdict = result ? withLineFindings(result, lineFindings) : null;
+  const band = verdict ? BAND[verdict.band] : null;
   const stale = result && checkedText !== text;
   const rule = PLATFORM_RULES[platform];
   const codeFindings: Finding[] = (result?.issues ?? []).map((i) => ({
-    verdict: SEVERITY[i.severity],
+    verdict: i.mustFix ? "off" : SEVERITY[i.severity],
     text: i.message,
     why: i.excerpt ? <span className="italic">“{i.excerpt}”</span> : undefined,
   }));
-
-  const lineFindings = (findings ?? []).filter((f) => f.verdict !== "on");
 
   const findingList = (
     <div className="flex flex-col gap-3">
@@ -101,15 +153,15 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
         <div key={f.line} className="border-l-2 border-line-strong pl-3.5 py-1 flex flex-col gap-2">
           <p className="text-sm italic">“{f.line}”</p>
           <p className="text-sm text-ink-muted"><span className="font-medium text-ink">{f.attribute}.</span> {f.why}</p>
-          {f.fix && (
+          {(f.remove || f.fix) && (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm flex-1 min-w-0"><span className="text-ink-faint">In your voice: </span>{f.fix}</p>
-              <button type="button" onClick={() => applyFix(f.line, f.fix)} className={btnClass("secondary", "sm")}>Apply</button>
+              <p className="text-sm flex-1 min-w-0"><span className="text-ink-faint">In your voice: </span>{f.remove ? "cut this line." : f.fix}</p>
+              <button type="button" onClick={() => applyFix(f)} className={btnClass("secondary", "sm")}>{f.remove ? "Cut line" : "Apply"}</button>
             </div>
           )}
         </div>
       ))}
-      {!judging && findings && codeFindings.length === 0 && lineFindings.length === 0 && (
+      {!judging && !later && findings && codeFindings.length === 0 && lineFindings.length === 0 && (
         <p className="text-sm text-ink-muted">Nothing to change.</p>
       )}
     </div>
@@ -135,7 +187,7 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
               rows={10}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text.trim() && !checking) { e.preventDefault(); run(text); } }}
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text.trim() && !checking) { e.preventDefault(); setRefused([]); run(text); } }}
               className="!text-lg !leading-relaxed min-h-[280px] !resize-y placeholder:text-ink-faint"
               placeholder="Paste a draft: one from here, one you wrote yourself, or one someone wrote for you."
             />
@@ -161,7 +213,7 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
                     {copied ? <CheckIcon size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />} {copied ? "Copied" : "Copy it"}
                   </button>
                 )}
-                <button type="button" disabled={!text.trim() || checking} onClick={() => run(text)} className={btnClass(band === "off" || (band === "on" && !stale) ? "secondary" : "primary")}>
+                <button type="button" disabled={!text.trim() || checking} onClick={() => { setRefused([]); run(text); }} className={btnClass(band === "off" || (band === "on" && !stale) ? "secondary" : "primary")}>
                   {checking ? <AgentDots /> : null} {result ? "Check again" : "Check it"}
                 </button>
                 {band === "off" && (
@@ -174,10 +226,28 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
                     {copied ? <CheckIcon size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />} {copied ? "Copied" : "Copy"}
                   </button>
                 )}
+                {undo.length > 0 && (
+                  <button type="button" onClick={undoFix} className={btnClass("ghost")}>
+                    <Undo2 size={15} aria-hidden="true" /> Undo fix
+                  </button>
+                )}
               </div>
             </div>
           </div>
+          {later && !judging && (
+            <p role="status" className="text-sm text-ink-muted max-w-[960px]">The score is in. The line-by-line reading is busy: check again in a minute.</p>
+          )}
           {error && <Alert tone="danger">{error}</Alert>}
+          {refused.length > 0 && (
+            <div role="status" className="max-w-[960px] border-l-2 border-line-strong pl-3.5 py-1 flex flex-col gap-1.5">
+              <p className="text-sm font-medium">Left out: not in your brand facts</p>
+              <ul className="flex flex-col gap-1 text-sm text-ink-muted">
+                {refused.slice(0, 5).map((c) => <li key={c} className="italic">“{c}”</li>)}
+                {refused.length > 5 && <li>and {refused.length - 5} more</li>}
+              </ul>
+              <p className="text-xs text-ink-faint">Add the real fact to your brand to keep a claim like this.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -196,9 +266,10 @@ export function CheckDesk({ tenantId, platforms, core, intro }: {
 
           <section aria-live="polite" className="flex flex-col gap-4 border-t border-hairline pt-6">
             <p className="label-mono text-ink-faint">Verdict</p>
-            {result && band ? (
-              <div className={`flex flex-col gap-4 ${stale ? "opacity-60" : ""}`}>
-                <ScoreMeter score={result.score} band={band} />
+            {result && verdict && band ? (
+              <div className="flex flex-col gap-4">
+                {/* The score dims once the draft has moved on; the findings stay readable so the rest can still be applied. */}
+                <div className={stale ? "opacity-60" : ""}><ScoreMeter score={verdict.score} band={band} /></div>
                 <p className="text-sm text-ink-muted">
                   Measured against {result.corpusPieces} {result.corpusPieces === 1 ? "piece" : "pieces"} of your writing{rule ? `, for ${rule.label}` : ""}.
                   {stale && " You've edited since. Check again for a fresh score."}

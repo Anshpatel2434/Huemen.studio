@@ -22,6 +22,10 @@ import { useUnsavedChanges } from "@/components/unsaved-guard";
 
 // ------------------------------------------------------------ history ---
 
+/** The server's "this changed somewhere else" message, when that is why a save was refused. */
+const staleMessage = (e: unknown): string | null =>
+  e instanceof Error && /changed somewhere else/.test(e.message) ? e.message : null;
+
 type Step = { label: string; undo: () => Promise<unknown>; redo: () => Promise<unknown> };
 type HistoryCtx = { push: (s: Step) => void };
 const Ctx = createContext<HistoryCtx>({ push: () => {} });
@@ -57,8 +61,10 @@ export function CanvasHistory({ children }: { children: ReactNode }) {
         await (redo ? step.redo() : step.undo());
         to.current = [...to.current, step];
         toast(`${redo ? "Redo" : "Undo"}: ${step.label}`);
-      } catch {
-        toast("Couldn't do that. Try again.", "danger");
+      } catch (e) {
+        // A step from before the piece changed elsewhere (a rewrite, another
+        // tab) is dropped, not retried: replaying it would mix two versions.
+        toast(staleMessage(e) ?? "Couldn't do that. Try again.", "danger");
       }
       busy.current = false;
     };
@@ -114,6 +120,9 @@ export function EditableText({
   const anchor = useRef<HTMLSpanElement>(null);
   const [asking, setAsking] = useState<DOMRect | null>(null);
   const [rewriting, setRewriting] = useState(false);
+  // A request that failed (rate limit, a refusal) is kept and put back in the
+  // box when it opens again; it is cleared only when a rewrite goes through.
+  const [unsent, setUnsent] = useState("");
   const editing = editingProp ?? own;
   const setEditing = (on: boolean) => { setOwn(on); onEditingChange?.(on); };
   const [draft, setDraft] = useState(value);
@@ -139,18 +148,20 @@ export function EditableText({
     if (next === shown || (required && !next)) return;
     const prev = shown;
     setPending({ from: value, to: next });
-    onCommit(next, prev).catch(() => {
+    onCommit(next, prev).catch((e) => {
       setPending(null);
-      toast("Couldn't save that edit. It was put back.", "danger");
+      toast(staleMessage(e) ?? "Couldn't save that edit. It was put back.", "danger");
     });
   };
 
   const ask = async (instruction: string) => {
     if (!onAsk) return;
     setRewriting(true);
+    setUnsent(instruction);
     try {
       const next = (await onAsk(instruction, shown)).trim();
       setAsking(null);
+      setUnsent("");
       if (!next || next === shown) return toast("That came back unchanged. Try saying it another way.");
       const prev = shown;
       setPending({ from: value, to: next });
@@ -168,7 +179,11 @@ export function EditableText({
     return (
       <textarea
         ref={(el) => {
-          if (el && document.activeElement !== el) { el.focus(); el.select(); }
+          // preventScroll: a plain focus() scrolls the canvas's clipped wrapper to
+          // bring the field "into view", which shifted the whole board under the
+          // pointer and never shifted back (2026-11-17: after an edit the next
+          // click landed on another piece). The text is already where it was.
+          if (el && document.activeElement !== el) { el.focus({ preventScroll: true }); el.select(); }
         }}
         aria-label={label ?? "Edit text"}
         value={draft}
@@ -199,7 +214,7 @@ export function EditableText({
         aria-readonly
         aria-label={label}
         tabIndex={0}
-        title={onAsk ? "Click to ask for a change · double-click to edit" : "Double-click to edit"}
+        aria-description={onAsk ? "Click to ask for a change, double-click to edit" : "Double-click to edit"}
         onClick={onAsk ? open : undefined}
         onDoubleClick={(e) => { e.stopPropagation(); setAsking(null); begin(); }}
         onKeyDown={(e) => {
@@ -213,7 +228,7 @@ export function EditableText({
       >
         {shown ? (display && shown === value ? display : shown) : <span className="opacity-45 italic">{placeholder}</span>}
       </span>
-      {asking && onAsk && <AskBox rect={asking} label={label ?? "this"} busy={rewriting} onAsk={ask} onClose={() => !rewriting && setAsking(null)} />}
+      {asking && onAsk && <AskBox rect={asking} label={label ?? "this"} busy={rewriting} initial={unsent} onText={setUnsent} onAsk={ask} onClose={() => !rewriting && setAsking(null)} />}
     </>
   );
 }
@@ -224,10 +239,16 @@ const ASK_CHIPS = ["Shorter", "Punchier", "More contrarian", "Warmer", "As a que
 /** One box open at a time, across every canvas. */
 const ASK_EVENT = "huemen:ask-open";
 
-function AskBox({ rect, label, busy, onAsk, onClose }: {
-  rect: DOMRect; label: string; busy: boolean; onAsk: (instruction: string) => void; onClose: () => void;
+function AskBox({ rect, label, busy, initial = "", onText, onAsk, onClose }: {
+  rect: DOMRect; label: string; busy: boolean;
+  /** The last request that did not go through, or was typed and closed by a click away, so it is not typed twice. */
+  initial?: string;
+  /** Keeps what is typed when the box closes (click away, scroll); cleared by the owner when a rewrite goes through. */
+  onText?: (text: string) => void;
+  onAsk: (instruction: string) => void; onClose: () => void;
 }) {
-  const [text, setText] = useState("");
+  // Starts from the failed request, if any; a chip sends its own words and leaves the field as typed.
+  const [text, setText] = useState(initial);
   const box = useRef<HTMLDivElement>(null);
   const id = useRef<string | null>(null);
   const closeRef = useRef(onClose);
@@ -277,7 +298,7 @@ function AskBox({ rect, label, busy, onAsk, onClose }: {
         <input
           autoFocus
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => { setText(e.target.value); onText?.(e.target.value); }}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") onClose(); }}
           placeholder={`Change this ${label.toLowerCase()}…`}
           aria-label={`What to change in this ${label.toLowerCase()}`}

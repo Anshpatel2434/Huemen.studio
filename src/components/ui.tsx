@@ -37,8 +37,8 @@ export function Button({
   type?: "button" | "submit"; className?: string; disabled?: boolean; title?: string;
 }) {
   const cls = `${btnClass(variant, size)} ${className}`;
-  if (href) return <Link href={href} className={cls} title={title}>{children}</Link>;
-  return <button type={type} onClick={onClick} className={cls} disabled={disabled} title={title}>{children}</button>;
+  if (href) return <Link href={href} className={cls} aria-description={title}>{children}</Link>;
+  return <button type={type} onClick={onClick} className={cls} disabled={disabled} aria-description={title}>{children}</button>;
 }
 
 /**
@@ -52,7 +52,7 @@ export function IconButton({
   className?: string; type?: "button" | "submit";
 }) {
   return (
-    <button type={type} onClick={onClick} disabled={disabled} aria-label={label} title={label} aria-pressed={pressed} className={iconBtnClass(className)}>
+    <button type={type} onClick={onClick} disabled={disabled} aria-label={label} data-tip={label} data-tip-below="" aria-pressed={pressed} className={iconBtnClass(className)}>
       {children}
     </button>
   );
@@ -175,18 +175,34 @@ if (typeof document !== "undefined") {
   document.addEventListener("pointerdown", (e) => note(e.target), true);
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/** What Tab can land on: for anything that holds focus inside itself (a dialog, the menu drawer). */
+export const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** Mount detection: the store never changes, so this only separates server
  *  (false) from client (true). No state is set in an effect. */
 const subscribeNever = () => () => {};
 
+const onMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+/**
+ * A keyboard shortcut written for the machine it is read on: "Ctrl+Z" on
+ * Windows and Linux, "Cmd+Z" on a Mac. Never the Mac symbol on a PC.
+ */
+export function Shortcut({ keys }: { keys: string }) {
+  const mac = useSyncExternalStore(subscribeNever, onMac, () => false);
+  return <kbd className="font-sans whitespace-nowrap">{mac ? "Cmd" : "Ctrl"}+{keys}</kbd>;
+}
+
 /**
  * Modal (§13). Focus moves in, is held inside while open (the one intentional
  * trap, §17), and returns to whatever opened it. Escape and the backdrop close.
  */
-export function Modal({ open, onClose, title, children, footer, width = 480 }: {
+export function Modal({ open, onClose, title, label, bare = false, children, footer, width = 480 }: {
   open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode;
+  /** The dialog's accessible name when it has no `title` bar (it draws its own heading). */
+  label?: string;
+  /** No head bar and no padding: the content fills the dialog and brings its own close button. */
+  bare?: boolean;
   /** Actions, right-aligned on the sunken foot bar; the primary goes last. */
   footer?: ReactNode;
   width?: number;
@@ -203,7 +219,9 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: {
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    if (!open) return;
+    // Wait for the portal: a dialog that is open on arrival (Getting started)
+    // has no panel on the first pass, and would never take or hold focus.
+    if (!open || !mounted) return;
     const opener = lastFocusOutsideDialog;
     const panel = panelRef.current;
     // React has already focused an autoFocus field; only fall back to the panel.
@@ -219,32 +237,42 @@ export function Modal({ open, onClose, title, children, footer, width = 480 }: {
     };
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); if (opener?.isConnected) opener.focus(); };
-  }, [open]);
+  }, [open, mounted]);
   if (!open || !mounted) return null;
   // Portalled to <body>: an ancestor with a transform (the page transition)
   // would otherwise turn `fixed` into "fixed to that box", and clip the dialog.
   return createPortal(
-    <div className="fixed inset-0 flex items-center justify-center p-4 fade-in bg-[var(--scrim)]" style={{ zIndex: "var(--z-modal)" }} onClick={onClose}>
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: "var(--z-modal)" }} onClick={onClose}>
+      {/* The backdrop fades on its own layer. The dialog is never inside a
+          fading box, so its surface is solid from its first frame and the page
+          behind never shows through it. */}
+      <div className="absolute inset-0 bg-[var(--scrim)] fade-in" aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
-        aria-label={title ? undefined : "Dialog"}
+        aria-label={title ? undefined : label ?? "Dialog"}
         tabIndex={-1}
-        className="hu-modal pop outline-none max-h-[calc(100dvh-2rem)] flex flex-col"
+        className="hu-modal pop relative outline-none max-h-[calc(100dvh-2rem)] flex flex-col"
         style={{ maxWidth: width }}
         onClick={(e) => e.stopPropagation()}
       >
-        {title ? (
-          <div className="hu-modal__head">
-            <h2 id={titleId} className="hu-modal__title">{title}</h2>
-            <IconButton label="Close" onClick={onClose} className="-mt-1.5 -mr-2"><X size={18} /></IconButton>
-          </div>
+        {bare ? (
+          <div className="overflow-y-auto">{children}</div>
         ) : (
-          <div className="flex justify-end px-3 pt-3"><IconButton label="Close" onClick={onClose}><X size={18} /></IconButton></div>
+          <>
+            {title ? (
+              <div className="hu-modal__head">
+                <h2 id={titleId} className="hu-modal__title">{title}</h2>
+                <IconButton label="Close" onClick={onClose} className="-mt-1.5 -mr-2"><X size={18} /></IconButton>
+              </div>
+            ) : (
+              <div className="flex justify-end px-3 pt-3"><IconButton label="Close" onClick={onClose}><X size={18} /></IconButton></div>
+            )}
+            <div className="hu-modal__body overflow-y-auto">{children}</div>
+          </>
         )}
-        <div className="hu-modal__body overflow-y-auto">{children}</div>
         {footer && <div className="hu-modal__foot">{footer}</div>}
       </div>
     </div>,
@@ -263,40 +291,47 @@ export const useToast = () => useContext(ToastCtx);
 /**
  * Transient confirmation, above everything (z-toast) so a save confirmation is
  * never buried under a modal. Copy echoes the action in the past tense (§16).
+ *
+ * At most three show, newest first, so a run of failures never piles up the
+ * screen; every one has a close button. `lifted` raises them above a bar that
+ * sits along the bottom (the canvas tool strip, an editor's Save row), so a
+ * "Saved" never lands on top of the button that was just pressed.
  */
-export function ToastProvider({ children }: { children: ReactNode }) {
+const TOAST_LIMIT = 3;
+
+export function ToastProvider({ children, lifted = false }: { children: ReactNode; lifted?: boolean }) {
   const [toasts, setToasts] = useState<{ id: number; msg: string; tone: Tone; action?: ToastAction }[]>([]);
   const push = useCallback((msg: string, tone: Tone = "success", action?: ToastAction) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, tone, action }]);
+    // Newest first; anything past the limit drops off the end.
+    setToasts((t) => [{ id, msg, tone, action }, ...t].slice(0, TOAST_LIMIT));
     // An error never times out (design system §12): it stays until it is dismissed.
-    if (tone !== "danger") setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
+    // One with a button (Approve again, Try again) stays long enough to read and press.
+    if (tone !== "danger") setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), action ? 12000 : 3200);
   }, []);
   const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col gap-2 items-center pointer-events-none" style={{ zIndex: "var(--z-toast)" }} role="region" aria-label="Notifications">
+      <div className={`fixed ${lifted ? "bottom-[5.5rem] max-sm:bottom-[8.5rem]" : "bottom-6"} left-1/2 -translate-x-1/2 w-max max-w-[calc(100vw-2rem)] flex flex-col gap-2 items-center pointer-events-none`} style={{ zIndex: "var(--z-toast)" }} role="region" aria-label="Notifications">
         {toasts.map((t) => (
           <div key={t.id} role={t.tone === "danger" ? "alert" : "status"} className="hu-toast pop">
-            {t.tone === "danger" ? <XCircle size={18} className="text-[var(--danger-line)]" aria-hidden="true" />
-              : t.tone === "success" ? <CheckCircle2 size={18} className="text-[var(--ok-line)]" aria-hidden="true" />
-              : <Info size={18} aria-hidden="true" />}
-            <span>{t.msg}</span>
+            {t.tone === "danger" ? <XCircle size={18} className="hu-toast__icon text-[var(--danger-line)]" aria-hidden="true" />
+              : t.tone === "success" ? <CheckCircle2 size={18} className="hu-toast__icon text-[var(--ok-line)]" aria-hidden="true" />
+              : <Info size={18} className="hu-toast__icon" aria-hidden="true" />}
+            <span className="flex-1 min-w-0">{t.msg}</span>
             {t.action && (
               <button
                 type="button"
                 onClick={() => { dismiss(t.id); t.action!.run(); }}
-                className="pointer-events-auto ml-1 shrink-0 text-sm font-medium underline underline-offset-4 hover:no-underline"
+                className="pointer-events-auto shrink-0 text-sm font-medium underline underline-offset-4 hover:no-underline"
               >
                 {t.action.label}
               </button>
             )}
-            {t.tone === "danger" && (
-              <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="hu-hit pointer-events-auto -mr-1 ml-1 w-7 h-7 rounded-sm flex items-center justify-center text-ink-faint hover:text-ink">
-                <X size={15} aria-hidden="true" />
-              </button>
-            )}
+            <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="hu-hit pointer-events-auto shrink-0 -my-1 -mr-1.5 w-7 h-7 rounded-sm flex items-center justify-center opacity-70 hover:opacity-100">
+              <X size={15} aria-hidden="true" />
+            </button>
           </div>
         ))}
       </div>
@@ -365,12 +400,16 @@ export function Field({ label, hint, error, required, children, className = "" }
 
 // ---- Choice and switch (§10) -----------------------------------------------------------
 
-/** A checkbox or radio with its label as the target. `box` draws the row as a card. */
-export function Choice({ type = "checkbox", label, sub, box = false, className = "", ...input }: {
-  type?: "checkbox" | "radio"; label: ReactNode; sub?: ReactNode; box?: boolean; className?: string;
+/**
+ * A checkbox or radio with its label as the target. `box` draws the row as a
+ * card; `dense` is the 14px label for a panel or a tight list. The box itself
+ * is the system's own (components.css, base layer), never the browser's.
+ */
+export function Choice({ type = "checkbox", label, sub, box = false, dense = false, className = "", ...input }: {
+  type?: "checkbox" | "radio"; label: ReactNode; sub?: ReactNode; box?: boolean; dense?: boolean; className?: string;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
   return (
-    <label className={`hu-choice ${box ? "hu-choice--box" : ""} ${className}`}>
+    <label className={`hu-choice ${box ? "hu-choice--box" : ""} ${dense ? "hu-choice--dense" : ""} ${className}`}>
       <input type={type} {...input} />
       <span className="hu-choice__text">{label}{sub && <small>{sub}</small>}</span>
     </label>
@@ -425,7 +464,7 @@ export function Segmented<T extends string>({ items, value, onChange, label, cla
   return (
     <div role="radiogroup" aria-label={label} className={`hu-seg ${className}`}>
       {items.map((it) => (
-        <button key={it.value} type="button" role="radio" aria-checked={it.value === value} aria-label={it.title} title={it.title} onClick={() => onChange(it.value)} className="hu-seg__item">
+        <button key={it.value} type="button" role="radio" aria-checked={it.value === value} aria-label={it.title} onClick={() => onChange(it.value)} className="hu-seg__item">
           {it.label}
         </button>
       ))}

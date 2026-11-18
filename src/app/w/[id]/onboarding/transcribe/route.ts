@@ -11,7 +11,7 @@
 import { getSession } from "@/lib/auth";
 import { resolveScope } from "@/lib/auth/scope";
 import { transcribe } from "@/lib/ai";
-import { userMessage } from "@/lib/ai/errors";
+import { ProviderError, userMessage } from "@/lib/ai/errors";
 import { takeIncoming, UPLOAD_LIMITS } from "@/lib/storage/upload";
 
 /** About ten minutes of compressed speech. A two-minute note is well under. */
@@ -50,8 +50,15 @@ export async function POST(req: Request, ctx: RouteContext<"/w/[id]/onboarding/t
 
   try {
     const text = await transcribe(scope, audio, name);
+    // Silence, or only filler: say so instead of adding invented words to the answer.
+    if (!text) return Response.json({ error: "We couldn't hear anything in that recording. Record it again a little closer to the microphone, or type your answer instead." }, { status: 422 });
     return Response.json({ text });
   } catch (e) {
+    // The service refusing the file itself means it isn't audio it can read:
+    // "try again" would send the same file to the same answer (2026-11-17).
+    if (e instanceof ProviderError && e.kind === "bad_request") {
+      return Response.json({ error: "That file couldn't be read as a recording. Record it again, or type your answer instead." }, { status: 400 });
+    }
     return Response.json({ error: userMessage(e) }, { status: 502 });
   }
 }

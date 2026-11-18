@@ -118,7 +118,7 @@ const pictureGenerate: JobHandler = async ({ scope, payload, progress, save }) =
 const pictureEdit: JobHandler = async ({ scope, payload, progress, save }) => {
   if (typeof progress.pictureId === "string") return { done: true, result: { pictureId: progress.pictureId } };
   const ps = await projectOf(scope, payload);
-  const id = await applyPictureComment(ps, String(payload.commentId ?? ""));
+  const id = await applyPictureComment(ps, String(payload.commentId ?? ""), (payload.area ?? null) as Record<string, number> | null);
   await save({ pictureId: id });
   return { done: true, result: { pictureId: id } };
 };

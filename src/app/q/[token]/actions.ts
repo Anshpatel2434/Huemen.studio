@@ -26,7 +26,8 @@ export async function submitQuestionnaire(formData: FormData): Promise<void> {
   const tenantId = verifyQuestionnaireToken(token);
   if (!tenantId) throw new Error("invalid or expired questionnaire link");
   const scope = { tenantId, userId: null, isPlatformAdmin: false };
-  const live = await withTenantSession({ ...scope, isPlatformAdmin: true }, (c) =>
+  // The anonymous scope, never the admin one: RLS limits this to the link's workspace.
+  const live = await withTenantSession(scope, (c) =>
     c.query("SELECT 1 FROM tenants WHERE id = $1 AND status = 'active'", [tenantId]),
   );
   if (!live.rowCount) throw new Error("invalid or expired questionnaire link");

@@ -16,6 +16,7 @@ import { clientFor, saveConnection } from "@/lib/data/connections";
 import { exchangeCode, whoami, ConnectionError } from "@/lib/integrations/oauth";
 import { PROVIDERS, redirectUri, scopesFor, type ProviderKey } from "@/lib/integrations/providers";
 import { decodeState, returnPath } from "@/lib/integrations/state";
+import { localRedirect } from "@/lib/local-redirect";
 
 const COOKIE = "huemen_oauth";
 
@@ -43,7 +44,7 @@ export async function GET(req: Request, ctx: RouteContext<"/connections/callback
   if (!state || state.p !== provider) {
     return done(new NextResponse("This connection link has expired. Start again from your workspace.", { status: 400 }));
   }
-  const to = (q: string) => done(NextResponse.redirect(new URL(returnPath(state.r, state.t, q), req.url), 303));
+  const to = (q: string) => done(localRedirect(returnPath(state.r, state.t, q), 303));
 
   // The person said no, or the provider refused: say so plainly.
   const denied = url.searchParams.get("error");

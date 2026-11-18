@@ -55,6 +55,11 @@ const csv = (s: string): string[] =>
   s.split(",").map((x) => x.trim()).filter(Boolean);
 const lines = (s: string): string[] =>
   s.split("\n").map((x) => x.trim()).filter(Boolean);
+/** The same words, ignoring case, order and repeats. */
+export const sameWords = (a: unknown, b: string[]): boolean => {
+  const norm = (xs: string[]) => [...new Set(xs.map((x) => x.trim().toLowerCase()).filter(Boolean))].sort().join("|");
+  return Array.isArray(a) && norm(a.map(String)) === norm(b);
+};
 
 export async function loadFoundation(scope: WorkspaceScope): Promise<FoundationForm> {
   const pack = await loadPackForWorkspace(scope);
@@ -119,12 +124,21 @@ export async function loadFoundation(scope: WorkspaceScope): Promise<FoundationF
   };
 }
 
+/**
+ * Longest each of the brief's basics may be. They go into every prompt, so a
+ * 20,000-character "one line" made every draft slower and dearer (2026-11-17).
+ */
+export const BRIEF_MAX = { niche: 300, audience: 300, offers: 1000, positioning: 300 } as const;
+
 export async function saveFoundation(
   scope: WorkspaceScope,
   form: FoundationForm,
   /** `voice: false` saves the brand only: a colour change is not a voice edit. */
   opts: { voice?: boolean } = {},
 ): Promise<number> {
+  // One cap for every way in (onboarding, Edit brief): these go into every prompt.
+  const cut = (v: string, k: keyof typeof BRIEF_MAX) => (v ?? "").slice(0, BRIEF_MAX[k]);
+  form = { ...form, niche: cut(form.niche, "niche"), audience: cut(form.audience, "audience"), offers: cut(form.offers, "offers"), positioning: cut(form.positioning, "positioning") };
   const storyArc = form.chapters.map((ch, i) => ({
     chapter: i + 1,
     title: ch.title,
@@ -149,9 +163,13 @@ export async function saveFoundation(
           identity: { ...pack.identity, toneDescriptors: tagged(tone, "ask") },
           mechanics: {
             ...pack.mechanics,
-            // Never overwrite a measured lexicon with what someone typed.
+            // The form shows the measured lexicon. Left as it was, the measured
+            // one is kept (with its evidence); changed by the person, their
+            // words win. It used to keep the measured list whatever was typed,
+            // so an edit said "Brief saved" and silently reverted (2026-11-18
+            // new-account run, BLOCKER).
             lexicon:
-              pack.mechanics.lexicon?.confidence === "measured"
+              pack.mechanics.lexicon?.confidence === "measured" && sameWords(pack.mechanics.lexicon.value, doW)
                 ? pack.mechanics.lexicon
                 : tagged(doW, "ask"),
             readingLevel: tagged(form.readingLevel, "ask"),
@@ -380,10 +398,17 @@ export async function saveVisualIdentity(scope: WorkspaceScope, v: VisualIdentit
   // The rest of the Visual Core rides on the same row, written after the
   // foundation writer has made sure the row exists.
   if (v.core) {
-    const core = cleanCore(v.core);
+    // The reading of their reference designs (core.look) is written only by
+    // lib/data/look, in its own update. Every other save (the style guide,
+    // the Look screen's colours) keeps the stored reading as it is, so a save
+    // that loaded the core before a reading finished can't put the old one back.
+    const { look: _look, ...rest } = v.core;
+    void _look;
+    const core = cleanCore(rest);
     await withTenantSession(scope, (c) =>
       c.query(
-        `UPDATE visual_identities SET core = $1
+        `UPDATE visual_identities
+            SET core = CASE WHEN core ? 'look' THEN $1::jsonb || jsonb_build_object('look', core->'look') ELSE $1::jsonb END
           WHERE id = (SELECT vi.id FROM visual_identities vi JOIN brand_profiles bp ON bp.id = vi.brand_profile_id
                        WHERE bp.project_id IS NULL ORDER BY bp.status='active' DESC, bp.updated_at DESC LIMIT 1)`,
         [JSON.stringify(core)],

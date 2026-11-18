@@ -93,6 +93,7 @@ import * as storageRoute from "@/app/api/storage/[...key]/route";
 import * as verify from "@/app/auth/verify/route";
 import * as callback from "@/app/connections/callback/[provider]/route";
 import * as connStart from "@/app/settings/connections/[provider]/start/route";
+import PillarsMoved from "@/app/w/[id]/p/[pid]/pillars/page";
 
 // ---- cases ------------------------------------------------------------------------
 
@@ -171,6 +172,15 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
   on(f, brand, "answerQuestionsAction", (fn, t) => fn(form({ tenantId: t.tenantId, q_audience: "Founders of small studios" })), { ok: writesAndRedirects(/\/brand\/questions\?saved=1$/) });
   on(f, brand, "saveVisualAction", (fn, t) => fn(t.tenantId, { palette: ["#0a0b0c"], fonts: ["Inter"], imageStyleNotes: "flat" }));
   on(f, brand, "readSiteBrandAction", (fn, t) => fn(t.tenantId, "http://127.0.0.1/"), { ok: returns(isNotOk) });
+  // The reading of the reference designs: B can neither trigger A's nor read it,
+  // and B's own reading (from inside B) holds none of A's designs.
+  on(f, brand, "readLookAction", (fn, t) => fn(t.tenantId), {
+    fresh: async (fx) => ({ assetId: await newAsset(fx.scopeA) }),
+    ok: (o, changed) => { returns(isOk)(o); expect(changed, "A's reading should be stored").toContain("visual_identities"); },
+  });
+  // A design from a link: B can't attach one to A's references. The link is a
+  // private address, so even A's own call stops at the SSRF guard, after the gate.
+  on(f, brand, "addReferenceLinkAction", (fn, t) => fn(t.tenantId, "http://127.0.0.1/pin.png"), { ok: returns(isNotOk) });
 }
 
 // -- workspace: pillars ------------------------------------------------------------------------
@@ -298,6 +308,10 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
     ok: (o, changed) => { returns()(o); expect(changed.length).toBeGreaterThan(0); },
   });
   on(f, plan, "deleteCalendarEntryAction", (fn, t) => fn(form({ tenantId: t.tenantId, id: t.slotId })), { fresh: async (fx) => ({ slotId: await newSlot(fx.scopeA, null) }) });
+  on(f, plan, "moveCalendarEntryAction", (fn, t) => fn(t.tenantId, t.slotId, "2031-01-05"), {
+    fresh: async (fx) => ({ slotId: await newSlot(fx.scopeA, null) }),
+    ok: (o, c) => { returns(isOk)(o); expect(c).toContain("calendar_entries"); },
+  });
   on(f, plan, "createOfferAction", (fn, t) => fn(form({ tenantId: t.tenantId, name: "Studio pricing day", format: "workshop" })));
   on(f, plan, "updateOfferAction", (fn, t) => fn(form({ tenantId: t.tenantId, id: t.offerId, name: "Renamed offer", promise: "less guessing" })), { ok: writesAndRedirects(/\/plan\/offers$/) });
   on(f, plan, "deleteOfferAction", (fn, t) => fn(form({ tenantId: t.tenantId, id: t.offerId })), { fresh: async (fx) => ({ offerId: await newOffer(fx.scopeA) }) });
@@ -331,9 +345,9 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
   on(f, content, "coWriteAction", (fn, t) => fn(t.tenantId, t.projectId, { format: "linkedin_post", topic: "Quotes", angle: null }), { ok: (o, c) => { returns(isOk)(o); expect(c.length).toBeGreaterThan(0); } });
   on(f, content, "ownDraftAction", (fn, t) => fn(t.tenantId, t.projectId, { format: "linkedin_post", topic: "Quotes", text: "My own words about quotes, plainly put." }), { ok: (o, c) => { returns(isOk)(o); expect(c.length).toBeGreaterThan(0); } });
   on(f, content, "judgeContentItemAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId), { ok: returns(isOk) });
-  on(f, content, "applyFixAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, "Second line of the post.", "A better second line."), {
+  on(f, content, "applyFixAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, { line: "Second line of the post.", fix: "A better second line.", remove: false }), {
     fresh: async (fx) => ({ itemId: await newItem(fx.scopeA, fx.PA) }),
-    ok: (o, c) => { returns((v) => v === true)(o); expect(c.length).toBeGreaterThan(0); },
+    ok: (o, c) => { returns(isOk)(o); expect(c.length).toBeGreaterThan(0); },
   });
   on(f, content, "rewriteContentItemAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId), { ok: (o, c) => { returns(isOk)(o); expect(c.length).toBeGreaterThan(0); } });
 }
@@ -377,6 +391,24 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
       return { ...v, commentId: await newComment(fx.A, v.itemId, v.visualId, fx.scopeA.userId!) };
     },
     ok: (o, c) => { returns((v) => v === true)(o); expect(c).toContain("visual_comments"); },
+  });
+  // Retrying a comment (only a failed one runs again; the owner's own gets a plain answer either way).
+  on(f, pictures, "retryCommentAction", (fn, t) => fn(t.tenantId, t.projectId, t.commentId), {
+    fresh: async (fx) => {
+      const v = await freshVisual(fx);
+      return { ...v, commentId: await newComment(fx.A, v.itemId, v.visualId, fx.scopeA.userId!) };
+    },
+    ok: returns(),
+  });
+  // Undo of a copy edit made on the visual board.
+  on(f, pictures, "revertCopyAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, { hook: "Reverted on the visual board" }, null, null), {
+    fresh: freshVisual,
+    ok: (o, c) => { returns()(o); expect(c).toContain("content_items"); },
+  });
+  // "Approve again" after an edit on a visual moved an approved piece back to edited.
+  on(f, pictures, "approveAgainAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId), {
+    fresh: freshVisual,
+    ok: returns(),
   });
 }
 
@@ -753,5 +785,87 @@ describe("cross-tenant: endpoints opened by a signed link", { timeout: 30_000 },
     const a = await runAs(fx.people.nobody, () => questionnaire.submitQuestionnaire(form({ token: signQuestionnaireToken(fx.A), samples: "A post A wrote." })));
     expect(a.kind, describeOutcome(a)).toBe("redirect");
     expect(changedParts(before, await fingerprint(fx.A)).length).toBeGreaterThan(0);
+  });
+});
+
+// ---- pages that must be a real 404 for another workspace's ids (2026-11-18) -------------------
+
+
+describe("cross-tenant: old project pillars link is a 404, not a redirect, for ids that aren't yours", { timeout: 30_000 }, () => {
+  const visit = (id: string, pid: string) =>
+    PillarsMoved({ params: Promise.resolve({ id, pid }) } as Parameters<typeof PillarsMoved>[0]);
+
+  it("B's people get notFound() for A's project, from A's workspace or their own", async () => {
+    if (!ok) return;
+    const fx = FX!;
+    const before = await fingerprint(fx.A);
+    for (const who of [fx.people.clientB, fx.people.coachB, fx.people.disabledA]) {
+      for (const [id, pid] of [[fx.A, fx.PA], [fx.B, fx.PA]] as const) {
+        const o = await runAs(who, () => visit(id, pid));
+        expect(o.kind === "notFound" || refused(o), `${who.label} at ${id === fx.A ? "A" : "B"}/A's project: ${describeOutcome(o)}`).toBe(true);
+        // Never a redirect into a Pillars page that answers 200.
+        expect(o.kind === "redirect" && o.to.includes("/brand/pillars"), describeOutcome(o)).toBe(false);
+      }
+    }
+    // A project id that doesn't exist, in B's own workspace: a 404 too.
+    const missing = await runAs(fx.people.clientB, () => visit(fx.B, "00000000-0000-4000-8000-000000000000"));
+    expect(missing.kind, describeOutcome(missing)).toBe("notFound");
+    expect(changedParts(before, await fingerprint(fx.A))).toEqual([]);
+  });
+
+  it("positive control: A's own client is sent on to the workspace Pillars page", async () => {
+    if (!ok) return;
+    const fx = FX!;
+    const o = await runAs(fx.people.clientA, () => visit(fx.A, fx.PA));
+    expect(o.kind === "redirect" && o.to, describeOutcome(o)).toBe(`/w/${fx.A}/brand/pillars`);
+  });
+});
+
+// ---- brand fonts on the visual page (F20, 2026-11-18) ----------------------------------------------------
+
+describe("cross-tenant: brand font files on the visual page", { timeout: 30_000 }, () => {
+  /** A tiny TrueType file whose name table says `family`. */
+  const ttfNamed = (family: string) => {
+    const b16 = (n: number) => [(n >> 8) & 255, n & 255];
+    const b32 = (n: number) => [(n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255];
+    const text = [...family].flatMap((c) => b16(c.charCodeAt(0)));
+    const name = [...b16(0), ...b16(1), ...b16(18), ...b16(3), ...b16(1), ...b16(0x409), ...b16(1), ...b16(text.length), ...b16(0), ...text];
+    return new Uint8Array([...b32(0x00010000), ...b16(1), 0, 0, 0, 0, 0, 0, ..."name".split("").map((c) => c.charCodeAt(0)), ...b32(0), ...b32(28), ...b32(name.length), ...name]);
+  };
+  const keyParams = (key: string) => params({ key: key.split("/").map(encodeURIComponent) });
+  const get = (url: string) => {
+    const u = new URL(url, getEnv().APP_URL);
+    const key = decodeURI(u.pathname.replace(/^\/api\/storage\//, ""));
+    return { key, token: u.searchParams.get("token") ?? "" };
+  };
+
+  it("B's visual page loads only B's font files; A's link opens only A's file", async () => {
+    if (!ok) return;
+    const fx = FX!;
+    const { brandFontUploads } = await import("@/lib/visual/brand-fonts");
+    const { storeAsset } = await import("@/lib/data/assets");
+    await storeAsset(fx.scopeA, ttfNamed(`A ${MARK} Serif`), "font");
+    await storeAsset(fx.scopeB, ttfNamed("B Grotesk"), "font");
+    const before = await fingerprint(fx.A);
+
+    // B's page: B's font, with its own name; nothing of A's (no key, no name, no tenant id).
+    const b = await brandFontUploads(fx.scopeB);
+    expect(b.map((f) => f.family)).toEqual(["B Grotesk"]);
+    expect(JSON.stringify(b)).not.toContain(fx.A);
+    expect(JSON.stringify(b).toLowerCase()).not.toContain(MARK);
+    // A's page (positive control): A's font, read by its embedded name.
+    const a = await brandFontUploads(fx.scopeA);
+    expect(a.map((f) => f.family)).toEqual([`A ${MARK} Serif`]);
+    expect(a[0].url.startsWith(`/api/storage/tenants/${fx.A}/`)).toBe(true);
+
+    // B's signed font link can't be pointed at A's font file.
+    const aLink = get(a[0].url);
+    const bLink = get(b[0].url);
+    const o = await runAs(fx.people.clientB, () => storageRoute.GET(new NextRequest(new URL(`/api/storage/${aLink.key}?token=${bLink.token}`, getEnv().APP_URL)), keyParams(aLink.key)));
+    expect(o.kind === "response" && o.status, describeOutcome(o)).toBe(403);
+    // A's link opens A's font, as a font.
+    const own = await runAs(fx.people.clientA, () => storageRoute.GET(new NextRequest(new URL(a[0].url, getEnv().APP_URL)), keyParams(aLink.key)));
+    status(200)(own);
+    expect(changedParts(before, await fingerprint(fx.A))).toEqual([]);
   });
 });

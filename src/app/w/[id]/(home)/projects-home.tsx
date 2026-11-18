@@ -308,7 +308,7 @@ function ProjectCard({ p, tenantId, archived }: { p: Project; tenantId: string; 
         {p.starred && <Star size={13} className="absolute top-2.5 left-2.5 fill-current text-accent" />}
       </div>
       <div className="flex items-center gap-2.5 px-3 py-2.5">
-        <span className="w-6 h-6 rounded-sm flex items-center justify-center bg-ink text-on-ink shrink-0" title={`Step ${stageIndex(p.stage) + 1}: ${STAGE_LABEL[p.stage]}`}><Icon size={12} /></span>
+        <span className="w-6 h-6 rounded-sm flex items-center justify-center bg-ink text-on-ink shrink-0" role="img" aria-label={`Step ${stageIndex(p.stage) + 1}: ${STAGE_LABEL[p.stage]}`}><Icon size={12} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5 min-w-0"><span className="block text-sm font-medium truncate">{p.name}</span></span>
           <span className="block text-xs text-ink-faint" suppressHydrationWarning>{archived ? "Archived" : "Edited"} {ago(p.updatedAt)}</span>

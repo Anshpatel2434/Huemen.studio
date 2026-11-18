@@ -51,7 +51,10 @@ export function IdeateTree({ formId, core, brief, pillars, initial }: {
   const pillar = pillars.find((p) => p.id === pick.pillarId) ?? null;
   const reply = !!format.reply;
   const outputs = [
-    { key: "draft", icon: PenLine, title: "Drafts", sub: "2 versions in your voice" },
+    // A hook set is five opening lines to pick from, not a draft of the post.
+    format.key === "hook_set"
+      ? { key: "draft", icon: PenLine, title: "Opening lines", sub: "2 sets of five, in your voice" }
+      : { key: "draft", icon: PenLine, title: "Drafts", sub: "2 versions in your voice" },
     ...(reply ? [] : [
       { key: "post", icon: ImageIcon, title: "Post image", sub: format.frame.label },
       { key: "quote", icon: Quote, title: "Quote card", sub: "1:1 · 1080×1080" },

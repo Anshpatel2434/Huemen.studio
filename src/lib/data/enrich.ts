@@ -20,7 +20,7 @@ import "server-only";
 import { runTask } from "@/lib/ai";
 import { dialPairs, extractAnswers, PREFILL_IDS, previewSource, voicePreview } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
-import { loadFoundation } from "./foundation";
+import { loadBriefAnswers, loadFoundation } from "./foundation";
 import { listSamples } from "./voice-pack";
 import { updateOnboarding } from "./onboarding";
 import { writePack, type Actor } from "./training";
@@ -34,9 +34,17 @@ import {
 
 const words = (s: string, n: number) => s.split(/\s+/).slice(0, n).join(" ");
 
-/** What the pre-fill and the pairs were made from. New writing or a changed brief earns a fresh pass. */
-export function basisFrom(pieces: number, f: { niche: string; audience: string; positioning: string; offers: string }): string {
-  const brief = [f.niche, f.audience, f.positioning, f.offers].join("|");
+/**
+ * What the pre-fill and the pairs were made from. New writing, a changed brief,
+ * or a changed story, proof or strategy answer earns a fresh pass (audit M6:
+ * those were read by the pre-fill but did not change the basis).
+ */
+export function basisFrom(
+  pieces: number,
+  f: { niche: string; audience: string; positioning: string; offers: string },
+  more: unknown = null,
+): string {
+  const brief = [f.niche, f.audience, f.positioning, f.offers, JSON.stringify(more)].join("|");
   let h = 0;
   for (const ch of brief) h = (h * 31 + ch.charCodeAt(0)) | 0;
   return `${pieces}:${h}`;
@@ -44,13 +52,32 @@ export function basisFrom(pieces: number, f: { niche: string; audience: string; 
 
 async function basisOf(scope: WorkspaceScope, pack: VoicePack) {
   const f = await loadFoundation(scope);
-  return { basis: basisFrom(pack.corpusStats.pieces, f), foundation: f };
+  const more = {
+    stories: pack.identity.stories?.value ?? [],
+    proofs: pack.identity.proofs?.value ?? [],
+    strategy: await loadBriefAnswers(scope),
+  };
+  return { basis: basisFrom(pack.corpusStats.pieces, f, more), foundation: f, more };
+}
+
+/** A suggestion is checked in this form: case, curly quotes and spacing folded. */
+export function normalForMatch(s: string): string {
+  return s.toLowerCase().replace(/[“”„]/g, '"').replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Whether a suggested value is in the person's own material (audit M6): a value
+ * that is not there was invented, so it is not saved. A blank value is never grounded.
+ */
+export function groundedIn(value: string, material: string): boolean {
+  const v = normalForMatch(value);
+  return v.length > 0 && normalForMatch(material).includes(v);
 }
 
 // ---- pre-fill ---------------------------------------------------------------------
 
 export async function suggestAnswers(scope: WorkspaceScope, pack: VoicePack, opts: { force?: boolean } = {}) {
-  const { basis } = await basisOf(scope, pack);
+  const { basis, foundation: f, more } = await basisOf(scope, pack);
   const cached = pack.onboarding.suggestions;
   if (!opts.force && cached?.basis === basis) return cached.answers;
 
@@ -62,11 +89,34 @@ export async function suggestAnswers(scope: WorkspaceScope, pack: VoicePack, opt
     ...samples.map((s, i) => `[${i + 1}] (${s.channel}) ${words(s.body, 300)}`),
   ].join("\n");
 
-  const { answers } = await runTask(scope, extractAnswers, { context: await loadBrandContext(scope), taskInput, route: "cheap" });
+  const context = await loadBrandContext(scope);
+  const { answers } = await runTask(scope, extractAnswers, { context, taskInput, route: "cheap" });
+  // The person's own material, as the model was given it (audit M6): a suggestion
+  // must be in here, or it was invented.
+  const material = [
+    ...samples.map((s) => words(s.body, 300)),
+    f.niche,
+    f.audience,
+    f.positioning,
+    f.offers,
+    ...more.stories.flatMap((s) => [s.title, s.body, s.lesson ?? ""]),
+    ...more.proofs.flatMap((p) => [p.claim, p.source ?? ""]),
+    ...more.strategy.map((a) => a.answer),
+    ...context.guardrails.doWords,
+    ...context.guardrails.dontWords,
+  ].join("\n");
   const out: Record<string, { value: string | string[]; evidence?: string }> = {};
   for (const a of answers) {
     if (!(PREFILL_IDS as readonly string[]).includes(a.id) || !a.value.trim()) continue;
-    out[a.id] = { value: a.id === "E1" ? a.value.split(",").map((w) => w.trim()).filter(Boolean) : a.value.trim(), evidence: a.evidence };
+    if (a.id === "E1") {
+      // Never-words are phrases the person does not use, so the writing cannot
+      // hold them. They are one-tap suggestions, not facts about the person, so
+      // they are not checked against the material (the other answers are).
+      const list = a.value.split(",").map((w) => w.trim()).filter(Boolean);
+      if (list.length) out[a.id] = { value: list, evidence: a.evidence };
+      continue;
+    }
+    if (groundedIn(a.value, material)) out[a.id] = { value: a.value.trim(), evidence: a.evidence };
   }
   await updateOnboarding(scope, pack, { suggestions: { basis, at: new Date().toISOString(), answers: out } });
   return out;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { LiveDraftLayer } from "@/components/live-draft";
 import { projectScope } from "@/lib/auth/workspace";
 import { listContent } from "@/lib/data/content";
@@ -9,8 +9,14 @@ import { loadBrandContext } from "@/lib/context/context-loader";
 import { stageIndex, stepLabel } from "@/lib/projects/stages";
 import { LockedStep } from "@/components/locked-step";
 import { StepPanel, PanelSection } from "@/components/step-panel";
-import { SubmitButton } from "@/components/ui";
+import { Stage, StageCanvas } from "@/components/project-panels";
+import { Choice, SubmitButton } from "@/components/ui";
 import { BrandCheck } from "@/components/brand-check";
+import { CanvasHistory } from "@/components/canvas-edit";
+import { pieceTopic } from "@/lib/data/create";
+import { formatByKey, pieceText } from "@/lib/content/formats";
+import { platformRule } from "@/lib/voice/platforms";
+import { isPlatformAdmin } from "@/lib/auth/types";
 import { generateVisualsAction } from "../pipeline-actions";
 import { ContentBoard } from "./content-board";
 import { WritePiece } from "./write-piece";
@@ -23,7 +29,7 @@ export const metadata = { title: "Content" };
 export default async function ContentPage({ params, searchParams }: PageProps<"/w/[id]/p/[pid]/content">) {
   const { id, pid } = await params;
   const sp = await searchParams;
-  const { scope, project } = await projectScope(id, pid);
+  const { session, scope, project } = await projectScope(id, pid);
   const base = `/w/${id}/p/${pid}`;
   if (stageIndex(project.stage) < stageIndex("content")) {
     return (
@@ -45,20 +51,31 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
 
   const conf = pack ? confidence(pack) : null;
 
+  const writing = items.length === 0 || sp.write === "1";
+
+  // One undo history for the whole step, so a fix applied from the Brand
+  // check panel undoes with Ctrl/Cmd+Z exactly like an edit made on the canvas.
   return (
-    <>
-      <div className="absolute inset-0 min-[900px]:right-[280px]">
+    <CanvasHistory>
+    <Stage>
+      <StageCanvas>
+        {/* The writing screen has the topic as its heading; the board needs one of its own. */}
+        {!writing && <h1 className="sr-only">Content: {project.name}</h1>}
         {items.length > 0 && sp.write === "1" && (
-          <Link href={`/w/${id}/p/${pid}/content`} className="absolute top-3 left-3 z-10 inline-flex items-center min-h-11 px-4 rounded-full bg-paper border border-hairline text-sm text-ink-muted hover:text-ink">
-            ← Back to {items.length === 1 ? "the draft" : `the ${items.length} drafts`}
-          </Link>
+          <div className="hu-strip absolute top-3 left-3 z-10">
+            <Link href={`/w/${id}/p/${pid}/content`} className="hu-strip__btn">
+              <ArrowLeft size={15} aria-hidden="true" /> Back to {items.length === 1 ? "the draft" : `the ${items.length} drafts`}
+            </Link>
+          </div>
         )}
-        {items.length === 0 || sp.write === "1" ? (
+        {writing ? (
           <WritePiece
             tenantId={id}
             projectId={pid}
             pillarId={project.pillarId}
-            topic={project.name}
+            // The whole topic, not the name cut for the card (lib/data/create).
+            topic={pieceTopic(project)}
+            title={project.name}
             format={project.format}
             angle={project.angle}
             mode={pack?.workMode ?? "ghostwrite"}
@@ -74,13 +91,19 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           selectedId={typeof sp.item === "string" ? sp.item : null}
           degraded={ctx.degraded}
           dontWords={ctx.guardrails.dontWords}
+          // Which prompt template wrote a piece is for the people who edit
+          // templates (Settings › Prompts), not for a client.
+          showTemplate={isPlatformAdmin(session.role)}
         />
         )}
         <Suspense fallback={null}>
           <LiveDraftLayer tenantId={id} projectId={pid} brandName={brandName} />
         </Suspense>
-      </div>
+      </StageCanvas>
       <StepPanel eyebrow={stepLabel("content")} title="Content">
+        {ctx.degraded && (
+          <p className="flex items-start gap-2 text-xs text-accent-ink bg-accent-soft rounded-sm px-2.5 py-2"><AlertTriangle size={14} className="shrink-0 mt-px" aria-hidden="true" /> The brief is thin, so drafts will read generic. Filling it in is worth it.</p>
+        )}
         {sp.generated && (
           <p className="flex items-start gap-2 text-xs text-ok bg-ok-soft rounded-sm px-2.5 py-2"><CheckCircle2 size={14} className="shrink-0 mt-px" /> {String(sp.generated)} piece{sp.generated === "1" ? "" : "s"} drafted from your pillars.</p>
         )}
@@ -98,8 +121,20 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           return checkItem ? (
             <PanelSection title="Brand check">
               <p className="text-xs text-ink-muted mb-2.5 leading-relaxed">Score {checkItem.hook ? `“${checkItem.hook.slice(0, 32)}${checkItem.hook.length > 32 ? "…" : ""}”` : "the selected post"} against your voice. Findings cite your own writing, never block publishing.</p>
-              {/* Keyed by the text too: a regenerate or an edit clears a score that no longer describes it. */}
-              <BrandCheck key={`${checkItem.id}:${checkItem.hook}:${checkItem.body}:${checkItem.cta}`} tenantId={id} projectId={pid} itemId={checkItem.id} />
+              {/* Keyed by the piece only: the panel is given the copy and marks its own
+                  verdict stale when the copy changes, so applying one fix keeps the rest. */}
+              <BrandCheck
+                key={checkItem.id}
+                tenantId={id}
+                projectId={pid}
+                itemId={checkItem.id}
+                copy={pieceText(checkItem)}
+                limit={(() => {
+                  // Only a short hard cap is counted on the piece (X 280, Threads 500); a long one is noise.
+                  const rule = platformRule(formatByKey(checkItem.format).platform);
+                  return rule?.maxChars != null && rule.maxChars <= 500 ? { label: rule.label, max: rule.maxChars } : null;
+                })()}
+              />
             </PanelSection>
           ) : null;
         })()}
@@ -108,11 +143,12 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           <input type="hidden" name="projectId" value={pid} />
           <input type="hidden" name="scheme" value="0" />
           <p className="text-xs font-medium">Next: generate visuals</p>
-          <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="approvedOnly" disabled={approved === 0} defaultChecked={approved > 0} /> Approved pieces only ({approved})</label>
+          <Choice dense name="approvedOnly" disabled={approved === 0} defaultChecked={approved > 0} label={`Approved pieces only (${approved})`} className="!py-0" />
           <SubmitButton variant="primary" size="sm" pendingLabel="Designing…" className="w-full">{visualDone ? "Regenerate visuals →" : "Generate visuals →"}</SubmitButton>
-          <p className="text-xs text-ink-faint">Post image, quote card and carousel for each piece: real text over your brand colours.</p>
+          <p className="text-xs text-ink-faint">Post image and quote card for each piece, plus carousel frames for carousel formats: real text over your brand colours.</p>
         </form>
       </StepPanel>
-    </>
+    </Stage>
+    </CanvasHistory>
   );
 }

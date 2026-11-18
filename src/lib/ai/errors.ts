@@ -64,15 +64,75 @@ export type ProviderErrorKind =
   | "server"
   | "unknown";
 
+/**
+ * What a provider said about its own limit, when it said anything:
+ *   window             "minute" for a per-minute limit (gone in seconds),
+ *                      "day" for a daily allowance (gone for a long while)
+ *   retryAfterSeconds  when the provider says to come back
+ */
+export interface LimitInfo {
+  window?: "minute" | "day";
+  retryAfterSeconds?: number;
+}
+
 export class ProviderError extends Error {
+  public readonly limit: LimitInfo;
   constructor(
     public readonly kind: ProviderErrorKind,
     message: string,
     public readonly retryable = false,
+    limit: LimitInfo = {},
   ) {
     super(message);
     this.name = "ProviderError";
+    this.limit = limit;
   }
+}
+
+/** "7m12.5s", "1h2m", "45.3s", "250ms" (Groq's "try again in ...") as seconds, or undefined. */
+export function parseWait(text: string): number | undefined {
+  const m = /try again in\s+((?:\d+(?:\.\d+)?(?:h|ms|m|s))+)/i.exec(text);
+  if (!m) return undefined;
+  let s = 0;
+  for (const [, n, unit] of m[1].matchAll(/(\d+(?:\.\d+)?)(h|ms|m|s)/g)) {
+    const v = Number(n);
+    s += unit === "h" ? v * 3600 : unit === "m" ? v * 60 : unit === "ms" ? v / 1000 : v;
+  }
+  return s > 0 ? Math.ceil(s) : undefined;
+}
+
+/**
+ * Read a 429's body and retry-after header into LimitInfo. Groq names the
+ * limit it hit ("tokens per day (TPD)", "requests per minute (RPM)") and when
+ * to come back; other providers send only retry-after.
+ */
+export function limitFrom(body: string, retryAfterHeader: string | null): LimitInfo {
+  const text = body.slice(0, 2000);
+  const window: LimitInfo["window"] =
+    /per day|\((?:TPD|RPD|ASD)\)|daily/i.test(text) ? "day"
+    : /per minute|\((?:TPM|RPM|ASH)\)/i.test(text) ? "minute"
+    : undefined;
+  const header = Number(retryAfterHeader);
+  const retryAfterSeconds = parseWait(text) ?? (Number.isFinite(header) && header > 0 ? Math.ceil(header) : undefined);
+  return { ...(window ? { window } : {}), ...(retryAfterSeconds ? { retryAfterSeconds } : {}) };
+}
+
+/** "about 14 minutes", "about 2 hours", "a few seconds". */
+export function waitWords(seconds: number): string {
+  if (seconds < 50) return "a few seconds";
+  if (seconds < 90) return "about a minute";
+  if (seconds < 3600) return `about ${Math.round(seconds / 60)} minutes`;
+  const h = Math.round(seconds / 3600);
+  return h === 1 ? "about an hour" : `about ${h} hours`;
+}
+
+/** The plain sentence for a provider's rate limit, saying which limit and when it frees up. */
+function rateLimitMessage(e: ProviderError): string {
+  const wait = e.limit.retryAfterSeconds;
+  if (e.limit.window === "day") {
+    return `The writing service has used up its daily allowance (pictures need it too).${wait ? ` It frees up in ${waitWords(wait)}.` : " It frees up later today."} Your admin can move to a paid plan to lift it.`;
+  }
+  return `Too many requests this minute. Try again in ${wait ? waitWords(wait) : "a minute"}.`;
 }
 
 /**
@@ -93,7 +153,7 @@ export function userMessage(e: unknown): string {
   if (e instanceof ProviderError) {
     switch (e.kind) {
       case "timeout": return "That took too long and was stopped. Try again.";
-      case "rate_limit": return "Too many requests at once. Give it a minute and try again.";
+      case "rate_limit": return rateLimitMessage(e);
       case "auth": return "Drafting couldn't sign in to its service. Your admin needs to check the key.";
       case "refusal": return "That one couldn't be written. Try rewording the topic.";
       default: return "That didn't work and was logged. Try again.";

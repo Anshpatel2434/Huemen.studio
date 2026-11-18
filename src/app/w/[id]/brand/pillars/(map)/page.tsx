@@ -7,10 +7,11 @@ import { listPillars } from "@/lib/data/planning";
 import { listProjects } from "@/lib/data/projects";
 import { FORMATS } from "@/lib/content/formats";
 import { StepPanel } from "@/components/step-panel";
+import { Stage, StageCanvas } from "@/components/project-panels";
 import { SubmitButton } from "@/components/ui";
 import { ChipChoice } from "@/components/chip-choice";
-import { draftFromPillarsAction, regeneratePillarsAction } from "./actions";
-import { PillarMap, type MapPiece } from "./pillar-map";
+import { draftFromPillarsAction, regeneratePillarsAction } from "../actions";
+import { PillarMap, type MapPiece } from "../pillar-map";
 import { latestJob } from "@/lib/jobs";
 import { JobStatus } from "@/components/job-status";
 import { GenerationFailed } from "@/components/generation-failed";
@@ -52,10 +53,11 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
   }
 
   return (
-    <>
-      <div className="absolute inset-0 min-[900px]:right-[280px]">
+    <Stage>
+      <StageCanvas>
+        <h1 className="sr-only">Pillars</h1>
         <PillarMap tenantId={id} brandName={(ws?.name ?? "Your brand")} completeness={ctx.completeness} briefRows={briefRows} pillars={pillars} pieces={pieces} selectedId={typeof sp.pillar === "string" ? sp.pillar : null} />
-      </div>
+      </StageCanvas>
       <StepPanel title="Pillars">
         {job && <JobStatus key={job.id} tenantId={id} initial={job} />}
         {typeof sp.failed === "string" && (
@@ -101,6 +103,6 @@ export default async function PillarsPage({ params, searchParams }: PageProps<"/
           <p className="text-xs text-ink-faint">Each piece becomes its own project in your library, drafted in your voice. It runs on its own; you can leave the page.</p>
         </form>
       </StepPanel>
-    </>
+    </Stage>
   );
 }

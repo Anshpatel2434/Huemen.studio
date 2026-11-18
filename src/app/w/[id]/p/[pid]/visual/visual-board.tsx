@@ -3,30 +3,35 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy, MessageSquare } from "lucide-react";
-import { AgentDots, Badge, IconButton, Modal, Segmented, SubmitButton, Tabs, useToast } from "@/components/ui";
+import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy, MessageSquare, History, Sparkles } from "lucide-react";
+import { AgentDots, Badge, Choice, Modal, Segmented, Shortcut, SubmitButton, Tabs, useToast } from "@/components/ui";
+import { RightDock, usePanels } from "@/components/project-panels";
 import { ConfirmModal } from "@/components/confirm-modal";
-import { fileSlug, nodeToPngBlob, saveBlob, zipBlobs } from "@/lib/ui/png";
+import { nodeToPngBlob, saveBlob, zipBlobs } from "@/lib/ui/png";
 import { deleteVisualsAction, generateVisualsAction, saveDesignAction } from "../pipeline-actions";
 import { Canvas, Artboard } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory } from "@/components/canvas-edit";
 import { askRewriteAction, patchContentAction } from "../content/actions";
 import { EmptyState } from "@/components/ui";
 import { btnClass } from "@/components/btn";
-import { FORMATS, formatByKey } from "@/lib/content/formats";
+import { formatByKey, formatUsesCarousel } from "@/lib/content/formats";
 import { stepLabel } from "@/lib/projects/stages";
 import {
-  CAROUSEL_LAYOUTS, DEFAULT_DESIGN, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, sameDesign,
+  CAROUSEL_LAYOUTS, DEFAULT_DESIGN, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, artboardsFor, clampScale, sameDesign,
   type ArtboardKind, type Design, type Tweaks,
 } from "@/lib/visual/design";
+import { cssFamily, fontStack, type FontPlan, type FontSource } from "@/lib/visual/fonts";
 import { CarouselFrames, PostImage, QuoteCard, schemesFrom, type Fonts, type RenderText, type Scheme } from "./visual-layouts";
 import { lookCheck, type LookResult } from "@/lib/visual/look-check";
 import type { PictureMode } from "@/lib/visual/design";
+import { patchForSlide, slidesOf, type Slide } from "@/lib/visual/slides";
+import { exportBase } from "@/lib/visual/export";
 import type { VisualComment } from "@/lib/data/visual-comments";
 import type { JobView } from "@/lib/jobs/types";
-import { addCommentAction, dismissCommentAction, setPictureAction, startPictureAction } from "./picture-actions";
+import { addCommentAction, approveAgainAction, dismissCommentAction, retryCommentAction, revertCopyAction, setPictureAction, startPictureAction } from "./picture-actions";
 import { retryJobAction } from "../../../jobs/actions";
-import { CommentSurface, PictureMenu, TARGET_LABEL, WorkingOverlay, useJobWatch, type Watched } from "./visual-comments-ui";
+import { CommentSurface, PictureMenu, TARGET_LABEL, WorkingOverlay, commentState, useJobWatch, type Watched } from "./visual-comments-ui";
+import { BoardIconButton, BrandFonts, ExportSizes, HeadingCheck, PictureVersions, ScaleSlider, lineage, sameHeading, useFitStates, useFontRenders, type Version } from "./visual-panels";
 
 type Item = {
   id: string; format: string; hook: string; body: string; cta: string; status: string; pillarName: string | null;
@@ -34,34 +39,6 @@ type Item = {
   /** The image_assets row of each visual, for comments. */
   visuals: Partial<Record<ArtboardKind, string>>;
 };
-
-/** Where a carousel slide's text lives in the post, so a slide edit writes back to it. */
-type Slide = { text: string; src: { kind: "hook" } | { kind: "body"; part: number } | { kind: "cta" } };
-
-/** Split body copy into carousel slides: one idea (paragraph/list line) each. */
-function slidesOf(i: Item): Slide[] {
-  const parts = i.body.split(/(\n+)/); // keeps the separators, so edits preserve spacing
-  const body = parts
-    .map((t, part) => ({ t: t.trim(), part }))
-    .filter((x) => x.part % 2 === 0 && x.t)
-    .slice(0, 5)
-    .map((x): Slide => ({ text: x.t, src: { kind: "body", part: x.part } }));
-  return [
-    { text: i.hook, src: { kind: "hook" } },
-    ...body,
-    ...(i.cta ? [{ text: i.cta, src: { kind: "cta" } } as Slide] : []),
-  ];
-}
-
-/** The post field a slide edit changes. An emptied body slide drops that paragraph. */
-function patchForSlide(i: Item, slide: Slide, text: string): { hook?: string; body?: string; cta?: string } {
-  if (slide.src.kind === "hook") return { hook: text };
-  if (slide.src.kind === "cta") return { cta: text };
-  const parts = i.body.split(/(\n+)/);
-  if (text) parts[slide.src.part] = text;
-  else parts.splice(slide.src.part, slide.src.part + 1 < parts.length ? 2 : 1);
-  return { body: parts.join("").replace(/^\n+|\n+$/g, "") };
-}
 
 const DISPLAY_W = 300;
 /** Relume's Wireframe view: the same layouts and real words, before any colour. */
@@ -72,8 +49,10 @@ const KIND_LABEL: Record<ArtboardKind, string> = { post: "Post image", quote: "Q
 
 type BoardProps = {
   tenantId: string; projectId: string; brandName: string; logo: string | null; items: Item[]; palette: string[]; fonts: string[]; imageStyle: string; selectedId: string | null; initialScheme: number;
-  /** Pictures in use: same-origin link and the version each was made from. */
-  pictures: Record<string, { url: string; parentId: string | null }>;
+  /** Where each brand font is loaded from on this page (lib/visual/fonts): an uploaded file, Google, or nowhere. */
+  fontPlan: FontPlan;
+  /** Every version of every picture in the project, newest first (fresh draws and area changes). */
+  versions: Version[];
   comments: VisualComment[];
   /** Picture work still queued or running when the page loaded. */
   jobs: Watched[];
@@ -82,15 +61,20 @@ type BoardProps = {
 /**
  * Visual step (Relume's design + style guide, worked like a design tool):
  *
- *   - Every artboard's text is editable (double-click) and askable (click,
- *     then say what to change). Edits write back to the post's copy, so
- *     Content and Export stay in step.
+ *   - Every artboard's text is editable (double-click). The headline and quote
+ *     also have "Rewrite with AI" (its own button); carousel frames are askable
+ *     with a click. Edits write back to the post's copy, so Content and Export
+ *     stay in step.
  *   - Each artboard kind has several layouts. "Show me options" lays them out
  *     side by side in this piece's own words and colours; keep one.
  *   - Live tweaks for the selected piece (type size, alignment, accent,
  *     background) redraw as they move and save a moment after.
  *   - Cmd/Ctrl+Z undoes copy edits, layout picks and tweaks alike.
  */
+/** What an edit changed, in the post's terms, for the "back to Edited" notice. */
+const partWords = (keys: string[]) =>
+  keys.length === 1 ? ({ hook: "opening line", body: "body", cta: "call to action" } as Record<string, string>)[keys[0]] ?? "words" : "words";
+
 export function VisualBoard(props: BoardProps) {
   return (
     <CanvasHistory>
@@ -99,16 +83,22 @@ export function VisualBoard(props: BoardProps) {
   );
 }
 
-function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, imageStyle, selectedId, initialScheme, pictures, comments: savedComments, jobs }: BoardProps) {
+function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fontPlan, imageStyle, selectedId, initialScheme, versions, comments: savedComments, jobs }: BoardProps) {
   const history = useCanvasHistory();
   const router = useRouter();
   const toast = useToast();
 
   // ---- pictures: drawn and changed in the queue, watched until they finish ----
+  const pictures = useMemo(() => new Map(versions.map((v) => [v.id, v])), [versions]);
   const pictureFor = (i: Item, k: ArtboardKind) => {
     const ref = i.design?.pictures?.[k];
-    const info = ref ? pictures[ref.id] : undefined;
-    return ref && info ? { id: ref.id, url: info.url, mode: ref.mode, parentId: info.parentId } : null;
+    const info = ref ? pictures.get(ref.id) : undefined;
+    return ref && info ? { id: ref.id, url: info.url, mode: ref.mode, parentId: info.parentId, heading: info.heading } : null;
+  };
+  /** The heading is drawn into this visual's picture, and the piece's heading no longer reads that. */
+  const stale = (i: Item, k: ArtboardKind) => {
+    const p = pictureFor(i, k);
+    return !!p && p.mode === "with_text" && p.heading !== null && !sameHeading(p.heading, i.hook);
   };
   // Try again (from a toast) watches the job again; the watcher is created just below.
   const watchRef = useRef<(w: Watched) => void>(() => {});
@@ -153,27 +143,67 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
   const commentsOn = (visualId: string | undefined) => (visualId ? allComments.filter((c) => c.visualId === visualId) : []);
 
   // ---- copy: edit and ask ----------------------------------------------------
+  /**
+   * The words on a visual are the post's own words, so changing them changes
+   * the post, and an approved post goes back to Edited until it is approved
+   * again. That is said, with Approve again, never done silently (2026-11-18
+   * new-account run).
+   */
+  const unapprovedNotice = useCallback((i: Item, part: string) => {
+    toast(`Saved. This changes the post's ${part} too, so it's back to Edited until you approve it again.`, "neutral", {
+      label: "Approve again",
+      run: () => void approveAgainAction(tenantId, projectId, i.id).then((ok) => {
+        toast(ok ? "Approved again." : "It was changed again since, so it wasn't approved. Check it on Content.", ok ? "neutral" : "danger");
+        router.refresh();
+      }),
+    });
+  }, [toast, tenantId, projectId, router]);
   const edit = useCallback((i: Item, next: { hook?: string; body?: string; cta?: string }, label: string, asked = false) => {
     const prev = Object.fromEntries(Object.keys(next).map((k) => [k, i[k as "hook" | "body" | "cta"]]));
     // A rewrite the person asked for is the model's words, so it is not learned from.
     const opts = { learn: !asked };
-    history.push({ label, undo: () => patchContentAction(tenantId, projectId, i.id, prev, opts), redo: () => patchContentAction(tenantId, projectId, i.id, next, opts) });
-    return patchContentAction(tenantId, projectId, i.id, next, opts);
-  }, [history, tenantId, projectId]);
+    const send = async (p: Record<string, string | undefined>, base: Record<string, string | undefined>) => {
+      const r = await patchContentAction(tenantId, projectId, i.id, p, { ...opts, base });
+      if (r && "conflict" in r) throw new Error(r.conflict);
+    };
+    // Undo puts the words back AND the status the piece had before this edit:
+    // a draft that was edited and undone is a draft again (lib/data/visual-copy).
+    const was = i.status;
+    const back = async () => {
+      const r = await revertCopyAction(tenantId, projectId, i.id, prev, next, was);
+      if (r && "conflict" in r) throw new Error(r.conflict);
+    };
+    history.push({ label, undo: back, redo: () => send(next, prev) });
+    return send(next, prev).then(() => {
+      if (was === "approved") unapprovedNotice(i, partWords(Object.keys(next)));
+      return was === "approved";
+    });
+  }, [history, tenantId, projectId, unapprovedNotice]);
   const askFor = useCallback((i: Item, part: string) => async (instruction: string, current: string) => {
     const r = await askRewriteAction(tenantId, projectId, i.id, { part, text: current, instruction });
     if (!r.ok) throw new Error(r.error);
     return r.text;
   }, [tenantId, projectId]);
+  /** The AI rewrite of the words on the visuals (headline and quote card share the piece's hook). Undoable like an edit. */
+  const rewriteWords = async (i: Item, instruction: string) => {
+    const next = (await askFor(i, "Post image headline")(instruction, i.hook)).trim();
+    if (!next || next === i.hook) return toast("That came back unchanged. Try saying it another way.");
+    // An approved post gets the "back to Edited" notice from edit instead.
+    if (await edit(i, { hook: next }, "rewrite headline", true)) return;
+    toast(`Rewritten. ${typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+"}Z undoes it.`);
+  };
 
   // ---- schemes ----------------------------------------------------------------
   const schemes = useMemo(() => schemesFrom(palette), [palette]);
   const [scheme, setScheme] = useState(initialScheme);
   const s = schemes[scheme] ?? schemes[0];
+  // The brand fonts first, then the house faces (the fallback chain). BrandFonts
+  // below loads them; the names are spelled the way its @font-face rules are.
   const fontPair: Fonts = {
-    display: fonts[0] ? `"${fonts[0]}", var(--font-sans)` : "var(--font-sans)",
-    accent: fonts[1] ? `"${fonts[1]}", var(--font-serif)` : "var(--font-serif)",
+    display: fontStack(fonts[0], "var(--font-sans)"),
+    accent: fontStack(fonts[1], "var(--font-serif)"),
   };
+  const sourceOf = (name: string | undefined): FontSource => (name ? fontPlan.source[cssFamily(name)] ?? "none" : "none");
 
   // ---- designs: layouts + tweaks per piece, saved a moment after they settle ----
   const [designs, setDesigns] = useState<Record<string, Design>>({});
@@ -204,47 +234,100 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
   }, [designOf, history, put, tenantId, projectId, toast]);
   useEffect(() => () => { for (const t of timers.current.values()) clearTimeout(t); }, []);
 
-  const sendComment = (i: Item, k: ArtboardKind) => async (d: { target: VisualComment["target"]; box: { x: number; y: number; w: number; h: number }; note: string }) => {
-    const visualId = i.visuals[k];
-    if (!visualId) return false;
-    const before = { hook: i.hook, body: i.body, cta: i.cta };
-    const prevDesign = designOf(i);
-    const r = await addCommentAction(tenantId, projectId, { visualId, target: d.target, box: d.box, note: d.note });
-    if (!r.ok) {
-      toast(r.error, "danger");
-      return false;
-    }
+  type CommentOutcome = Extract<Awaited<ReturnType<typeof addCommentAction>>, { ok: true }>;
+  /** What a sent (or retried) comment came back with: watch its job, or record what it changed so it can be undone. */
+  const settleComment = (i: Item, k: ArtboardKind, r: CommentOutcome, was: { copy: { hook: string; body: string; cta: string }; design: Design; status: string }) => {
+    const target = r.comment.target;
     setExtraComments((all) => [...all.filter((c) => c.id !== r.comment.id), r.comment]);
     if (r.jobId) {
       watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Changing the picture", prev: pictureFor(i, k)?.id ?? null });
       toast("Redrawing the marked area. It takes a moment.", "neutral");
-      return true;
+      return;
     }
     if (r.comment.status === "applied" && r.after) {
-      if (d.target === "headline" || d.target === "body" || d.target === "cta") {
+      if (target === "headline" || target === "body" || target === "cta") {
         const after = { hook: r.after.hook, body: r.after.body, cta: r.after.cta };
         const opts = { learn: false };
-        history.push({ label: `comment on the ${TARGET_LABEL[d.target].toLowerCase()}`, undo: () => patchContentAction(tenantId, projectId, i.id, before, opts), redo: () => patchContentAction(tenantId, projectId, i.id, after, opts) });
+        history.push({
+          label: `comment on the ${TARGET_LABEL[target].toLowerCase()}`,
+          undo: () => revertCopyAction(tenantId, projectId, i.id, was.copy, null, was.status),
+          redo: () => patchContentAction(tenantId, projectId, i.id, after, opts),
+        });
+        if (was.status === "approved") {
+          unapprovedNotice(i, partWords([target === "headline" ? "hook" : target]));
+          router.refresh();
+          return;
+        }
       } else if (r.after.design) {
         const next = r.after.design;
         setDesigns((all) => ({ ...all, [i.id]: next }));
-        history.push({ label: `comment on the ${TARGET_LABEL[d.target].toLowerCase()}`, undo: () => put(i.id, prevDesign), redo: () => put(i.id, next) });
+        history.push({ label: `comment on the ${TARGET_LABEL[target].toLowerCase()}`, undo: () => put(i.id, was.design), redo: () => put(i.id, next) });
       }
       toast(r.comment.result ?? "Done");
     } else {
+      // The pin and the side panel both carry Try again for it.
       toast(r.comment.result ?? "That didn't change anything.", "danger");
     }
     router.refresh();
+  };
+  const sendComment = (i: Item, k: ArtboardKind) => async (d: { target: VisualComment["target"]; box: { x: number; y: number; w: number; h: number }; note: string; area?: { x: number; y: number; w: number; h: number } | null }) => {
+    const visualId = i.visuals[k];
+    if (!visualId) return false;
+    const was = { copy: { hook: i.hook, body: i.body, cta: i.cta }, design: designOf(i), status: i.status };
+    const r = await addCommentAction(tenantId, projectId, { visualId, target: d.target, box: d.box, note: d.note, area: d.area ?? null });
+    if (!r.ok) {
+      toast(r.error, "danger");
+      return false;
+    }
+    settleComment(i, k, r, was);
     return true;
   };
+  /** Try again: the same comment (same box, same words) is run again. */
+  const retryComment = async (c: VisualComment) => {
+    const i = items.find((x) => x.id === c.contentItemId);
+    const k = i && (Object.keys(i.visuals) as ArtboardKind[]).find((a) => i.visuals[a] === c.visualId);
+    if (!i || !k) return;
+    const was = { copy: { hook: i.hook, body: i.body, cta: i.cta }, design: designOf(i), status: i.status };
+    const r = await retryCommentAction(tenantId, projectId, c.id);
+    if (!r.ok) {
+      toast(r.error, "danger");
+      return;
+    }
+    settleComment(i, k, r, was);
+  };
+  const [retrying, setRetrying] = useState<string | null>(null);
   const dismissComment = (id: string) => {
     setDismissed((all) => new Set(all).add(id));
     void dismissCommentAction(tenantId, projectId, id);
   };
+  // One number per comment, counted per piece in the order they were made:
+  // the pin on the visual and the row in the side panel show the same one.
+  const commentNumbers = useMemo(() => {
+    const out: Record<string, number> = {};
+    const count = new Map<string, number>();
+    for (const c of allComments) {
+      const n = (count.get(c.contentItemId) ?? 0) + 1;
+      count.set(c.contentItemId, n);
+      out[c.id] = n;
+    }
+    return out;
+  }, [allComments]);
+  /** A picture change whose result is no longer in the visual's picture (undone, or an earlier version put back). */
+  const isUndone = (c: VisualComment) => {
+    if (c.target !== "picture" || c.status !== "applied" || !c.resultPictureId) return false;
+    const i = items.find((x) => x.id === c.contentItemId);
+    const k = i && (Object.keys(i.visuals) as ArtboardKind[]).find((a) => i.visuals[a] === c.visualId);
+    return !i || !k || !lineage(i.design?.pictures?.[k]?.id, versions).has(c.resultPictureId);
+  };
 
   const designed = items.filter((i) => i.scheme !== null);
   const undesigned = items.length - designed.length;
-  const ordered = [...designed].sort((x, y) => (x.status === "approved" ? -1 : 0) - (y.status === "approved" ? -1 : 0));
+  // The order is settled once, when the board opens (approved pieces first).
+  // Editing a piece changes its status; re-sorting then moved it away from
+  // under the pointer, and the next action landed on another piece.
+  const [order] = useState(() => [...designed].sort((x, y) => (x.status === "approved" ? -1 : 0) - (y.status === "approved" ? -1 : 0)).map((i) => i.id));
+  const place = (id: string) => { const n = order.indexOf(id); return n < 0 ? order.length : n; };
+  const ordered = [...designed].sort((x, y) => place(x.id) - place(y.id));
   // Wireframe shows every piece laid out; Design shows the ones generated in a scheme.
   const [view, setView] = useState<"wireframe" | "design">(designed.length ? "design" : "wireframe");
   const wire = view === "wireframe" || designed.length === 0;
@@ -253,8 +336,9 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
   const focus = ordered.find((i) => i.id === focusId) ?? ordered[0] ?? null;
 
   const [open, setOpen] = useState<string | null>("design");
-  // Phones: the style guide opens over the canvas from a button (as StepPanel does).
-  const [details, setDetails] = useState(false);
+  // The style guide lives in the page's right slot (components/project-panels):
+  // docked beside the canvas, opened and closed from the editor's top bar.
+  const panels = usePanels();
   const [options, setOptions] = useState<{ item: Item; kind: ArtboardKind } | null>(null);
 
   // ---- export -----------------------------------------------------------------
@@ -266,22 +350,48 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
   const [busy, setBusy] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Item | null>(null);
 
-  const exportOne = async (key: string, w: number, h: number, name: string) => {
+  // Files are named after the brand AND the piece (lib/visual/export), so two
+  // pieces never save over each other.
+  const nameOf = (i: Item) => exportBase(brandName, i, items);
+  /**
+   * Said with a download: a picture that still carries the piece's old heading,
+   * and a heading drawn into a picture that nobody has checked (the app does not
+   * read it). It never blocks the download.
+   */
+  const staleNote = (i: Item, kinds: ArtboardKind[]) => {
+    const old = kinds.filter((k) => stale(i, k)).map((k) => KIND_LABEL[k].toLowerCase());
+    const drawn = kinds.filter((k) => !stale(i, k) && pictureFor(i, k)?.mode === "with_text").map((k) => KIND_LABEL[k].toLowerCase());
+    return [
+      old.length ? ` Check it first: the picture on the ${old.join(" and ")} still shows the old heading.` : "",
+      drawn.length ? ` The heading drawn into the picture on the ${drawn.join(" and ")} may not be spelled right: read it before you post.` : "",
+    ].join("");
+  };
+  const exportOne = async (i: Item, kind: ArtboardKind, key: string, w: number, h: number) => {
     const node = frames.current.get(key);
     if (!node) return;
+    const name = `${nameOf(i)}-${kind}-${w}x${h}`;
     setBusy(key);
     try {
       saveBlob(await nodeToPngBlob(node, w, h), `${name}.png`);
-      toast(`Saved ${name}.png`);
+      toast(`Saved ${name}.png.${staleNote(i, [kind])}`);
     } catch {
       toast("Couldn't render that image. Try again.", "danger");
     } finally {
       setBusy(null);
     }
   };
+  const carouselFiles = async (i: Item, slides: Slide[]) => {
+    const files: { name: string; blob: Blob }[] = [];
+    for (let k = 0; k < slides.length; k++) {
+      const f = frames.current.get(`${i.id}:carousel:${k}`);
+      if (f) files.push({ name: `${nameOf(i)}-carousel-${String(k + 1).padStart(2, "0")}-1080x1350.png`, blob: await nodeToPngBlob(f, 1080, 1350) });
+    }
+    return files;
+  };
+  /** The whole set: post image, quote card and every carousel frame, as one zip. */
   const exportSet = async (i: Item, slides: Slide[]) => {
     const fmt = formatByKey(i.format);
-    const base = `${fileSlug(brandName)}-${fileSlug(i.hook).slice(0, 32)}`;
+    const base = nameOf(i);
     setBusy(`${i.id}:set`);
     try {
       const files: { name: string; blob: Blob }[] = [];
@@ -289,18 +399,45 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
       if (post) files.push({ name: `${base}-post-${fmt.frame.w}x${fmt.frame.h}.png`, blob: await nodeToPngBlob(post, fmt.frame.w, fmt.frame.h) });
       const quote = frames.current.get(`${i.id}:quote`);
       if (quote) files.push({ name: `${base}-quote-1080x1080.png`, blob: await nodeToPngBlob(quote, 1080, 1080) });
-      for (let k = 0; k < slides.length; k++) {
-        const f = frames.current.get(`${i.id}:carousel:${k}`);
-        if (f) files.push({ name: `${base}-carousel-${String(k + 1).padStart(2, "0")}-1080x1350.png`, blob: await nodeToPngBlob(f, 1080, 1350) });
-      }
+      files.push(...(await carouselFiles(i, slides)));
       if (!files.length) throw new Error("nothing to export");
       saveBlob(await zipBlobs(files), `${base}-visuals.zip`);
-      toast(`Saved ${files.length} images as a zip`);
+      toast(`Saved ${files.length} images as ${base}-visuals.zip.${staleNote(i, ["post", "quote", "carousel"])}`);
     } catch {
       toast("Couldn't render the set. Try again.", "danger");
     } finally {
       setBusy(null);
     }
+  };
+  /** Only the carousel's frames, as one zip. */
+  const exportFrames = async (i: Item, slides: Slide[]) => {
+    setBusy(`${i.id}:frames`);
+    try {
+      const files = await carouselFiles(i, slides);
+      if (!files.length) throw new Error("nothing to export");
+      saveBlob(await zipBlobs(files), `${nameOf(i)}-carousel.zip`);
+      toast(`Saved ${files.length} frame${files.length === 1 ? "" : "s"} as ${nameOf(i)}-carousel.zip.${staleNote(i, ["carousel"])}`);
+    } catch {
+      toast("Couldn't render the frames. Try again.", "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // ---- the look check's eyes: what is really on the visuals ------------------------
+  const fits = useFitStates();
+  const fontRendering = useFontRenders(fonts[0]);
+  const [switching, setSwitching] = useState(false);
+  /** Put a version of a visual's picture on it (from the version list), undoable. */
+  const putVersion = (i: Item, k: ArtboardKind, id: string) => {
+    const cur = i.design?.pictures?.[k]?.id ?? null;
+    if (cur === id) return;
+    history.push({ label: "use picture version", undo: () => setPicture(i, k, cur), redo: () => setPicture(i, k, id) });
+    setSwitching(true);
+    void setPicture(i, k, id)
+      .then(() => toast(`${KIND_LABEL[k]}: that version is on the visual now.`))
+      .catch(() => toast("Couldn't switch to that version.", "danger"))
+      .finally(() => setSwitching(false));
   };
   const confirmRemove = async () => {
     const i = removing;
@@ -319,12 +456,13 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
   const textFor = (i: Item, slides: Slide[]): RenderText => function renderText(slot) {
     if (slot.kind === "post" || slot.kind === "quote") {
       const what = slot.kind === "post" ? "Headline" : "Quote";
+      // Double-click edits the words where they sit. No click-to-ask here: a click opened the AI box on the way to a double-click (F11).
+      // The AI rewrite is its own button (RewriteWords), so it never takes over an edit.
       return (
         <EditableText
           value={i.hook}
           required
           label={what}
-          onAsk={askFor(i, slot.kind === "post" ? "Post image headline" : "Quote card line")}
           onCommit={(hook, _p, m) => edit(i, { hook }, `${m?.asked ? "rewrite" : "edit"} ${what.toLowerCase()}`, m?.asked)}
         />
       );
@@ -344,18 +482,12 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
 
   return (
     <div className="absolute inset-0 flex flex-row-reverse">
-      <button
-        type="button"
-        onClick={() => setDetails(true)}
-        aria-expanded={details}
-        className="min-[900px]:hidden absolute top-[4.25rem] right-3 z-20 inline-flex items-center gap-2 min-h-11 px-4 rounded-full bg-paper border border-hairline shadow-[var(--shadow)] text-sm font-medium"
-      >
-        <SlidersHorizontal size={15} aria-hidden="true" /> Design
-      </button>
-      <aside aria-label="Design and style guide" className={`${details ? "flex" : "hidden"} min-[900px]:flex absolute min-[900px]:static inset-y-0 right-0 max-sm:top-auto max-sm:left-0 max-sm:h-[75%] max-sm:w-full max-sm:rounded-t-2xl max-sm:border-t max-sm:border-l-0 z-30 min-[900px]:z-10 w-[min(320px,100%)] min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mr-3 min-[900px]:mb-3 min-[900px]:rounded-2xl min-[900px]:border min-[900px]:shadow-[var(--shadow)] overflow-hidden shadow-[var(--shadow-overlay)] shrink-0 border-l border-hairline bg-paper flex-col min-h-0`}>
-        <div className="min-h-10 shrink-0 flex items-center pl-3 pr-1 border-b border-hairline">
-          <span className="label-mono text-ink-faint flex-1">{stepLabel("visual")} · Visual</span>
-          <span className="min-[900px]:hidden"><IconButton label="Close design panel" onClick={() => setDetails(false)}><X size={17} /></IconButton></span>
+      <BrandFonts plan={fontPlan} />
+      <RightDock label="Design">
+      <aside aria-label="Design and style guide" data-panel="step" className="hu-panel">
+        <div className="min-h-12 shrink-0 flex items-center pl-3 pr-1.5 border-b border-hairline">
+          <span className="label-mono text-ink-faint flex-1 truncate">{stepLabel("visual")} · Visual</span>
+          <BoardIconButton label="Close design panel" onClick={() => panels?.setRight(false)}><X size={17} aria-hidden="true" /></BoardIconButton>
         </div>
         <div className="flex-1 overflow-y-auto">
           {!palette.length && (
@@ -390,30 +522,58 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                   <p className="text-sm text-ink-muted">Pick the comment tool in the bar under the canvas (or press C), drag a box on a visual and say what to change. A box on a picture redraws only that area.</p>
                 ) : (
                   <ol className="flex flex-col gap-2.5">
-                    {mine.map((c, n) => (
-                      <li key={c.id} className="text-sm border border-hairline rounded-md p-2.5">
-                        <p className="text-xs text-ink-faint">{n + 1} · {TARGET_LABEL[c.target]} · {c.status === "working" ? "working" : c.status === "applied" ? "done" : c.status === "failed" ? "didn't go through" : "waiting"}</p>
-                        <p className="mt-0.5">{c.note}</p>
-                        {c.result && <p className="text-xs text-ink-muted mt-1">{c.result}</p>}
-                        {c.status !== "working" && <button type="button" onClick={() => dismissComment(c.id)} className={`${btnClass("ghost", "sm")} mt-1.5`}>Clear</button>}
-                      </li>
-                    ))}
+                    {mine.map((c) => {
+                      // The same number and the same words as the pin on the visual.
+                      const state = commentState(c, isUndone(c));
+                      return (
+                        <li key={c.id} className="text-sm border border-hairline rounded-md p-2.5">
+                          <p className="text-xs text-ink-faint">{commentNumbers[c.id]} · {TARGET_LABEL[c.target]} · {state.label}</p>
+                          <p className="mt-0.5">{c.note}</p>
+                          {c.status !== "working" && <p className="text-xs text-ink-muted mt-1 whitespace-pre-line">{state.text}</p>}
+                          {c.status !== "working" && (
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {c.status === "failed" && (
+                                <button type="button" disabled={retrying !== null} onClick={() => { setRetrying(c.id); void retryComment(c).finally(() => setRetrying(null)); }} className={btnClass("secondary", "sm")}>
+                                  {retrying === c.id ? <><AgentDots /> Trying again…</> : "Try again"}
+                                </button>
+                              )}
+                              <button type="button" onClick={() => dismissComment(c.id)} className={btnClass("ghost", "sm")}>Clear</button>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ol>
                 )}
               </Section>
             );
           })()}
 
-          <div className="p-3 grid grid-cols-2 gap-2 border-t border-hairline">
-            {schemes.map((sc, i) => (
-              <button key={sc.name} onClick={() => setScheme(i)} className={`rounded-md overflow-hidden border text-left transition-colors ${i === scheme ? "border-ink ring-1 ring-ink" : "border-hairline hover:border-line"}`}>
-                <div className="h-14 flex items-center justify-between px-3" style={{ background: sc.bg }}>
-                  <span className="text-[1.2rem] font-medium leading-none" style={{ color: sc.fg }}>Aa<span className="block h-[3px] w-6 mt-1 rounded-full" style={{ background: sc.accent }} /></span>
-                  <span className="w-6 h-6 rounded-sm border border-black/10" style={{ background: sc.accent }} />
-                </div>
-                <p className="text-xs px-2.5 py-1.5 bg-paper">{sc.name}</p>
-              </button>
-            ))}
+          {focus && (() => {
+            const mine = versions.filter((v) => v.contentItemId === focus.id);
+            const inUse: Partial<Record<ArtboardKind, string>> = {};
+            for (const k of ["post", "quote", "carousel"] as ArtboardKind[]) { const id = focus.design?.pictures?.[k]?.id; if (id) inUse[k] = id; }
+            return (
+              <Section id="versions" icon={History} title={`Picture versions${mine.length ? ` · ${mine.length}` : ""}`} open={open} setOpen={setOpen}>
+                <PictureVersions versions={mine} inUse={inUse} busy={switching} onUse={(k, id) => putVersion(focus, k, id)} />
+              </Section>
+            );
+          })()}
+
+          {/* Colour schemes: their own labelled part, never under the picture versions (F13). */}
+          <div className="px-3 pt-3 pb-3 border-t border-hairline">
+            <p className="label-mono text-ink-faint mb-2">Colour scheme</p>
+            <div className="grid grid-cols-2 gap-2">
+              {schemes.map((sc, i) => (
+                <button key={sc.name} onClick={() => setScheme(i)} aria-pressed={i === scheme} className={`rounded-md overflow-hidden border text-left transition-colors ${i === scheme ? "border-ink ring-1 ring-ink" : "border-hairline hover:border-line"}`}>
+                  <div className="h-14 flex items-center justify-between px-3" style={{ background: sc.bg }}>
+                    <span className="text-[1.2rem] font-medium leading-none" style={{ color: sc.fg }}>Aa<span className="block h-[3px] w-6 mt-1 rounded-full" style={{ background: sc.accent }} /></span>
+                    <span className="w-6 h-6 rounded-sm border border-black/10" style={{ background: sc.accent }} />
+                  </div>
+                  <p className="text-xs px-2.5 py-1.5 bg-paper">{sc.name}</p>
+                </button>
+              ))}
+            </div>
           </div>
           <form action={generateVisualsAction} className="mx-3 mb-3 flex flex-col gap-2 border border-hairline rounded-md p-3">
             <input type="hidden" name="tenantId" value={tenantId} />
@@ -421,41 +581,41 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
             <input type="hidden" name="scheme" value={scheme} />
             <p className="text-xs font-medium">{designed.length ? "Apply scheme & regenerate" : "Generate visuals"}</p>
             <p className="text-xs text-ink-muted">{designed.length} designed{undesigned ? ` · ${undesigned} piece${undesigned === 1 ? "" : "s"} not yet` : ""}. Layouts and tweaks carry over.</p>
-            <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="approvedOnly" /> Approved pieces only</label>
+            <Choice dense name="approvedOnly" label="Approved pieces only" className="!py-0" />
             <SubmitButton variant="primary" size="sm" pendingLabel="Designing…" className="w-full">{designed.length ? `Regenerate with ${schemes[scheme]?.name ?? "scheme"}` : "Generate visuals"}</SubmitButton>
           </form>
           <Section id="type" icon={Type} title="Typography" open={open} setOpen={setOpen}>
             <p className="text-[1.4rem] leading-tight" style={{ fontFamily: fontPair.display }}>{fonts[0] ?? "Archivo (house)"}</p>
             <p className="text-[1.2rem] italic mt-1" style={{ fontFamily: fontPair.accent }}>{fonts[1] ?? "Instrument Serif (house)"}</p>
-            <p className="text-xs text-ink-faint mt-2">Brand fonts render only if installed; licence check for server rendering is an open decision (brief §09).</p>
+            <p className="text-xs text-ink-faint mt-2">{fontNote(fonts, sourceOf)}</p>
           </Section>
           <Section id="img" icon={ImageIcon} title="Image style" open={open} setOpen={setOpen}>
             <p className="text-sm text-ink-muted leading-relaxed">{imageStyle || "No image style notes yet."}</p>
           </Section>
           <Section id="dims" icon={Ruler} title="Export sizes" open={open} setOpen={setOpen}>
-            <ul className="text-xs flex flex-col gap-1">
-              {Array.from(new Map(FORMATS.map((f) => [f.frame.label, f])).values()).map((f) => (
-                <li key={f.key} className="flex justify-between gap-2"><span className="text-ink-muted">{f.label}</span><span className="tabular-nums">{f.frame.label}</span></li>
+            <ExportSizes />
+          </Section>
+          <Section id="palette" icon={Palette} title="Palette" open={open} setOpen={setOpen}>
+            {/* Each colour with its value written beside it, never in a hover tooltip. */}
+            <ul className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              {(palette.length ? palette : ["#0a0a0a", "#6b6b6b", "#ffffff"]).map((c) => (
+                <li key={c} className="flex items-center gap-2 min-w-0">
+                  <span aria-hidden="true" className="w-6 h-6 shrink-0 rounded-xs border border-hairline" style={{ background: c }} />
+                  <span className="text-xs font-mono uppercase truncate">{c}</span>
+                </li>
               ))}
             </ul>
           </Section>
-          <Section id="palette" icon={Palette} title="Palette" open={open} setOpen={setOpen}>
-            <div className="flex flex-wrap gap-1.5">
-              {(palette.length ? palette : ["#0a0a0a", "#6b6b6b", "#ffffff"]).map((c) => (
-                <span key={c} title={c} className="w-8 h-8 rounded-sm border border-hairline" style={{ background: c }} />
-              ))}
-            </div>
-          </Section>
         </div>
       </aside>
+      </RightDock>
 
       <div className="flex-1 relative min-w-0">
+        {/* The view switch: a strip at the top left of the visible canvas, like the tool strip below it. */}
         {items.length > 0 && (
-          <div className="absolute top-3 left-3 z-20 flex items-center gap-3" onPointerDown={(e) => e.stopPropagation()}>
-            <div className="hu-seg bg-paper border border-hairline shadow-[var(--shadow-sm)]" role="radiogroup" aria-label="Canvas view">
-              <button type="button" role="radio" aria-checked={wire} onClick={() => setView("wireframe")} className="hu-seg__item">Wireframe</button>
-              <button type="button" role="radio" aria-checked={!wire} disabled={!designed.length} title={designed.length ? undefined : "Generate visuals first"} onClick={() => setView("design")} className="hu-seg__item disabled:opacity-45">Design</button>
-            </div>
+          <div className="hu-strip absolute top-3 left-3 z-20" role="radiogroup" aria-label="Canvas view" onPointerDown={(e) => e.stopPropagation()}>
+            <button type="button" role="radio" aria-checked={wire} onClick={() => setView("wireframe")} className="hu-strip__btn">Wireframe</button>
+            <button type="button" role="radio" aria-checked={!wire} disabled={!designed.length} aria-label={designed.length ? undefined : "Design (generate visuals first)"} onClick={() => setView("design")} className="hu-strip__btn">Design</button>
           </div>
         )}
         {items.length === 0 ? (
@@ -472,6 +632,8 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                 const sc = wire ? WIRE : s;
                 const fp = wire ? WIRE_FONTS : fontPair;
                 const slides = slidesOf(i);
+                // Only formats that are carousels get a carousel surface (see formats.ts).
+                const usesCarousel = formatUsesCarousel(i.format);
                 const d = designOf(i);
                 const text = textFor(i, slides);
                 const isFocus = focus?.id === i.id;
@@ -489,17 +651,33 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                   />
                 );
                 const surface = (k: ArtboardKind, child: React.ReactNode, frameOf?: (el: Element) => HTMLElement | null) => (
-                  <CommentSurface enabled={commenting && !wire} comments={commentsOn(i.visuals[k])} frameOf={frameOf} onSend={sendComment(i, k)} onDismiss={dismissComment}>
+                  <CommentSurface enabled={commenting && !wire} comments={commentsOn(i.visuals[k])} numbers={commentNumbers} isUndone={isUndone} frameOf={frameOf} onSend={sendComment(i, k)} onRetry={retryComment} onDismiss={dismissComment}>
                     {child}
-                    {working(i, k) && <WorkingOverlay label={working(i, k)!.label} />}
+                    {working(i, k) && <WorkingOverlay label={working(i, k)!.label} retrying={working(i, k)!.retrying} />}
                   </CommentSurface>
                 );
+                // Under a visual whose picture has the heading drawn into it: stale (the heading changed since), or to be read by the person.
+                const headingNote = (k: ArtboardKind) => !wire && pic(k)?.mode === "with_text" && (
+                  <HeadingCheck stale={stale(i, k)} busy={!!working(i, k)} onRedraw={() => void drawPicture(i, k, "with_text")} onLiveText={() => void drawPicture(i, k, "live_text")} />
+                );
+                const look = () => lookCheck({
+                  palette, fonts, scheme: s, tweaks: d.tweaks, headline: i.hook,
+                  fontRendering,
+                  fontSource: sourceOf(fonts[0]),
+                  logo: !!logo && d.tweaks.logo !== "hidden",
+                  logoHidden: !!logo && d.tweaks.logo === "hidden",
+                  picture: (["post", "quote", "carousel"] as ArtboardKind[]).some((k) => !!pictureFor(i, k)),
+                  // A heading drawn into a picture is not checked by the app: never On brand on its own (lib/visual/look-check).
+                  drawnIn: (["post", "quote", "carousel"] as ArtboardKind[]).some((k) => pictureFor(i, k)?.mode === "with_text"),
+                  fit: fits[i.id],
+                });
                 return (
-                  <section key={i.id} data-canvas-bg="1" onPointerDownCapture={() => setFocusId(i.id)} className={`rounded-xs ${isFocus ? "outline outline-2 outline-accent outline-offset-[14px]" : ""}`}>
+                  <section key={i.id} data-piece={i.id} data-canvas-focus={isFocus ? "1" : undefined} data-canvas-bg="1" onPointerDownCapture={() => setFocusId(i.id)} className={`rounded-xs ${isFocus ? "outline outline-2 outline-accent outline-offset-[14px]" : ""}`}>
                     <div className="flex items-center gap-3 mb-4" data-canvas-bg="1">
                       <p className="label-mono text-ink-faint">{fmt.label} · {i.pillarName ?? "No pillar"} · {i.status}</p>
-                      {wire ? (i.scheme === null && <span className="label-mono text-ink-faint">· not designed yet</span>) : <LookBadge result={lookCheck({ palette, fonts, scheme: s, tweaks: d.tweaks, headline: i.hook })} />}
+                      {wire ? (i.scheme === null && <span className="label-mono text-ink-faint">· not designed yet</span>) : <LookBadge result={look()} />}
                       <span className="flex-1" data-canvas-bg="1" />
+                      {!wire && <RewriteWords label="headline" onRewrite={(t) => rewriteWords(i, t)} />}
                       <button type="button" onClick={() => setOptions({ item: i, kind: "post" })} className={btnClass("secondary", "sm")}>
                         <LayoutGrid size={14} aria-hidden="true" /> Show me options
                       </button>
@@ -509,32 +687,40 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                           <button type="button" onClick={() => exportSet(i, slides)} disabled={busy !== null} className={btnClass("secondary", "sm")}>
                             {busy === `${i.id}:set` ? <><AgentDots /> Rendering…</> : <><Download size={14} aria-hidden="true" /> Download set</>}
                           </button>
-                          <IconButton label="Remove these visuals" onClick={() => setRemoving(i)}><Trash2 size={15} /></IconButton>
+                          <BoardIconButton label="Remove these visuals" onClick={() => setRemoving(i)}><Trash2 size={15} aria-hidden="true" /></BoardIconButton>
                         </>
                       )}
                     </div>
                     <div className="flex gap-8 items-start" data-canvas-bg="1">
+                      <div className="shrink-0" style={{ width: DISPLAY_W }} data-canvas-bg="1">
                       <Artboard
                         label={`Post image · ${POST_LAYOUTS.find((l) => l.key === d.layouts.post)?.label}`}
                         meta={fmt.frame.label}
                         width={DISPLAY_W}
-                        actions={<>{picMenu("post")}<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(`${i.id}:single`, fmt.frame.w, fmt.frame.h, `${fileSlug(brandName)}-post-${fmt.frame.w}x${fmt.frame.h}`)} /></>}
+                        actions={<>{picMenu("post")}<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(i, "post", `${i.id}:single`, fmt.frame.w, fmt.frame.h)} /></>}
                       >
                         {surface("post", <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} picture={pic("post")} />)}
                       </Artboard>
+                      {headingNote("post")}
+                      </div>
+                      <div className="shrink-0" style={{ width: DISPLAY_W }} data-canvas-bg="1">
                       <Artboard
                         label={`Quote card · ${QUOTE_LAYOUTS.find((l) => l.key === d.layouts.quote)?.label}`}
                         meta="1:1 · 1080×1080"
                         width={DISPLAY_W}
-                        actions={<>{picMenu("quote")}<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(`${i.id}:quote`, 1080, 1080, `${fileSlug(brandName)}-quote-1080x1080`)} /></>}
+                        actions={<>{picMenu("quote")}<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(i, "quote", `${i.id}:quote`, 1080, 1080)} /></>}
                       >
                         {surface("quote", <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} text={text} frameRef={frameRef(`${i.id}:quote`)} picture={pic("quote")} />)}
                       </Artboard>
+                      {headingNote("quote")}
+                      </div>
+                      {usesCarousel && (
+                      <div className="shrink-0" style={{ width: slides.length * 170 + (slides.length - 1) * 8 + 16 }} data-canvas-bg="1">
                       <Artboard
-                        label={`Carousel · ${CAROUSEL_LAYOUTS.find((l) => l.key === d.layouts.carousel)?.label}`}
+                        label={`Carousel ·${CAROUSEL_LAYOUTS.find((l) => l.key === d.layouts.carousel)?.label}`}
                         meta={`${slides.length} frames · 1080×1350`}
                         width={slides.length * 170 + (slides.length - 1) * 8 + 16}
-                        actions={<>{picMenu("carousel")}<ExportButton label="Download all frames" busy={busy === `${i.id}:set`} onClick={() => exportSet(i, slides)} /></>}
+                        actions={<>{picMenu("carousel")}<ExportButton label="Download the carousel frames" busy={busy === `${i.id}:frames`} onClick={() => exportFrames(i, slides)} /></>}
                       >
                         {surface("carousel", <CarouselFrames
                           layout={d.layouts.carousel}
@@ -551,6 +737,9 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
                           logo={logo}
                         />)}
                       </Artboard>
+                      {headingNote("carousel")}
+                      </div>
+                      )}
                     </div>
                   </section>
                 );
@@ -572,6 +761,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, im
           fonts={fontPair}
           brand={brandName}
           logo={logo}
+          picture={pictureFor(options.item, options.kind)}
           onClose={() => setOptions(null)}
           onKeep={(kind, key, label) => {
             const d = designOf(options.item);
@@ -612,16 +802,7 @@ function TweakPanel({ item, design, onTweak, onOptions, onReset, onApplyAll, can
           <p className="text-xs font-medium">Type size</p>
           <span className="text-xs num text-ink-muted">{Math.round(t.scale * 100)}%</span>
         </div>
-        <input
-          type="range"
-          min={80}
-          max={140}
-          step={5}
-          value={Math.round(t.scale * 100)}
-          onChange={(e) => set("scale", Number(e.target.value) / 100, "type size")}
-          className="w-full accent-[var(--accent)] min-h-11"
-          aria-label="Type size"
-        />
+        <ScaleSlider value={clampScale(t.scale * 100)} onChange={(pct) => set("scale", pct / 100, "type size")} />
       </div>
       <div>
         <p className="text-xs font-medium mb-1.5">Alignment</p>
@@ -638,7 +819,8 @@ function TweakPanel({ item, design, onTweak, onOptions, onReset, onApplyAll, can
 
       <div className="flex flex-col gap-1.5">
         <p className="text-xs font-medium">Layouts</p>
-        {(["post", "quote", "carousel"] as ArtboardKind[]).map((k) => {
+        {/* No carousel row for a format that has no carousel (an X post, say): the board draws none either. */}
+        {artboardsFor(item.format).map((k) => {
           const list = k === "post" ? POST_LAYOUTS : k === "quote" ? QUOTE_LAYOUTS : CAROUSEL_LAYOUTS;
           const cur = list.find((l) => l.key === design.layouts[k])?.label;
           return (
@@ -654,16 +836,18 @@ function TweakPanel({ item, design, onTweak, onOptions, onReset, onApplyAll, can
         <button type="button" onClick={onReset} disabled={isDefault} className={btnClass("ghost", "sm")}><RotateCcw size={14} aria-hidden="true" /> Reset</button>
         {canApplyAll && <button type="button" onClick={onApplyAll} className={btnClass("secondary", "sm")}><Copy size={14} aria-hidden="true" /> Apply to every piece</button>}
       </div>
-      <p className="text-xs text-ink-faint">Redraws as you change it and saves a moment after. ⌘Z undoes.</p>
+      <p className="text-xs text-ink-faint">Redraws as you change it and saves a moment after. <Shortcut keys="Z" /> undoes.</p>
     </div>
   );
 }
 
 // ---- show me options -----------------------------------------------------------------
 
-function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fonts, brand, logo, onClose, onKeep }: {
+function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fonts, brand, logo, picture, onClose, onKeep }: {
   item: Item; kind: ArtboardKind; onKind: (k: ArtboardKind) => void; design: Design; slides: string[]; ctaIndex: number;
   scheme: ReturnType<typeof schemesFrom>[number]; fonts: Fonts; brand: string; logo: string | null; onClose: () => void;
+  /** The picture on this artboard, if it has one: every option is shown with it, as it will look. */
+  picture: { url: string; mode: PictureMode } | null;
   onKeep: (kind: ArtboardKind, key: string, label: string) => void;
 }) {
   const fmt = formatByKey(item.format);
@@ -679,10 +863,13 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
             label="Artboard"
             value={kind}
             onSelect={onKind}
-            items={(["post", "quote", "carousel"] as ArtboardKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+            items={artboardsFor(item.format).map((k) => ({ value: k, label: KIND_LABEL[k] }))}
           />
-          <p className="text-xs text-ink-muted">In this piece&apos;s words, scheme and tweaks. Keep one; the others stay a click away.</p>
+          <p className="text-xs text-ink-muted">In this piece&apos;s words, scheme, tweaks{picture ? " and picture" : ""}. Keep one; the others stay a click away.</p>
         </div>
+        {picture?.mode === "with_text" && (
+          <p className="text-sm text-ink-muted">The heading is drawn into this picture, so the picture fills the visual whichever layout you keep (cropping it would cut the words). Switch to live text from the picture menu to place the picture and the words separately.</p>
+        )}
         <div className={`grid gap-5 ${kind === "carousel" ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"}`}>
           {list.map((l) => {
             const on = l.key === current;
@@ -690,11 +877,11 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
               <div key={l.key} className={`rounded-md border p-3 flex flex-col gap-3 ${on ? "border-ink ring-1 ring-ink" : "border-hairline"}`}>
                 <div className="theme-light rounded-xs overflow-hidden ring-1 ring-[var(--hairline)] pointer-events-none">
                   {kind === "post" ? (
-                    <PostImage layout={l.key as never} w={fmt.frame.w} h={fmt.frame.h} s={scheme} t={t} fonts={fonts} brand={brand} logo={logo} eyebrow={item.pillarName ?? undefined} text={plain} />
+                    <PostImage layout={l.key as never} w={fmt.frame.w} h={fmt.frame.h} s={scheme} t={t} fonts={fonts} brand={brand} logo={logo} eyebrow={item.pillarName ?? undefined} text={plain} picture={picture} />
                   ) : kind === "quote" ? (
-                    <QuoteCard layout={l.key as never} s={scheme} t={t} fonts={fonts} brand={brand} logo={logo} text={plain} />
+                    <QuoteCard layout={l.key as never} s={scheme} t={t} fonts={fonts} brand={brand} logo={logo} text={plain} picture={picture} />
                   ) : (
-                    <div className="overflow-hidden"><CarouselFrames layout={l.key as never} slides={slides.slice(0, 3)} ctaIndex={ctaIndex < 3 ? ctaIndex : -1} s={scheme} t={t} fonts={fonts} frameWidth={104} text={plain} /></div>
+                    <div className="overflow-hidden"><CarouselFrames layout={l.key as never} slides={slides.slice(0, 3)} ctaIndex={ctaIndex < 3 ? ctaIndex : -1} s={scheme} t={t} fonts={fonts} frameWidth={104} text={plain} cover={picture} brand={brand} logo={logo} /></div>
                   )}
                 </div>
                 <div className="flex items-start gap-2">
@@ -717,11 +904,70 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
   );
 }
 
+const REWRITE_CHIPS = ["Shorter", "Punchier", "More contrarian", "Warmer", "As a question"];
+
+/**
+ * "Rewrite with AI" for the words on the visuals: its own button and box, so a
+ * double-click on the words only ever edits them in place. Enter, or Ctrl/⌘+Enter,
+ * sends. A failed rewrite keeps the box open with its words.
+ */
+function RewriteWords({ label, onRewrite }: { label: string; onRewrite: (instruction: string) => Promise<void> }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async (raw: string) => {
+    const t = raw.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    try {
+      await onRewrite(t);
+      setText("");
+      setOpen(false);
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : "That didn't go through.", "danger");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
+      <button type="button" aria-expanded={open} disabled={busy} onClick={() => setOpen((o) => !o)} className={btnClass("secondary", "sm")}>
+        {busy ? <><AgentDots /> Rewriting…</> : <><Sparkles size={14} aria-hidden="true" /> Rewrite with AI</>}
+      </button>
+      {open && (
+        <div role="dialog" aria-label={`Rewrite the ${label} with AI`} className="absolute left-0 top-11 z-20 w-80 bg-paper border border-hairline rounded-md shadow-[var(--shadow-overlay)] p-2.5 flex flex-col gap-2">
+          <input
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") { e.preventDefault(); void send(text); }
+              if (e.key === "Escape") setOpen(false);
+            }}
+            placeholder={`Change this ${label}…`}
+            aria-label={`What to change in this ${label}`}
+            disabled={busy}
+            className="min-h-10 bg-transparent outline-none text-sm px-2 border border-hairline rounded-sm"
+          />
+          <div className="flex flex-wrap gap-1">
+            {REWRITE_CHIPS.map((c) => (
+              <button key={c} type="button" disabled={busy} onClick={() => void send(c)} className="h-8 px-2.5 rounded-full border border-line text-xs hover:bg-hover disabled:opacity-40">{c}</button>
+            ))}
+          </div>
+          <p className="text-xs text-ink-faint">Rewritten in your voice and applied to the words on every visual. Undo brings it back.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExportButton({ busy, onClick, label = "Download PNG" }: { busy: boolean; onClick: () => void; label?: string }) {
   return (
-    <IconButton label={label} onClick={onClick} disabled={busy} className="opacity-0 group-hover/board:opacity-100 focus-visible:opacity-100">
-      {busy ? <AgentDots /> : <Download size={14} />}
-    </IconButton>
+    <BoardIconButton label={label} onClick={onClick} disabled={busy} className="opacity-0 group-hover/board:opacity-100 focus-visible:opacity-100">
+      {busy ? <AgentDots /> : <Download size={14} aria-hidden="true" />}
+    </BoardIconButton>
   );
 }
 
@@ -736,6 +982,16 @@ function Section({ id, icon: Icon, title, open, setOpen, children }: { id: strin
       {on && <div className="px-3 pb-4 fade-in">{children}</div>}
     </div>
   );
+}
+
+/** Where the brand fonts on these visuals come from, said under the Typography samples. */
+function fontNote(fonts: string[], sourceOf: (name: string | undefined) => FontSource): string {
+  if (!fonts.length) return "No brand fonts set, so the house faces draw the visuals. Add yours in Brand core, Visual.";
+  const say = (name: string) => {
+    const src = sourceOf(name);
+    return src === "upload" ? `${name} from your uploaded file` : src === "google" ? `${name} from Google Fonts` : `${name} isn't loaded (upload its WOFF2, WOFF, TTF or OTF file in Brand core, Visual), so a house face stands in`;
+  };
+  return `${fonts.slice(0, 2).map(say).join("; ")}. The PNG downloads use the same fonts.`;
 }
 
 const LOOK_LABEL = { on: "On brand", drift: "Drifting", off: "Off brand" } as const;

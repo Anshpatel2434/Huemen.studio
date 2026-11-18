@@ -3,10 +3,12 @@
 /**
  * Infinite canvas (Relume sitemap/wireframe/design surface): dotted ground,
  * pan (hand tool, space-drag, middle-drag or trackpad scroll), zoom (ctrl/⌘ +
- * wheel, or the zoom menu), fit-to-content, and the floating tool strip.
+ * wheel, or the zoom menu), fit-to-content, and the tool strip, anchored to
+ * the bottom centre of the visible canvas.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, MessageSquare } from "lucide-react";
+import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, MessageSquare, PanelRight } from "lucide-react";
+import { usePanels, useRightToggle } from "@/components/project-panels";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
@@ -38,30 +40,52 @@ export function Canvas({
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const fitted = useRef(false);
+  // Once a person pans or zooms, the view is theirs: a panel opening beside
+  // the canvas no longer refits it.
+  const touched = useRef(false);
+  const rightToggle = useRightToggle();
+  const panels = usePanels();
 
+  /**
+   * Fit to the canvas a person can see. The wrapper IS that area: panels are
+   * docked beside it (components/project-panels), never over it. Controls sit
+   * in strips along its top (12px inset + 44px) and bottom, so fitted content
+   * starts below the one and ends above the other.
+   *
+   *   - Everything, when everything stays readable (half size or more).
+   *   - Otherwise the first artboard at a readable size, from the left edge,
+   *     with the rest a pan away: a wall of thumbnails helps nobody.
+   *   - On a phone, the first artboard, centred.
+   */
   const fit = useCallback(() => {
     const w = wrap.current, s = stage.current;
     if (!w || !s) return;
-    // On a phone the artboards sit side by side, so fitting all of them put the
-    // whole set at 20% and nothing could be read. Narrow screens fit the FIRST
-    // artboard instead and pan to the rest.
-    const narrow = w.clientWidth < 900;
-    const first = s.querySelector<HTMLElement>("[data-artboard]");
-    const gutter = narrow ? 24 : 80;
-    const sw = narrow && first ? first.offsetWidth : s.scrollWidth;
-    const sh = narrow && first ? first.offsetHeight : s.scrollHeight;
-    // Boards float their own controls over the top-left (the Content step's
-    // Draft button and pillar filter: 12px inset + a 44px control), and the
-    // tool strip over the bottom. Below a 900px WINDOW (not canvas: a laptop
-    // canvas between two panels is narrower than that) the step panel's
-    // "Details" button also floats top-right, down to 112px
-    // (components/step-panel). Fitted content starts below them and ends above
-    // the strip, so nothing sits under a control.
-    const top = window.innerWidth < 900 ? 124 : 72, bottom = 72;
-    const z = Math.min(1, (w.clientWidth - gutter) / sw, (w.clientHeight - top - bottom) / sh);
-    const zz = Math.max(narrow ? 0.35 : 0.2, Math.round(z * 100) / 100);
+    touched.current = false;
+    const top = 72, bottom = 72;
+    const phone = w.clientWidth < 640;
+    const gutter = phone ? 24 : 80;
+    const room = { w: w.clientWidth - gutter, h: w.clientHeight - top - bottom };
+    const all = Math.min(1, room.w / s.scrollWidth, room.h / s.scrollHeight);
+    // A board can mark the piece to open on (data-canvas-focus: the one a link
+    // such as ?item=<id> names, or the one being worked on): its first
+    // artboard is the one fitted, so the view lands on that piece.
+    const first = s.querySelector<HTMLElement>("[data-canvas-focus] [data-artboard]") ?? s.querySelector<HTMLElement>("[data-artboard]");
+    if (first && (phone || all < 0.5)) {
+      // Where the first artboard sits on the stage, whatever wraps it.
+      let x = 0, y = 0;
+      for (let el: HTMLElement | null = first; el && el !== s; el = el.offsetParent as HTMLElement | null) { x += el.offsetLeft; y += el.offsetTop; }
+      // Keep the row above it (its piece's label and actions) in view too.
+      const lead = Math.min(y, 76);
+      const z = Math.min(1, room.w / first.offsetWidth, room.h / (first.offsetHeight + lead));
+      const zz = Math.max(0.35, Math.round(z * 100) / 100);
+      const left = phone ? Math.max(12, (w.clientWidth - first.offsetWidth * zz) / 2) : gutter / 2;
+      setZoom(zz);
+      setPan({ x: left - x * zz, y: top - (y - lead) * zz });
+      return;
+    }
+    const zz = Math.max(0.2, Math.round(all * 100) / 100);
     setZoom(zz);
-    setPan({ x: Math.max(narrow ? 12 : 40, (w.clientWidth - sw * zz) / 2), y: top });
+    setPan({ x: Math.max(gutter / 2, (w.clientWidth - s.scrollWidth * zz) / 2), y: top });
   }, []);
 
   useLayoutEffect(() => {
@@ -69,6 +93,21 @@ export function Canvas({
       fitted.current = true;
       fit();
     }
+  }, [fit, initialZoom]);
+
+  // A panel docking or leaving changes the visible canvas: fit again, unless
+  // the person has already chosen their own view.
+  useEffect(() => {
+    const w = wrap.current;
+    if (!w || initialZoom !== undefined || typeof ResizeObserver === "undefined") return;
+    let width = w.clientWidth, height = w.clientHeight;
+    const ro = new ResizeObserver(() => {
+      if (w.clientWidth === width && w.clientHeight === height) return;
+      width = w.clientWidth; height = w.clientHeight;
+      if (!touched.current) fit();
+    });
+    ro.observe(w);
+    return () => ro.disconnect();
   }, [fit, initialZoom]);
 
   // The comment tool changes every render (a new object); the key handler reads it through a ref.
@@ -98,6 +137,7 @@ export function Canvas({
     if (!w) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      touched.current = true;
       if (e.ctrlKey || e.metaKey) {
         const rect = w.getBoundingClientRect();
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -127,12 +167,15 @@ export function Canvas({
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
-    if (d) setPan({ x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y });
+    if (!d) return;
+    if (e.clientX !== d.x || e.clientY !== d.y) touched.current = true;
+    setPan({ x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y });
   };
   const onPointerUp = () => { drag.current = null; setDragging(false); };
 
   const zoomTo = (pct: number) => {
     const w = wrap.current;
+    touched.current = true;
     if (!w) return setZoom(pct / 100);
     const cx = w.clientWidth / 2, cy = w.clientHeight / 2;
     const nz = pct / 100;
@@ -159,7 +202,8 @@ export function Canvas({
         {children}
       </div>
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-paper border border-hairline rounded-md p-1 shadow-[var(--shadow)]" onPointerDown={(e) => e.stopPropagation()}>
+      {/* The tool strip: bottom centre of the visible canvas, never over a panel. */}
+      <div className="hu-strip absolute bottom-4 left-1/2 -translate-x-1/2 z-20 max-w-[calc(100%-1.5rem)]" onPointerDown={(e) => e.stopPropagation()}>
         <ToolBtn on={tool === "select" && !comment?.on} onClick={() => { setTool("select"); comment?.onChange(false); }} title="Select (V)"><MousePointer2 size={18} /></ToolBtn>
         <ToolBtn on={tool === "hand" && !comment?.on} onClick={() => { setTool("hand"); comment?.onChange(false); }} title="Hand (H, or hold Space)"><Hand size={18} /></ToolBtn>
         {comment && (
@@ -188,6 +232,13 @@ export function Canvas({
           </>
         )}
         {toolbarExtra}
+        {/* Outside the project editor (the pillar map) the panel's switch is a tool like any other. */}
+        {rightToggle && panels?.toggleIn === "strip" && (
+          <>
+            <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
+            <ToolBtn on={rightToggle.shown} onClick={rightToggle.toggle} title={`${rightToggle.label} panel`}><PanelRight size={17} /></ToolBtn>
+          </>
+        )}
       </div>
     </div>
   );
@@ -195,7 +246,7 @@ export function Canvas({
 
 export function ToolBtn({ children, on, onClick, title }: { children: ReactNode; on?: boolean; onClick: () => void; title: string }) {
   return (
-    <button type="button" onClick={onClick} title={title} aria-label={title} aria-pressed={on} className={`hu-iconbtn !rounded-sm ${on ? "!bg-accent-soft !text-accent-ink" : ""}`}>
+    <button type="button" onClick={onClick} data-tip={title} aria-label={title} aria-pressed={on} className={`hu-iconbtn !rounded-sm ${on ? "!bg-accent-soft !text-accent-ink" : ""}`}>
       {children}
     </button>
   );
@@ -221,7 +272,7 @@ export function Artboard({ label, meta, width, children, selected, onSelect, onE
         draggable={!!onDragStart}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        title={onDragStart ? "Drag to move" : undefined}
+        aria-description={onDragStart ? "Drag to move" : undefined}
       >
         {onDragStart && <GripVertical size={13} className="-ml-1 text-ink-faint opacity-0 group-hover/board:opacity-100 shrink-0" />}
         <span className={`text-xs font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>

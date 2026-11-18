@@ -18,6 +18,13 @@ import { createPillarAction, deletePillarAction, reorderPillarsAction, startFrom
 const NODE_W = 280;
 const GAP = 36;
 const PIECES_SHOWN = 3;
+/**
+ * How much of the map (in map pixels) the opening view spans. On a 1440x900
+ * screen the canvas left between the sidebar, the Add panel and the step
+ * panel is about 540px, so this opens at roughly 75%; wider canvases open at
+ * 100%, never more.
+ */
+const READABLE_SPAN = 600;
 
 export type MapPiece = { id: string; name: string; hook: string | null; format: string | null; status: string | null; score: number | null };
 export type BriefRow = { label: string; ok: boolean; note: string };
@@ -33,7 +40,7 @@ type Props = {
  * pillars as the pages under it, and each pillar's pieces hanging below. The
  * Add panel on the left is the section library: pillar ideas to drop onto the
  * map. The canvas is editable: double-click a name or description to edit it
- * in place, drag the grip to reorder, Delete removes the selected pillar, ⌘Z
+ * in place (or Edit beside the description, Rename in the pillar's menu), drag the grip to reorder, Delete removes the selected pillar, ⌘Z
  * undoes.
  */
 export function PillarMap(props: Props) {
@@ -216,7 +223,10 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, pie
     startTransition(async () => router.push(await startFromPillarAction(tenantId, p.name)));
   const toast = useToast();
   const history = useCanvasHistory();
-  const [panel, setPanel] = useState(true);
+  // null: the window's width decides. From 900px the Add panel is open beside
+  // the canvas; below that it would leave no canvas, so it waits to be asked
+  // for and then opens over it, with its close button.
+  const [panel, setPanel] = useState<boolean | null>(null);
 
   // Selection: seeded from ?pillar= (Layers panel), then local.
   const [sel, setSel] = useState<string | null>(selectedId);
@@ -320,19 +330,36 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, pie
   return (
     <>
       {/* The canvas sits beside the Add panel, never under it. */}
-      <div className="absolute inset-y-0 right-0 transition-[left] duration-200" style={{ left: panel ? 304 : 0 }}>
+      <div className={`absolute inset-y-0 right-0 left-0 transition-[left] duration-200 ${panel === false ? "" : "min-[900px]:left-[304px]"}`}>
       <Canvas
         onBackground={() => setSel(null)}
         toolbarExtra={
-          !panel && (
-            <>
+          panel !== true && (
+            // While the width decides, the tool shows only where the panel is shut (below 900px).
+            <span className={`inline-flex items-center ${panel === null ? "min-[900px]:hidden" : ""}`}>
               <span className="w-px h-6 bg-hairline mx-1" aria-hidden="true" />
               <button type="button" onClick={() => setPanel(true)} className="inline-flex items-center gap-1.5 min-h-10 px-3 rounded-sm text-sm hover:bg-hover"><Plus size={15} aria-hidden="true" /> Add</button>
-            </>
+            </span>
           )
         }
       >
-        <div className="p-10 pt-6" data-canvas-bg="1" style={{ minWidth: width }}>
+        <div className="relative p-10 pt-6" data-canvas-bg="1" style={{ minWidth: width }}>
+          {/*
+            The view the map opens on. Fitting the whole tree shrank it to ~22%
+            on a 1440x900 screen (2026-11-18 run), every card illegible. The
+            canvas fits its first artboard when the whole stage would be under
+            half size, so this invisible frame is that artboard: READABLE_SPAN
+            wide, centred under the brief, from the top. The map opens at a
+            readable zoom (about 75% with both panels open on that screen,
+            100% at most), centred on the brief; the rest is a pan away, and
+            Zoom to fit lands here too.
+          */}
+          <span
+            aria-hidden="true"
+            data-artboard
+            className="absolute top-0 h-0 pointer-events-none"
+            style={{ width: Math.min(width, READABLE_SPAN), left: (width - Math.min(width, READABLE_SPAN)) / 2 }}
+          />
           {/* The frame bar, like Relume's "AI Sitemap 1" */}
           <div className="flex items-center gap-2 h-9 px-3 rounded-lg bg-hover text-xs text-ink-muted mb-6" data-canvas-bg="1">
             <Layers size={13} aria-hidden="true" />
@@ -398,7 +425,11 @@ function PillarTree({ tenantId, brandName, completeness, briefRows, pillars, pie
       </Canvas>
       </div>
 
-      {panel && <AddPanel tenantId={tenantId} onMap={ordered.map((p) => p.name)} onAdd={(n, d) => void add(n, d)} adding={adding} onClose={() => setPanel(false)} />}
+      {panel !== false && (
+        <div className={panel === null ? "hidden min-[900px]:contents" : "contents"}>
+          <AddPanel tenantId={tenantId} onMap={ordered.map((p) => p.name)} onAdd={(n, d) => void add(n, d)} adding={adding} onClose={() => setPanel(false)} />
+        </div>
+      )}
 
       <ConfirmModal
         open={toDelete !== null}
@@ -463,6 +494,7 @@ function PillarNode({ p, base, selected, dragging, editingName, onEditingName, o
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const [menu, setMenu] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
   return (
     <Node
       selected={selected}
@@ -470,7 +502,7 @@ function PillarNode({ p, base, selected, dragging, editingName, onEditingName, o
       onClick={onSelect}
       icon={
         <>
-          <span draggable onDragStart={onDragStart} onDragEnd={onDragEnd} title="Drag to reorder" aria-hidden
+          <span draggable onDragStart={onDragStart} onDragEnd={onDragEnd} aria-hidden
             className="w-4 h-6 -ml-1 rounded-sm flex items-center justify-center text-ink-faint opacity-0 group-hover:opacity-100 hover:bg-field cursor-grab active:cursor-grabbing">
             <GripVertical size={12} />
           </span>
@@ -487,6 +519,7 @@ function PillarNode({ p, base, selected, dragging, editingName, onEditingName, o
               <div className="absolute right-0 top-11" style={{ zIndex: "var(--z-dropdown)" }}>
                 <Menu label={`Actions for ${p.name}`} className="w-52 pop">
                   <MenuItem icon={<Pencil size={15} aria-hidden="true" />} onClick={() => { setMenu(false); onEditingName(true); }}>Rename</MenuItem>
+                  <MenuItem icon={<PenLine size={15} aria-hidden="true" />} onClick={() => { setMenu(false); setEditingDesc(true); }}>Edit description</MenuItem>
                   {canMove.left && <MenuItem icon={<ArrowLeft size={15} aria-hidden="true" />} onClick={() => { setMenu(false); onMove(-1); }}>Move left</MenuItem>}
                   {canMove.right && <MenuItem icon={<ArrowRight size={15} aria-hidden="true" />} onClick={() => { setMenu(false); onMove(1); }}>Move right</MenuItem>}
                   <MenuSeparator />
@@ -499,9 +532,22 @@ function PillarNode({ p, base, selected, dragging, editingName, onEditingName, o
       }
     >
       <div className="rounded-md border border-hairline px-2.5 py-2">
-        <span className="block text-[13px] font-medium leading-tight">What it&apos;s about</span>
+        <span className="flex items-center gap-2">
+          <span className="flex-1 text-[13px] font-medium leading-tight">What it&apos;s about</span>
+          {/* One click into editing, beside double-click on the text. */}
+          {!editingDesc && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setEditingDesc(true); }}
+              aria-label={`Edit the description of ${p.name}`}
+              className="inline-flex items-center gap-1 min-h-7 px-2 -my-1 -mr-1 rounded-sm text-[11.5px] text-ink-muted hover:text-ink hover:bg-field"
+            >
+              <Pencil size={11} aria-hidden="true" /> Edit
+            </button>
+          )}
+        </span>
         <div className="text-[11.5px] text-ink-muted leading-snug mt-1">
-          <EditableText value={p.description ?? ""} multiline label="Pillar description" placeholder="Add a description" onCommit={(description) => onEdit({ description })} />
+          <EditableText value={p.description ?? ""} multiline label="Pillar description" placeholder="Add a description" editing={editingDesc} onEditingChange={setEditingDesc} onCommit={(description) => onEdit({ description })} />
         </div>
       </div>
       <Section href={`${base}/plan/ideas`} icon={<Lightbulb size={11} className="text-ink-faint shrink-0" aria-hidden="true" />} title={`Ideas · ${p.ideaCount}`} note={p.ideaCount ? "Waiting in the idea inbox" : "None captured yet"} />

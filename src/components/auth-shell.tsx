@@ -13,7 +13,9 @@ import { ThemeToggle } from "@/components/theme";
 export function AuthShell({ children, showcase = false, width = 340 }: { children: ReactNode; showcase?: boolean; width?: number }) {
   return (
     <main className="flex-1 flex min-h-screen">
-      <section className="flex-1 relative flex flex-col">
+      {/* overflow-x-clip: the crosshair lines reach 140px past the box, which
+          scrolled the page sideways on a phone (2026-11-17 test). */}
+      <section className="flex-1 relative flex flex-col overflow-x-clip">
         <header className="h-14 flex items-center justify-between px-4">
           <Link href="/" aria-label="Huemen.studio home"><LogoMark size={26} /></Link>
           <ThemeToggle />

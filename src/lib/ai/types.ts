@@ -22,7 +22,22 @@ export interface TextGenRequest {
   route?: TextRoute;
   /** Number of variants to return (brief §4.2: 2–3). */
   variants?: number;
+  /**
+   * Pictures the model looks at alongside the task (vision). Already
+   * downscaled by the caller (lib/visual/look-read); at most MAX_TASK_IMAGES.
+   * A request with images runs on the vision model (AI_VISION_MODEL).
+   */
+  images?: TextImage[];
 }
+
+/** One picture sent with a text request. JPEG, PNG or WebP bytes. */
+export interface TextImage {
+  mime: "image/jpeg" | "image/png" | "image/webp";
+  data: Uint8Array;
+}
+
+/** The most pictures one request may carry. */
+export const MAX_TASK_IMAGES = 3;
 
 export interface TextGenResult {
   variants: string[];
@@ -73,6 +88,13 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 export interface TextCallOptions {
   /** Omitted when unset: some models reject the parameter outright. */
   effort?: Effort;
+  /**
+   * Sampling temperature (audit M1). Low for a judgement or a rewrite, so a
+   * rerun gives the same answer; moderate for a draft. Chosen by the facade
+   * (lib/ai/index: TEMPERATURE), never by feature code. Omitted when unset.
+   * A provider omits it where the model would reject it (see anthropic.ts).
+   */
+  temperature?: number;
 }
 
 export interface TextProvider {

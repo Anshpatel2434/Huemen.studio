@@ -18,32 +18,53 @@ import { loadBrandContext } from "@/lib/context/context-loader";
 import { generateText } from "@/lib/ai";
 import { userMessage } from "@/lib/ai/errors";
 import { resolveTemplate } from "@/lib/ai/templates";
-import { formatByKey } from "@/lib/content/formats";
+import { formatByKey, formatUsesCarousel } from "@/lib/content/formats";
 import { generateContent, listContent } from "./content";
 import { createPillar, listPillars } from "./planning";
 import { getProject, unlockStage, type ProjectScope, type WorkspaceScope } from "./projects";
 import { loadBriefAnswers } from "./foundation";
 import { parseDesign, type Design } from "@/lib/visual/design";
+import { SCHEME_ORDER } from "@/lib/visual/schemes";
 
-/** Parse "Name :: description" lines (the pillar_set template's output shape). */
+/**
+ * Parse "Name :: description" lines (the pillar_set template's output shape),
+ * and say which non-blank lines were not in that form (audit L5): a line that
+ * is dropped is named, not lost.
+ */
+export function parsePillarReport(text: string): { pillars: { name: string; description: string }[]; dropped: string[] } {
+  const pillars: { name: string; description: string }[] = [];
+  const dropped: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim();
+    if (!line) continue;
+    const at = line.indexOf("::");
+    const name = at < 0 ? "" : line.slice(0, at).trim();
+    if (at < 0 || name.length <= 1 || name.length > 60) {
+      dropped.push(line);
+      continue;
+    }
+    pillars.push({ name, description: line.slice(at + 2).trim() });
+  }
+  return { pillars, dropped };
+}
+
 export function parsePillarLines(text: string): { name: string; description: string }[] {
-  return text
-    .split("\n")
-    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
-    .filter((l) => l.includes("::"))
-    .map((l) => {
-      const [name, ...rest] = l.split("::");
-      return { name: name.trim(), description: rest.join("::").trim() };
-    })
-    .filter((p) => p.name.length > 1 && p.name.length <= 60);
+  return parsePillarReport(text).pillars;
+}
+
+/** What a pillar run did: how many were added, which lines were skipped, and the plain reason when it added nothing. */
+export interface PillarRun {
+  added: number;
+  dropped: string[];
+  note: string | null;
 }
 
 /**
  * Onboarding: the workspace's pillars, generated from the brief and the
  * strategy answers. Not tied to a project — every piece written afterwards
- * draws on them.
+ * draws on them. A run that adds nothing, or skips lines, says so (audit L5).
  */
-export async function generatePillars(scope: WorkspaceScope, opts: { count?: number; focus?: string } = {}): Promise<number> {
+export async function generatePillars(scope: WorkspaceScope, opts: { count?: number; focus?: string } = {}): Promise<PillarRun> {
   const context = await loadBrandContext(scope);
   const template = await resolveTemplate(scope, "pillar_set");
   const result = await generateText(scope, {
@@ -60,9 +81,16 @@ export async function generatePillars(scope: WorkspaceScope, opts: { count?: num
     route: "strong",
   });
   const existing = new Set((await listPillars(scope)).map((p) => p.name.toLowerCase()));
-  const fresh = parsePillarLines(result.variants[0]).filter((p) => !existing.has(p.name.toLowerCase()));
+  const { pillars, dropped } = parsePillarReport(result.variants[0]);
+  const fresh = pillars.filter((p) => !existing.has(p.name.toLowerCase()));
   for (const p of fresh) await createPillar(scope, p.name, p.description);
-  return fresh.length;
+  const notes: string[] = [];
+  if (pillars.length === 0) notes.push("The reply did not list any pillars in the form Name :: description, so none were added.");
+  else if (fresh.length === 0) notes.push("Every pillar proposed already exists in this workspace, so none were added.");
+  if (dropped.length) {
+    notes.push(`${dropped.length === 1 ? "One line was" : `${dropped.length} lines were`} not in the Name :: description form and ${dropped.length === 1 ? "was" : "were"} skipped.`);
+  }
+  return { added: fresh.length, dropped, note: notes.length ? notes.join(" ") : null };
 }
 
 const ANGLES = ["the mistake most people make", "a story from the work", "a simple framework", "what I'd do differently"];
@@ -94,7 +122,10 @@ export interface VisualRow {
   id: string;
   contentItemId: string;
   kind: string;
+  /** The scheme's index as stored. Read it through lib/visual/schemes `schemeIndex` with `schemeOrder`. */
   scheme: number;
+  /** Which ordering of schemes the index counts in (1: before the [ground, accent, ink] order; 2: now). */
+  schemeOrder: number;
   /** Layouts and tweaks (lib/visual/design), the same on every row of a piece. */
   design: Design;
   width: number;
@@ -103,9 +134,10 @@ export interface VisualRow {
 }
 
 /**
- * Step 4: a visual set per content piece — post image, quote card and carousel
- * frames — rendered as templates with REAL text over brand colours (brief §09
- * default; image models misrender text). Rows are recorded in image_assets.
+ * Step 4: a visual set per content piece — post image and quote card, plus
+ * carousel frames for the carousel formats (formatUsesCarousel) — rendered as
+ * templates with REAL text over brand colours (brief §09 default; image models
+ * misrender text). Rows are recorded in image_assets.
  */
 export async function generateVisuals(scope: ProjectScope, opts: { scheme: number; approvedOnly: boolean }): Promise<number> {
   const items = (await listContent(scope)).filter((c) => (opts.approvedOnly ? c.status === "approved" : true));
@@ -121,15 +153,28 @@ export async function generateVisuals(scope: ProjectScope, opts: { scheme: numbe
         )
       ).rows[0]?.params;
       const design = parseDesign(kept);
-      // Pictures stay: a regenerate redraws the templates, not the pictures they carry.
-      await c.query("DELETE FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND kind <> 'picture'", [it.id, scope.projectId]);
+      // Pictures stay: a regenerate redraws the templates, not the pictures they
+      // carry. Each template row is updated IN PLACE (same id), so the comments
+      // pinned to it survive; deleting and re-inserting cascaded them away
+      // (2026-11-17 test). A missing kind is inserted.
       const f = formatByKey(it.format).frame;
-      const rows: [string, number, number][] = [["single", f.w, f.h], ["quote_card", 1080, 1080], ["carousel_frame", 1080, 1350]];
+      const rows: [string, number, number][] = [["single", f.w, f.h], ["quote_card", 1080, 1080]];
+      // Carousel frames only for the formats that are carousels. Rows an older
+      // run made for other formats are left as they are (no data is deleted).
+      if (formatUsesCarousel(it.format)) rows.push(["carousel_frame", 1080, 1350]);
+      // The scheme is an index into lib/visual/schemes; the order it counts in is stamped beside it.
+      const params = JSON.stringify({ scheme: opts.scheme, schemeOrder: SCHEME_ORDER, ...design });
       for (const [kind, w, h] of rows) {
+        const updated = await c.query(
+          `UPDATE image_assets SET prompt=$1, params=$2, aspect_ratio=$3, width=$4, height=$5, status='ready'
+            WHERE content_item_id=$6 AND project_id=$7 AND kind=$8`,
+          [it.hook, params, `${w}:${h}`, w, h, it.id, scope.projectId, kind],
+        );
+        if (updated.rowCount) continue;
         await c.query(
           `INSERT INTO image_assets (tenant_id, project_id, content_item_id, kind, prompt, model, params, aspect_ratio, width, height, status, created_by)
            VALUES ($1,$2,$3,$4,$5,'template',$6,$7,$8,$9,'ready',$10)`,
-          [scope.tenantId, scope.projectId, it.id, kind, it.hook, JSON.stringify({ scheme: opts.scheme, ...design }), `${w}:${h}`, w, h, scope.userId],
+          [scope.tenantId, scope.projectId, it.id, kind, it.hook, params, `${w}:${h}`, w, h, scope.userId],
         );
       }
     }
@@ -148,7 +193,7 @@ export async function saveDesign(scope: ProjectScope, contentItemId: string, des
   // (possibly from before a picture job finished) never overwrites them.
   const { pictures: _ignored, ...clean } = parseDesign(design);
   void _ignored;
-  const patch = scheme === undefined ? clean : { ...clean, scheme: Math.max(0, Math.floor(scheme)) };
+  const patch = scheme === undefined ? clean : { ...clean, scheme: Math.max(0, Math.floor(scheme)), schemeOrder: SCHEME_ORDER };
   return withTenantSession(scope, async (c) =>
     ((await c.query("UPDATE image_assets SET params = params || $1::jsonb WHERE content_item_id=$2 AND project_id=$3 AND kind <> 'picture'", [JSON.stringify(patch), contentItemId, scope.projectId])).rowCount ?? 0) > 0,
   );
@@ -187,6 +232,7 @@ export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
       contentItemId: r.content_item_id,
       kind: r.kind,
       scheme: Number(r.params?.scheme ?? 0),
+      schemeOrder: Number(r.params?.schemeOrder ?? 1),
       design: parseDesign(r.params),
       width: r.width,
       height: r.height,
@@ -203,8 +249,9 @@ export async function listVisuals(scope: ProjectScope): Promise<VisualRow[]> {
  */
 export async function tryGeneratePillars(scope: WorkspaceScope, opts: { count?: number; focus?: string } = {}): Promise<string | null> {
   try {
-    await generatePillars(scope, opts);
-    return null;
+    const run = await generatePillars(scope, opts);
+    // Nothing added, or lines skipped: the person is told why, not left with a silent zero (audit L5).
+    return run.added === 0 || run.dropped.length ? run.note : null;
   } catch (e) {
     return userMessage(e);
   }

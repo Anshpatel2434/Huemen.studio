@@ -30,18 +30,19 @@ export default async function QuestionsPage({ params, searchParams }: PageProps<
   const pillarsDone = (await listPillars(scope)).length > 0;
 
   const Q = ({ q, n }: { q: (typeof questions)[number]; n: number }) => (
-    <label className="block bg-field rounded-xl p-4">
-      <span className="flex items-baseline gap-2">
-        <span className="label-mono text-ink-faint">{String(n).padStart(2, "0")}</span>
+    // The question is the field's label (tied by id), and why it's asked describes it.
+    <div className="block bg-field rounded-xl p-4">
+      <label htmlFor={`q-${q.key}`} className="flex items-baseline gap-2">
+        <span className="label-mono text-ink-faint" aria-hidden="true">{String(n).padStart(2, "0")}</span>
         <span className="text-base font-medium">{q.question}</span>
-      </span>
-      <span className="block text-xs text-ink-faint mt-0.5 mb-2.5 pl-7">{q.why}</span>
+      </label>
+      <span id={`q-${q.key}-why`} className="block text-xs text-ink-faint mt-0.5 mb-2.5 pl-7">{q.why}</span>
       {q.rows === 1 ? (
-        <input name={`q_${q.key}`} defaultValue={saved[q.key] ?? ""} placeholder={q.placeholder} className="field" />
+        <input id={`q-${q.key}`} name={`q_${q.key}`} defaultValue={saved[q.key] ?? ""} placeholder={q.placeholder} aria-describedby={`q-${q.key}-why`} className="field" />
       ) : (
-        <textarea name={`q_${q.key}`} defaultValue={saved[q.key] ?? ""} placeholder={q.placeholder} rows={q.rows} className="field" />
+        <textarea id={`q-${q.key}`} name={`q_${q.key}`} defaultValue={saved[q.key] ?? ""} placeholder={q.placeholder} rows={q.rows} aria-describedby={`q-${q.key}-why`} className="field" />
       )}
-    </label>
+    </div>
   );
 
   return (

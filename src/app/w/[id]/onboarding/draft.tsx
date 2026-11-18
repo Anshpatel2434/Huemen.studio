@@ -113,16 +113,47 @@ export function useStepDraft<T>(name: string, initial: T): [T, (next: T | ((prev
   }, [key]);
 
   // Save on change. Equal to the saved value means nothing is pending: clear.
+  const latest = useRef({ value, base, dirty: false });
   useEffect(() => {
     if (!key || !ready.current) return;
+    latest.current = { value, base, dirty: true };
     const t = setTimeout(() => {
       if (JSON.stringify(value) === base) remove(key);
       else write(key, { v: value, base } satisfies Stored<T>);
+      latest.current.dirty = false;
     }, DEBOUNCE);
     return () => clearTimeout(t);
   }, [key, value, base]);
 
+  // A reload, a closed tab or leaving the screen inside the debounce wrote
+  // nothing: the last keystrokes were lost (2026-11-18 new-account run, name
+  // screen reloaded right after typing). Whatever is pending is written at
+  // once when the page is hidden or left, and when the screen unmounts.
+  useEffect(() => {
+    if (!key) return;
+    // Only ever writes a real change. Clearing stays with the debounced save:
+    // a flush on the first mount (React's dev double mount runs this cleanup
+    // before the draft is restored) must not remove the draft it is about to restore.
+    const flush = () => {
+      const { value: v, base: b, dirty } = latest.current;
+      if (!dirty || !ready.current || JSON.stringify(v) === b) return;
+      write(key, { v, base: b } satisfies Stored<T>);
+      latest.current.dirty = false;
+    };
+    const hidden = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      flush();
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [key]);
+
   const discard = useCallback(() => {
+    latest.current.dirty = false;
     if (key) remove(key);
     setRestored(false);
   }, [key]);

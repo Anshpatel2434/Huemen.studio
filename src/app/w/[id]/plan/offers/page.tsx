@@ -16,11 +16,12 @@ export const metadata = { title: "Offers" };
 function OfferFields({ o }: { o?: { name: string; format: string | null; promise: string | null; deliverables: string[]; pricingLogic: string | null } }) {
   return (
     <>
-      <input name="name" required defaultValue={o?.name} placeholder="Name, e.g. First 90 Days" className="field" />
-      <input name="format" defaultValue={o?.format ?? ""} placeholder="Format, e.g. 6-week cohort" className="field" />
-      <textarea name="promise" rows={2} defaultValue={o?.promise ?? ""} placeholder="The promise, in one sentence" className="field" />
-      <textarea name="deliverables" rows={4} defaultValue={o?.deliverables.join("\n")} placeholder={"What's included, one per line"} className="field" />
-      <textarea name="pricingLogic" rows={2} defaultValue={o?.pricingLogic ?? ""} placeholder="Pricing logic, e.g. anchored to one hire saved" className="field" />
+      {/* Each field is named for a screen reader; the placeholder is only the example. */}
+      <input name="name" required aria-label="Offer name" defaultValue={o?.name} placeholder="Name, e.g. First 90 Days" className="field" />
+      <input name="format" aria-label="Format" defaultValue={o?.format ?? ""} placeholder="Format, e.g. 6-week cohort" className="field" />
+      <textarea name="promise" aria-label="The promise, in one sentence" rows={2} defaultValue={o?.promise ?? ""} placeholder="The promise, in one sentence" className="field" />
+      <textarea name="deliverables" aria-label="What's included, one per line" rows={4} defaultValue={o?.deliverables.join("\n")} placeholder={"What's included, one per line"} className="field" />
+      <textarea name="pricingLogic" aria-label="Pricing logic" rows={2} defaultValue={o?.pricingLogic ?? ""} placeholder="Pricing logic, e.g. anchored to one hire saved" className="field" />
     </>
   );
 }

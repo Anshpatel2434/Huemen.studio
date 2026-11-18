@@ -164,13 +164,22 @@ describe("About you, from zero", () => {
     expect(f.offers).toBe("Pricing audits");
   });
 
-  it("keeps what the brief had when a field comes back blank", async () => {
+  it("keeps a field the screen didn't send, clears one it sent empty, and caps lengths", async () => {
     if (!dbReachable) return;
-    await saveAbout(W, owner(), (await loadPackForWorkspace(W))!, { name: "", niche: "", audience: "", offers: "", positioning: "Prices that hold" });
-    const f = await loadFoundation(W);
+    await saveAbout(W, owner(), (await loadPackForWorkspace(W))!, { positioning: "Prices that hold" });
+    let f = await loadFoundation(W);
     expect(f.niche).toBe("Pricing for B2B SaaS");
     expect(f.positioning).toBe("Prices that hold");
     expect((await loadPackForWorkspace(W))!.displayName).toBe("Priya Shah");
+    // The optional "why you" line can be emptied (2026-11-17 test: it couldn't).
+    await saveAbout(W, owner(), (await loadPackForWorkspace(W))!, { positioning: "" });
+    expect((await loadFoundation(W)).positioning).toBe("");
+    // Every field goes into every prompt: a 20,000-character line is cut.
+    await saveAbout(W, owner(), (await loadPackForWorkspace(W))!, { positioning: "x".repeat(20_000) });
+    f = await loadFoundation(W);
+    expect(f.positioning.length).toBe(300);
+    expect(f.niche).toBe("Pricing for B2B SaaS");
+    await saveAbout(W, owner(), (await loadPackForWorkspace(W))!, { positioning: "Prices that hold" });
   });
 
   it("goes back to About you without losing the step reached", async () => {

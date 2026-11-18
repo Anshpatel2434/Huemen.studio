@@ -18,10 +18,90 @@ export interface VisualCore {
   site?: { url: string; logo?: string | null; at: string };
   /** Reference designs ("this is our look"): asset ids, at most three. */
   references?: string[];
+  /** What the reference designs say, read by the vision model and matched to the voice (look_read). */
+  look?: LookReading;
+}
+
+/**
+ * The reading of the person's reference designs (lib/visual/look-read). The
+ * colours per design are MEASURED from the pixels, never the model's; the
+ * words are the model's. `sources` are the asset ids that were read: when
+ * they differ from the designs on file, the reading is out of date.
+ */
+export interface LookReading {
+  at: string;
+  /** The reference designs that were read, in the order they were sent. */
+  sources: string[];
+  /** Set when a design it read was removed: kept for the page, left out of prompts. */
+  stale?: boolean;
+  /** The model that read them (generation_logs has the full row). */
+  model?: string;
+  designs: { assetId: string; summary: string; colours: string[] }[];
+  mood: string;
+  typeFeel: string;
+  layout: string;
+  photoStyle: string;
+  motifs: string;
+  colourUse: string;
+  agrees: string[];
+  clashes: string[];
+  direction: string;
+  avoid: string[];
 }
 
 export const MAX_REFERENCES = 3;
 const HEX6 = /^#[0-9a-f]{6}$/i;
+
+/** Length caps for a stored reading (cleanLook), so a long-winded model can't bloat every prompt. */
+export const LOOK_CAPS = { summary: 160, field: 240, item: 140, items: 5, direction: 500, colours: 5 } as const;
+
+/** A reading as it may be stored: every field a capped string, lists capped, colours real hex. Null when there's nothing usable. */
+export function cleanLook(l: unknown): LookReading | null {
+  if (!l || typeof l !== "object") return null;
+  const r = l as Record<string, unknown>;
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+  const list = (v: unknown, n: number = LOOK_CAPS.items) =>
+    (Array.isArray(v) ? v : []).map((x) => str(x, LOOK_CAPS.item)).filter(Boolean).slice(0, n);
+  const uuidish = (v: unknown) => (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v.toLowerCase() : null);
+  const sources = [...new Set((Array.isArray(r.sources) ? r.sources : []).map(uuidish).filter((x): x is string => !!x))].slice(0, MAX_REFERENCES);
+  const designs = (Array.isArray(r.designs) ? r.designs : [])
+    .map((d) => {
+      const x = (d ?? {}) as Record<string, unknown>;
+      const assetId = uuidish(x.assetId);
+      if (!assetId) return null;
+      const colours = [...new Set((Array.isArray(x.colours) ? x.colours : []).filter((c): c is string => typeof c === "string" && HEX6.test(c)).map((c) => c.toUpperCase()))].slice(0, LOOK_CAPS.colours);
+      return { assetId, summary: str(x.summary, LOOK_CAPS.summary), colours };
+    })
+    .filter((d): d is LookReading["designs"][number] => !!d)
+    .slice(0, MAX_REFERENCES);
+  const at = typeof r.at === "string" && !Number.isNaN(Date.parse(r.at)) ? r.at : null;
+  if (!at || !sources.length) return null;
+  return {
+    at,
+    sources,
+    ...(r.stale === true ? { stale: true } : {}),
+    ...(typeof r.model === "string" && r.model ? { model: r.model.slice(0, 120) } : {}),
+    designs,
+    mood: str(r.mood, LOOK_CAPS.field),
+    typeFeel: str(r.typeFeel, LOOK_CAPS.field),
+    layout: str(r.layout, LOOK_CAPS.field),
+    photoStyle: str(r.photoStyle, LOOK_CAPS.field),
+    motifs: str(r.motifs, LOOK_CAPS.field),
+    colourUse: str(r.colourUse, LOOK_CAPS.field),
+    agrees: list(r.agrees, 3),
+    clashes: list(r.clashes, 3),
+    direction: str(r.direction, LOOK_CAPS.direction),
+    avoid: list(r.avoid),
+  };
+}
+
+/** Whether a reading still matches the designs on file (same set of ids, none removed). */
+export function lookIsCurrent(look: LookReading | null | undefined, referenceIds: string[]): boolean {
+  if (!look || look.stale) return false;
+  const a = [...look.sources].sort().join(",");
+  const b = [...new Set(referenceIds.map((x) => x.toLowerCase()))].slice(0, MAX_REFERENCES).sort().join(",");
+  return a === b;
+}
 
 export function cleanCore(c: VisualCore): VisualCore {
   const roles = Object.fromEntries(
@@ -37,6 +117,7 @@ export function cleanCore(c: VisualCore): VisualCore {
     photoStyle: text(c.photoStyle),
     site: c.site,
     references: [...new Set(c.references ?? [])].slice(0, MAX_REFERENCES),
+    ...(cleanLook(c.look) ? { look: cleanLook(c.look)! } : {}),
   };
 }
 
@@ -320,5 +401,33 @@ export function visualCoreLines(core: VisualCore | null | undefined): string[] {
   if (core.layout) out.push(`Layout: ${core.layout}`);
   if (core.motifs) out.push(`Motifs: ${core.motifs}`);
   if (core.photoStyle) out.push(`Photo and illustration style: ${core.photoStyle}`);
+  out.push(...lookLines(core.look));
+  return out;
+}
+
+/**
+ * The reading of their reference designs, as prompt lines (CONTEXT_VERSION 10).
+ * A reading marked stale (a design it read was removed) is left out: it would
+ * steer pictures toward a design the person took away. Clean again here, so a
+ * hand-edited row can't put more than the caps into every prompt.
+ */
+export function lookLines(raw: LookReading | null | undefined): string[] {
+  const look = cleanLook(raw);
+  if (!look || look.stale) return [];
+  const parts = [
+    look.mood && `mood: ${look.mood}`,
+    look.typeFeel && `type: ${look.typeFeel}`,
+    look.layout && `layout: ${look.layout}`,
+    look.photoStyle && `photo style: ${look.photoStyle}`,
+    look.motifs && `motifs: ${look.motifs}`,
+    look.colourUse && `colour: ${look.colourUse}`,
+  ].filter(Boolean);
+  // The measured colours stay out: the palette line is the brand's colours,
+  // and a second list would pull pictures off it. Adopting one is the
+  // person's choice (Use as background / accent).
+  const out: string[] = [];
+  if (parts.length) out.push(`Look, read from their reference designs (describe it, never copy the designs): ${parts.join("; ")}`);
+  if (look.direction) out.push(`Visual direction (look matched to voice): ${look.direction}`);
+  if (look.avoid.length) out.push(`Avoid in pictures: ${look.avoid.join("; ")}`);
   return out;
 }

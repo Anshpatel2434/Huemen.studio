@@ -61,6 +61,12 @@ function withContextHints(req: TextGenRequest): string {
     if (said.trim()) hints.push(`Audience: ${said.trim()}`);
   }
   if (req.templateKey === "voice_preview") hints.push(...previewHints(req.context.serialized));
+  // The look reading matches the designs to the voice: the stand-in reads the
+  // tone off the context block, as the real model does.
+  if (req.templateKey === "look_read") {
+    const tone = field(req.context.serialized, "Tone");
+    if (tone) hints.push(`Tone: ${tone}`);
+  }
   return hints.length ? `${hints.join("\n")}\n${req.taskInput}` : req.taskInput;
 }
 

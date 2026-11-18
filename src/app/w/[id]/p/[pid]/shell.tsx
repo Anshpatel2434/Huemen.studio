@@ -11,7 +11,7 @@
  */
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import {
   ChevronDown, FileText, Network, PenLine, Palette, Share2, Download, Lightbulb, CalendarDays,
   Package, Check, Lock, Copy, Layers, ArrowLeft, Pencil, Files, Flag, BarChart3, Plus, WandSparkles, X, Settings, Archive, Trash2,
@@ -20,6 +20,7 @@ import {
 import { LogoMark, Modal, Badge, Avatar, IconButton, Menu, MenuItem, MenuSeparator, ToastProvider, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { PageTransition } from "@/components/page-transition";
+import { PanelsProvider, RightPanelToggle, useMinWidth, usePanelsState } from "@/components/project-panels";
 import { ThemeToggle } from "@/components/theme";
 import { STAGES, STAGE_LABEL, stageIndex, type Stage } from "@/lib/projects/stages";
 import { AgentPanel } from "./agent-panel";
@@ -52,7 +53,9 @@ export function ProjectShell(props: {
   aiMock: boolean;
 }) {
   return (
-    <ToastProvider>
+    // Lifted above the canvas tool strip and the editor's Save row, so a
+    // "Saved" never covers the buttons along the bottom.
+    <ToastProvider lifted>
       <Shell {...props} />
     </ToastProvider>
   );
@@ -63,15 +66,40 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
   const base = `/w/${workspace.id}/p/${project.id}`;
   const seg = pathname.slice(base.length + 1).split("/")[0] || "brief";
   const [leftTab, setLeftTab] = useState<"layers" | "add" | "agent" | null>("layers");
-  // Below 900px the panel is an overlay that would cover the canvas, so it
-  // stays shut until asked for, and shuts again after a page change.
+  // The canvas keeps a clear working area (components/project-panels). From
+  // 1200px there is room for a panel on each side, so the left one is open by
+  // default; below that only one side shows at a time, and the left one stays
+  // shut until asked for, and shuts again after a page change.
   const [asked, setAsked] = useState(false);
+  const roomy = useMinWidth(1200);
+  const panels = usePanelsState("header", () => {
+    // The right side was opened on purpose: below 1200px the left makes way.
+    if (!window.matchMedia("(min-width: 1200px)").matches) setAsked(false);
+  });
+  const { resetRight } = panels;
   const [panelPath, setPanelPath] = useState(pathname);
-  if (panelPath !== pathname) { setPanelPath(pathname); setAsked(false); }
+  if (panelPath !== pathname) { setPanelPath(pathname); setAsked(false); resetRight(); }
+  // Crossing a breakpoint goes back to that width's defaults, so a choice made
+  // on a wide window never leaves two panels over a narrow canvas.
+  useEffect(() => {
+    const queries = [window.matchMedia("(min-width: 1200px)"), window.matchMedia("(min-width: 900px)")];
+    const reset = () => { setAsked(false); resetRight(); };
+    queries.forEach((q) => q.addEventListener("change", reset));
+    return () => queries.forEach((q) => q.removeEventListener("change", reset));
+  }, [resetRight]);
+  const leftShown = !!leftTab && (asked || roomy);
   const pick = (t: "layers" | "add" | "agent") => {
-    const shown = asked || window.matchMedia("(min-width: 900px)").matches;
-    setLeftTab((cur) => (cur === t && shown ? null : t));
+    const wide = window.matchMedia("(min-width: 1200px)").matches;
+    const opening = !(leftTab === t && (asked || wide));
+    setLeftTab(opening ? t : null);
     setAsked(true);
+    // Room for one side only: opening the left shuts the right (and its editor).
+    if (opening && !wide) { panels.edit?.close(); panels.setRight(false); }
+    if (!opening && !wide) resetRight();
+  };
+  const closeLeft = () => {
+    setLeftTab(null);
+    if (!window.matchMedia("(min-width: 1200px)").matches) resetRight();
   };
   const [share, setShare] = useState(false);
   const unlocked = stageIndex(project.stage);
@@ -79,13 +107,14 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
   if (seg === "intake") return <>{children}</>;
 
   return (
-    // One warm canvas from edge to edge (Relume): the bar, the tools and the
-    // panels float on it as white pieces, so nothing frames the work.
+    // One warm canvas from edge to edge (Relume). The bar and the tools sit on
+    // it; the panels dock beside the working area, never over the artboards.
+    <PanelsProvider value={panels}>
     <div className="h-dvh flex flex-col bg-canvas">
       <header className="min-h-16 shrink-0 flex flex-wrap items-center gap-x-3 px-3">
         <div className="flex-1 flex items-center gap-2 min-w-0 min-h-16">
           <FileMenu workspace={workspace} project={project} />
-          <Link href={`/w/${workspace.id}`} title={`Back to ${workspace.name}`} className="hidden md:inline-flex items-center min-h-11 px-3.5 rounded-lg bg-paper border border-hairline text-sm font-medium truncate max-w-[24ch] hover:border-line-strong transition-colors">{project.name}</Link>
+          <Link href={`/w/${workspace.id}`} aria-description={`Back to ${workspace.name}`} className="hidden md:inline-flex items-center min-h-11 px-3.5 rounded-lg bg-paper border border-hairline text-sm font-medium truncate max-w-[24ch] hover:border-line-strong transition-colors">{project.name}</Link>
           <span className="md:hidden text-sm font-medium truncate">{project.name}</span>
           {aiMock && <span className="ml-1 shrink-0 hidden sm:inline-flex"><Badge tone="warn">Mock AI</Badge></span>}
         </div>
@@ -109,7 +138,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
               );
               return open
                 ? <Link key={s} href={`${base}/${s}`} aria-current={on ? "page" : undefined} className={cls}>{inner}</Link>
-                : <span key={s} className={cls} aria-disabled="true" title={`Finish ${STAGE_LABEL[STAGES[i - 1]]} first`}>{inner}</span>;
+                : <span key={s} className={cls} aria-disabled="true" aria-description={`Finish ${STAGE_LABEL[STAGES[i - 1]]} first`}>{inner}</span>;
             })}
           </div>
         </nav>
@@ -120,6 +149,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
               <Avatar key={m.email} seed={m.email} label={m.email} size="sm" className="!w-8 !h-8 text-[0.6rem] ring-2 ring-[var(--canvas)]" />
             ))}
           </div>
+          <RightPanelToggle className="inline-flex items-center justify-center w-11 h-11 shrink-0 rounded-lg border border-line text-ink hover:border-line-strong hover:bg-hover transition-colors aria-pressed:bg-accent-soft aria-pressed:text-accent-ink aria-pressed:border-accent" />
           <button onClick={() => setShare(true)} className={`${btnClass("secondary", "sm")} !rounded-lg max-sm:!px-3`}><Share2 size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Share</span></button>
           <Link href={`${base}/export`} className={`${btnClass("primary", "sm")} !rounded-lg max-sm:!px-3`}><Download size={15} aria-hidden="true" /> <span className="max-sm:sr-only">Export</span></Link>
         </div>
@@ -128,21 +158,23 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
       {/* On a phone the tools move to a bar along the bottom (thumb reach) and the
           canvas gets the full width; the panels open as sheets above that bar. */}
       <div className="flex-1 flex max-sm:flex-col min-h-0 relative">
-        {/* Floating tools: white squares on the canvas; each opens its panel, click again to close. */}
+        {/* The tool rail: each tool opens its panel beside the canvas, click again to close. */}
         <nav className="w-[72px] shrink-0 flex flex-col items-center pt-1 pb-3 gap-2.5 max-sm:order-last max-sm:w-full max-sm:h-[60px] max-sm:flex-row max-sm:justify-between max-sm:px-4 max-sm:py-2 max-sm:border-t max-sm:border-hairline" aria-label="Tools">
-          <RailBtn on={leftTab === "layers"} shown={asked} onClick={() => pick("layers")} label="Layers"><Layers size={19} /></RailBtn>
-          <RailBtn on={leftTab === "add"} shown={asked} onClick={() => pick("add")} label="Add"><Plus size={20} /></RailBtn>
-          <RailBtn on={leftTab === "agent"} shown={asked} onClick={() => pick("agent")} label="Agent"><WandSparkles size={19} /></RailBtn>
+          <RailBtn on={leftShown && leftTab === "layers"} onClick={() => pick("layers")} label="Layers"><Layers size={19} /></RailBtn>
+          <RailBtn on={leftShown && leftTab === "add"} onClick={() => pick("add")} label="Add"><Plus size={20} /></RailBtn>
+          <RailBtn on={leftShown && leftTab === "agent"} onClick={() => pick("agent")} label="Agent"><WandSparkles size={19} /></RailBtn>
           <span className="flex-1 max-sm:hidden" />
           <ThemeToggle className="!w-11 !h-11 !rounded-xl !bg-paper border border-hairline hover:border-line-strong" />
-          <Link href="/settings" className="w-11 h-11 rounded-xl bg-paper border border-hairline flex items-center justify-center text-ink hover:border-line-strong transition-colors" title="Settings" aria-label="Settings"><Settings size={18} aria-hidden="true" /></Link>
+          <Link href="/settings" className="w-11 h-11 rounded-xl bg-paper border border-hairline flex items-center justify-center text-ink hover:border-line-strong transition-colors" aria-label="Settings"><Settings size={18} aria-hidden="true" /></Link>
         </nav>
         {leftTab && (
-          // A floating card beside the tools; on a phone it opens over the canvas.
-          <aside className={`${asked ? "flex" : "hidden min-[900px]:flex"} absolute top-1 bottom-3 left-[72px] z-30 w-[min(300px,calc(100%-5.5rem))] min-[900px]:static min-[900px]:z-auto min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mb-3 shrink-0 rounded-2xl border border-hairline bg-paper shadow-[var(--shadow)] flex-col min-h-0 overflow-hidden max-sm:top-auto max-sm:bottom-[60px] max-sm:left-0 max-sm:w-full max-sm:h-[72%] max-sm:rounded-b-none max-sm:border-x-0 max-sm:shadow-[var(--shadow-overlay)]`}>
+          // Docked beside the tools from 900px (its own column, so the canvas
+          // is what is left); below that a sheet over the canvas, from the
+          // bottom on a phone. Always with a close button.
+          <aside aria-label={leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"} className={`${asked ? "flex" : "hidden min-[1200px]:flex"} absolute top-1 bottom-3 left-[72px] z-30 w-[min(300px,calc(100%-5.5rem))] min-[900px]:static min-[900px]:z-auto min-[900px]:w-[300px] min-[900px]:mt-1 min-[900px]:mb-3 shrink-0 rounded-2xl border border-hairline bg-paper shadow-[var(--shadow-overlay)] min-[900px]:shadow-none flex-col min-h-0 overflow-hidden max-sm:top-auto max-sm:bottom-[60px] max-sm:left-0 max-sm:w-full max-sm:h-[72%] max-sm:rounded-b-none max-sm:border-x-0`}>
             <div className="min-h-14 shrink-0 flex items-center pl-5 pr-2">
               <span className="text-lg font-medium flex-1">{leftTab === "layers" ? "Layers" : leftTab === "add" ? "Add" : "Huemen agent"}</span>
-              <IconButton label="Close panel" onClick={() => setLeftTab(null)}><X size={18} /></IconButton>
+              <IconButton label="Close panel" onClick={closeLeft}><X size={18} /></IconButton>
             </div>
             {leftTab === "layers" ? (
               <LayersPanel base={base} seg={seg} unlocked={unlocked} layers={layers} brief={brief} />
@@ -160,14 +192,14 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
 
       <ShareModal open={share} onClose={() => setShare(false)} members={members} questionnaireUrl={questionnaireUrl} isAdmin={user.role === "owner_admin"} />
     </div>
+    </PanelsProvider>
   );
 }
 
-function RailBtn({ children, on, shown, onClick, label }: { children: ReactNode; on: boolean; shown: boolean; onClick: () => void; label: string }) {
-  // On a phone the panel is hidden until asked for, so only look pressed then.
-  const pressed = on ? (shown ? "!bg-accent-soft !text-accent-ink" : "min-[900px]:!bg-accent-soft min-[900px]:!text-accent-ink") : "";
+function RailBtn({ children, on, onClick, label }: { children: ReactNode; on: boolean; onClick: () => void; label: string }) {
+  // Pressed only while its panel is really showing (it stays shut on a narrow window until asked for).
   return (
-    <button onClick={onClick} title={label} aria-label={label} aria-pressed={on} className={`w-11 h-11 rounded-xl bg-paper border flex items-center justify-center transition-colors ${on ? "border-accent" : "border-hairline hover:border-line-strong"} ${pressed}`}>{children}</button>
+    <button onClick={onClick} aria-label={label} aria-pressed={on} className={`w-11 h-11 rounded-xl bg-paper border flex items-center justify-center transition-colors ${on ? "border-accent !bg-accent-soft !text-accent-ink" : "border-hairline hover:border-line-strong"}`}>{children}</button>
   );
 }
 
@@ -269,7 +301,7 @@ function LayersPanel({ base, seg, unlocked, layers, brief }: { base: string; seg
               {!open ? <Lock size={13} aria-label="Locked" /> : i < unlocked ? <Check size={14} className="text-ok" aria-label="Done" /> : null}
             </>
           );
-          return open ? <Link key={s} href={`${base}/${s}`} aria-current={on ? "page" : undefined} className={row}>{inner}</Link> : <div key={s} className={row} title="Locked until the previous step is done">{inner}</div>;
+          return open ? <Link key={s} href={`${base}/${s}`} aria-current={on ? "page" : undefined} className={row}>{inner}</Link> : <div key={s} className={row} aria-disabled="true" aria-description="Locked until the previous step is done">{inner}</div>;
         })}
         <div className="h-px bg-hairline my-1.5 mx-2" />
         {PLANNING.map((p) => {

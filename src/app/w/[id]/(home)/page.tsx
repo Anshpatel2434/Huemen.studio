@@ -15,6 +15,7 @@ import { coreCardFacts } from "@/lib/voice/core-card";
 import { LATER_COOKIE, mustOnboard } from "../onboarding/gate";
 import { ProjectsHome } from "./projects-home";
 import { BrandHome, type BrandHomeProps } from "./brand-home";
+import { guideOpensItself } from "./guide-open";
 
 export const metadata = { title: "Home" };
 
@@ -72,10 +73,11 @@ export default async function WorkspaceHome({ params, searchParams }: PageProps<
   ]);
   const platform = pack?.onboarding.writeFor?.[0] ?? "linkedin";
   // Getting started: opens itself once (right after the first piece), then waits as a card.
+  // Once closed it stays closed: `?ready=1` left in the URL no longer reopens it (./guide-open).
   const guide = pack?.onboarding.completedAt ? await gettingStarted(scope, pack) : null;
   const props: BrandHomeProps = {
     ...shared,
-    guide: guide && { sections: guide, open: shared.justFinished || !pack!.onboarding.guideSeenAt },
+    guide: guide && { sections: guide, open: guideOpensItself(pack!.onboarding.guideSeenAt) },
     now,
     projects,
     core: pack ? coreCardFacts(pack, now) : null,

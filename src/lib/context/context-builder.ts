@@ -1,5 +1,7 @@
+import { cutAtSentence } from "./cut";
+
 /**
- * THE BRAND CONTEXT OBJECT (INV-2 — brief §03, §05).
+ * THE BRAND CONTEXT OBJECT (INV-2— brief §03, §05).
  *
  * `brand_profiles + voice_guides + visual_identities` compose into ONE
  * serialised context block, produced by ONE versioned function with ONE output
@@ -37,7 +39,7 @@
  * check also carries their aspiration, so a draft aimed where they want to
  * sound isn't marked down for not matching their old writing.
  */
-export const CONTEXT_VERSION = 7; // 7: offers carry what is included and how they are priced; 6: Visual Core, beliefs, pillars and strategy answers are in the block (no task input carries brand data)
+export const CONTEXT_VERSION = 10; // 10: the visual block carries the reading of their reference designs (look, visual direction matched to the voice, what pictures avoid; lib/visual/core lookLines); 9: the rewrite and the reply blocks carry their stories and proofs (the facts rule names them), offers and pillars go to 12, the samples are cut at a sentence past 1,500 characters, and every cap that bites is a warning; 8: the measured length for the platform is in the block and, with the em-dash rule, on `writing` for the code-owned contract; 7: offers carry what is included and how they are priced; 6: Visual Core, beliefs, pillars and strategy answers are in the block (no task input carries brand data)
 
 /** What the context is for (spec 01 §3 load order). Undefined reads as "write". */
 export type ContextTask = "write" | "rewrite" | "check" | "reply";
@@ -146,6 +148,10 @@ export interface VoicePackInput {
   selfCheck?: string[];
   /** samples.md: a draft that is almost them but wrong, with what's off (G4). */
   antiSample?: { text: string; off: string; fixed?: string } | null;
+  /** How long their own pieces run on the platform being written for, in words [low, high]. */
+  lengthWords?: [number, number] | null;
+  /** Their writing has no em dashes (measured, or their own hard rule). */
+  noEmDash?: boolean;
 }
 
 /**
@@ -172,7 +178,24 @@ export interface BrandContextInput {
   language?: string;
   /** What the context is for; decides which voice parts load, in what order. */
   task?: ContextTask;
+  /**
+   * A list the loader capped before it reached the builder (offers, pillars,
+   * the samples, the lexicon): how many it shows and how many there are. A cap
+   * that bites is a warning, so nobody has to guess what the model did not see.
+   */
+  caps?: ContextCap[];
 }
+
+export interface ContextCap {
+  section: string;
+  shown: number;
+  total: number;
+}
+
+/** A sample of their own writing longer than this is cut at a sentence (a long piece is not a sample). */
+export const SAMPLE_MAX_CHARS = 1500;
+/** Deliverables an offer lists in the block (the rest are a warning). */
+export const DELIVERABLES_MAX = 6;
 
 // ---- Output shape (stable) --------------------------------------------------
 
@@ -189,6 +212,13 @@ export interface BrandContext {
   serialized: string;
   /** Structured voice guardrails for post-generation checking (brief §4.2). */
   guardrails: { doWords: string[]; dontWords: string[] };
+  /**
+   * The two measured facts the code-owned output contract and the output
+   * clean-up need as values rather than prose (lib/ai/prompt, lib/content/clean):
+   * the word range for this platform and whether em dashes are theirs. Read
+   * from the same pack as the block, so no module works them out itself.
+   */
+  writing: { lengthWords: [number, number] | null; noEmDash: boolean };
 }
 
 const DEGRADED_THRESHOLD = 50;
@@ -311,7 +341,16 @@ function voiceGuardrails(vp: VoicePackInput): string[] {
 /** mechanics.md: the measured fingerprint. */
 function voiceMechanics(vp: VoicePackInput): string[] {
   const mech = (vp.mechanicsLines ?? []).filter(nonEmpty);
+  const len = lengthRange(vp);
+  if (len) mech.push(`Length for this platform: ${len[0]} to ${len[1]} words a piece, counting every line. A draft outside that range is not theirs.`);
   return mech.length ? ["Measured fingerprint (hit these, they come from their own writing):", ...mech.map((l) => `  - ${l}`)] : [];
+}
+
+/** A usable measured range: two whole numbers, low first. */
+function lengthRange(vp: VoicePackInput | null | undefined): [number, number] | null {
+  const r = vp?.lengthWords;
+  if (!r || !(r[0] > 0) || !(r[1] >= r[0])) return null;
+  return [Math.round(r[0]), Math.round(r[1])];
 }
 
 /** contexts.md for the platform being written for, under the platform's own rules (07). */
@@ -328,7 +367,7 @@ function voiceContext(vp: VoicePackInput, platform?: PlatformInput | null): stri
 }
 
 /** samples.md: their picks, their writing (platform first), and the edge of the voice. */
-function voiceSamples(vp: VoicePackInput): string[] {
+function voiceSamples(vp: VoicePackInput, warnings: string[]): string[] {
   const out: string[] = [];
   const prefs = (vp.preferences ?? []).filter((p) => nonEmpty(p?.chosen));
   if (prefs.length) {
@@ -339,7 +378,9 @@ function voiceSamples(vp: VoicePackInput): string[] {
   if (samples.length) {
     out.push("Their real writing. Match the rhythm and word choice. Never copy a sentence:");
     samples.forEach((s, i) => {
-      out.push(`  [${i + 1}] (${s.channel}) ${s.body.trim()}`);
+      const body = cutAtSentence(s.body, SAMPLE_MAX_CHARS);
+      if (body.cut) warnings.push(`Their writing sample ${i + 1} is longer than ${SAMPLE_MAX_CHARS.toLocaleString("en-GB")} characters, so the prompt holds only its first sentences.`);
+      out.push(`  [${i + 1}] (${s.channel}) ${body.text}`);
       if (nonEmpty(s.note)) out.push(`      Why this is them: ${s.note!.trim()}`);
     });
   } else {
@@ -463,29 +504,33 @@ function voiceRedPen(vp: VoicePackInput): string[] {
 /**
  * The VOICE section, loaded per task in the spec's order (01 §3, 07):
  *   write    VOICE → guardrails → mechanics → platform → contexts → samples → identity
- *   rewrite  VOICE → mechanics → red pen → samples
+ *   rewrite  VOICE → mechanics → red pen → samples → material
  *   check    VOICE → guardrails → mechanics → red pen
- *   reply    VOICE → contexts → red pen
+ *   reply    VOICE → contexts → material → red pen
  * A writer also gets the red pen beside the guardrails (never-words are rules,
- * not style) and their material (stories, facts) after who they are.
+ * not style) and their material (stories, facts) after who they are. A rewrite
+ * and a reply get the material too: their rules name the facts and stories, so
+ * the block has to carry them (INV-2, 2026-11-18 audit C2, H1).
  */
-function serializeVoicePack(vp: VoicePackInput, platform: PlatformInput | null | undefined, task: ContextTask): string[] {
+function serializeVoicePack(
+  vp: VoicePackInput, platform: PlatformInput | null | undefined, task: ContextTask, warnings: string[],
+): string[] {
   switch (task) {
     case "rewrite":
-      return [...voiceCore(vp), ...voiceMechanics(vp), ...voiceRedPen(vp), ...voiceSamples(vp)];
+      return [...voiceCore(vp), ...voiceMechanics(vp), ...voiceRedPen(vp), ...voiceSamples(vp, warnings), ...voiceMaterial(vp)];
     case "check":
       return [...voiceCore(vp), ...voiceGuardrails(vp), ...voiceMechanics(vp), ...voiceAspiration(vp), ...voiceRedPen(vp)];
     case "reply":
-      return [...voiceCore(vp), ...voiceContext(vp, platform), ...voiceRedPen(vp)];
+      return [...voiceCore(vp), ...voiceContext(vp, platform), ...voiceMaterial(vp), ...voiceRedPen(vp)];
     default:
       return [
         ...voiceCore(vp), ...voiceGuardrails(vp), ...voiceRedPen(vp), ...voiceMechanics(vp),
-        ...voiceContext(vp, platform), ...voiceSamples(vp), ...voiceIdentity(vp), ...voiceMaterial(vp),
+        ...voiceContext(vp, platform), ...voiceSamples(vp, warnings), ...voiceIdentity(vp), ...voiceMaterial(vp),
       ];
   }
 }
 
-function serialize(input: BrandContextInput): string {
+function serialize(input: BrandContextInput, warnings: string[]): string {
   const bp = input.brandProfile ?? {};
   const vg = input.voiceGuide ?? {};
   const vi = input.visualIdentity ?? {};
@@ -521,13 +566,16 @@ function serialize(input: BrandContextInput): string {
     for (const o of offers) {
       const bits = [nonEmpty(o.format) ? o.format!.trim() : "", nonEmpty(o.promise) ? o.promise!.trim() : ""].filter(Boolean);
       lines.push(`  - ${o.name.trim()}${bits.length ? `: ${bits.join(". ")}` : ""}`);
-      const inside = (o.deliverables ?? []).map((d) => d.trim()).filter(Boolean).slice(0, 6);
+      const all = (o.deliverables ?? []).map((d) => d.trim()).filter(Boolean);
+      const inside = all.slice(0, DELIVERABLES_MAX);
+      if (all.length > DELIVERABLES_MAX)
+        warnings.push(`Offer "${o.name.trim()}" lists ${all.length} deliverables; ${DELIVERABLES_MAX} reach the prompt.`);
       if (inside.length) lines.push(`    Includes: ${inside.join("; ")}`);
       if (nonEmpty(o.pricing)) lines.push(`    Priced: ${o.pricing!.trim()}`);
     }
   }
 
-  if (input.voicePack) lines.push("", ...serializeVoicePack(input.voicePack, input.platform, input.task ?? "write"));
+  if (input.voicePack) lines.push("", ...serializeVoicePack(input.voicePack, input.platform, input.task ?? "write", warnings));
   else {
     lines.push("", "## VOICE");
     if ((vg.toneDescriptors ?? []).length)
@@ -561,18 +609,26 @@ function serialize(input: BrandContextInput): string {
  */
 export function buildBrandContext(input: BrandContextInput): BrandContext {
   const language = input.language ?? "en";
-  const { score, warnings } = scoreCompleteness(input);
+  const scored = scoreCompleteness(input);
+  // Every cap that bites is recorded (H2): a list the loader or the builder cut
+  // is a warning, not a silent omission.
+  const capWarnings = (input.caps ?? [])
+    .filter((c) => c.total > c.shown)
+    .map((c) => `${c.section}: ${c.shown} of ${c.total} reach the prompt; the rest do not.`);
+  const serializeWarnings: string[] = [];
+  const serialized = serialize(input, serializeWarnings);
   return {
     version: CONTEXT_VERSION,
     language,
-    completeness: score,
-    warnings,
-    degraded: score < DEGRADED_THRESHOLD,
-    serialized: serialize(input),
+    completeness: scored.score,
+    warnings: [...scored.warnings, ...capWarnings, ...serializeWarnings],
+    degraded: scored.score < DEGRADED_THRESHOLD,
+    serialized,
     guardrails: {
       doWords: input.voiceGuide?.doWords ?? [],
       // The pack's never-list is the person's own; it replaces the brand's.
       dontWords: input.voicePack?.neverWords ?? input.voiceGuide?.dontWords ?? [],
     },
+    writing: { lengthWords: lengthRange(input.voicePack), noEmDash: !!input.voicePack?.noEmDash },
   };
 }

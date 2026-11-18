@@ -1,4 +1,5 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
+import { localRedirect } from "@/lib/local-redirect";
 import { startSession } from "@/lib/auth";
 import { safeNext, verifyLink } from "@/lib/auth/tokens";
 import { getAccount, markSignedIn } from "@/lib/data/auth";
@@ -14,15 +15,15 @@ import { getAccount, markSignedIn } from "@/lib/data/auth";
  * POST (the button) uses it: start a session and go to `next`. Expired,
  * already used, or tampered → the link-expired page, which can send a fresh one.
  */
-async function check(token: string, next: string, url: URL) {
+async function check(token: string, next: string) {
   const fail = (reason: string, email?: string) =>
-    NextResponse.redirect(new URL(`/auth/link-expired?${new URLSearchParams({ reason, ...(email ? { email } : {}), ...(next !== "/dashboard" ? { next } : {}) })}`, url), 303);
+    localRedirect(`/auth/link-expired?${new URLSearchParams({ reason, ...(email ? { email } : {}), ...(next !== "/dashboard" ? { next } : {}) })}`, 303);
   const link = verifyLink("signin", token);
   if (!link.ok) return { fail: fail(link.reason) };
   const a = await getAccount(link.subject);
   if (!a) return { fail: fail("invalid") };
   if (a.status !== "active" || a.tenantStatus !== "active") {
-    return { fail: NextResponse.redirect(new URL(`/auth/disabled?${new URLSearchParams({ email: a.email })}`, url), 303) };
+    return { fail: localRedirect(`/auth/disabled?${new URLSearchParams({ email: a.email })}`, 303) };
   }
   // A sign-in since this link was issued (including this link, once) retires it.
   if (link.version !== a.lastSeen) return { fail: fail("used", a.email) };
@@ -33,19 +34,19 @@ export async function GET(req: NextRequest) {
   const url = req.nextUrl;
   const token = url.searchParams.get("token") ?? "";
   const next = safeNext(url.searchParams.get("next"));
-  const r = await check(token, next, url);
+  const r = await check(token, next);
   if (r.fail) return r.fail;
-  return NextResponse.redirect(new URL(`/auth/continue?${new URLSearchParams({ token, ...(next !== "/dashboard" ? { next } : {}) })}`, url));
+  return localRedirect(`/auth/continue?${new URLSearchParams({ token, ...(next !== "/dashboard" ? { next } : {}) })}`);
 }
 
 export async function POST(req: NextRequest) {
   const form = await req.formData().catch(() => null);
   const token = String(form?.get("token") ?? "");
   const next = safeNext(form?.get("next"));
-  const r = await check(token, next, req.nextUrl);
+  const r = await check(token, next);
   if (r.fail) return r.fail;
   const a = r.account!;
   await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
   await markSignedIn(a.id);
-  return NextResponse.redirect(new URL(next, req.nextUrl), 303);
+  return localRedirect(next, 303);
 }

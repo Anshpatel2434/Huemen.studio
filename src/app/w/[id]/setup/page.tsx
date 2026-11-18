@@ -173,10 +173,10 @@ export default async function SetupPage({ params, searchParams }: PageProps<"/w/
             ["contrarian", "What do you believe that most people in your field would argue with?"],
             ["questions", "What do clients ask you over and over?"],
           ].map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="block text-sm font-medium mb-1.5">{label}</span>
-              <textarea name={key} rows={2} defaultValue={saved[key] ?? ""} className="field" />
-            </label>
+            <div key={key} className="block">
+              <label htmlFor={`setup-${key}`} className="block text-sm font-medium mb-1.5">{label}</label>
+              <textarea id={`setup-${key}`} name={key} rows={2} defaultValue={saved[key] ?? ""} className="field" />
+            </div>
           ))}
           {sp.made && <p role="status" className="text-sm text-ok flex items-center gap-2"><CheckCircle2 size={15} aria-hidden="true" /> {pillars.length} pillars ready.</p>}
           {sp.blocked && <p role="alert" className="text-sm text-ink-muted">Answer at least two of these, and fill in what you do and who for in the brief, so the pillars are yours rather than generic.</p>}

@@ -14,9 +14,9 @@ export function CopyField({ value }: { value: string }) {
           try { await navigator.clipboard.writeText(value); toast("Link copied"); } catch { toast("Copy failed — select and copy manually", "danger"); }
         }}
         className="hu-iconbtn"
-        title="Copy"
+        aria-label="Copy link"
       >
-        <Copy size={13} />
+        <Copy size={13} aria-hidden="true" />
       </button>
     </div>
   );

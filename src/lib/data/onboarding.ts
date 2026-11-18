@@ -19,7 +19,7 @@ import { withTenantSession } from "@/db/session";
 import type { WorkspaceScope } from "./projects";
 import { addSamples, listSamples, loadPackForWorkspace, rescan, type NewSample } from "./voice-pack";
 import { writePack, type Actor } from "./training";
-import { loadFoundation, saveFoundation } from "./foundation";
+import { BRIEF_MAX, loadFoundation, saveFoundation } from "./foundation";
 import { applyAnswer, applyDials, type Answer } from "@/lib/voice/answers";
 import { confirmCards, draftBenchmarkNote, estimateDials } from "@/lib/voice/derive";
 import type { IngestedPiece } from "@/lib/voice/ingest";
@@ -70,32 +70,40 @@ export async function updateOnboarding(scope: WorkspaceScope, pack: VoicePack, p
 export const resumeStep = (o: Onboarding): number =>
   o.welcomedAt || o.completedAt ? Math.min(4, Math.max(1, o.step ?? 1)) : 0;
 
+/** A field left out (undefined) keeps what the brief has; an empty string clears it. */
 export interface About {
-  name: string;
-  niche: string;
-  audience: string;
-  offers: string;
-  positioning: string;
+  name?: string;
+  niche?: string;
+  audience?: string;
+  offers?: string;
+  positioning?: string;
 }
+
+/** Longest each field may be (the brief's own caps, lib/data/foundation). */
+export const ABOUT_MAX = BRIEF_MAX;
 
 /**
  * Step 0, "About you". The name goes on their voice; the rest is the brief's
  * basics, saved as the brand only (`voice: false`), so it never overwrites a
- * voice field. A blank field keeps what the brief already had.
+ * voice field. A field the screen didn't send keeps what the brief already
+ * had; a field it sent empty is cleared (optional fields can be emptied).
  */
 export async function saveAbout(scope: WorkspaceScope, actor: Actor, pack: VoicePack, about: About): Promise<void> {
-  const name = about.name.trim().slice(0, 80);
+  const name = (about.name ?? "").trim().slice(0, 80);
   if (name && name !== pack.displayName) await writePack(scope, actor, pack, { displayName: name }, "Set your name.");
   const f = await loadFoundation(scope);
-  const keep = (next: string, cur: string) => next.trim() || cur;
+  const keep = (k: keyof typeof ABOUT_MAX, cur: string) => {
+    const next = about[k];
+    return next === undefined ? cur : next.replace(/\s+/g, " ").trim().slice(0, ABOUT_MAX[k]);
+  };
   await saveFoundation(
     scope,
     {
       ...f,
-      niche: keep(about.niche, f.niche),
-      audience: keep(about.audience, f.audience),
-      offers: keep(about.offers, f.offers),
-      positioning: keep(about.positioning, f.positioning),
+      niche: keep("niche", f.niche),
+      audience: keep("audience", f.audience),
+      offers: keep("offers", f.offers),
+      positioning: keep("positioning", f.positioning),
     },
     { voice: false },
   );

@@ -66,7 +66,7 @@ export async function storeAsset(
   scope: WorkspaceScope,
   bytes: Uint8Array,
   kind: AssetKind,
-): Promise<void> {
+): Promise<{ id: string }> {
   if (!scope.tenantId) throw new Error("no tenant scope");
   if (bytes.byteLength === 0) throw new Error("empty file");
   if (bytes.byteLength > MAX_BYTES) throw new AssetError("That file is over 5 MB. Export a smaller one.");
@@ -95,15 +95,28 @@ export async function storeAsset(
   const key = tenantKey(scope.tenantId, "assets", `${randomUUID()}.${ext}`);
   await storage().put(key, data, mime);
 
-  await withTenantSession(scope, (c) =>
-    c.query(
+  const row = await withTenantSession(scope, async (c) => {
+    const inserted = await c.query<{ id: string }>(
       `INSERT INTO assets (tenant_id, project_id, kind, storage_key, mime, bytes, created_by)
-       VALUES ($1,$7,$2,$3,$4,$5,$6)`,
+       VALUES ($1,$7,$2,$3,$4,$5,$6) RETURNING id`,
       // Brand uploads (logos, fonts, references) belong to the workspace, not a
       // piece (migration 0007), so project_id is NULL like the rest of the brand.
       [scope.tenantId, kind, key, mime, data.byteLength, scope.userId, null],
-    ),
-  );
+    );
+    // A new reference design makes the reading of the old set out of date, as a
+    // removed one does (2026-11-18: the old reading stayed in the context and
+    // the next reading copied it word for word). Left out of every prompt until
+    // the designs are read again.
+    if (kind === "reference_image") {
+      await c.query(
+        `UPDATE visual_identities SET core = jsonb_set(core, '{look,stale}', 'true'::jsonb)
+          WHERE tenant_id = $1 AND jsonb_typeof(core->'look') = 'object'`,
+        [scope.tenantId],
+      );
+    }
+    return inserted;
+  });
+  return { id: row.rows[0].id };
 }
 
 export interface AssetView {
@@ -134,7 +147,8 @@ export async function listAssets(scope: WorkspaceScope): Promise<AssetView[]> {
 
 /**
  * Remove an upload: its row, its file, and its place among the reference
- * designs picked as "this is our look" (visual core). Another workspace's id
+ * designs picked as "this is our look" (visual core), marking a reading of
+ * the designs that included it stale. Another workspace's id
  * finds nothing under RLS and removes nothing.
  */
 export async function deleteAsset(scope: WorkspaceScope, id: string): Promise<boolean> {
@@ -146,6 +160,14 @@ export async function deleteAsset(scope: WorkspaceScope, id: string): Promise<bo
       `UPDATE visual_identities SET core = jsonb_set(core, '{references}', (core->'references') - $1::text)
         WHERE jsonb_typeof(core->'references') = 'array' AND core->'references' ? $1::text`,
       [id],
+    );
+    // A reading of the designs that included this one is out of date: kept
+    // for the page (which offers Read again), left out of every prompt
+    // (lib/visual/core lookLines) until the designs are read again.
+    await c.query(
+      `UPDATE visual_identities SET core = jsonb_set(core, '{look,stale}', 'true'::jsonb)
+        WHERE jsonb_typeof(core->'look'->'sources') = 'array' AND core->'look'->'sources' ? $1::text`,
+      [id.toLowerCase()],
     );
     return row.storage_key;
   });

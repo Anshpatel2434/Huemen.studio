@@ -9,12 +9,16 @@
  */
 import "./no-devtools";
 import { createLibrary, defineComponent, useIsStreaming, useRenderNode, useTriggerAction, type ComponentRenderer } from "@openuidev/react-lang";
-import { ArrowUpRight, Check, Lightbulb, PenLine, Plus } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowUpRight, Lightbulb, PenLine, Plus } from "lucide-react";
+import { createContext, useContext, type ReactNode } from "react";
 import { FORMATS } from "@/lib/content/formats";
 import { COMPONENT_GROUPS, COMPONENT_NAMES, DESCRIPTIONS, PAGES, PROPS, type AgentAction, type ComponentName, type PropsOf } from "./spec";
+import { STATUS_FIX_PAGE, type BriefStatus } from "./status";
 
 const formatLabel = (key: string) => FORMATS.find((f) => f.key === key)?.label ?? key;
+
+/** The brief's status from the server (lib/agent-ui/status), for the BriefStatus card. */
+export const BriefStatusContext = createContext<BriefStatus | null>(null);
 
 // ---- Small building blocks --------------------------------------------------------
 
@@ -60,30 +64,31 @@ const VIEWS: { [N in ComponentName]: View<N> } = {
   Note: ({ props }) => (
     <p className={`rounded-md px-2.5 py-2 text-xs ${props.tone === "warn" ? "bg-warn-soft text-warn" : "bg-accent-soft text-accent-ink"}`}>{props.text}</p>
   ),
-  ScoreBar: ({ props }) => {
-    const v = Math.max(0, Math.min(100, Math.round(props.score ?? 0)));
-    return (
-      <div className="flex flex-col gap-1">
-        <div className="flex items-baseline justify-between text-xs"><span className="font-medium">{props.label}</span><span className="tabular-nums text-ink-muted">{v}</span></div>
-        <div className="h-1.5 rounded-full bg-field overflow-hidden" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={v} aria-label={props.label}>
-          <div className="h-full rounded-full bg-ink transition-[width] duration-500" style={{ width: `${v}%` }} />
-        </div>
-        {props.note && <p className="text-xs text-ink-faint">{props.note}</p>}
-      </div>
-    );
-  },
-  Checklist: ({ props }) => <Children nodes={props.children} className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md" />,
-  CheckItem: function CheckItemView({ props }) {
+  BriefStatus: function BriefStatusView() {
+    const status = useContext(BriefStatusContext);
     const act = useAct();
-    const target = props.page ? PAGES[props.page] : undefined;
+    if (!status) return null;
+    const fix = PAGES[STATUS_FIX_PAGE];
     return (
-      <div className="flex items-center gap-2 px-2.5 py-2">
-        <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center ${props.done ? "bg-ink text-on-ink" : "border border-line"}`}>{props.done && <Check size={11} aria-hidden="true" />}</span>
-        <span className={`flex-1 text-xs ${props.done ? "text-ink-faint line-through" : ""}`}>{props.label}</span>
-        {!props.done && props.page && target && (
-          <button type="button" onClick={() => act(`Open ${target.label}`, { type: "open", params: { page: props.page! } })} className="hu-hit text-xs text-accent-ink inline-flex items-center gap-0.5">
-            Fix <ArrowUpRight size={12} aria-hidden="true" />
-          </button>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-baseline justify-between text-xs"><span className="font-medium">Brief</span><span className="tabular-nums text-ink-muted">{status.score}</span></div>
+          <div className="h-1.5 rounded-full bg-field overflow-hidden" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={status.score} aria-label="Brief">
+            <div className="h-full rounded-full bg-ink transition-[width] duration-500" style={{ width: `${status.score}%` }} />
+          </div>
+        </div>
+        {status.open.length > 0 && (
+          <div className="flex flex-col divide-y divide-[var(--hairline)] border border-hairline rounded-md">
+            {status.open.map((label, i) => (
+              <div key={i} className="flex items-center gap-2 px-2.5 py-2">
+                <span className="w-5 h-5 shrink-0 rounded-full border border-line" aria-hidden="true" />
+                <span className="flex-1 text-xs">{label}</span>
+                <button type="button" onClick={() => act(`Open ${fix.label}`, { type: "open", params: { page: STATUS_FIX_PAGE } })} className="hu-hit text-xs text-accent-ink inline-flex items-center gap-0.5">
+                  Fix <ArrowUpRight size={12} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     );
@@ -132,7 +137,7 @@ const VIEWS: { [N in ComponentName]: View<N> } = {
         {(props.hooks ?? []).map((h, i) => (
           <div key={i} className="flex items-start gap-2 border border-hairline rounded-md p-2.5">
             <p className="flex-1">{h}</p>
-            <button type="button" aria-label="Save to ideas" title="Save to ideas" onClick={() => act(`Save idea: ${h}`, { type: "capture_idea", params: { text: h } })} className="hu-iconbtn shrink-0"><Lightbulb size={14} aria-hidden="true" /></button>
+            <button type="button" aria-label="Save to ideas" data-tip="Save to ideas" onClick={() => act(`Save idea: ${h}`, { type: "capture_idea", params: { text: h } })} className="hu-iconbtn shrink-0"><Lightbulb size={14} aria-hidden="true" /></button>
           </div>
         ))}
       </div>

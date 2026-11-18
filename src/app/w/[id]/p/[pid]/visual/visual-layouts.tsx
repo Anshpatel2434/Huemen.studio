@@ -9,67 +9,29 @@
  *
  * Text is drawn through `text(slot)`, so the canvas can make it editable and
  * askable while the options view shows it plain.
+ *
+ * Text never leaves its frame. Every text block sits in a <Fit>: it is
+ * measured in the browser, its type steps down to a floor when it is too
+ * tall for the room the layout gives it, and past the floor it is clamped
+ * with an ellipsis. The export rasterises the same measured DOM, so the file
+ * matches the editor.
+ *
+ * A picture is part of the layout, not a replacement for it: Statement puts
+ * it behind the words, Split gives it one half and the words the other on the
+ * scheme's ground, and so on. Only a picture with the heading drawn into it
+ * ("with_text") fills the whole visual, because cropping it would cut the words.
  */
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { CarouselLayout, PictureMode, PostLayout, QuoteLayout, Tweaks } from "@/lib/visual/design";
+import { contrast, onBand, paint, schemesFrom, type Paint, type Scheme } from "@/lib/visual/schemes";
 
-export type Scheme = { name: string; bg: string; fg: string; accent: string };
+export { contrast, paint, schemesFrom };
+export type { Scheme };
 export type TextSlot = { kind: "post" } | { kind: "quote" } | { kind: "slide"; index: number };
 export type RenderText = (slot: TextSlot) => ReactNode;
 export type Fonts = { display: string; accent: string };
 /** A picture on a visual: its same-origin link, and whether the heading is drawn into it. */
 export type Picture = { url: string; mode: PictureMode } | null;
-
-// ---- colour -----------------------------------------------------------------
-
-function luminance(hex: string): number {
-  const m = hex.replace("#", "");
-  const full = m.length === 3 ? m.split("").map((x) => x + x).join("") : m.slice(0, 6);
-  const [r, g, bl] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
-}
-export function contrast(x: string, y: string): number {
-  if (!/^#[0-9a-f]{3,8}$/i.test(x) || !/^#[0-9a-f]{3,8}$/i.test(y)) return 1;
-  const [l1, l2] = [luminance(x), luminance(y)].sort((p, q) => q - p);
-  return (l1 + 0.05) / (l2 + 0.05);
-}
-
-/** Colour schemes from the brand palette. With none, the house tokens stand in. */
-export function schemesFrom(palette: string[]): Scheme[] {
-  const [a, b, c, d] = palette.length ? palette : ["#0a0a0a", "#6b6b6b", "#ffffff"];
-  const light = c ?? "#ffffff";
-  const candidates = [a, light, b, d, "#0a0a0a", "#ffffff"].filter(Boolean) as string[];
-  const on = (bg: string) => candidates.reduce((best, x) => (contrast(x, bg) > contrast(best, bg) ? x : best));
-  const mk = (name: string, bg: string, accent: string): Scheme => ({ name, bg, fg: on(bg), accent: contrast(accent, bg) > 1.5 ? accent : on(bg) });
-  const out: Scheme[] = [mk("Scheme 1", light, b ?? a), mk("Scheme 2", a, b ?? light)];
-  if (b && b.toLowerCase() !== light.toLowerCase()) out.push(mk("Scheme 3", b, a));
-  if (d) out.push(mk(`Scheme ${out.length + 1}`, d, b ?? a));
-  return out;
-}
-
-type Paint = { bg: string; fg: string; mark: string; words: string; showMarks: boolean; bold: boolean };
-
-/**
- * The colours one artboard is drawn in. `base` is the template's own ground
- * (a quote card is drawn inverse); the background tweak flips or tints it.
- * The accent tweak decides whether marks show and whether the words take the
- * accent too, but only when the accent stays readable on that ground (3:1).
- */
-export function paint(s: Scheme, t: Tweaks, base: "normal" | "inverse"): Paint {
-  const inverse = (base === "inverse") !== (t.background === "inverse");
-  const ground = inverse ? s.fg : s.bg;
-  const ink = inverse ? s.bg : s.fg;
-  const bg = t.background === "tint" ? `color-mix(in srgb, ${s.accent} 16%, ${ground})` : ground;
-  const accentReadable = contrast(s.accent, ground) >= 3;
-  return {
-    bg,
-    fg: ink,
-    mark: t.accent === "none" ? "transparent" : s.accent,
-    words: t.accent === "bold" && accentReadable ? s.accent : ink,
-    showMarks: t.accent !== "none",
-    bold: t.accent === "bold",
-  };
-}
 
 /**
  * One artboard. A size container, so every type size below is a share of the
@@ -89,13 +51,108 @@ const fz = (n: number, t: Tweaks | null, base = 300) => `${((n * 16 * 100) / bas
 const rem = (n: number, t: Tweaks) => fz(n, t);
 const MONO = "var(--font-mono)";
 
+// ---- text that fits ---------------------------------------------------------------
+
+/** Type steps down to this share of the template's size; past it the text is clamped. */
+const FIT_FLOOR = 0.5;
+const FIT_STEP = 0.05;
+
+/**
+ * A text block that fits the room its layout gives it. The outer box takes
+ * its natural height while the text fits and is squeezed by the layout (flex)
+ * when it doesn't; the inner block is then stepped down in size, and clamped
+ * with an ellipsis at the floor. `data-fit` on the inner block says which
+ * ("ok", "shrunk", "clamped") for the look check.
+ *
+ * Measured after layout and again whenever the box, the text or the fonts
+ * change. Only styles this component owns are touched, straight on the node.
+ */
+function Fit({ part, size, className = "", style, box, v = "center", children }: {
+  part?: string;
+  /** The template's own type size (a cqw length). */
+  size: string;
+  className?: string;
+  style?: CSSProperties;
+  /** Extra styles for the outer box (how it sits in its layout). */
+  box?: CSSProperties;
+  v?: "start" | "center" | "end";
+  children: ReactNode;
+}) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const fit = useRef<() => void>(() => {});
+
+  useLayoutEffect(() => {
+    fit.current = () => {
+      const o = outer.current, i = inner.current;
+      if (!o || !i) return;
+      const st = i.style;
+      st.fontSize = "";
+      st.display = "";
+      st.overflow = "";
+      st.removeProperty("-webkit-line-clamp");
+      st.removeProperty("-webkit-box-orient");
+      // Not rendered (a hidden panel or tab): nothing to measure yet; the size observer measures it when it shows.
+      if (!o.getClientRects().length) return;
+      // A box squeezed to no height is still measured: the text is then too tall for its room, and says so
+      // (it used to be read as "ok" here, and overflowed the frame top and bottom on a wide banner).
+      const room = o.clientHeight;
+      let state = "ok";
+      if (i.scrollHeight > room + 1) {
+        state = "shrunk";
+        let k = 1;
+        while (k > FIT_FLOOR + 0.001 && i.scrollHeight > room + 1) {
+          k = Math.max(FIT_FLOOR, k - FIT_STEP);
+          st.fontSize = `${k.toFixed(2)}em`;
+        }
+        // Still too tall at the floor: whole lines only, the last one ending in an ellipsis.
+        // Not while it is being typed in: the person must see what they type.
+        if (i.scrollHeight > room + 1 && !i.querySelector("textarea")) {
+          const cs = getComputedStyle(i);
+          const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
+          st.display = "-webkit-box";
+          st.setProperty("-webkit-box-orient", "vertical");
+          st.setProperty("-webkit-line-clamp", String(Math.max(1, Math.floor((room + 1) / line))));
+          st.overflow = "hidden";
+          state = "clamped";
+        }
+      }
+      if (i.dataset.fit !== state) i.dataset.fit = state;
+    };
+    fit.current();
+  });
+
+  useEffect(() => {
+    const o = outer.current, i = inner.current;
+    if (!o || !i) return;
+    const run = () => fit.current();
+    const ro = new ResizeObserver(run);
+    ro.observe(o);
+    ro.observe(i);
+    // An edit shows before it is saved (EditableText), without this block rendering again.
+    const mo = new MutationObserver(run);
+    mo.observe(i, { childList: true, characterData: true, subtree: true });
+    let live = true;
+    void document.fonts?.ready.then(() => { if (live) run(); });
+    return () => { live = false; ro.disconnect(); mo.disconnect(); };
+  }, []);
+
+  return (
+    <div ref={outer} className="min-h-0 w-full flex flex-col" style={{ flex: "0 1 auto", justifyContent: v === "start" ? "flex-start" : v === "end" ? "flex-end" : "center", fontSize: size, ...box }}>
+      <div ref={inner} data-part={part} className={`w-full relative ${className}`} style={style}>{children}</div>
+    </div>
+  );
+}
+
+// ---- parts shared by the layouts ------------------------------------------------------
+
 const LOGO_EM = { small: 1.6, medium: 2.4, large: 3.4, hidden: 0 } as const;
 
 /** The sign-off: the workspace's logo, when it has one, beside the brand name. */
 function Signoff({ brand, logo, style, prefix = "", size = "medium" }: { brand: string; logo?: string | null; style: CSSProperties; prefix?: string; size?: Tweaks["logo"] }) {
   const em = LOGO_EM[size] ?? LOGO_EM.medium;
   return (
-    <span data-part="logo" className="inline-flex items-center gap-[0.6em] max-w-full relative" style={style}>
+    <span data-part="logo" className="inline-flex items-center gap-[0.6em] max-w-full relative shrink-0" style={style}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {logo && em > 0 && <img src={logo} alt="" crossOrigin="anonymous" className="w-auto object-contain shrink-0" style={{ height: `${em}em`, maxWidth: `${em * 3.4}em` }} />}
       <span className="tracking-[0.18em] uppercase font-medium truncate">{prefix}{brand}</span>
@@ -104,8 +161,16 @@ function Signoff({ brand, logo, style, prefix = "", size = "medium" }: { brand: 
 }
 
 const SCRIM = { none: 0, light: 0.45, strong: 0.72 } as const;
+const WHITE = "#ffffff";
+const SHADOW = "0 1px 12px rgba(0,0,0,.35)";
 
-/** The picture, filling the frame. Drawn as an <img> so the PNG export rasterises it with the rest. */
+/** The colours of text set straight on a picture: white, kept readable by the shade under it. */
+const overPicture = (t: Tweaks): Paint => ({
+  bg: "#000000", fg: WHITE, accent: WHITE, mark: t.accent === "none" ? "transparent" : WHITE, sign: WHITE, words: WHITE,
+  showMarks: t.accent !== "none", bold: t.accent === "bold",
+});
+
+/** The picture, filling the box it is in. Drawn as an <img> so the PNG export rasterises it with the rest. */
 function PictureFill({ url }: { url: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -113,70 +178,181 @@ function PictureFill({ url }: { url: string }) {
   );
 }
 
-/**
- * A visual with a picture. "with_text": the picture is the whole visual (the
- * model drew the heading), with the sign-off in the corner. "live_text": the
- * picture fills the frame, a shade keeps the words readable, and the heading
- * is Huemen text on top, as editable as on any template.
- */
-function PictureVisual({ w, h, picture, t, brand, logo, words, align }: {
-  w: number; h: number; picture: NonNullable<Picture>; t: Tweaks; brand: string; logo?: string | null; words: ReactNode; align: CSSProperties;
-}) {
+/** The shade that keeps live text readable on a picture. `even` shades the whole picture, for centred text. */
+function Shade({ t, even = false }: { t: Tweaks; even?: boolean }) {
   const shade = SCRIM[t.scrim] ?? SCRIM.light;
-  const sign = <Signoff brand={brand} logo={logo} size={t.logo} style={{ color: "#ffffff", fontFamily: MONO, fontSize: fz(0.6, null), textShadow: "0 1px 6px rgba(0,0,0,.35)" }} />;
-  if (picture.mode === "with_text") {
+  if (shade <= 0) return null;
+  const background = even
+    ? `rgba(0,0,0,${(shade * 0.8).toFixed(3)})`
+    : `linear-gradient(to top, rgba(0,0,0,${shade}) 0%, rgba(0,0,0,${shade * 0.55}) 45%, rgba(0,0,0,0) 75%)`;
+  return <div className="absolute inset-0 pointer-events-none" style={{ background }} />;
+}
+
+/** The heading is drawn into the picture: the picture is the whole visual, with the sign-off in the corner. */
+function DrawnIn({ w, h, picture, t, brand, logo, frameRef }: {
+  w: number; h: number; picture: NonNullable<Picture>; t: Tweaks; brand: string; logo?: string | null; frameRef?: (el: HTMLDivElement | null) => void;
+}) {
+  return (
+    <Frame w={w} h={h} bg="#000" fg="#fff" frameRef={frameRef}>
+      <PictureFill url={picture.url} />
+      {t.logo !== "hidden" && (
+        <div className="absolute right-[6%] bottom-[5%] max-w-[88%] flex">
+          <Signoff brand={brand} logo={logo} size={t.logo} style={{ color: WHITE, fontFamily: MONO, fontSize: fz(0.6, null), textShadow: "0 1px 6px rgba(0,0,0,.35)" }} />
+        </div>
+      )}
+    </Frame>
+  );
+}
+
+const GAP = "4cqw";
+
+// ---- post image ---------------------------------------------------------------
+
+/**
+ * A very wide, short frame (a profile banner, 1584x396 is 4:1). Stacked, the
+ * padding, the gap and the sign-off take the whole height, and the headline
+ * was squeezed out of its box and overflowed the frame. So here the words and
+ * the sign-off sit side by side: the headline has the full height of the frame
+ * less a thin margin, steps down in size to fit it, and is clamped only past that.
+ *
+ * Each post layout has its own banner, so "Show me options" offers four
+ * different ones (2026-11-18: all four drew the same row):
+ *   statement  an accent bar, the line, the sign-off at the right
+ *   split      the line on the ground, a colour band at the right carrying the name
+ *   framed     a hairline frame, the line centred, the sign-off under it
+ *   editorial  an eyebrow over a serif italic line, a rule, the sign-off at the right
+ */
+const BANNER_RATIO = 2.2;
+
+function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRef, picture = null }: {
+  layout: PostLayout; w: number; h: number; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; eyebrow?: string;
+  text: RenderText; frameRef?: (el: HTMLDivElement | null) => void; picture?: Picture;
+}) {
+  const p = paint(s, t, "normal");
+  const o = overPicture(t);
+  const shadow = "0 1px 6px rgba(0,0,0,.35)";
+  const headline = (n: number, x: { font?: string; color?: string; align?: CSSProperties["textAlign"]; extra?: CSSProperties; cls?: string; over?: boolean } = {}) => (
+    <Fit
+      part="headline"
+      size={rem(n, t)}
+      v="center"
+      className={x.cls ?? "leading-[1.12] font-medium"}
+      box={{ flex: "1 1 0%", width: "auto", minWidth: 0, alignSelf: "stretch" }}
+      style={{ fontFamily: x.font ?? fonts.display, color: x.color ?? p.words, textShadow: x.over ? SHADOW : undefined, textAlign: x.align ?? t.align, ...x.extra }}
+    >
+      {text({ kind: "post" })}
+    </Fit>
+  );
+  const sign = (color: string, over = false, style: CSSProperties = {}) => (
+    <Signoff brand={brand} logo={logo} size={t.logo} style={{ color, fontFamily: MONO, fontSize: fz(0.62, null), textShadow: over ? shadow : undefined, ...style }} />
+  );
+
+  if (layout === "split") {
+    // The words on the scheme's ground; a band at the right carries the name (with a picture, the picture is the band).
+    const band = p.showMarks ? p.accent : p.fg;
     return (
-      <Frame w={w} h={h} bg="#000" fg="#fff">
-        <PictureFill url={picture.url} />
-        {t.logo !== "hidden" && <div className="absolute right-[6%] bottom-[5%]">{sign}</div>}
+      <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
+        <div className="absolute inset-0 flex" data-banner="split">
+          <div className="flex-[68] min-w-0 flex items-center" style={{ padding: "3% 4% 3% 5%" }}>{headline(1.2)}</div>
+          <div className="flex-[32] min-w-0 relative overflow-hidden flex flex-col justify-end" style={{ background: picture ? "#000" : band, color: picture ? WHITE : onBand(s, band), padding: "3% 4%", gap: "1.5cqw" }}>
+            {picture && <><PictureFill url={picture.url} /><Shade t={t} /></>}
+            <span className="relative h-[2px] w-[22%] bg-current opacity-70 shrink-0" />
+            <span className="relative">{sign(picture ? WHITE : "currentColor", !!picture)}</span>
+          </div>
+        </div>
       </Frame>
     );
   }
+  if (layout === "framed") {
+    // A hairline frame around a centred line, the sign-off centred under it; a picture sits behind, shaded evenly.
+    const c = picture ? o : p;
+    return (
+      <Frame w={w} h={h} bg={picture ? "#000" : p.bg} fg={picture ? WHITE : p.fg} frameRef={frameRef}>
+        {picture && <><PictureFill url={picture.url} /><Shade t={t} even /></>}
+        <div className="absolute flex flex-col items-center" data-banner="framed" style={{ inset: "6% 3%", padding: "2% 6%", gap: "1cqw", border: `${p.bold ? 3 : 1.5}px solid ${picture ? WHITE : p.showMarks ? p.accent : p.fg}` }}>
+          {headline(1.05, { align: "center", color: c.words, over: !!picture })}
+          {sign(picture ? WHITE : p.bold ? p.sign : p.fg, !!picture, { fontSize: fz(0.52, null) })}
+        </div>
+      </Frame>
+    );
+  }
+  if (layout === "editorial") {
+    // A magazine pull: an eyebrow over a serif italic line, a rule, the sign-off at the right. A picture is a column at the left.
+    return (
+      <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
+        <div className="absolute inset-0 flex" data-banner="editorial">
+          {picture && <div className="w-[26%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>}
+          <div className="flex-1 min-w-0 flex items-center" style={{ padding: "3% 5%", gap: "3cqw" }}>
+            <div className="flex-1 min-w-0 self-stretch flex flex-col justify-center" style={{ gap: "0.6cqw" }}>
+              <p className="tracking-[0.2em] uppercase shrink-0 max-w-full truncate" style={{ fontFamily: MONO, color: p.showMarks ? p.sign : p.fg, fontSize: fz(0.5, null) }}>№ 01 · {eyebrow || brand}</p>
+              {headline(1.3, { font: fonts.accent, cls: "", extra: { fontStyle: "italic", fontWeight: 400, lineHeight: 1.05 } })}
+            </div>
+            <span className="shrink-0 self-stretch" style={{ width: 1.5, margin: "2% 0", background: p.showMarks ? p.accent : p.fg }} />
+            {sign(p.fg)}
+          </div>
+        </div>
+      </Frame>
+    );
+  }
+  // statement (the original): an accent bar, the line, the sign-off; a picture fills the frame behind them.
   return (
-    <Frame w={w} h={h} bg="#000" fg="#fff">
-      <PictureFill url={picture.url} />
-      {shade > 0 && <div className="absolute inset-0 pointer-events-none" style={{ background: `linear-gradient(to top, rgba(0,0,0,${shade}) 0%, rgba(0,0,0,${shade * 0.55}) 45%, rgba(0,0,0,0) 75%)` }} />}
-      <div className="absolute inset-0 flex flex-col justify-end gap-[4%] p-[9%]" style={align}>
-        {words}
-        {sign}
+    <Frame w={w} h={h} bg={picture ? "#000" : p.bg} fg={picture ? WHITE : p.fg} frameRef={frameRef}>
+      {picture && <><PictureFill url={picture.url} /><Shade t={t} /></>}
+      <div className="absolute inset-0 flex items-center" data-banner="statement" style={{ gap: "3cqw", padding: "3% 5%" }}>
+        {!picture && p.showMarks && <span className="shrink-0 self-stretch rounded-full" style={{ width: "0.7%", background: p.accent }} />}
+        {headline(1.2, { color: picture ? WHITE : p.words, over: !!picture })}
+        {sign(picture ? WHITE : p.sign, !!picture)}
       </div>
     </Frame>
   );
 }
 
-// ---- post image ---------------------------------------------------------------
-
 export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRef, picture = null }: {
   layout: PostLayout; w: number; h: number; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; eyebrow?: string;
   text: RenderText; frameRef?: (el: HTMLDivElement | null) => void; picture?: Picture;
 }) {
+  if (picture?.mode === "with_text") return <DrawnIn w={w} h={h} picture={picture} t={t} brand={brand} logo={logo} frameRef={frameRef} />;
+  if (w > h * BANNER_RATIO) return <Banner layout={layout} w={w} h={h} s={s} t={t} fonts={fonts} brand={brand} logo={logo} eyebrow={eyebrow} text={text} frameRef={frameRef} picture={picture} />;
+
   const p = paint(s, t, "normal");
   const center = t.align === "center";
   const al: CSSProperties = { textAlign: t.align, alignItems: center ? "center" : "flex-start" };
-  const headline = (n: number, font = fonts.display, extra: CSSProperties = {}) => (
-    <div data-part="headline" className="leading-[1.12] font-medium w-full relative" style={{ fontFamily: font, color: p.words, fontSize: rem(n, t), ...extra }}>{text({ kind: "post" })}</div>
+  const headline = (n: number, o: { font?: string; v?: "start" | "center" | "end"; color?: string; extra?: CSSProperties; cls?: string } = {}) => (
+    <Fit part="headline" size={rem(n, t)} v={o.v} className={o.cls ?? "leading-[1.12] font-medium"} style={{ fontFamily: o.font ?? fonts.display, color: o.color ?? p.words, ...o.extra }}>
+      {text({ kind: "post" })}
+    </Fit>
   );
-  const sign = (color = p.bold ? p.mark : p.fg) => (
-    <Signoff brand={brand} logo={logo} size={t.logo} style={{ color: p.showMarks ? color : p.fg, fontFamily: MONO, fontSize: fz(0.62, null) }} />
+  const sign = (color = p.bold ? p.sign : p.fg, extra: CSSProperties = {}) => (
+    <Signoff brand={brand} logo={logo} size={t.logo} style={{ color, fontFamily: MONO, fontSize: fz(0.62, null), ...extra }} />
   );
-  if (picture) {
-    return (
-      <div ref={frameRef}>
-        <PictureVisual w={w} h={h} picture={picture} t={t} brand={brand} logo={logo} align={al}
-          words={headline(1.45, fonts.display, { color: "#ffffff", textShadow: "0 1px 12px rgba(0,0,0,.35)" })} />
-      </div>
-    );
-  }
+  const band = p.showMarks ? p.accent : p.fg;
+  const eyebrowLine = (color: string) => (
+    <p className="tracking-[0.2em] uppercase shrink-0 max-w-full truncate" style={{ fontFamily: MONO, color, fontSize: fz(0.58, null) }}>№ 01 · {eyebrow || brand}</p>
+  );
 
   if (layout === "split") {
     return (
       <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
         <div className="h-full flex flex-col">
-          <div className="flex-[62] flex flex-col justify-center p-[9%]" style={al}>{headline(1.35)}</div>
-          <div className="flex-[38] flex flex-col justify-end p-[9%] gap-2" style={{ ...al, background: p.showMarks ? s.accent : p.fg, color: p.showMarks ? (contrast(s.bg, s.accent) >= contrast(s.fg, s.accent) ? s.bg : s.fg) : p.bg }}>
-            <span className="h-[2px] w-[16%] bg-current opacity-70" />
-            <Signoff brand={brand} logo={logo} size={t.logo} style={{ fontFamily: MONO, fontSize: fz(0.62, null) }} />
-          </div>
+          {picture ? (
+            // The picture has the top half; the words sit under it on the scheme's ground.
+            <>
+              <div className="flex-[54] min-h-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>
+              <div className="flex-[46] min-h-0 flex flex-col justify-between px-[9%] py-[7%]" style={{ ...al, gap: GAP }}>
+                {p.showMarks && <span className="h-[2px] w-[16%] shrink-0" style={{ background: p.accent }} />}
+                {headline(1.2)}
+                {sign()}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex-[62] min-h-0 flex flex-col justify-center p-[9%]" style={al}>{headline(1.35)}</div>
+              <div className="flex-[38] min-h-0 flex flex-col justify-end p-[9%] gap-2" style={{ ...al, background: band, color: onBand(s, band) }}>
+                <span className="h-[2px] w-[16%] bg-current opacity-70 shrink-0" />
+                <Signoff brand={brand} logo={logo} size={t.logo} style={{ fontFamily: MONO, fontSize: fz(0.62, null) }} />
+              </div>
+            </>
+          )}
         </div>
       </Frame>
     );
@@ -185,9 +361,10 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
     return (
       <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
         <div className="h-full p-[6%]">
-          <div className="h-full flex flex-col justify-between p-[8%]" style={{ ...al, alignItems: "center", textAlign: "center", border: `${p.bold ? 3 : 1.5}px solid ${p.showMarks ? s.accent : p.fg}` }}>
-            <span />
-            {headline(1.3)}
+          <div className="h-full flex flex-col justify-between" style={{ ...al, alignItems: "center", textAlign: "center", gap: GAP, padding: picture ? "0 0 7%" : "8%", border: `${p.bold ? 3 : 1.5}px solid ${p.showMarks ? p.accent : p.fg}` }}>
+            {/* The picture is set inside the frame, above the centred line. */}
+            {picture ? <div className="w-full flex-[52] min-h-0 relative overflow-hidden"><PictureFill url={picture.url} /></div> : <span />}
+            <div className={`min-h-0 w-full flex flex-col justify-center ${picture ? "flex-[36] px-[8%]" : ""}`} style={picture ? undefined : { flex: "0 1 auto" }}>{headline(picture ? 1.1 : 1.3)}</div>
             {sign()}
           </div>
         </div>
@@ -197,11 +374,14 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
   if (layout === "editorial") {
     return (
       <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
-        <div className="h-full flex p-[9%] gap-[6%]">
-          {p.showMarks && !center && <span className="shrink-0 w-[3px] self-stretch" style={{ background: s.accent }} />}
-          <div className="flex-1 min-w-0 flex flex-col justify-between" style={al}>
-            <p className="tracking-[0.2em] uppercase" style={{ fontFamily: MONO, color: p.showMarks ? s.accent : p.fg, fontSize: fz(0.58, null) }}>№ 01 · {eyebrow || brand}</p>
-            {headline(1.6, fonts.accent, { fontStyle: "italic", fontWeight: 400, lineHeight: 1.05 })}
+        <div className="h-full flex" style={picture ? undefined : { padding: "9%", gap: "6%" }}>
+          {/* The picture runs down one side like a magazine column. */}
+          {picture
+            ? <div className="w-[40%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>
+            : p.showMarks && !center && <span className="shrink-0 w-[3px] self-stretch" style={{ background: p.accent }} />}
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col justify-between" style={{ ...al, gap: GAP, padding: picture ? "9% 7%" : undefined }}>
+            {eyebrowLine(p.showMarks ? p.sign : p.fg)}
+            {headline(picture ? 1.25 : 1.6, { font: fonts.accent, cls: "", extra: { fontStyle: "italic", fontWeight: 400, lineHeight: 1.05 } })}
             {sign(p.fg)}
           </div>
         </div>
@@ -209,10 +389,23 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
     );
   }
   // statement (the original)
+  if (picture) {
+    const o = overPicture(t);
+    return (
+      <Frame w={w} h={h} bg="#000" fg="#fff" frameRef={frameRef}>
+        <PictureFill url={picture.url} />
+        <Shade t={t} />
+        <div className="absolute inset-0 flex flex-col justify-end p-[9%]" style={{ ...al, gap: GAP }}>
+          {headline(1.45, { v: "end", color: o.words, extra: { textShadow: SHADOW } })}
+          {sign(o.sign, { textShadow: "0 1px 6px rgba(0,0,0,.35)" })}
+        </div>
+      </Frame>
+    );
+  }
   return (
     <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
-      <div className="h-full flex flex-col justify-between p-[9%]" style={al}>
-        <span className="rounded-full" style={{ height: p.bold ? "4%" : "3%", width: "14%", background: p.mark }} />
+      <div className="h-full flex flex-col justify-between p-[9%]" style={{ ...al, gap: GAP }}>
+        <span className="rounded-full shrink-0" style={{ height: p.bold ? "4%" : "3%", width: "14%", background: p.mark }} />
         {headline(1.45)}
         {sign()}
       </div>
@@ -225,59 +418,64 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
 export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, picture = null }: {
   layout: QuoteLayout; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; text: RenderText; frameRef?: (el: HTMLDivElement | null) => void; picture?: Picture;
 }) {
-  const p = paint(s, t, "inverse");
+  if (picture?.mode === "with_text") return <DrawnIn w={1080} h={1080} picture={picture} t={t} brand={brand} logo={logo} frameRef={frameRef} />;
+
+  // Classic and Centred set the words straight on a picture; Minimal keeps them on the scheme's ground beside it.
+  const over = !!picture && layout !== "minimal";
+  const p = over ? overPicture(t) : paint(s, t, "inverse");
   const center = layout === "centered" || t.align === "center";
   const al: CSSProperties = { textAlign: center ? "center" : "left", alignItems: center ? "center" : "flex-start" };
-  const words = (n: number, italic = true, font = fonts.accent, color = p.words) => (
-    <div data-part="headline" className="leading-snug w-full relative" style={{ fontFamily: font, fontStyle: italic ? "italic" : "normal", color, fontSize: rem(n, t) }}>{text({ kind: "quote" })}</div>
+  const words = (n: number, italic = true, font = fonts.accent, v: "start" | "center" | "end" = "center") => (
+    <Fit part="headline" size={rem(n, t)} v={v} className="leading-snug" style={{ fontFamily: font, fontStyle: italic ? "italic" : "normal", color: p.words, textShadow: over ? SHADOW : undefined }}>
+      {text({ kind: "quote" })}
+    </Fit>
   );
   const sign = (dash = true) => (
-    <Signoff brand={brand} logo={logo} size={t.logo} prefix={dash && !logo ? "— " : ""} style={{ color: p.showMarks ? s.accent : p.fg, fontFamily: MONO, fontSize: fz(0.6, null) }} />
+    <Signoff brand={brand} logo={logo} size={t.logo} prefix={dash && !logo ? "— " : ""} style={{ color: p.sign, fontFamily: MONO, fontSize: fz(0.6, null), textShadow: over ? "0 1px 6px rgba(0,0,0,.35)" : undefined }} />
   );
-  if (picture) {
-    return (
-      <div ref={frameRef}>
-        <PictureVisual w={1080} h={1080} picture={picture} t={t} brand={brand} logo={logo} align={al} words={words(1.25, true, fonts.accent, "#ffffff")} />
-      </div>
-    );
-  }
+  const mark = (n: number, cls: string) => p.showMarks && (
+    <span className={`${cls} shrink-0`} style={{ color: p.mark, fontFamily: fonts.accent, fontSize: rem(n, t), textShadow: over ? SHADOW : undefined }}>“</span>
+  );
+  const frame = (children: ReactNode) => (
+    <Frame w={1080} h={1080} bg={over ? "#000" : p.bg} fg={p.fg} frameRef={frameRef}>
+      {over && picture && <><PictureFill url={picture.url} /><Shade t={t} even={layout === "centered"} /></>}
+      {children}
+    </Frame>
+  );
 
   if (layout === "centered") {
-    return (
-      <Frame w={1080} h={1080} bg={p.bg} fg={p.fg} frameRef={frameRef}>
-        <div className="h-full flex flex-col justify-center gap-4 p-[11%]" style={al}>
-          <span className="leading-[0.6]" style={{ color: p.mark, fontFamily: fonts.accent, fontSize: rem(p.bold ? 4.4 : 3.6, t) }}>“</span>
-          {words(1.2)}
-          <span className="h-[2px] w-[12%]" style={{ background: p.showMarks ? s.accent : p.fg }} />
-          {sign(false)}
-        </div>
-      </Frame>
+    return frame(
+      <div className={`${over ? "absolute inset-0" : "h-full"} flex flex-col justify-center gap-4 p-[11%]`} style={al}>
+        {mark(p.bold ? 4.4 : 3.6, "leading-[0.6]")}
+        {words(1.2)}
+        <span className="h-[2px] w-[12%] shrink-0" style={{ background: p.showMarks ? p.accent : p.fg }} />
+        {sign(false)}
+      </div>,
     );
   }
   if (layout === "minimal") {
-    return (
-      <Frame w={1080} h={1080} bg={p.bg} fg={p.fg} frameRef={frameRef}>
-        <div className="h-full flex flex-col justify-center p-[11%]">
-          <div className="flex gap-[6%] items-stretch">
-            {p.showMarks && !center && <span className="shrink-0 rounded-full" style={{ width: p.bold ? 5 : 3, background: s.accent }} />}
-            <div className="flex-1 min-w-0 flex flex-col gap-4" style={al}>
-              {words(1.25, false, fonts.display)}
+    return frame(
+      <div className="h-full flex">
+        {picture && <div className="w-[42%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>}
+        <div className="flex-1 min-w-0 h-full flex flex-col justify-center" style={{ padding: picture ? "9%" : "11%" }}>
+          <div className="min-h-0 flex gap-[6%] items-stretch" style={{ flex: "0 1 auto" }}>
+            {p.showMarks && !center && <span className="shrink-0 rounded-full" style={{ width: p.bold ? 5 : 3, background: p.accent }} />}
+            <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-4" style={al}>
+              {words(picture ? 1.05 : 1.25, false, fonts.display)}
               {sign()}
             </div>
           </div>
         </div>
-      </Frame>
+      </div>,
     );
   }
   // classic (the original)
-  return (
-    <Frame w={1080} h={1080} bg={p.bg} fg={p.fg} frameRef={frameRef}>
-      <div className="h-full flex flex-col justify-center p-[10%]" style={al}>
-        <span className="leading-none" style={{ color: p.mark, fontFamily: fonts.accent, fontSize: rem(3, t) }}>“</span>
-        {words(1.25)}
-        <div className="mt-4">{sign()}</div>
-      </div>
-    </Frame>
+  return frame(
+    <div className={`${over ? "absolute inset-0 justify-end" : "h-full justify-center"} flex flex-col p-[10%]`} style={al}>
+      {mark(3, "leading-none")}
+      {words(1.25, true, fonts.accent, over ? "end" : "center")}
+      <div className="mt-4 shrink-0 max-w-full flex">{sign()}</div>
+    </div>,
   );
 }
 
@@ -294,51 +492,62 @@ export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, 
   logo?: string | null;
 }) {
   const n = slides.length;
+  const center = t.align === "center";
   return (
     <div className="flex gap-2 p-2 bg-panel">
       {slides.map((_, k) => {
-        const alt = layout === "standard" && k % 2 === 1;
-        const p = paint(s, t, alt ? "inverse" : "normal");
-        const al: CSSProperties = { textAlign: t.align, alignItems: t.align === "center" ? "center" : "flex-start" };
         const first = k === 0;
+        const pic = first ? cover : null;
+        if (pic?.mode === "with_text") {
+          return (
+            <div key={k} className="shrink-0" style={{ width: frameWidth }}>
+              <DrawnIn w={1080} h={1350} picture={pic} t={t} brand={brand} logo={logo} frameRef={frameRef?.(k)} />
+            </div>
+          );
+        }
+        const alt = layout === "standard" && k % 2 === 1;
+        // On a cover picture the frame keeps its layout (number, counter, progress), drawn in white over the shade.
+        const p = pic ? overPicture(t) : paint(s, t, alt ? "inverse" : "normal");
+        const al: CSSProperties = { textAlign: t.align, alignItems: center ? "center" : "flex-start", gap: "5cqw" };
         const part = first ? "headline" : k === ctaIndex ? "cta" : "body";
+        const size = fz(first ? 0.95 : 0.72, t, 170);
         const body = (
-          <div data-part={part} className={`${first ? "font-medium" : ""} leading-snug flex gap-1 w-full relative`} style={{ fontFamily: fonts.display, color: first && cover ? "#ffffff" : p.words, fontSize: fz(first ? 0.95 : 0.72, t, 170), justifyContent: t.align === "center" ? "center" : "flex-start" }}>
-            {k === ctaIndex && <span className="shrink-0">→</span>}
-            <div className="min-w-0" style={{ flex: t.align === "center" ? "0 1 auto" : "1 1 0%" }}>{text({ kind: "slide", index: k })}</div>
+          <div className="min-h-0 w-full flex gap-[0.3em]" style={{ flex: "0 1 auto", justifyContent: center ? "center" : "flex-start", color: p.words, fontFamily: fonts.display, textShadow: pic ? SHADOW : undefined }}>
+            {k === ctaIndex && <span className="shrink-0 leading-snug" style={{ fontSize: size }}>→</span>}
+            <Fit part={part} size={size} v={pic ? "end" : "center"} className={`${first ? "font-medium" : ""} leading-snug`} box={{ flex: center ? "0 1 auto" : "1 1 0%", width: "auto", minWidth: 0 }}>
+              {text({ kind: "slide", index: k })}
+            </Fit>
           </div>
+        );
+        const count = (color: string, extra: CSSProperties = {}) => (
+          <span className="tracking-[0.15em] shrink-0" style={{ fontFamily: MONO, color, fontSize: fz(0.5, null, 170), ...extra }}>{k + 1}/{n}</span>
         );
         return (
           <div key={k} className="shrink-0" style={{ width: frameWidth }}>
-            {first && cover ? (
-              <div ref={frameRef?.(k)}>
-                <PictureVisual w={1080} h={1350} picture={cover} t={t} brand={brand} logo={logo} align={al} words={body} />
-              </div>
-            ) : (
-            <Frame w={1080} h={1350} bg={p.bg} fg={p.fg} frameRef={frameRef?.(k)}>
+            <Frame w={1080} h={1350} bg={pic ? "#000" : p.bg} fg={p.fg} frameRef={frameRef?.(k)}>
+              {pic && <><PictureFill url={pic.url} /><Shade t={t} /></>}
               {layout === "numbered" ? (
-                <div className="h-full flex flex-col justify-between p-[10%]" style={al}>
-                  <span className="font-medium leading-none" style={{ fontFamily: fonts.display, color: p.showMarks ? s.accent : p.fg, fontSize: fz(p.bold ? 2.4 : 2, t, 170) }}>{String(k + 1).padStart(2, "0")}</span>
+                <div className={`${pic ? "absolute inset-0" : "h-full"} flex flex-col justify-between p-[10%]`} style={al}>
+                  <span className="font-medium leading-none shrink-0" style={{ fontFamily: fonts.display, color: p.showMarks ? p.accent : p.fg, fontSize: fz(p.bold ? 2.4 : 2, t, 170), textShadow: pic ? SHADOW : undefined }}>{String(k + 1).padStart(2, "0")}</span>
                   {body}
-                  <span className="tracking-[0.15em]" style={{ fontFamily: MONO, color: p.fg, opacity: 0.6, fontSize: fz(0.5, null, 170) }}>{k + 1}/{n}</span>
+                  {count(p.fg, { opacity: 0.6 })}
                 </div>
               ) : layout === "progress" ? (
-                <div className="h-full flex flex-col justify-between p-[10%] pb-[8%]" style={al}>
+                <div className={`${pic ? "absolute inset-0" : "h-full"} flex flex-col justify-between p-[10%] pb-[8%]`} style={al}>
                   {body}
-                  <div className="w-full flex gap-[3%]">
+                  <div className="w-full flex gap-[3%] shrink-0">
                     {slides.map((__, j) => (
-                      <span key={j} className="flex-1 rounded-full" style={{ height: p.bold ? 4 : 3, background: j <= k ? (p.showMarks ? s.accent : p.fg) : `color-mix(in srgb, ${p.fg} 18%, transparent)` }} />
+                      <span key={j} className="flex-1 rounded-full" style={{ height: p.bold ? 4 : 3, background: j <= k ? (p.showMarks ? p.accent : p.fg) : `color-mix(in srgb, ${p.fg} 18%, transparent)` }} />
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="h-full flex flex-col justify-between p-[10%]" style={al}>
-                  <span className="tracking-[0.15em] font-medium" style={{ color: p.showMarks ? s.accent : p.fg, fontFamily: MONO, fontSize: fz(0.55, null, 170) }}>{k + 1}/{n}</span>
+                <div className={`${pic ? "absolute inset-0" : "h-full"} flex flex-col justify-between p-[10%]`} style={al}>
+                  {count(p.showMarks ? p.sign : p.fg, { fontWeight: 500, fontSize: fz(0.55, null, 170) })}
                   {body}
                 </div>
               )}
             </Frame>
-            )}
           </div>
         );
       })}

@@ -8,7 +8,7 @@ import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { listProjects } from "@/lib/data/projects";
 import { getWorkspace } from "@/lib/data/workspaces";
 import { btnClass } from "@/components/btn";
-import { TEMPLATE_KIT } from "@/lib/visual/core";
+import { TEMPLATE_KIT, cleanLook } from "@/lib/visual/core";
 
 export const metadata = { title: "Visual" };
 
@@ -35,8 +35,9 @@ export default async function VisualPage({ params }: PageProps<"/w/[id]/brand/vi
       sub="Colours and what each is for, fonts, layout, motifs and the designs that look like you. Set once; every visual reads them."
       action={<a href={`/w/${id}/brand/visual/tokens`} className={btnClass("secondary", "sm")}><Download size={14} aria-hidden="true" /> Download tokens (JSON)</a>}
     >
-      <section className="border-t border-hairline pt-6">
-        <StyleGuide tenantId={id} initial={visual} references={assets.filter((a) => a.kind === "reference_image").map((a) => ({ id: a.id, url: a.url }))} brandName={brandName} hook={hook} />
+      {/* The guide opens with its own tool strip (shortcuts, Save), ruled top and bottom. */}
+      <section>
+        <StyleGuide tenantId={id} initial={visual} look={cleanLook(visual.core?.look)} references={assets.filter((a) => a.kind === "reference_image").map((a) => ({ id: a.id, url: a.url }))} brandName={brandName} hook={hook} />
       </section>
       <section className="border-t border-hairline pt-6 mt-10">
         <p className="label-mono text-ink-faint mb-3">The template kit</p>

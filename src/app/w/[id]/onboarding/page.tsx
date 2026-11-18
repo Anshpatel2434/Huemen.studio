@@ -1,14 +1,17 @@
 import { redirect } from "next/navigation";
 import { workspaceScope } from "@/lib/auth/workspace";
 import { firstPieceStale } from "@/lib/voice/lifecycle";
-import { loadPackForWorkspace } from "@/lib/data/voice-pack";
+import { listSamples, loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { loadFoundation, loadVisualIdentity } from "@/lib/data/foundation";
 import { listContent } from "@/lib/data/content";
 import { checkText } from "@/lib/data/check";
 import { getProject } from "@/lib/data/projects";
 import { listAssets } from "@/lib/data/assets";
+import { cleanLook } from "@/lib/visual/core";
+import { transcriptionEnabled } from "@/lib/ai";
 import { isScreen, resumeScreen, SCREENS, screenForLegacyStep, screenIndex, type ScreenKey } from "@/lib/onboarding/screens";
 import { OnboardingDrafts } from "./draft";
+import { savedPieces } from "./screen-text";
 import { UrlImport } from "./enrich-ui";
 import { AudienceScreen, DraftScreen, LookScreen, NameScreen, SiteScreen, WordsScreen, WritingScreen } from "./short-flow";
 
@@ -66,10 +69,13 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
         const name = p.displayName.toLowerCase() === session.email.toLowerCase() ? "" : p.displayName;
         return at === "name"
           ? <NameScreen tenantId={id} saved={{ name, niche: f.niche }} suggested={{ name: site?.profile?.name || site?.title || "", niche: site?.profile?.whatTheyDo || firstSentence(site?.description ?? "") }} />
-          : <AudienceScreen tenantId={id} saved={{ audience: f.audience, offers: f.offers, positioning: f.positioning }} suggested={site?.profile ? { audience: site.profile.audience, offers: site.profile.offers, positioning: site.profile.positioning } : undefined} />;
+          : <AudienceScreen tenantId={id} saved={{ audience: f.audience, offers: f.offers, positioning: f.positioning }} /* Site suggestions only until this screen has been answered once: after that an empty optional field is the person's choice, not a gap to refill (2026-11-17). */
+            suggested={site?.profile && reached <= screenIndex("audience") ? { audience: site.profile.audience, offers: site.profile.offers, positioning: site.profile.positioning } : undefined} />;
       }
 
-      case "writing":
+      case "writing": {
+        // What is on file, listed under the count so "4 pieces added" shows which four.
+        const saved = savedPieces(await listSamples(scope, p.id));
         return (
           <WritingScreen
             tenantId={id}
@@ -77,9 +83,12 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             writeFor={p.onboarding.writeFor ?? []}
             pieces={p.corpusStats.pieces}
             words={p.corpusStats.words}
+            saved={saved}
             links={<UrlImport tenantId={id} />}
+            canRecord={transcriptionEnabled()}
           />
         );
+      }
 
       case "look": {
         const [v, assets] = await Promise.all([loadVisualIdentity(scope), listAssets(scope)]);
@@ -89,6 +98,8 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             references={assets.filter((a) => a.kind === "reference_image").map((a) => ({ id: a.id, url: a.url }))}
             palette={v.palette}
             site={site?.url ?? null}
+            sitePalette={site?.palette ?? []}
+            look={cleanLook(v.core?.look)}
           />
         );
       }
@@ -110,6 +121,7 @@ export default async function OnboardingPage({ params, searchParams }: PageProps
             name={p.displayName.includes("@") ? "" : p.displayName}
             first={first && { id: first.id, hook: draft?.hook ?? null, body: draft?.body ?? null, cta: draft?.cta ?? null, score: check?.score ?? null, band: check?.band ?? null }}
             state={fp?.state === "writing" && !firstPieceStale(fp, Date.now()) ? "writing" : fp?.state === "writing" || fp?.state === "failed" ? (draft ? null : "failed") : null}
+            reason={fp?.state === "failed" && !draft ? fp.reason ?? null : null}
           />
         );
       }

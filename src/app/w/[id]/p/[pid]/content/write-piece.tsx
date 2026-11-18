@@ -15,7 +15,8 @@ import { useState, useTransition } from "react";
 import { PenLine, ListTree, ScanText, ArrowUp } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { AgentDots, Alert } from "@/components/ui";
-import { FORMATS } from "@/lib/content/formats";
+import { FORMATS, isHookSet } from "@/lib/content/formats";
+import { carryOnModeSwitch } from "./mode-switch";
 import type { WorkMode } from "@/lib/voice/types";
 import { coWriteAction, ownDraftAction } from "./actions";
 import { liveDraftHref } from "@/components/live-draft";
@@ -28,11 +29,14 @@ const MODES: { key: WorkMode; label: string; sub: string; icon: typeof PenLine }
   { key: "check", label: "I'll write it", sub: "You write it. We check it against your voice.", icon: ScanText },
 ];
 
-export function WritePiece({ tenantId, projectId, pillarId, topic, format: initialFormat, angle, mode: initialMode, confidence }: {
+export function WritePiece({ tenantId, projectId, pillarId, topic, title, format: initialFormat, angle, mode: initialMode, confidence }: {
   tenantId: string;
   projectId: string;
   pillarId: string | null;
+  /** The whole topic: what the draft is written from. */
   topic: string;
+  /** The piece's name, for the heading: the topic cut to fit when it is long. */
+  title?: string;
   format: string | null;
   angle: string | null;
   mode: WorkMode;
@@ -57,6 +61,15 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
     isSaved: (v) => !v.text.trim() && v.brief.trim() === topic.trim(),
   });
 
+  // Switching how to write it keeps what was typed: the topic carries into
+  // "I'll write it" as a start, and back again (./mode-switch).
+  const switchMode = (next: WorkMode) => {
+    const carried = carryOnModeSwitch(mode, next, { brief, text });
+    setBrief(carried.brief);
+    setText(carried.text);
+    setMode(next);
+  };
+
   const go = () => {
     const t = brief.trim() || topic;
     // Sent: what was typed is the piece now, not something to offer back.
@@ -74,7 +87,10 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
     });
   };
   const disabled = pending || (mode === "check" ? !text.trim() : !brief.trim());
-  const cta = mode === "ghostwrite" ? "Draft it" : mode === "cowrite" ? "Give me the outline" : "Save and check";
+  // A hook set is five opening lines, not a post: say what will be written.
+  const hooks = isHookSet(format);
+  const cta = mode === "ghostwrite" ? (hooks ? "Write the hooks" : "Draft it") : mode === "cowrite" ? "Give me the outline" : "Save and check";
+  const subOf = (m: (typeof MODES)[number]) => (hooks && m.key === "ghostwrite" ? "Five opening lines in your voice. You pick." : m.sub);
 
   /*
    * Open on the canvas, like a design tool's new file: what this piece is,
@@ -86,7 +102,7 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
         <div className="w-full max-w-[860px] flex flex-col gap-7">
           <div className="text-center flex flex-col items-center gap-2">
             <p className="label-mono text-ink-faint">New piece · {FORMATS.find((f) => f.key === format)?.label ?? "Content"}</p>
-            <h1 className="text-display leading-[1.05] max-w-[22ch]">{topic}</h1>
+            <h1 className="text-display leading-[1.05] max-w-[22ch]">{title || topic}</h1>
             {angle && <p className="text-ink-muted max-w-xl">{angle}</p>}
             {confidence && confidence.score < 70 && (
               <p className="inline-flex items-center gap-2 text-sm text-warn mt-1">
@@ -103,8 +119,8 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
                 type="button"
                 role="radio"
                 aria-checked={mode === m.key}
-                onClick={() => setMode(m.key)}
-                title={m.sub}
+                onClick={() => switchMode(m.key)}
+                aria-description={subOf(m)}
                 className={`inline-flex items-center gap-2 min-h-11 px-4 rounded-full border text-sm transition-colors ${mode === m.key ? "bg-ink text-on-ink border-ink" : "bg-paper border-line hover:border-line-strong"}`}
               >
                 <m.icon size={15} aria-hidden="true" /> {m.label}
@@ -128,7 +144,7 @@ export function WritePiece({ tenantId, projectId, pillarId, topic, format: initi
             )}
             <div className="hu-composer__bar">
               <Select value={format} onChange={setFormat} label="Format" variant="pill" className="shrink-0" options={FORMATS.map((f) => ({ value: f.key, label: f.label }))} />
-              <span className="flex-1 text-xs text-ink-faint hidden sm:block">{MODES.find((m) => m.key === mode)?.sub}</span>
+              <span className="flex-1 text-xs text-ink-faint hidden sm:block">{subOf(MODES.find((m) => m.key === mode) ?? MODES[0])}</span>
               <button type="button" disabled={disabled} onClick={go} className={btnClass("primary", "sm")}>
                 {pending ? <><AgentDots /> {mode === "check" ? "Checking" : "Writing"}</> : <>{cta} <ArrowUp size={15} aria-hidden="true" /></>}
               </button>

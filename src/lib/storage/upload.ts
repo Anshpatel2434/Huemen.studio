@@ -77,7 +77,8 @@ export async function uploadTarget(tenantId: string, purpose: UploadPurpose, nam
   if (!Number.isInteger(size) || size <= 0) throw new UploadError("No file arrived. Try again.");
   if (size > UPLOAD_LIMITS[purpose]) throw new UploadError(`That file is over ${UPLOAD_LIMITS[purpose] / (1024 * 1024)} MB.`);
   const key = incomingKey(tenantId, name);
-  const relay = `${getEnv().APP_URL}/api/storage/${encodeURI(key)}?put=${signPut(key, size)}`;
+  // Relative, so the browser sends it to whichever host it is on (see appSignedUrl).
+  const relay = `/api/storage/${encodeURI(key)}?put=${signPut(key, size)}`;
   const mime = /^[\w.+-]+\/[\w.+-]+$/.test(type) ? type : "application/octet-stream";
   const driver = storage();
   const direct = driver.presignPut ? await driver.presignPut(key, size, mime, TTL_SECONDS) : null;

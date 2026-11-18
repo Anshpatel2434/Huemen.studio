@@ -28,6 +28,8 @@ export interface WorkspaceRow {
   user_count: number;
   created_at: string;
   accent: string | null;
+  /** The workspace's own host (tenants.custom_domain), for its links; null uses the app URL. */
+  domain: string | null;
 }
 
 /** A refused admin change, worded for the admin. */
@@ -69,7 +71,7 @@ export async function listWorkspaces(session: Session): Promise<WorkspaceRow[]> 
       c.query<WorkspaceRow>(
         `SELECT t.id, t.name, t.status,
                 (SELECT count(*)::int FROM users u WHERE u.tenant_id = t.id AND u.status <> 'disabled') AS user_count,
-                t.created_at, t.branding->>'accent' AS accent
+                t.created_at, t.branding->>'accent' AS accent, t.custom_domain AS domain
            FROM tenants t ORDER BY (t.id = $1) DESC, t.created_at DESC`,
         [session.tenantId],
       ),
@@ -146,7 +148,8 @@ export async function inviteUser(
   tenantId: string,
   email: string,
   role: Role,
-): Promise<{ userId: string; status: string; workspace: string; existing: boolean; role: Role } | null> {
+): Promise<{ userId: string; status: string; workspace: string; existing: boolean; role: Role; domain: string | null } | null> {
+  adminGlobalScope(session); // admins only, before any message that explains admin rules
   if (!rolesFor(session, tenantId).includes(role)) {
     throw new AdminError(
       tenantId === session.tenantId
@@ -167,15 +170,15 @@ export async function inviteUser(
       )
     ).rowCount;
     const row = (
-      await c.query<{ id: string; status: string; role: Role; workspace: string }>(
-        `SELECT u.id, u.status, u.role, t.name AS workspace FROM users u JOIN tenants t ON t.id = u.tenant_id
+      await c.query<{ id: string; status: string; role: Role; workspace: string; domain: string | null }>(
+        `SELECT u.id, u.status, u.role, t.name AS workspace, t.custom_domain AS domain FROM users u JOIN tenants t ON t.id = u.tenant_id
           WHERE u.tenant_id = $1 AND u.email = $2`,
         [tenantId, email],
       )
     ).rows[0];
     // What was actually recorded: a repeat invite keeps the existing role.
     await audit(c, scope, tenantId, created ? "user.invite" : "user.reinvite", { email, role: row?.role ?? role });
-    return row ? { userId: row.id, status: row.status, workspace: row.workspace, existing: !created, role: row.role } : null;
+    return row ? { userId: row.id, status: row.status, workspace: row.workspace, existing: !created, role: row.role, domain: row.domain } : null;
   });
 }
 
@@ -196,6 +199,7 @@ async function memberOf(c: PoolClient, userId: string) {
  * longer be accepted; turned back on, it is pending again.
  */
 export async function setMemberAccess(session: Session, userId: string, on: boolean): Promise<void> {
+  adminGlobalScope(session); // admins only, before any message that explains admin rules
   if (userId === session.userId) throw new AdminError("You can't turn off your own access.");
   await change(session, async (c, scope) => {
     const m = await memberOf(c, userId);
@@ -208,6 +212,7 @@ export async function setMemberAccess(session: Session, userId: string, on: bool
 
 /** Admin or coach, for people of the owner's organisation. Clients keep their one role. */
 export async function setMemberRole(session: Session, userId: string, role: Role): Promise<void> {
+  adminGlobalScope(session); // admins only, before any message that explains admin rules
   if (userId === session.userId) throw new AdminError("You can't change your own role. Ask another admin.");
   await change(session, async (c, scope) => {
     const m = await memberOf(c, userId);

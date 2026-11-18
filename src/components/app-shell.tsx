@@ -23,7 +23,7 @@ import {
   ChevronDown, House, LayoutGrid, BarChart3, Settings, Users, LogOut, Plus, Search, Archive, Star, ChevronRight,
   PenLine, ScanText, Fingerprint, CalendarDays, Menu as MenuIcon, X,
 } from "lucide-react";
-import { Avatar, IconButton, LogoMark, Menu, MenuItem, MenuSeparator, ToastProvider } from "@/components/ui";
+import { Avatar, FOCUSABLE, IconButton, LogoMark, Menu, MenuItem, MenuSeparator, ToastProvider } from "@/components/ui";
 import { ThemeSwitch, ThemeToggle } from "@/components/theme";
 import { PageTransition } from "@/components/page-transition";
 import { signOutAction } from "@/app/dashboard/actions";
@@ -56,15 +56,41 @@ export function AppShell({ nav, section, tabs, actions, children }: {
   const [drawer, setDrawer] = useState(false);
   const menuBtn = useRef<HTMLButtonElement>(null);
 
+  const drawerRef = useRef<HTMLElement>(null);
+
   // The drawer closes when the route changes (adjusted during render, not in an
-  // effect), and on Escape, handing focus back.
+  // effect), and on Escape. While it is open it is the only thing a keyboard
+  // can reach: focus moves into it, Tab stays inside it, the page behind is
+  // inert, and closing hands focus back to the menu button.
   const [drawerPath, setDrawerPath] = useState(path);
   if (drawerPath !== path) { setDrawerPath(path); setDrawer(false); }
   useEffect(() => {
     if (!drawer) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setDrawer(false); menuBtn.current?.focus(); } };
+    const panel = drawerRef.current;
+    const opener = menuBtn.current;
+    const items = () => (panel ? [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0) : []);
+    items()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return setDrawer(false);
+      if (e.key !== "Tab") return;
+      const list = items();
+      if (!list.length) return;
+      const first = list[0], last = list[list.length - 1];
+      const inside = !!panel && panel.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (!inside || document.activeElement === last)) { e.preventDefault(); first.focus(); }
+    };
+    // The drawer only exists below 900px: a window widened past that drops it,
+    // so the page is never left inert behind a drawer nobody can see.
+    const wide = window.matchMedia("(min-width: 900px)");
+    const onWide = () => { if (wide.matches) setDrawer(false); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    wide.addEventListener("change", onWide);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      wide.removeEventListener("change", onWide);
+      if (opener?.isConnected) opener.focus();
+    };
   }, [drawer]);
 
   return (
@@ -77,7 +103,7 @@ export function AppShell({ nav, section, tabs, actions, children }: {
         {drawer && (
           <div className="fixed inset-0 min-[900px]:hidden" style={{ zIndex: "var(--z-modal)" }}>
             <div className="absolute inset-0 bg-[var(--scrim)] fade-in" onClick={() => setDrawer(false)} />
-            <aside className="absolute inset-y-0 left-0 w-[300px] max-w-[86vw] bg-paper border-r border-hairline flex flex-col shadow-[var(--shadow-overlay)] pop" aria-label="Main" role="dialog" aria-modal="true">
+            <aside ref={drawerRef} className="absolute inset-y-0 left-0 w-[300px] max-w-[86vw] bg-paper border-r border-hairline flex flex-col shadow-[var(--shadow-overlay)] pop" aria-label="Main menu" role="dialog" aria-modal="true">
               <div className="flex justify-end px-2 pt-2">
                 <IconButton label="Close menu" onClick={() => setDrawer(false)}><X size={18} /></IconButton>
               </div>
@@ -86,7 +112,8 @@ export function AppShell({ nav, section, tabs, actions, children }: {
           </div>
         )}
 
-        <div className="flex-1 min-w-0 flex flex-col">
+        {/* Inert while the drawer is open, so nothing behind it takes focus or a click. */}
+        <div className="flex-1 min-w-0 flex flex-col" inert={drawer}>
           <header className="shrink-0 bg-paper border-b border-hairline">
             <div className="min-h-14 flex items-center gap-2 px-3 min-[900px]:px-5">
               <button

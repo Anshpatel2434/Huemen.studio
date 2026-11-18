@@ -118,6 +118,13 @@ describe("voice-note transcription", () => {
     expect((seen!.init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
   });
 
+  it("treats Whisper's silence filler as nothing heard, and keeps real short answers", async () => {
+    const say = (text: string) => openaiTranscriber(cfg, async () => new Response(JSON.stringify({ text }), { status: 200 })).transcribe(audio, "n.webm");
+    for (const filler of [" Thank you.", "Thanks for watching!", " you", "Bye.", ""]) expect((await say(filler)).text).toBe("");
+    expect((await say(" I coach founders.")).text).toBe("I coach founders.");
+    expect((await say("Thank you for asking, I help new managers.")).text).toBe("Thank you for asking, I help new managers.");
+  });
+
   it("turns failures into typed errors, never empty text", async () => {
     const reply = (status: number, body = "{}") => openaiTranscriber(cfg, async () => new Response(body, { status }));
     await expect(reply(401).transcribe(audio, "n.webm")).rejects.toMatchObject({ kind: "auth" });

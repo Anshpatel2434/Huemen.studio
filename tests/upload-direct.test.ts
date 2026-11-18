@@ -39,7 +39,7 @@ describe("direct uploads", () => {
     const t = await uploadTarget(A, "document", "notes.pdf", 2048, "application/pdf");
     expect(isIncomingKey(t.key, A)).toBe(true);
     expect(t.url).toContain(`/api/storage/tenants/${A}/incoming/`);
-    expect(verifyPut(t.key, new URL(t.url).searchParams.get("put")!)).toBe(2048);
+    expect(verifyPut(t.key, new URL(t.url, "http://app.test").searchParams.get("put")!)).toBe(2048);
     expect(t.headers["Content-Type"]).toBe("application/pdf");
   });
 

@@ -18,13 +18,18 @@ export interface FormatDef {
   platform: string;
   /** Export frame for the templated visual (brief §4.3 export dimensions). */
   frame: { w: number; h: number; label: string };
+  /**
+   * The copy runs to several frames (a carousel, or a long post read slide by
+   * slide). Only these get carousel frames: see formatUsesCarousel.
+   */
+  carousel?: boolean;
 }
 
 export const FORMATS: FormatDef[] = [
-  { key: "linkedin_post", label: "LinkedIn post", channel: "linkedin", platform: "linkedin", templateKey: "linkedin_post", frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
+  { key: "linkedin_post", label: "LinkedIn post", channel: "linkedin", platform: "linkedin", templateKey: "linkedin_post", carousel: true, frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
   { key: "hook_set", label: "LinkedIn hook set", channel: "linkedin", platform: "linkedin", templateKey: "linkedin_hook_set", frame: { w: 1080, h: 1080, label: "1:1 · 1080×1080" } },
   { key: "ig_caption", label: "Instagram caption", channel: "instagram", platform: "instagram", templateKey: "ig_caption", frame: { w: 1080, h: 1350, label: "4:5 · 1080×1350" } },
-  { key: "ig_carousel", label: "Instagram carousel", channel: "instagram", platform: "instagram", templateKey: "ig_carousel", frame: { w: 1080, h: 1350, label: "4:5 frames · 1080×1350" } },
+  { key: "ig_carousel", label: "Instagram carousel", channel: "instagram", platform: "instagram", templateKey: "ig_carousel", carousel: true, frame: { w: 1080, h: 1350, label: "4:5 frames · 1080×1350" } },
   { key: "newsletter_section", label: "Newsletter section", channel: "newsletter", platform: "newsletter", templateKey: "newsletter_section", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
   { key: "pitch_email", label: "Pitch email", channel: "email", platform: "email", templateKey: "pitch_email", frame: { w: 1200, h: 628, label: "Header · 1200×628" } },
   { key: "talk_abstract", label: "Talk abstract", channel: "talk", platform: "spoken", templateKey: "talk_abstract", frame: { w: 1920, h: 1080, label: "16:9 · 1920×1080" } },
@@ -38,13 +43,41 @@ export const FORMATS: FormatDef[] = [
 
 export const formatByKey = (k: string): FormatDef => FORMATS.find((f) => f.key === k) ?? FORMATS[0];
 
+/**
+ * Whether a piece of this format gets carousel frames (the visual set's
+ * "carousel" artboard). The one place this is decided: generation, the visual
+ * board and the export all ask it. A format without the flag (an X post, a
+ * WhatsApp message, a LinkedIn comment) gets the post image and the quote card.
+ */
+export const formatUsesCarousel = (formatKey: string | null | undefined): boolean => !!FORMATS.find((f) => f.key === formatKey)?.carousel;
+
 export const STEERS = ["Shorter", "More contrarian", "Less corporate", "Warmer", "Punchier hook"];
 
-/** Split a generated draft into hook / body / CTA (first line / middle / "→" line). */
+/**
+ * Split a generated draft into hook / body / CTA (first line / middle / the
+ * "CTA:" or "→" line). A model sometimes returns the whole piece as ONE
+ * paragraph, call to action included; that used to land entirely in the hook
+ * with an empty body, which onboarding read as "no piece yet" and left the
+ * person stuck (2026-11-17 round-two test). So a one-line draft is split too:
+ * an inline "CTA:" comes off the end, and the first sentence is the hook.
+ */
 export function splitDraft(text: string): { hook: string; body: string; cta: string } {
-  const lines = text.split("\n").map((l) => l.trimEnd());
-  const nonEmpty = lines.filter((l) => l.trim());
+  let lines = text.split("\n").map((l) => l.trimEnd());
+  let nonEmpty = lines.filter((l) => l.trim());
   if (nonEmpty.length === 0) return { hook: "", body: "", cta: "" };
+  if (nonEmpty.length === 1) {
+    let rest = nonEmpty[0].trim();
+    let tail = "";
+    const at = rest.search(/\s(?:CTA:|→)\s*\S/);
+    if (at > 0) {
+      tail = rest.slice(at).trim();
+      rest = rest.slice(0, at).trim();
+    }
+    const end = rest.search(/[.!?]["”’)]?\s+\S/);
+    const parts = end > 0 ? [rest.slice(0, end + 1).trim(), rest.slice(end + 1).trim()] : [rest];
+    lines = tail ? [...parts, tail] : parts;
+    nonEmpty = lines;
+  }
   const hook = nonEmpty[0].trim();
   const last = nonEmpty[nonEmpty.length - 1].trim();
   const hasCta = nonEmpty.length > 1 && /^(→|cta:)/i.test(last);
@@ -67,3 +100,25 @@ export function findViolations(text: string, dontWords: string[]): string[] {
     return re.test(hay);
   });
 }
+
+/**
+ * A fact the draft did not have, left as "[placeholder]" (the draft contract,
+ * lib/ai/prompt). Matched whatever the case, with a currency sign in front
+ * ("$[placeholder]") or a note inside ("[placeholder: client name]"). Code,
+ * not a model: a placeholder that reaches a published post is the one mistake
+ * nobody forgives, so it is found the same way every time.
+ */
+const PLACEHOLDER = /[$£€₹]?\[\s*placeholder(?:[\s:,-][^\]\n]{0,80})?\]/gi;
+
+/** Every placeholder still in the text, as written. */
+export function findPlaceholders(text: string): string[] {
+  return text.match(PLACEHOLDER) ?? [];
+}
+
+/** A finished piece as plain text, the way it is pasted into the platform. */
+export function pieceText(p: { hook: string; body: string; cta: string }): string {
+  return [p.hook, p.body, p.cta].map((s) => s.trim()).filter(Boolean).join("\n\n");
+}
+
+/** The format is five opening lines, not a post: its labels and its ask differ. */
+export const isHookSet = (formatKey: string | null | undefined): boolean => formatKey === "hook_set";

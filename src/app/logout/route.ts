@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { localRedirect } from "@/lib/local-redirect";
 import { signOut } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +9,14 @@ export const dynamic = "force-dynamic";
  * session too and lands on the same confirmation, so the guessed URL does the
  * expected thing rather than showing a dead end.
  *
- * GET only ends a session, which is the user's own; it exposes nothing and
- * changes nothing else.
+ * Only for a typed address or a link on this site: browsers send
+ * Sec-Fetch-Site "none" or "same-origin" then. Another site embedding
+ * /logout (an image tag) gets "cross-site" and signs nobody out
+ * (2026-11-17 test). Redirects are relative, so the browser stays on its host.
  */
 export async function GET(request: Request) {
+  const site = request.headers.get("sec-fetch-site");
+  if (site && site !== "none" && site !== "same-origin") return localRedirect("/dashboard");
   await signOut();
-  return NextResponse.redirect(new URL("/signed-out", request.url));
+  return localRedirect("/signed-out");
 }

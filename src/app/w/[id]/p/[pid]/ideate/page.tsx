@@ -15,6 +15,7 @@ import { IdeateTree } from "./ideate-tree";
 import { loadFoundation } from "@/lib/data/foundation";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { coreCardFacts } from "@/lib/voice/core-card";
+import { pieceTopic } from "@/lib/data/create";
 
 export const metadata = { title: "Ideate" };
 
@@ -38,10 +39,33 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
     loadPackForWorkspace(scope),
   ]);
   const facts = pack ? coreCardFacts(pack, new Date().getTime()) : null;
-  const topic = project.name.startsWith("Untitled") ? "" : project.name;
+  // The whole topic, not the name cut to fit a card (lib/data/create).
+  const topic = project.name.startsWith("Untitled") ? "" : pieceTopic(project);
   const base = `/w/${id}/p/${pid}`;
   const open = ideas.filter((i) => i.status === "new").slice(0, 6);
   const ready = pillars.length > 0 && !ctx.degraded;
+  // Chosen on Create (or on an earlier visit): shown as chosen, not asked again.
+  const chosenFormat = project.format ? FORMATS.find((f) => f.key === project.format) ?? null : null;
+  const formatGrid = (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {FORMATS.map((f) => (
+        <label
+          key={f.key}
+          className="border border-hairline rounded-md p-3 cursor-pointer text-sm hover:bg-field has-[:checked]:border-ink has-[:checked]:bg-field"
+        >
+          <input
+            type="radio"
+            name="format"
+            value={f.key}
+            defaultChecked={(project.format ?? "linkedin_post") === f.key}
+            className="sr-only"
+          />
+          <span className="block font-medium">{f.label}</span>
+          <span className="block text-xs text-ink-faint mt-0.5">{f.frame.label}</span>
+        </label>
+      ))}
+    </div>
+  );
 
 
   return (
@@ -74,24 +98,21 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
 
         <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">01 · Where does it go</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {FORMATS.map((f) => (
-              <label
-                key={f.key}
-                className="border border-hairline rounded-md p-3 cursor-pointer text-sm hover:bg-field has-[:checked]:border-ink has-[:checked]:bg-field"
-              >
-                <input
-                  type="radio"
-                  name="format"
-                  value={f.key}
-                  defaultChecked={(project.format ?? "linkedin_post") === f.key}
-                  className="sr-only"
-                />
-                <span className="block font-medium">{f.label}</span>
-                <span className="block text-xs text-ink-faint mt-0.5">{f.frame.label}</span>
-              </label>
-            ))}
-          </div>
+          {chosenFormat ? (
+            // Already decided: one line saying so, with the list a click away.
+            // The radios stay in the form either way, so the choice is saved.
+            <details className="group">
+              <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer flex flex-wrap items-center gap-x-3 gap-y-1 min-h-11 text-sm">
+                <span className="group-open:hidden inline-flex items-center gap-1.5 border border-ink bg-field rounded-md px-3 py-2 font-medium"><Check size={13} aria-hidden="true" /> {chosenFormat.label}</span>
+                <span className="group-open:hidden text-ink-faint">Chosen when you started this piece.</span>
+                <span className="underline underline-offset-2 text-ink-muted group-open:hidden">Change</span>
+                <span className="hidden group-open:inline text-ink-muted">Pick where this piece goes</span>
+              </summary>
+              <div className="mt-2">{formatGrid}</div>
+            </details>
+          ) : (
+            formatGrid
+          )}
         </section>
 
         <section className="border-t border-hairline pt-6">
@@ -139,8 +160,9 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
         </section>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Says what it does: it saves these choices and opens the Content step, where the writing starts. */}
           <button type="submit" name="next" value="content" className={btnClass("primary", "md")}>
-            Write it <ArrowRight size={14} />
+            Save and open Content <ArrowRight size={14} />
           </button>
           <SubmitButton pendingLabel="Saving…" size="md" variant="ghost">Save and stay</SubmitButton>
         </div>
