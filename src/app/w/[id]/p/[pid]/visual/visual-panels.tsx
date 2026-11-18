@@ -28,6 +28,7 @@ import { SCALE, scaleAt, scaleForKey, type ArtboardKind, type PictureMode } from
 import { exportSizes } from "@/lib/visual/export";
 import { fontFaceCss, googleFontsHref, type FontPlan } from "@/lib/visual/fonts";
 import { PICTURE_OP_LABEL, type PictureOp } from "@/lib/visual/picture-tools";
+import { WORDS_NOTICE } from "@/lib/visual/picture-words";
 import { rangeAt, rangeForKey, type Range } from "./picture-tools-maths";
 
 /**
@@ -176,6 +177,8 @@ export type Version = {
   id: string; contentItemId: string; artboard: ArtboardKind; mode: PictureMode;
   heading: string | null; parentId: string | null; createdAt: string; url: string;
   op?: PictureOp; width?: number; height?: number; cutout?: boolean;
+  /** It should have no words and may still show some (lib/data/pictures keepWordsOut). */
+  textLeft?: boolean;
 };
 
 /** How a version came to be, in the strip's words. Versions from before the picture tools carry no `op`. */
@@ -275,6 +278,15 @@ export function HeadingCheck({ stale, busy, onRedraw, onLiveText }: { stale: boo
       </div>
     </div>
   );
+}
+
+/**
+ * Under a visual whose picture should carry no words (the heading is live text
+ * on top) and may still show some: the check after drawing found words it
+ * could not remove. Plain words, no buttons: Erase is in the tool strip.
+ */
+export function WordsNote() {
+  return <p role="note" className="mt-2 text-xs text-ink-muted leading-relaxed">{WORDS_NOTICE}</p>;
 }
 
 export function ExportSizes() {

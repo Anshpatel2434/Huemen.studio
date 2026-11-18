@@ -32,8 +32,8 @@ import { placePins } from "@/lib/visual/pins";
 import { RangeSlider } from "./visual-panels";
 import { DraftDot, DraftField, pictureOnScreen, picturePoint, type DraftOps, type DraftPin } from "./visual-comments-ui";
 import {
-  RESIZE_SHAPES, RESIZE_ZOOM, addPoint, clampRatio, overlap, placeAt, rectOfBox, resizeOutcome, simplifyStroke, snapZoom, startZoom, strokePath, widestGap,
-  type Point, type Rect, type ResizeOutcome, type ShapeKey,
+  RESIZE_SHAPES, RESIZE_ZOOM, addPoint, clampRatio, geometryFrom, onShownPicture, placeAt, rectOfBox, resizeOutcome, simplifyStroke, snapZoom, startZoom, strokePath, widestGap,
+  type PictureGeometry, type Point, type ResizeOutcome, type ShapeKey,
 } from "./picture-tools-maths";
 
 export type PictureTool = "comment" | "markup" | "erase" | "cutout" | "resize";
@@ -77,19 +77,34 @@ export function ToolLine({ text, summary, actions = [], send, onClose, closeLabe
 
 // ---- where the picture is, inside one visual --------------------------------------------
 
-type Geometry = {
-  /** The frame the picture is on, the whole picture, and the part of it the layout shows: in the surface's own (unzoomed) pixels. */
-  frame: Rect; full: Rect; seen: Rect;
-  /** The surface's own height (a field low on it opens upwards). */
-  height: number;
-  natural: { w: number; h: number };
-  /** The slot the layout gives the picture, width over height. */
-  slot: number;
-  /** Which of the visual's frames it is (a carousel's cover is the first). */
-  frameIndex: number;
-  /** The whole picture on its frame, in shares of the frame. */
-  pic: Box;
-};
+type Geometry = PictureGeometry;
+
+/**
+ * Where the picture is in this visual, measured now (synchronously). The
+ * hook below keeps a copy for drawing; a click or a first stroke measures
+ * for itself, so it never waits for that copy (2026-11-19).
+ */
+function measurePicture(el: HTMLElement | null): Geometry | null {
+  if (!el) return null;
+  const p = pictureOnScreen(el);
+  const frame = p?.img.closest<HTMLElement>("[data-part='background']");
+  if (!p || !frame) return null;
+  const w = el.getBoundingClientRect();
+  const fr = frame.getBoundingClientRect();
+  return geometryFrom({
+    wrap: { left: w.left, top: w.top, width: w.width, height: w.height },
+    layoutWidth: el.offsetWidth, layoutHeight: el.offsetHeight,
+    frame: { left: fr.left, top: fr.top, width: fr.width, height: fr.height },
+    full: p.full, slot: p.slot, natural: p.natural,
+    frameIndex: [...el.querySelectorAll("[data-part='background']")].indexOf(frame),
+  });
+}
+
+/** Whether a screen point lands on the shown part of this visual's picture. */
+function hitsPicture(el: HTMLElement | null, x: number, y: number): boolean {
+  const p = el ? pictureOnScreen(el) : null;
+  return !!p && onShownPicture(p.full, p.slot, x, y);
+}
 
 /** Measured after layout, when the visual resizes and when the picture loads; never during render. */
 function usePictureGeometry(wrap: RefObject<HTMLDivElement | null>, on: boolean, pictureKey: string | undefined): Geometry | null {
@@ -100,24 +115,7 @@ function usePictureGeometry(wrap: RefObject<HTMLDivElement | null>, on: boolean,
     let raf = 0;
     const measure = () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const p = pictureOnScreen(el);
-        const frame = p?.img.closest<HTMLElement>("[data-part='background']");
-        if (!p || !frame) return setGeo(null);
-        const w = el.getBoundingClientRect();
-        const z = w.width / (el.offsetWidth || w.width) || 1;
-        const local = (r: Rect): Rect => ({ left: (r.left - w.left) / z, top: (r.top - w.top) / z, width: r.width / z, height: r.height / z });
-        const fr = frame.getBoundingClientRect();
-        const frameRect = local({ left: fr.left, top: fr.top, width: fr.width, height: fr.height });
-        const full = local(p.full);
-        const slot = local(p.slot);
-        if (!(frameRect.width > 0) || !(frameRect.height > 0) || !(slot.height > 0)) return setGeo(null);
-        setGeo({
-          frame: frameRect, full, seen: overlap(full, slot) ?? slot, height: el.offsetHeight, natural: p.natural, slot: slot.width / slot.height,
-          frameIndex: Math.max(0, [...el.querySelectorAll("[data-part='background']")].indexOf(frame)),
-          pic: { x: (full.left - frameRect.left) / frameRect.width, y: (full.top - frameRect.top) / frameRect.height, w: full.width / frameRect.width, h: full.height / frameRect.height },
-        });
-      });
+      raf = requestAnimationFrame(() => setGeo(measurePicture(el)));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -161,7 +159,7 @@ export function PictureSurface({ tool, pictureKey, lock, drafts, numbers, openDr
   const stroke = useRef<Point[] | null>(null);
   const [live, setLive] = useState<Point[] | null>(null);
 
-  const down = (e: React.PointerEvent<SVGSVGElement>) => {
+  const down = (e: React.PointerEvent<Element>) => {
     e.stopPropagation();
     if (e.button !== 0 || !drawing || !wrap.current) return;
     if (lock) return onRefuse(lock);
@@ -171,7 +169,7 @@ export function PictureSurface({ tool, pictureKey, lock, drafts, numbers, openDr
     stroke.current = [p];
     setLive([p]);
   };
-  const move = (e: React.PointerEvent<SVGSVGElement>) => {
+  const move = (e: React.PointerEvent<Element>) => {
     const pts = stroke.current;
     if (!pts || !wrap.current) return;
     const p = picturePoint(wrap.current, e.clientX, e.clientY);
@@ -182,10 +180,52 @@ export function PictureSurface({ tool, pictureKey, lock, drafts, numbers, openDr
     const pts = stroke.current;
     stroke.current = null;
     setLive(null);
-    if (!pts || !geo || (tool !== "markup" && tool !== "erase")) return;
+    // The copy the hook keeps, or measured now when the stroke began before it was made.
+    const g = geo ?? measurePicture(wrap.current);
+    if (!pts || !g || (tool !== "markup" && tool !== "erase")) return;
     const clean = simplifyStroke(pts);
-    if (clean.length) onStroke(tool, { w: tool === "erase" ? BRUSH_WIDTH : PEN_WIDTH, pts: clean }, { frame: geo.frameIndex, pic: geo.pic, aspect: geo.natural.w / geo.natural.h });
+    if (clean.length) onStroke(tool, { w: tool === "erase" ? BRUSH_WIDTH : PEN_WIDTH, pts: clean }, { frame: g.frameIndex, pic: g.pic, aspect: g.natural.w / g.natural.h });
   };
+
+  // ---- the first click or stroke, before the overlay is there ----------------------------
+  // The click target (Remove background, Resize) and the drawing surface (Markup,
+  // Erase) appear a frame after the tool is picked, once the picture is measured.
+  // A click or a stroke that comes sooner (2026-11-18: within about 100 ms of
+  // pressing B or R on a fresh page) is caught here, on the wrapper, measured
+  // there and then, and handled exactly as the overlay would: it never falls
+  // through to the visual (which would open the piece instead).
+  const clickTool = !!pictureKey && (tool === "cutout" || tool === "resize");
+  const pick = () => {
+    if (lock) return onRefuse(lock);
+    const g = measurePicture(wrap.current);
+    if (g) return onPick({ natural: g.natural, slot: g.slot });
+    // The picture is on the page but not decoded yet: pick as soon as it is.
+    const img = wrap.current?.querySelector<HTMLImageElement>("img[data-part='picture']");
+    void img?.decode().then(() => { const later = measurePicture(wrap.current); if (later) onPick({ natural: later.natural, slot: later.slot }); }, () => undefined);
+  };
+  /** On the shown picture, or on its <img> before it has a size: either way the tool's. */
+  const onPicture = (e: React.MouseEvent) =>
+    hitsPicture(wrap.current, e.clientX, e.clientY) ||
+    (e.target instanceof Element && !!e.target.closest("img[data-part='picture']") && !measurePicture(wrap.current));
+  const earlyDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if (clickTool) {
+      // As the button does: the pointer press is the tool's, not the canvas's.
+      if (onPicture(e)) e.stopPropagation();
+      return;
+    }
+    // Markup and Erase before their surface exists: the first stroke starts on the wrapper.
+    if (drawing && !geo && hitsPicture(wrap.current, e.clientX, e.clientY)) down(e);
+  };
+  const earlyClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // A key press on the button (no pointer position) is the button's own.
+    if (e.detail === 0 || !onPicture(e)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    pick();
+  };
+  // Only the wrapper's own pointer events: once the surface has the pointer, it handles the stroke.
+  const own = (e: React.PointerEvent<HTMLDivElement>) => e.target === e.currentTarget;
 
   const erased = drafts.filter((d) => d.kind === "erase").flatMap((d) => d.strokes ?? []);
   const marked = drafts.filter((d) => d.kind === "markup").flatMap((d) => d.strokes ?? []);
@@ -194,7 +234,15 @@ export function PictureSurface({ tool, pictureKey, lock, drafts, numbers, openDr
   const spots = placePins(boxes.map(({ d, rect }) => ({ id: d.id, left: rect.left, top: rect.top })));
 
   return (
-    <div ref={wrap} className="relative">
+    <div
+      ref={wrap}
+      className="relative"
+      onPointerDownCapture={clickTool || (drawing && !geo) ? earlyDown : undefined}
+      onClickCapture={clickTool ? earlyClick : undefined}
+      onPointerMove={drawing ? (e) => { if (own(e)) move(e); } : undefined}
+      onPointerUp={drawing ? (e) => { if (own(e)) up(); } : undefined}
+      onPointerCancel={drawing ? (e) => { if (own(e)) up(); } : undefined}
+    >
       {children}
       {geo && marks && (
         // Over this visual and nothing else. Only the drawing surface takes the pointer, and only in Markup or Erase.
@@ -277,6 +325,7 @@ export function PictureSurface({ tool, pictureKey, lock, drafts, numbers, openDr
           // The click is the tool's, not the visual's: let through, it opened the
           // piece (a new address) and that wiped what the tool had just started
           // (2026-11-18: the first click after the piece was closed did nothing).
+          // A pointer click is taken by the wrapper first (earlyClick); this one is a key press.
           onClick={(e) => { e.stopPropagation(); if (lock) onRefuse(lock); else onPick({ natural: geo.natural, slot: geo.slot }); }}
           aria-label={tool === "cutout" ? "Remove this picture's background" : "Resize this picture"}
           className={`absolute z-20 rounded-xs outline outline-2 outline-dashed -outline-offset-2 outline-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] focus-visible:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] ${lock ? "cursor-not-allowed" : "cursor-pointer"}`}

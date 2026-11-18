@@ -27,7 +27,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { artboardsFor, CAROUSEL_LAYOUTS, clampScale, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, scaleAt, scaleForKey, SCALE } from "@/lib/visual/design";
 import { FORMATS, formatUsesCarousel } from "@/lib/content/formats";
 import { CarouselFrames, PostImage, QuoteCard, schemesFrom } from "@/app/w/[id]/p/[pid]/visual/visual-layouts";
-import { BoardIconButton, ScaleSlider, versionLabel } from "@/app/w/[id]/p/[pid]/visual/visual-panels";
+import { BoardIconButton, ScaleSlider, versionLabel, WordsNote } from "@/app/w/[id]/p/[pid]/visual/visual-panels";
 import { ToolBtn } from "@/components/canvas";
 
 const DIR = join(process.cwd(), "src/app/w/[id]/p/[pid]/visual");
@@ -279,5 +279,19 @@ describe("icon buttons on the board", () => {
     for (const f of ["visual-board.tsx", "visual-comments-ui.tsx", "visual-panels.tsx", "picture-tools-ui.tsx"]) {
       expect(source(f), f).not.toMatch(/<IconButton[\s>]/);
     }
+  });
+});
+
+describe("a picture that may still show words (2026-11-19)", () => {
+  it("is said plainly under the visual: a note, no button, no tooltip, no 'AI'", () => {
+    const html = renderToStaticMarkup(createElement(WordsNote));
+    expect(html).toContain('role="note"');
+    expect(html).toContain("This picture may show some words. Use Erase to remove them.");
+    expect(html).not.toMatch(/<button|title=|AI/);
+  });
+  it("the board shows it only for a live-text picture flagged by the check, not a cut-out, not while it is being changed", () => {
+    const src = readFileSync(join(DIR, "visual-board.tsx"), "utf8");
+    expect(src).toContain("pic(k)?.textLeft && !pic(k)?.cutout && !working(i, k) ? <WordsNote /> : null");
+    expect(src).toContain("textLeft: !!info.textLeft");
   });
 });

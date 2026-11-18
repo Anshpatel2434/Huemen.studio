@@ -308,6 +308,8 @@ const TASK_TEMPERATURE: Record<string, number> = {
   rewrite_part: TEMPERATURE.rewrite,
   // Reading designs is a judgement: the same designs should read the same way twice.
   look_read: TEMPERATURE.judge,
+  // Finding words in a picture is a judgement too: the same picture, the same answer.
+  picture_text_check: TEMPERATURE.judge,
 };
 
 /** The temperature a task runs at, or undefined to keep the provider default. */

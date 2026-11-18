@@ -47,6 +47,49 @@ export function overlap(a: Rect, b: Rect): Rect | null {
   return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top } : null;
 }
 
+/**
+ * Where a picture sits inside one visual, in the visual's own (unzoomed)
+ * pixels: the frame it is on, the whole picture, and the part the layout
+ * shows. The board is zoomed with a CSS transform, so the screen rectangles
+ * are divided by the zoom (the wrapper's screen width over its layout width).
+ */
+export type PictureGeometry = {
+  frame: Rect; full: Rect; seen: Rect;
+  /** The surface's own height (a field low on it opens upwards). */
+  height: number;
+  natural: { w: number; h: number };
+  /** The slot the layout gives the picture, width over height. */
+  slot: number;
+  /** Which of the visual's frames it is (a carousel's cover is the first). */
+  frameIndex: number;
+  /** The whole picture on its frame, in shares of the frame. */
+  pic: Box;
+};
+
+/** The geometry from what was measured on screen (screen pixels), or null when there is nothing to work on. */
+export function geometryFrom(m: {
+  wrap: Rect; layoutWidth: number; layoutHeight: number;
+  frame: Rect; full: Rect; slot: Rect; natural: { w: number; h: number }; frameIndex: number;
+}): PictureGeometry | null {
+  const z = m.wrap.width / (m.layoutWidth || m.wrap.width) || 1;
+  const local = (r: Rect): Rect => ({ left: (r.left - m.wrap.left) / z, top: (r.top - m.wrap.top) / z, width: r.width / z, height: r.height / z });
+  const frame = local(m.frame);
+  const full = local(m.full);
+  const slot = local(m.slot);
+  if (!(frame.width > 0) || !(frame.height > 0) || !(slot.height > 0)) return null;
+  return {
+    frame, full, seen: overlap(full, slot) ?? slot, height: m.layoutHeight, natural: m.natural, slot: slot.width / slot.height,
+    frameIndex: Math.max(0, m.frameIndex),
+    pic: { x: (full.left - frame.left) / frame.width, y: (full.top - frame.top) / frame.height, w: full.width / frame.width, h: full.height / frame.height },
+  };
+}
+
+/** Whether a screen point lands on the part of the picture the layout shows (`full` cropped by its `slot`). */
+export function onShownPicture(full: Rect, slot: Rect, x: number, y: number): boolean {
+  const seen = overlap(full, slot);
+  return !!seen && x >= seen.left && x <= seen.left + seen.width && y >= seen.top && y <= seen.top + seen.height;
+}
+
 /** A point as a share of a rectangle, kept inside it. */
 export function pointIn(full: Rect, x: number, y: number): Point {
   if (!(full.width > 0) || !(full.height > 0)) return [0, 0];

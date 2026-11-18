@@ -85,6 +85,17 @@ export const ERASE_PROMPTS: Record<EraseVariant, string> = {
 };
 
 /**
+ * Erasing the words a picture should not have (ImageEditRequest `erase:
+ * "words"`): the close-up goes as it is, nothing painted on it, and only
+ * writing is to go. Live 2026-11-19 with "tint": a box a vision model put on
+ * a shadow by mistake came back as a flat pale patch, and a box a little off
+ * the word left half of it. Told to remove writing, the model leaves a box
+ * with none in it alone.
+ */
+export const ERASE_WORDS_PROMPT =
+  "Remove all writing from this image: every letter, word, number and logo, printed, engraved or reflected, filling where it was with the surface around it, continuing its texture, colour, light and reflections. Change nothing else: keep every object, edge, band of colour, shadow and highlight exactly as it is. Add nothing new.";
+
+/**
  * The brushed pixels (mask transparent) cleared and filled from the colours
  * around them: a normalised blur of the unbrushed picture, so each brushed
  * pixel takes the colours nearest it, wide enough to reach the middle of the
@@ -375,6 +386,8 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
         if (intent === "area" && req.marks) {
           const marks = await sharp(Buffer.from(req.marks)).resize(width, height, { fit: "fill" }).ensureAlpha().png().toBuffer();
           shown = await sharp(source).composite([{ input: marks }]).png().toBuffer();
+        } else if (intent === "erase" && req.erase === "words") {
+          // Shown as it is: the instruction names what goes (ERASE_WORDS_PROMPT).
         } else if (intent === "erase" && eraseVariant === "fill") {
           shown = (await fillBrushed(source, req.mask, width, height)) as typeof shown;
         } else if (intent === "erase" && eraseVariant === "tint") {
@@ -400,7 +413,7 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
       const crop = await sharp(shown).extract(area).resize(workW, workH, { fit: "fill" }).png().toBuffer();
 
       const prompt = intent === "erase"
-        ? ERASE_PROMPTS[eraseVariant]
+        ? req.erase === "words" ? ERASE_WORDS_PROMPT : ERASE_PROMPTS[eraseVariant]
         : req.marks ? markupPrompt(req.prompt) : closeUpPrompt(req.prompt, !!marked);
       const answer = await download(await run(model, inputFor(model, prompt, inline(crop)), "Changing the picture"));
 

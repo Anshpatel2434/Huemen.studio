@@ -22,7 +22,7 @@ import {
 import {
   clearSubject, coversFrame, CUTOUT_COVERAGE, MAX_STROKES, MAX_STROKE_POINTS, MIN_EXTEND_COVER, STROKE_WIDTH, type Stroke,
 } from "@/lib/visual/picture-tools";
-import { ERASE_PROMPTS, ERASE_VARIANT, EXTEND_PROMPT, fillBrushed, markupPrompt, runpodImageProvider, type FetchLike } from "@/lib/ai/providers/runpod-image";
+import { ERASE_PROMPTS, ERASE_VARIANT, ERASE_WORDS_PROMPT, EXTEND_PROMPT, fillBrushed, markupPrompt, runpodImageProvider, type FetchLike } from "@/lib/ai/providers/runpod-image";
 import { openaiImageProvider } from "@/lib/ai/providers/openai-image";
 import { mockCutoutProvider, mockImageProvider } from "@/lib/ai/providers/mock";
 import { CUTOUT_NO_MODEL, CUTOUT_OFF, cutoutStatus, selectCutoutProvider } from "@/lib/ai/cutout";
@@ -382,6 +382,20 @@ describe("Runpod: one request per kind of change", () => {
     expect(shown.at(shown.width >> 1, shown.height >> 1).slice(0, 3)).toEqual([0x11, 0x33, 0x55]);
     // Nothing brushed is nothing to erase.
     await expect(runpodImageProvider(RUNPOD, f).edit({ context: ctx, prompt: "x", source, mask: await strokeMask([], 512, 512), intent: "erase" }, "m")).rejects.toMatchObject({ kind: "bad_request" });
+  });
+
+  it("erase of words (a picture that must have none): the close-up goes unpainted and only writing is to go, whatever the variant", async () => {
+    const source = await solid(512, 512, "#113355");
+    const { f, calls } = fakeRunpod(await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#777777" } }).png().toBuffer());
+    await runpodImageProvider({ ...RUNPOD, eraseModel: "google-nano-banana-2-edit", eraseVariant: "tint" }, f)
+      .edit({ context: ctx, prompt: "x", source, mask: await strokeMask(BRUSH, 512, 512), intent: "erase", erase: "words" }, "m");
+    expect(calls[0].url).toBe("https://api.runpod.ai/v2/google-nano-banana-2-edit/runsync");
+    expect(calls[0].input!.prompt).toBe(ERASE_WORDS_PROMPT);
+    expect(String(calls[0].input!.prompt)).toMatch(/^Remove all writing from this image/);
+    expect(String(calls[0].input!.prompt)).toMatch(/Change nothing else/);
+    // No magenta: what is under the box is shown as it is.
+    const shown = await sent(calls[0].input);
+    expect(shown.at(shown.width >> 1, shown.height >> 1).slice(0, 3)).toEqual([0x11, 0x33, 0x55]);
   });
 
   it("markup: the marks are on the close-up, the instruction says to follow them and the note and then remove them", async () => {

@@ -68,6 +68,34 @@ export async function regionMask(box: Box, width: number, height: number, pad = 
   return new Uint8Array(await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer());
 }
 
+/**
+ * PNG mask at the picture's size, transparent (editable) inside any of the
+ * boxes and opaque elsewhere: the area an Erase of found words may change
+ * (lib/visual/picture-words). `except` is a part that must never change
+ * (a resized picture's original place), opaque even where a box covers it.
+ */
+export async function boxesMask(boxes: Box[], width: number, height: number, except?: PixelRect | null): Promise<Uint8Array> {
+  const raw = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) raw[i * 4 + 3] = 255;
+  for (const b of boxes) {
+    const r = boxPixels(b, width, height, 0);
+    for (let y = r.top; y < r.top + r.height; y++) {
+      for (let x = r.left; x < r.left + r.width; x++) {
+        if (except && x >= except.left && x < except.left + except.width && y >= except.top && y < except.top + except.height) continue;
+        raw[(y * width + x) * 4 + 3] = 0;
+      }
+    }
+  }
+  return new Uint8Array(await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer());
+}
+
+/** Whether a mask (as boxesMask makes) leaves anything editable. */
+export async function maskHasArea(mask: Uint8Array): Promise<boolean> {
+  const { data, info } = await sharp(Buffer.from(mask)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < info.width * info.height; i++) if (data[i * 4 + 3] < 128) return true;
+  return false;
+}
+
 /** The blend at a comment area's edge, as a share of the area's shorter side, and its bounds in px. */
 export const SEAM_SHARE = 0.05;
 export const SEAM_MIN = 12;

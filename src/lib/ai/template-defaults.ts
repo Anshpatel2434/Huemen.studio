@@ -69,6 +69,7 @@ const TASK_META: Record<string, { label: string; about: string }> = {
   image_brief: { label: "Picture brief", about: "What ChatGPT Image is asked to draw for a visual, from the brand context and the piece." },
   design_change: { label: "Design comment", about: "A comment pinned on a visual's logo, background or layout, turned into a design change." },
   look_read: { label: "Read your designs", about: "Onboarding's Look screen and Brand core › Visual: what the reference designs share, matched to the voice. Runs on the vision model." },
+  picture_text_check: { label: "Words in a picture", about: "After a picture is drawn to sit under live text: finds any words the image model printed in it, so they can be erased. Runs on the vision model." },
   site_profile: { label: "Read your website", about: "Onboarding's first screen: name, what they do, who it's for and what they offer, from the site's own words." },
 };
 

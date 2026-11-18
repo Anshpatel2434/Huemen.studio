@@ -39,9 +39,12 @@ import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import {
-  changeInside, cleanBox, cleanStrokes, driftOf, keepInsideMask, marksLeft, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
+  boxesMask, changeInside, cleanBox, cleanStrokes, driftOf, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
   visiblePart, type Box, type PixelRect,
 } from "@/lib/visual/region";
+import { boxesWithin, wordGroups } from "@/lib/visual/picture-words";
+import type { BrandContext } from "@/lib/context/context-builder";
+import { lookForWords } from "./picture-words";
 import {
   clearSubject, coversFrame, MIN_EXTEND_COVER, RESIZE_RATIO, type PictureOp, type PinKind, type ResizeInput, type Stroke,
 } from "@/lib/visual/picture-tools";
@@ -133,7 +136,7 @@ interface PictureRow {
   id: string;
   storage_key: string;
   prompt: string | null;
-  params: { artboard?: ArtboardKind; mode?: PictureMode; shape?: ImageShape; heading?: string | null; avoid?: string; op?: PictureOp; cutout?: boolean } | null;
+  params: { artboard?: ArtboardKind; mode?: PictureMode; shape?: ImageShape; heading?: string | null; avoid?: string; op?: PictureOp; cutout?: boolean; textLeft?: boolean } | null;
   parent_id: string | null;
   width: number | null;
   height: number | null;
@@ -162,6 +165,8 @@ async function savePicture(
     op: PictureOp;
     /** The background has been removed: the file is a PNG with alpha. */
     cutout?: boolean;
+    /** A picture that must have no words may still show some (keepWordsOut): the board says so. */
+    textLeft?: boolean;
   },
 ): Promise<string> {
   const info = await sharp(Buffer.from(bytes)).metadata().catch(() => null);
@@ -183,7 +188,7 @@ async function savePicture(
           scope.tenantId, scope.projectId, piece.id, meta.prompt, meta.model,
           JSON.stringify({
             artboard: meta.artboard, mode: meta.mode, shape: meta.shape, heading: meta.heading, avoid: meta.avoid ?? "",
-            op: meta.op, ...(meta.cutout ? { cutout: true } : {}),
+            op: meta.op, ...(meta.cutout ? { cutout: true } : {}), ...(meta.textLeft ? { textLeft: true } : {}),
           }),
           `${info.width}:${info.height}`, key, info.width, info.height, scope.userId, meta.parentId,
         ],
@@ -303,9 +308,13 @@ async function drawPictureNow(scope: ProjectScope, contentItemId: string, artboa
   const prompt = `${brief.scene.trim()}\n\n${pictureInstructions(mode, piece.hook)}`;
   // With the heading drawn in, text is wanted: only stray words are ruled out, by the instructions above.
   const avoid = [brief.avoid.trim(), mode === "with_text" ? ALWAYS_AVOID.replace(", text, letters", "") : ALWAYS_AVOID].filter(Boolean).join(", ");
-  const out = await generateImage(scope, { context, prompt, negativePrompt: avoid, shape, contentItemId });
+  const draw = () => generateImage(scope, { context, prompt, negativePrompt: avoid, shape, contentItemId });
+  let out: { bytes: Uint8Array; model: string; textLeft?: boolean } = await draw();
+  // Under live text the picture must have no words of its own: looked for, erased, or drawn again once.
+  if (mode === "live_text") out = await keepWordsOut(scope, { context, bytes: out.bytes, model: out.model, shape, contentItemId, why: "a new picture", redraw: draw });
   const id = await savePicture(scope, piece, out.bytes, {
     artboard, mode, shape, prompt, model: out.model, avoid: brief.avoid, heading: mode === "with_text" ? piece.hook : null, parentId: null, op: "draw",
+    textLeft: out.textLeft,
   });
   await attach(scope, contentItemId, artboard, { id, mode });
   return id;
@@ -386,6 +395,144 @@ async function currentPicture(scope: ProjectScope, contentItemId: string, artboa
   return { piece, ref, row, bytes: obj.data, width: meta.width, height: meta.height, cutout: ref.cutout === true || row.params?.cutout === true };
 }
 
+/** What an erase asks of the model (a brushed area, or the words found in a picture). */
+const ERASE_PROMPT = [
+  "Change only the marked area: remove what is there and fill it with the surrounding background or surface, continuing its texture, light and colours. Add nothing new.",
+  "Keep everything else exactly as it is: the same subject, style, light and colours.",
+  "No words, letters or logos.",
+].join("\n");
+
+/**
+ * Erase the masked part of a picture (the erase endpoint, AI_IMAGE_ERASE_MODEL)
+ * and keep the result only inside the mask: every other pixel is the
+ * original's (keepInsideMask). An answer with nothing removed is tried once
+ * more and then refused (`minChange`; 0 skips that, when something else
+ * judges the result); one with the brush paint left in `area` is refused.
+ */
+async function eraseArea(
+  scope: ProjectScope,
+  a: {
+    context: BrandContext; bytes: Uint8Array; mask: Uint8Array; shape: ImageShape; contentItemId: string; feather: number; area: Box | null; minChange?: number;
+    /** Only the words in the mask go (ImageEditRequest `erase`), not everything there. */
+    words?: boolean;
+  },
+): Promise<{ bytes: Uint8Array; model: string }> {
+  const minChange = a.minChange ?? ERASE_MIN_CHANGE;
+  const call = () => editImage(scope, {
+    context: a.context, prompt: ERASE_PROMPT, source: a.bytes, mask: a.mask, shape: a.shape, contentItemId: a.contentItemId, intent: "erase",
+    ...(a.words ? { erase: "words" as const } : {}),
+  });
+  let out = await call();
+  let merged = await keepInsideMask(a.bytes, out.bytes, a.mask, a.feather);
+  // A model that hands the brushed part back as it was removed nothing (live,
+  // a rod on a pan, 2026-11-18): one more go, then a plain refusal, never a
+  // new version that looks like the old one.
+  if (minChange > 0 && (await changeInside(a.bytes, merged, a.mask)) < minChange) {
+    out = await call();
+    merged = await keepInsideMask(a.bytes, out.bytes, a.mask, a.feather);
+    if ((await changeInside(a.bytes, merged, a.mask)) < minChange) {
+      throw new PictureError("The erase came back with nothing removed, so it wasn't kept. Try brushing a little wider.");
+    }
+  }
+  // Never save a result with the brush paint still in it.
+  if (a.area && (await marksLeft(a.bytes, merged, a.area)) > MARKS_LEFT_MAX) {
+    throw new PictureError("The erase came back with the brush marks still in it, so it wasn't kept. Try again, or brush a little wider.");
+  }
+  return { bytes: merged, model: out.model };
+}
+
+/**
+ * How long the word check may keep starting new work (an erase, a redraw).
+ * Live 2026-11-19: a look takes 1-15 s on Groq (more when it waits out a
+ * per-minute limit), an erase 25-45 s, three erases and two looks 140 s. A
+ * new picture's job (330 s lease) has spent about 50 s on the brief and the
+ * draw before this starts.
+ */
+const WORDS_TRY_BUDGET_MS = 120_000;
+
+/**
+ * Words in a picture that must have none (lib/visual/picture-words). The
+ * vision model looks (lib/data/picture-words lookForWords); words it finds
+ * are erased through eraseArea, so outside the words' boxes every pixel is
+ * the picture's own, and it looks once more. Still there: a fresh draw gets
+ * one redraw from scratch (`redraw`), looked at too. Still there after that,
+ * or with no redraw to try: the picture is kept, `textLeft` is set (the board
+ * shows WORDS_NOTICE) and picture_text_left is logged.
+ *
+ *   within  only this part of the picture may change (an area edit's area)
+ *   except  this part must never change (a resized picture's original place)
+ *   fix     false: only look (after the person's own Erase), change nothing
+ *
+ * When the vision model can't say (not set up, rate limited, down), the
+ * picture goes on as it is: this never stops a picture.
+ */
+export async function keepWordsOut(
+  scope: ProjectScope,
+  a: {
+    context: BrandContext; bytes: Uint8Array; model: string; shape: ImageShape; contentItemId: string; why: string;
+    within?: Box | null; except?: PixelRect | null; fix?: boolean;
+    redraw?: () => Promise<{ bytes: Uint8Array; model: string }>;
+  },
+): Promise<{ bytes: Uint8Array; model: string; textLeft: boolean }> {
+  // The check's own context (INV-2: the one builder), the short "check" cut of it.
+  const context = await loadBrandContext(scope, "en", undefined, "check");
+  // A job has a lease (lib/jobs): no further erase or redraw starts once this has run WORDS_TRY_BUDGET_MS.
+  const started = Date.now();
+  const late = () => Date.now() - started > WORDS_TRY_BUDGET_MS;
+  const look = (bytes: Uint8Array, why: string) => lookForWords(scope, bytes, { context, contentItemId: a.contentItemId, why });
+  const base = { tenantId: scope.tenantId, contentItemId: a.contentItemId, why: a.why };
+  const found = await look(a.bytes, a.why);
+  if (!found || !found.hasText) return { bytes: a.bytes, model: a.model, textLeft: false };
+  logger.info("picture_text_found", { ...base, boxes: found.boxes.map((b) => [b.x, b.y, b.w, b.h].map((n) => Number(n.toFixed(3)))) });
+  if (a.fix === false) return { bytes: a.bytes, model: a.model, textLeft: true };
+
+  let now = { bytes: a.bytes, model: a.model };
+  const boxes = a.within ? boxesWithin(found.boxes, a.within) : found.boxes;
+  if (boxes.length) {
+    try {
+      const meta = await sharp(Buffer.from(a.bytes)).metadata();
+      const width = meta.width ?? 0, height = meta.height ?? 0;
+      let erased = 0;
+      // One erase per group of nearby words, each on the result of the one before;
+      // each changes only its own boxes, so outside all of them the picture is its own.
+      for (const group of width && height ? wordGroups(boxes) : []) {
+        if (erased && late()) break;
+        const mask = await boxesMask(group, width, height, a.except);
+        if (!(await maskHasArea(mask))) continue;
+        const smallest = Math.min(...group.map((b) => Math.min(b.w * width, b.h * height)));
+        const feather = Math.max(1, Math.min(ERASE_FEATHER, Math.round(smallest / 6)));
+        // No "nothing removed" retry here: the vision model's second look is the judge.
+        now = await eraseArea(scope, { context: a.context, bytes: now.bytes, mask, shape: a.shape, contentItemId: a.contentItemId, feather, area: null, minChange: 0, words: true });
+        erased++;
+      }
+      if (erased) {
+        const again = await look(now.bytes, `${a.why}, after its words were erased`);
+        if (!again || !again.hasText) {
+          logger.info("picture_text_erased", { ...base, erases: erased, checked: !!again });
+          return { ...now, textLeft: false };
+        }
+      }
+    } catch (e) {
+      logger.info("picture_text_erase_failed", { ...base, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  if (a.redraw && !late()) {
+    try {
+      const fresh = await a.redraw();
+      const third = await look(fresh.bytes, `${a.why}, drawn again`);
+      if (!third || !third.hasText) {
+        logger.info("picture_text_redrawn", { ...base, checked: !!third });
+        return { bytes: fresh.bytes, model: fresh.model, textLeft: false };
+      }
+      now = fresh;
+    } catch (e) {
+      logger.info("picture_text_redraw_failed", { ...base, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  logger.info("picture_text_left", base);
+  return { ...now, textLeft: true };
+}
+
 async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, edit: AreaEdit): Promise<string> {
   const now = await currentPicture(scope, contentItemId, artboard);
   const { piece, ref, row: current, bytes, width, height } = now;
@@ -398,41 +545,24 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
   const words = ref.mode === "with_text" && current.params?.heading
     ? `Any text in the area must read exactly as asked; elsewhere the text stays "${current.params.heading}".`
     : "No words, letters or logos.";
-  const keep = (merged: Uint8Array, prompt: string, model: string, op: PictureOp) =>
+  const keep = (merged: Uint8Array, prompt: string, model: string, op: PictureOp, textLeft = false) =>
     savePicture(scope, piece, merged, {
       artboard, mode: ref.mode, shape, prompt: current.prompt ?? prompt, model,
-      avoid: current.params?.avoid, heading: current.params?.heading ?? null, parentId: current.id, op,
+      avoid: current.params?.avoid, heading: current.params?.heading ?? null, parentId: current.id, op, textLeft,
     });
+  const live = ref.mode === "live_text";
 
   let id: string;
   if (kind === "erase") {
     if (strokes.length === 0) throw new PictureError("Brush over what to erase first.");
     const mask = await strokeMask(strokes, width, height);
-    const prompt = [
-      "Change only the marked area: remove what is there and fill it with the surrounding background or surface, continuing its texture, light and colours. Add nothing new.",
-      "Keep everything else exactly as it is: the same subject, style, light and colours.",
-      "No words, letters or logos.",
-    ].join("\n");
     const thinnest = Math.min(...strokes.map((s) => s.w)) * Math.min(width, height);
     const feather = Math.max(1, Math.min(ERASE_FEATHER, Math.round(thinnest / 4)));
-    let out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "erase" });
-    let merged = await keepInsideMask(bytes, out.bytes, mask, feather);
-    // A model that hands the brushed part back as it was removed nothing (live,
-    // a rod on a pan, 2026-11-18): one more go, then a plain refusal, never a
-    // new version that looks like the old one.
-    if ((await changeInside(bytes, merged, mask)) < ERASE_MIN_CHANGE) {
-      out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "erase" });
-      merged = await keepInsideMask(bytes, out.bytes, mask, feather);
-      if ((await changeInside(bytes, merged, mask)) < ERASE_MIN_CHANGE) {
-        throw new PictureError("The erase came back with nothing removed, so it wasn't kept. Try brushing a little wider.");
-      }
-    }
-    // Never save a result with the brush paint still in it.
-    const area = strokesBox(strokes, 0, width / height);
-    if (area && (await marksLeft(bytes, merged, area)) > MARKS_LEFT_MAX) {
-      throw new PictureError("The erase came back with the brush marks still in it, so it wasn't kept. Try again, or brush a little wider.");
-    }
-    id = await keep(merged, prompt, out.model, "erase");
+    const out = await eraseArea(scope, { context, bytes, mask, shape, contentItemId, feather, area: strokesBox(strokes, 0, width / height) });
+    // Erasing words is what the board's notice asks for: looked at again (never
+    // changed outside the brush), so the notice goes only when they are gone.
+    const words = live ? await keepWordsOut(scope, { context, bytes: out.bytes, model: out.model, shape, contentItemId, why: "a picture after an erase", fix: false }) : null;
+    id = await keep(out.bytes, ERASE_PROMPT, out.model, "erase", words?.textLeft);
   } else {
     // Markup: the area is the padded box around the marks; with nothing drawn, the box that came with it.
     const marked = kind === "markup" && strokes.length > 0;
@@ -452,7 +582,7 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
       await storage().put(tenantKey(scope.tenantId!, "debug", `area-${Date.now()}.png`), out.bytes, "image/png").catch(() => undefined);
     }
     let merged = await keepOutside(bytes, out.bytes, box);
-    let model = out.model;
+    let model: string = out.model;
     // A model that copies the marks into the picture gets one more go without
     // them (the note and the area still say what to do); never saved with marks.
     if (marks && (await marksLeft(bytes, merged, box)) > MARKS_LEFT_MAX) {
@@ -463,7 +593,11 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
         throw new PictureError("The change came back with your marks still in it, so it wasn't kept. Try again.");
       }
     }
-    id = await keep(merged, prompt, model, marked ? "markup" : "area");
+    // Under live text: words the model drew into the area are erased (only inside the area, so
+    // everything outside it is still the original). Words elsewhere are flagged, never touched.
+    let textLeft = false;
+    if (live) ({ bytes: merged, model, textLeft } = await keepWordsOut(scope, { context, bytes: merged, model, shape, contentItemId, why: "a picture with one area changed", within: box }));
+    id = await keep(merged, prompt, model, marked ? "markup" : "area", textLeft);
   }
   await attach(scope, contentItemId, artboard, { id, mode: ref.mode });
   return id;
@@ -590,16 +724,17 @@ async function resizePictureNow(scope: ProjectScope, contentItemId: string, artb
   const { now, plan } = await resizeOf(scope, contentItemId, artboard, input);
   const { piece, ref, row: current, bytes } = now;
   const shape = shapeOfRatio(plan.ratio);
-  const keep = (png: Uint8Array, model: string) =>
+  const keep = (png: Uint8Array, model: string, textLeft: boolean) =>
     savePicture(scope, piece, png, {
       artboard, mode: ref.mode, shape, prompt: current.prompt ?? "", model,
-      avoid: current.params?.avoid, heading: null, parentId: current.id, op: "resize",
+      avoid: current.params?.avoid, heading: null, parentId: current.id, op: "resize", textLeft,
     });
 
   let id: string;
   if (plan.crop) {
     const cut = new Uint8Array(await sharp(Buffer.from(bytes)).extract(plan.cut).png().toBuffer());
-    id = await keep(cut, "crop");
+    // A crop draws nothing: words the picture was flagged for may still be in the part kept.
+    id = await keep(cut, "crop", current.params?.textLeft === true);
   } else {
     const { canvas, placePx } = plan;
     const source = await placeOnCanvas(bytes, canvas, placePx, EXTEND_MATTE);
@@ -647,7 +782,9 @@ async function resizePictureNow(scope: ProjectScope, contentItemId: string, artb
       }
     }
     if (!answer) throw new PictureError(problem);
-    id = await keep(answer, model);
+    // Words drawn into the new area are erased there; the original's place is never touched.
+    const words = await keepWordsOut(scope, { context, bytes: answer, model, shape, contentItemId, why: "a picture with new area drawn around it", except: seen });
+    id = await keep(words.bytes, words.model, words.textLeft);
   }
   await attach(scope, contentItemId, artboard, { id, mode: ref.mode });
   return id;
@@ -850,6 +987,8 @@ export interface PictureVersion {
   height: number;
   /** The background has been removed: a PNG with alpha. */
   cutout: boolean;
+  /** It should have no words and may still show some (keepWordsOut): the board says so. */
+  textLeft: boolean;
 }
 
 const PICTURE_OPS: readonly PictureOp[] = ["draw", "area", "markup", "erase", "resize", "cutout"];
@@ -891,5 +1030,6 @@ export async function pictureVersions(scope: ProjectScope): Promise<PictureVersi
       width: r.width ?? 0,
       height: r.height ?? 0,
       cutout: r.params?.cutout === true,
+      textLeft: r.params?.textLeft === true,
     }));
 }

@@ -762,6 +762,42 @@ export const lookRead: TaskDef<LookReadResult> = {
   },
 };
 
+// ---- words in a picture that must have none (vision) ---------------------------
+
+const PictureTextCheck = z.object({
+  hasText: z.boolean(),
+  boxes: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })),
+});
+export type PictureTextCheckResult = z.infer<typeof PictureTextCheck>;
+
+/**
+ * A picture drawn for a visual whose heading is live text on top must carry no
+ * words of its own. The image model is told so, and still prints one now and
+ * then (2026-11-18: "qualified" on a cup label). A vision model looks at the
+ * drawn picture and says where any text is; lib/data/pictures erases those
+ * areas (lib/visual/picture-words reads the boxes into fractions of the
+ * picture). The boxes are asked for in thousandths: Qwen's vision models
+ * place boxes in that grid, and asked for fractions they guessed round
+ * numbers that missed the word (live, 2026-11-19: "qualified" boxed 0.04 too
+ * high; in thousandths, boxed exactly). The brand context goes
+ * with it like every prompt (INV-2), but the answer is about pixels only.
+ */
+export const pictureTextCheck: TaskDef<PictureTextCheckResult> = {
+  key: "picture_text_check",
+  schema: PictureTextCheck,
+  template:
+    "You check a picture for writing. This picture must carry no words: a headline is set on top of it later. Look at every part of it, large and small: signs, labels, packaging, cups, bottles, book covers, paper, screens, clothing, stamps, watermarks and lettering worked into the scene. Any letter, word, number or logo with letters counts as text, readable or not, blurred or tiny. Shapes, patterns and textures that only look a little like letters do not count. Say only what you can see in the picture.",
+  contract: [
+    "Return hasText: true when there is any text in the picture, false when there is none.",
+    "Return boxes: one box per patch of text, at most 8, each tight around the whole patch. Give each as x, y, w, h in thousandths of the picture (whole numbers from 0 to 1000): x and y are the box's top-left corner, w and h its width and height, measured from the picture's top-left corner.",
+    "When hasText is false, boxes is an empty list.",
+  ].join("\n"),
+  mock() {
+    // The stand-in sees no words; tests stand in for a picture that has some.
+    return { hasText: false, boxes: [] };
+  },
+};
+
 export const TASKS = {
   [siteProfile.key]: siteProfile,
   [topicProposals.key]: topicProposals,
@@ -776,5 +812,6 @@ export const TASKS = {
   [imageBrief.key]: imageBrief,
   [designChange.key]: designChange,
   [lookRead.key]: lookRead,
+  [pictureTextCheck.key]: pictureTextCheck,
 } as Record<string, TaskDef<unknown>>;
 

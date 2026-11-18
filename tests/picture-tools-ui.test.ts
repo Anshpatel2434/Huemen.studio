@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  RESIZE_SHAPES, RESIZE_ZOOM, addPoint, areaOnFrame, boxIn, clampRatio, coverZoom, draftSummary, frameCover, isPicturePin, needsNote, overlap,
+  RESIZE_SHAPES, RESIZE_ZOOM, addPoint, areaOnFrame, boxIn, clampRatio, coverZoom, draftSummary, frameCover, geometryFrom, isPicturePin, needsNote, onShownPicture, overlap,
   pictureRectIn, placeAt, pointIn, rangeAt, rangeForKey, rectOfBox, resizeOutcome, simplifyStroke, slotRatio, snapZoom, startZoom, strokePath,
   strokesBox, summaryLine, widestGap, type Point,
 } from "@/app/w/[id]/p/[pid]/visual/picture-tools-maths";
@@ -57,6 +57,38 @@ describe("where the picture sits in its slot", () => {
     expect(c.x).toBeGreaterThanOrEqual(0);
     expect(c.w).toBeGreaterThanOrEqual(0.02);
     expect(c.x + c.w).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("measured at the click (the first click after picking a tool, 2026-11-19)", () => {
+  // A visual drawn at half size (the board zoomed to 50%): 400 x 500 on screen, 800 x 1000 in layout.
+  const wrap = { left: 100, top: 50, width: 400, height: 500 };
+  const frame = { left: 100, top: 50, width: 400, height: 500 };
+  // The picture fills the top half of the frame (its slot), cropped at the sides.
+  const slot = { left: 100, top: 50, width: 400, height: 250 };
+  const natural = { w: 2000, h: 1000 };
+  const full = pictureRectIn(slot, natural);
+  it("puts the picture in the visual's own pixels, through the zoom, the same sums the overlay uses", () => {
+    const g = geometryFrom({ wrap, layoutWidth: 800, layoutHeight: 1000, frame, full, slot, natural, frameIndex: 0 })!;
+    expect(g.frame).toEqual({ left: 0, top: 0, width: 800, height: 1000 });
+    expect(g.full).toEqual({ left: -100, top: 0, width: 1000, height: 500 });
+    expect(g.seen).toEqual({ left: 0, top: 0, width: 800, height: 500 });
+    expect(g.slot).toBeCloseTo(1.6, 6);
+    expect(g.natural).toEqual(natural);
+    expect(g.height).toBe(1000);
+    expect(g.pic).toEqual({ x: -0.125, y: 0, w: 1.25, h: 0.5 });
+  });
+  it("says nothing when the frame or the slot has no size yet, and never gives a negative frame index", () => {
+    expect(geometryFrom({ wrap, layoutWidth: 800, layoutHeight: 1000, frame: { ...frame, width: 0 }, full, slot, natural, frameIndex: 0 })).toBeNull();
+    expect(geometryFrom({ wrap, layoutWidth: 800, layoutHeight: 1000, frame, full, slot: { ...slot, height: 0 }, natural, frameIndex: 0 })).toBeNull();
+    expect(geometryFrom({ wrap, layoutWidth: 0, layoutHeight: 0, frame, full, slot, natural, frameIndex: -1 })!.frameIndex).toBe(0);
+  });
+  it("a click counts as on the picture only on the part the layout shows", () => {
+    expect(onShownPicture(full, slot, 300, 100)).toBe(true);
+    expect(onShownPicture(full, slot, 100, 50)).toBe(true);
+    // Below the picture's slot (the words), and on the cropped-off part outside the slot.
+    expect(onShownPicture(full, slot, 300, 400)).toBe(false);
+    expect(onShownPicture(full, slot, 60, 100)).toBe(false);
   });
 });
 
