@@ -6,6 +6,7 @@
  *
  *   draw    POST /v2/<AI_IMAGE_MODEL>/runsync      { input: { prompt, size } }
  *   redraw  POST /v2/<AI_IMAGE_EDIT_MODEL>/runsync { input: { prompt, image } }
+ *   extend  POST /v2/<AI_IMAGE_EXTEND_MODEL>/runsync { input: { prompt, images: [image] } }
  *
  * The reply names a URL (kept 7 days by Runpod); the picture is downloaded at
  * once and handed back as PNG bytes, so nothing depends on that URL later.
@@ -20,6 +21,20 @@
  * (lib/visual/region keepOutside) still blends the edge and guarantees
  * nothing outside the mark moved.
  *
+ * The picture tools (2026-11-18) say what a change is for (ImageEditRequest
+ * `intent`), and each is worded and framed its own way here:
+ *
+ *   area     the close-up above. With hand-drawn `marks`, they are shown on
+ *            the close-up and the model is told to follow them and the note,
+ *            then remove them.
+ *   erase    the close-up of the brushed area's box, with more of its
+ *            surroundings (the fill is copied from them). Two ways to show
+ *            what goes, behind ERASE_VARIANT: the brushed area painted flat
+ *            magenta ("tint"), or left as it is and described ("clean").
+ *   extend   no close-up: the whole canvas (the picture on a flat green
+ *            matte) goes to the extend model (AI_IMAGE_EXTEND_MODEL), which
+ *            fills the green.
+ *
  * Plain fetch, injectable for tests. Server-only.
  */
 import sharp from "sharp";
@@ -33,8 +48,32 @@ export interface RunpodImageConfig {
   timeoutMs: number;
   /** The endpoint that redraws (image in, image out). */
   editModel: string;
+  /** The endpoint that fills a bigger frame (AI_IMAGE_EXTEND_MODEL). Left out, the edit endpoint does it. */
+  extendModel?: string;
+  /** How Erase shows the model what goes. Left out: ERASE_VARIANT. */
+  eraseVariant?: "tint" | "clean";
   baseUrl?: string;
 }
+
+/**
+ * How Erase shows the model what to remove. "tint": the brushed area is
+ * painted flat magenta on the close-up and the instruction names the paint.
+ * "clean": the close-up is sent as it is and the instruction says "the object
+ * in the middle". Live trial 2026-11-18 on qwen-image-edit: "tint" came back
+ * with the magenta paint still on and the coins under it untouched, so "clean"
+ * is the default; "tint" stays for a model that follows paint.
+ */
+export const ERASE_VARIANT: "tint" | "clean" = "clean";
+
+const FILL = "fill it with the surrounding background/surface, continuing its texture, light and colours. Add nothing new. No text.";
+export const ERASE_PROMPTS = {
+  tint: `Remove everything under the magenta paint and the paint itself; ${FILL}`,
+  clean: `Remove the object in the middle of this image; ${FILL}`,
+} as const;
+export const EXTEND_PROMPT = "Fill the solid green area so it continues the scene naturally. Do not change, move or resize anything that is not green. No text, letters or logos.";
+
+/** The paint over a brushed area ("tint"): flat magenta, mostly opaque. */
+const TINT = { r: 255, g: 0, b: 255, alpha: 166 };
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -47,6 +86,8 @@ export const RUNPOD_SIZES: Record<ImageShape, { width: number; height: number }>
 
 /** How much of the surroundings goes with the marked area, as a share of its size. */
 const CONTEXT = 0.18;
+/** Erase fills from the surroundings, so it is shown more of them. */
+const ERASE_CONTEXT = 0.4;
 /** The close-up is enlarged so its longer side is about this, for the model to work at. */
 const WORK_SIDE = 1024;
 
@@ -108,9 +149,9 @@ export async function markedBox(mask: Uint8Array): Promise<(PixelBox & { imageWi
 }
 
 /** The marked area plus a little of its surroundings, kept inside the picture. */
-export function closeUp(box: PixelBox, imageWidth: number, imageHeight: number): PixelBox {
-  const mx = Math.round(box.width * CONTEXT);
-  const my = Math.round(box.height * CONTEXT);
+export function closeUp(box: PixelBox, imageWidth: number, imageHeight: number, context = CONTEXT): PixelBox {
+  const mx = Math.round(box.width * context);
+  const my = Math.round(box.height * context);
   const left = Math.max(0, box.left - mx);
   const top = Math.max(0, box.top - my);
   const right = Math.min(imageWidth, box.left + box.width + mx);
@@ -149,6 +190,22 @@ export function closeUpPrompt(prompt: string, marked: boolean): string {
       ]
     : [ask, words, "Keep the same style, light and colours."];
   return text.filter(Boolean).join("\n\n").slice(0, 4000);
+}
+
+/**
+ * The instruction when the person drew on the picture (Markup): the marks are
+ * on the close-up the model sees. They say where and how; the note says what.
+ * The marks themselves must not be in the answer.
+ */
+export function markupPrompt(prompt: string): string {
+  const { ask, words } = askOf(prompt);
+  return [
+    "This image has bright magenta hand-drawn marks on it (a circle, an arrow, a scribble). They are instructions, not part of the picture: they show where to change it.",
+    `Follow the hand-drawn marks and this note: ${ask}.`,
+    "Then remove the marks completely: no trace of the magenta lines may remain in the result.",
+    words || "Add no text, letters, numbers or logos unless the note names them.",
+    "This image is a close-up of one part of a larger picture. Change only what the marks point at. Keep the same style, light and colours, and keep the outer edge as it is so it joins the rest.",
+  ].filter(Boolean).join("\n\n").slice(0, 4000);
 }
 
 export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchLike = fetch): ImageProvider {
@@ -217,27 +274,67 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
     },
 
     async edit(req: ImageEditRequest) {
-      const model = config.editModel;
+      const intent = req.intent ?? "area";
       const source = Buffer.from(req.source);
       const meta = await sharp(source).metadata().catch(() => null);
       if (!meta?.width || !meta.height) throw new ProviderError("bad_request", "The picture to change couldn't be read.");
+      const { width, height } = meta;
+      // The picture travels inline: it is private, and the app may not be reachable from outside.
+      const inline = (png: Buffer) => `data:image/png;base64,${png.toString("base64")}`;
+      const inputFor = (model: string, prompt: string, image: string) =>
+        /2511|kontext|seedream|banana/i.test(model)
+          ? { prompt, images: [image], image, seed: -1, output_format: "png" }
+          : { prompt, image, negative_prompt: "", seed: -1, output_format: "png", enable_safety_checker: true };
+
+      // A bigger frame: the whole canvas goes (the matte is the area), and the whole answer comes back.
+      if (intent === "extend") {
+        const model = config.extendModel || config.editModel;
+        const canvas = await sharp(source).png().toBuffer();
+        const answer = await download(await run(model, inputFor(model, EXTEND_PROMPT, inline(canvas)), "Extending the picture"));
+        return asPng(sharp(answer).resize(width, height, { fit: "fill" }), model);
+      }
+
+      const model = config.editModel;
       const marked = await markedBox(req.mask);
+      if (intent === "erase" && !marked) throw new ProviderError("bad_request", "Nothing was brushed over to erase.");
       // Nothing marked (or an unreadable mask): the whole picture is the area.
-      const area = marked ? closeUp(marked, meta.width, meta.height) : { left: 0, top: 0, width: meta.width, height: meta.height };
+      const area = marked ? closeUp(marked, width, height, intent === "erase" ? ERASE_CONTEXT : CONTEXT) : { left: 0, top: 0, width, height };
+
+      // What the model is shown: the picture, with the drawn marks on it (Markup)
+      // or the brushed area painted over (Erase, "tint"). The answer is pasted
+      // onto the picture itself, never onto this.
+      const eraseVariant = config.eraseVariant ?? ERASE_VARIANT;
+      let shown = source;
+      try {
+        if (intent === "area" && req.marks) {
+          const marks = await sharp(Buffer.from(req.marks)).resize(width, height, { fit: "fill" }).ensureAlpha().png().toBuffer();
+          shown = await sharp(source).composite([{ input: marks }]).png().toBuffer();
+        } else if (intent === "erase" && eraseVariant === "tint") {
+          const m = await sharp(Buffer.from(req.mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
+          const paint = Buffer.alloc(width * height * 4);
+          for (let i = 0; i < width * height; i++) {
+            if (m[i * 4 + 3] >= 128) continue;
+            paint[i * 4] = TINT.r;
+            paint[i * 4 + 1] = TINT.g;
+            paint[i * 4 + 2] = TINT.b;
+            paint[i * 4 + 3] = TINT.alpha;
+          }
+          shown = await sharp(source).composite([{ input: paint, raw: { width, height, channels: 4 } }]).png().toBuffer();
+        }
+      } catch {
+        throw new ProviderError("bad_request", "The marks on the picture couldn't be read.");
+      }
 
       // The close-up, enlarged to a size the model draws well at.
       const scale = Math.min(4, WORK_SIDE / Math.max(area.width, area.height));
       const workW = Math.max(64, Math.round((area.width * scale) / 8) * 8);
       const workH = Math.max(64, Math.round((area.height * scale) / 8) * 8);
-      const crop = await sharp(source).extract(area).resize(workW, workH, { fit: "fill" }).png().toBuffer();
+      const crop = await sharp(shown).extract(area).resize(workW, workH, { fit: "fill" }).png().toBuffer();
 
-      const prompt = closeUpPrompt(req.prompt, !!marked);
-      // The picture travels inline: it is private, and the app may not be reachable from outside.
-      const image = `data:image/png;base64,${crop.toString("base64")}`;
-      const input = /2511|kontext|seedream|banana/i.test(model)
-        ? { prompt, images: [image], image, seed: -1, output_format: "png" }
-        : { prompt, image, negative_prompt: "", seed: -1, output_format: "png", enable_safety_checker: true };
-      const answer = await download(await run(model, input, "Changing the picture"));
+      const prompt = intent === "erase"
+        ? ERASE_PROMPTS[eraseVariant]
+        : req.marks ? markupPrompt(req.prompt) : closeUpPrompt(req.prompt, !!marked);
+      const answer = await download(await run(model, inputFor(model, prompt, inline(crop)), "Changing the picture"));
 
       // Back to the close-up's own size and into its place in the full picture.
       let patch: Buffer;

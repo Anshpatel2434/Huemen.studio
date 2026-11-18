@@ -34,3 +34,16 @@ Four parallel agents plus owner session; logs in D:\huemen-recordings\2026-11-18
 - Missing pillar page now a real 404 (route groups in brand/; see above).
 - Checks: tsc clean; vitest 1174/1174 (86 files); lint 0 errors.
 - Blocker for the client test: Groq free tier (agent question ~4.7k tokens, design reading ~5.9k tokens, ~8k/min; daily allowance used up twice today). Paid Groq or Claude before clients use it.
+
+## 2026-11-18 evening: picture tools on the Visual board (branch picture-tools, uncommitted)
+Comment (C, several pins, one Send), Markup (M), Erase (E), Remove background (B), Resize (R) in the canvas tool strip; mode line inside the strip. Server: migration 0025, picture_edit batches (commentIds), picture_resize, picture_cutout jobs; onnxruntime-node + ISNet (Apache-2.0, `npm run models:fetch`, models/ git-ignored). Logs: D:\huemen-recordings\2026-11-18\fixes\picture-tools-{server,ui}.md. Results: D:\huemen-recordings\2026-11-18\picture-tools\.
+Live on Harrow Lane with real RunPod (about 60 cents in all):
+- Remove background: about 3 s on the PC, free. Fixed: a cut-out in picture-behind layouts now stands in the top half with the words below (heading had landed on it); the cut-out is trimmed to its subject (was small).
+- Comment, 2 pins, one job: both changes applied in order. Known: the area edge can cut through thin things (a chain) and leave a seam.
+- Erase: the "tint" variant left the magenta paint in the picture; default is now "clean" (works). Guard added: an erase or markup result still carrying the marks colour is refused (markup retries once without marks).
+- Markup: circled pan + note gave the change, no marks left.
+- Resize: crop is free and instant. Extend: qwen-image-edit-2511, FLUX Kontext and Seedream re-composed the whole picture (drift 0.108-0.215, refused); google-nano-banana-2-edit kept it in place (0.017) and is the default AI_IMAGE_EXTEND_MODEL, about $0.09 a call; one of two live tries drifted (0.147) and was retried, so a resize costs 1-2 calls and can still fail plainly.
+- Fixed: the canvas slid 112 px under the Layers panel when an inline field took focus (canvas now undoes any browser scroll); the first click of Resize/Remove background after the piece was closed only reopened the piece (click now stays with the tool).
+- Dev-only: rejected extend answers are saved under .storage/tenants/<id>/debug/ and logged as picture_extend_rejected (drift, matte).
+- Key note for the owner: the app runs on a RUNPOD_API_KEY set as a Windows user environment variable (it wins over .env); the key in .env is refused by RunPod (403).
+- Checks: tsc clean; vitest 1259/1259 (88 files); lint 0 errors.

@@ -16,6 +16,9 @@ import { logger } from "@/lib/observability/log";
 
 let _appPool: Pool | null = null;
 
+/** How long a query waits for a free pooled connection (or a new one) before it fails. */
+export const POOL_CONNECT_TIMEOUT_MS = 20_000;
+
 /**
  * An idle pooled connection that the server drops (a restart, Docker stopped,
  * a network blip) is reported as an "error" event on the pool. Unhandled, it
@@ -33,6 +36,14 @@ export function appPool(): Pool {
       connectionString: getEnv().DATABASE_URL,
       max: getEnv().DATABASE_POOL_MAX,
       idleTimeoutMillis: 30_000,
+      // A picture job holds one connection for the whole model call (the
+      // advisory lock that keeps picture changes in order is its
+      // transaction's), and takes a second for its own queries. With every
+      // connection held that way, a request used to wait for one for ever.
+      // Now it gives up after this long with a plain "can't reach the
+      // database" (db/session), which the queue retries. Size the pool for
+      // job hosts accordingly: see DATABASE_POOL_MAX in .env.example.
+      connectionTimeoutMillis: POOL_CONNECT_TIMEOUT_MS,
     });
     _appPool.on("error", onIdleError);
   }

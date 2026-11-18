@@ -21,7 +21,9 @@ import type {
   TextGenRequest,
   ImageEditRequest,
   ImageGenResult,
+  CutoutResult,
 } from "./types";
+import { selectCutoutProvider } from "./cutout";
 import { mockImageProvider, mockTextProvider } from "./providers/mock";
 import { anthropicTextProvider } from "./providers/anthropic";
 import { groqTextProvider, GROQ_BASE } from "./providers/groq";
@@ -89,7 +91,11 @@ export function selectImageProvider(env: Env, fetchImpl?: ImageFetch): ImageProv
       if (!env.RUNPOD_API_KEY) throw new AiConfigError("AI_IMAGE_PROVIDER=runpod needs RUNPOD_API_KEY.");
       if (!env.AI_IMAGE_MODEL) throw new AiConfigError("AI_IMAGE_PROVIDER=runpod needs AI_IMAGE_MODEL (a Runpod public endpoint id, e.g. qwen-image-t2i).");
       return runpodImageProvider(
-        { apiKey: env.RUNPOD_API_KEY, timeoutMs: env.AI_IMAGE_TIMEOUT_MS, editModel: env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit" },
+        {
+          apiKey: env.RUNPOD_API_KEY, timeoutMs: env.AI_IMAGE_TIMEOUT_MS,
+          editModel: env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit",
+          extendModel: env.AI_IMAGE_EXTEND_MODEL,
+        },
         fetchImpl as never,
       );
     case "replicate":
@@ -422,18 +428,76 @@ export async function generateImage(
   return imageCall(scope, req.contentItemId ?? null, (p, model) => p.generate(req, model));
 }
 
-/** Redraw one area of a picture (the mask marks it). Same cap, limits, retry and log as a new picture. */
+/**
+ * Change a picture: redraw an area, erase a brushed area, or fill a bigger
+ * frame (ImageEditRequest `intent`; the mask marks where). Same cap, limits,
+ * retry and log as a new picture.
+ */
 export async function editImage(
   scope: SessionScope,
   req: ImageEditRequest & { contentItemId?: string | null },
 ) {
-  return imageCall(scope, req.contentItemId ?? null, (p, model) => p.edit(req, model));
+  return imageCall(scope, req.contentItemId ?? null, (p, model) => p.edit(req, model), editModelName(getEnv(), req.intent));
+}
+
+/**
+ * The model an edit is expected to run on, for the log row of a call that
+ * failed before a provider could say. On Runpod an edit runs on its own
+ * endpoint (and a bigger frame on another), not on the model that draws.
+ */
+function editModelName(env: Env, intent: ImageEditRequest["intent"]): string | undefined {
+  if (env.AI_IMAGE_PROVIDER !== "runpod") return undefined;
+  return intent === "extend" ? env.AI_IMAGE_EXTEND_MODEL : env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit";
+}
+
+/**
+ * Cut the subject out of a picture (Remove background): the provider named by
+ * AI_CUTOUT_PROVIDER (lib/ai/cutout), an open model run inside the app. It is
+ * free per use, so it counts as 0 pictures against the monthly cap, but the
+ * cap and the per-minute limits are still checked first (a workspace with
+ * pictures switched off gets no cut-outs either) and the call is logged like
+ * every other, success or failure.
+ */
+export async function cutoutImage(
+  scope: SessionScope,
+  req: { source: Uint8Array; contentItemId?: string | null },
+): Promise<CutoutResult> {
+  const env = getEnv();
+  let model = `cutout:${env.AI_CUTOUT_PROVIDER}`;
+  const started = Date.now();
+  try {
+    await enforceCap(scope, "image");
+    const provider = selectCutoutProvider(env);
+    const result = await provider.cutout(req.source);
+    model = result.model;
+    await logGeneration(scope, {
+      kind: "image",
+      model,
+      imageCount: 0,
+      latencyMs: Date.now() - started,
+      status: "ok",
+      contentItemId: req.contentItemId ?? null,
+    });
+    return result;
+  } catch (err) {
+    await logGeneration(scope, {
+      kind: "image",
+      model,
+      latencyMs: Date.now() - started,
+      status: logStatus(err),
+      error: err instanceof Error ? err.message : String(err),
+      contentItemId: req.contentItemId ?? null,
+    });
+    throw err;
+  }
 }
 
 async function imageCall(
   scope: SessionScope,
   contentItemId: string | null,
   run: (provider: ImageProvider, model: string) => Promise<ImageGenResult>,
+  /** The model this call is expected to run on, when it is not the drawing model. */
+  expected?: string,
 ) {
   const env = getEnv();
   const model = env.AI_IMAGE_PROVIDER === "mock" ? env.AI_IMAGE_MODEL || "mock-image" : env.AI_IMAGE_MODEL ?? "";
@@ -445,7 +509,9 @@ async function imageCall(
     const result = await withRetry(() => run(provider, model));
     await logGeneration(scope, {
       kind: "image",
-      model,
+      // The model that RAN: an area redraw or a bigger frame runs on its own
+      // endpoint, and the audit trail should name it, not the drawing model.
+      model: result.model || expected || model,
       imageCount: 1,
       latencyMs: Date.now() - started,
       status: "ok",
@@ -455,7 +521,7 @@ async function imageCall(
   } catch (err) {
     await logGeneration(scope, {
       kind: "image",
-      model,
+      model: expected || model,
       latencyMs: Date.now() - started,
       status: logStatus(err),
       error: err instanceof Error ? err.message : String(err),

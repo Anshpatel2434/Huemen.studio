@@ -64,13 +64,29 @@ export interface ImageGenRequest {
  * transparent where the picture may change, opaque elsewhere. Providers treat
  * it as guidance, so the caller composites the result back over the original
  * outside the area (lib/visual/region) and nothing else can move.
+ *
+ * `intent` says what the change is, so each provider can word it its own way:
+ *
+ *   "area"    (default) redraw the masked area as the prompt asks. With
+ *             `marks` (a transparent PNG the size of `source`, hand-drawn
+ *             lines on it) the model is shown the marks on the picture and
+ *             told to follow them and the note, then remove them.
+ *   "erase"   remove what is in the masked (brushed) area and fill it with
+ *             what is around it. The prompt is the provider's own.
+ *   "extend"  `source` is the picture already set in a bigger frame on a flat
+ *             green matte; the mask marks the matte. The model fills the
+ *             matte so the scene carries on, and changes nothing else.
  */
+export type ImageEditIntent = "area" | "erase" | "extend";
+
 export interface ImageEditRequest {
   context: BrandContext;
   prompt: string;
   source: Uint8Array;
   mask: Uint8Array;
   shape?: ImageShape;
+  intent?: ImageEditIntent;
+  marks?: Uint8Array;
 }
 
 export interface ImageGenResult {
@@ -159,4 +175,22 @@ export interface ImageProvider {
   readonly name: string;
   generate(req: ImageGenRequest, model: string): Promise<ImageGenResult>;
   edit(req: ImageEditRequest, model: string): Promise<ImageGenResult>;
+}
+
+/**
+ * A picture with its background removed (Remove background on the Visual
+ * board): a PNG with alpha, the model that made the matte, and `coverage`,
+ * the share of the picture that is subject (0..1). The caller refuses a
+ * cut-out with no clear subject (lib/visual/picture-tools clearSubject).
+ */
+export interface CutoutResult {
+  bytes: Uint8Array;
+  model: string;
+  coverage: number;
+}
+
+/** Background removal runs inside the app (an open model, no cost per use), behind the same facade. */
+export interface CutoutProvider {
+  readonly name: string;
+  cutout(source: Uint8Array): Promise<CutoutResult>;
 }

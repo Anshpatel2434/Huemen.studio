@@ -19,6 +19,8 @@ import type {
   ImageEditRequest,
   ImageGenResult,
   ImageProvider,
+  CutoutProvider,
+  CutoutResult,
   TextGenRequest,
   TextGenResult,
 } from "../types";
@@ -241,14 +243,82 @@ export const mockImageProvider: ImageProvider = {
     const png = await sharp(Buffer.from(svg)).png().toBuffer();
     return { bytes: new Uint8Array(png), mime: "image/png", model, width, height };
   },
-  /** Tints and stripes only where the mask is transparent: visibly "that part changed". */
+  /**
+   * Changes only where the mask is transparent, in a way that shows what was
+   * asked (ImageEditRequest `intent`):
+   *   area    tints and stripes: visibly "that part changed". Drawn marks are
+   *           never copied in, so none of their colour is in the answer.
+   *   erase   the brushed area becomes the average colour of what is around it.
+   *   extend  the matte is filled with the picture mirrored outwards from its
+   *           own edges, so no matte colour is left.
+   */
   async edit(req: ImageEditRequest, model: string): Promise<ImageGenResult> {
     const { default: sharp } = await import("sharp");
     const src = sharp(Buffer.from(req.source)).ensureAlpha();
     const { width, height } = await src.metadata();
     if (!width || !height) throw new Error("The stand-in couldn't read the picture.");
     const raw = await src.raw().toBuffer();
-    const mask = await sharp(Buffer.from(req.mask)).resize(width, height, { fit: "fill" }).ensureAlpha().raw().toBuffer();
+    const mask = await sharp(Buffer.from(req.mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
+    const open = (i: number) => mask[i * 4 + 3] < 128;
+    const intent = req.intent ?? "area";
+    if (intent === "erase" || intent === "extend") {
+      // The box around the changing pixels (erase) or around the kept ones (extend).
+      let x0 = width, y0 = height, x1 = -1, y1 = -1;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (open(y * width + x) !== (intent === "erase")) continue;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+      // The average colour of the kept pixels: around the brushed area (erase), or all of them.
+      const RING = 6;
+      const sum = [0, 0, 0];
+      let n = 0;
+      const [ax0, ay0, ax1, ay1] = intent === "erase" && x1 >= 0
+        ? [Math.max(0, x0 - RING), Math.max(0, y0 - RING), Math.min(width - 1, x1 + RING), Math.min(height - 1, y1 + RING)]
+        : [0, 0, width - 1, height - 1];
+      for (let y = ay0; y <= ay1; y++) {
+        for (let x = ax0; x <= ax1; x++) {
+          const i = y * width + x;
+          if (open(i)) continue;
+          sum[0] += raw[i * 4];
+          sum[1] += raw[i * 4 + 1];
+          sum[2] += raw[i * 4 + 2];
+          n++;
+        }
+      }
+      const avg = n ? sum.map((v) => Math.round(v / n)) : [128, 128, 128];
+      const orig = Buffer.from(raw);
+      /** `v` folded back into [a, b], as a mirror at each end would show it. */
+      const mirror = (v: number, a: number, b: number) => {
+        const len = b - a + 1;
+        if (v >= a && v <= b) return v;
+        if (len <= 1) return a;
+        const k = (v < a ? a - v - 1 : v - b - 1) % (2 * len);
+        const off = k < len ? k : 2 * len - 1 - k;
+        return v < a ? a + off : b - off;
+      };
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = y * width + x;
+          if (!open(i)) continue;
+          let from = -1;
+          if (intent === "extend" && x1 >= 0) {
+            const j = mirror(y, y0, y1) * width + mirror(x, x0, x1);
+            if (!open(j)) from = j;
+          }
+          raw[i * 4] = from >= 0 ? orig[from * 4] : avg[0];
+          raw[i * 4 + 1] = from >= 0 ? orig[from * 4 + 1] : avg[1];
+          raw[i * 4 + 2] = from >= 0 ? orig[from * 4 + 2] : avg[2];
+          raw[i * 4 + 3] = 255;
+        }
+      }
+      const png = await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer();
+      return { bytes: new Uint8Array(png), mime: "image/png", model, width, height };
+    }
     const tint = paletteOf(req.context.serialized)[seedOf(req.prompt) % 3].replace("#", "");
     const full = tint.length === 3 ? tint.split("").map((c) => c + c).join("") : tint;
     const [tr, tg, tb] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
@@ -264,5 +334,50 @@ export const mockImageProvider: ImageProvider = {
     }
     const png = await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer();
     return { bytes: new Uint8Array(png), mime: "image/png", model, width, height };
+  },
+};
+
+/** How close to the border's colour a pixel must be (per channel, 0..255) for the stand-in to call it background. */
+const MOCK_CUTOUT_NEAR = 40;
+
+/**
+ * The stand-in for background removal: whatever is close to the colour of the
+ * picture's outer edge is background and goes transparent; the rest is the
+ * subject. The same picture always gives the same cut-out. A picture of one
+ * flat colour has no subject at all, which is what the "no clear subject"
+ * guard is tested with.
+ */
+export const mockCutoutProvider: CutoutProvider = {
+  name: "mock",
+  async cutout(source: Uint8Array): Promise<CutoutResult> {
+    const { default: sharp } = await import("sharp");
+    const { data, info } = await sharp(Buffer.from(source)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width, height } = info;
+    const sum = [0, 0, 0];
+    let n = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (x !== 0 && y !== 0 && x !== width - 1 && y !== height - 1) continue;
+        const i = (y * width + x) * 3;
+        sum[0] += data[i];
+        sum[1] += data[i + 1];
+        sum[2] += data[i + 2];
+        n++;
+      }
+    }
+    const edge = sum.map((v) => v / Math.max(1, n));
+    const out = Buffer.alloc(width * height * 4);
+    let kept = 0;
+    for (let p = 0; p < width * height; p++) {
+      const i = p * 3;
+      const far = Math.max(Math.abs(data[i] - edge[0]), Math.abs(data[i + 1] - edge[1]), Math.abs(data[i + 2] - edge[2])) > MOCK_CUTOUT_NEAR;
+      out[p * 4] = data[i];
+      out[p * 4 + 1] = data[i + 1];
+      out[p * 4 + 2] = data[i + 2];
+      out[p * 4 + 3] = far ? 255 : 0;
+      if (far) kept++;
+    }
+    const png = await sharp(out, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    return { bytes: new Uint8Array(png), model: "cutout:mock", coverage: kept / (width * height) };
   },
 };

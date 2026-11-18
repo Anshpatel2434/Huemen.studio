@@ -5,26 +5,33 @@
  *
  *   PictureMenu     add a picture to one visual (heading as live text on top,
  *                   or drawn into the picture), draw a new one, go back a
- *                   version, take it off
- *   CommentSurface  in comment mode, drag a box on a visual, say what to
- *                   change, Send. The part under the box is picked for you
- *                   (picture, headline, body, call to action, logo,
- *                   background) and can be changed before sending. Earlier
- *                   comments show as numbered boxes with what happened.
+ *                   version, download a cut-out, take it off
+ *   CommentSurface  in Comment mode, click a part of a visual (or drag a box):
+ *                   a numbered pin appears with a field beside it. Add several,
+ *                   then one Send in the tool strip applies them all. The part
+ *                   under the pin is picked for you (picture, heading, body,
+ *                   call to action, logo, background) and can be changed in the
+ *                   field. Sent comments show as numbered pins with what happened.
+ *   DraftField      the field beside a pin that is not sent yet (shared with
+ *                   Markup, picture-tools-ui)
+ *   pictureArea, picturePoint
+ *                   a box or a point on a visual, as a share of the PICTURE on it
  *   useJobWatch     follows queued picture work until it finishes
  *
  * Huemen components only: no browser dialogs, selects or prompts.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { ImagePlus, MessageSquare, X } from "lucide-react";
+import { ImagePlus, X } from "lucide-react";
 import { AgentDots, Menu, MenuItem, MenuSeparator } from "@/components/ui";
 import { BoardIconButton } from "./visual-panels";
 import { btnClass } from "@/components/btn";
 import type { JobView } from "@/lib/jobs/types";
-import type { PictureMode } from "@/lib/visual/design";
+import type { ArtboardKind, PictureMode } from "@/lib/visual/design";
 import type { VisualComment } from "@/lib/data/visual-comments";
+import type { Box } from "@/lib/visual/region-types";
+import type { PinKind, Stroke } from "@/lib/visual/picture-tools";
 import { placePins } from "@/lib/visual/pins";
+import { boxIn, pictureRectIn, pointIn, rectOfBox, type Point, type Rect } from "./picture-tools-maths";
 
 export type Target = VisualComment["target"];
 export const TARGET_LABEL: Record<Target, string> = {
@@ -32,11 +39,52 @@ export const TARGET_LABEL: Record<Target, string> = {
 };
 const TARGET_ORDER: Target[] = ["picture", "headline", "body", "cta", "logo", "background"];
 
+/** What a sent comment was about: the part, or the tool when it was drawn on the picture. */
+export const commentWhat = (c: VisualComment): string =>
+  c.target === "picture" && c.kind === "markup" ? "Markup" : c.target === "picture" && c.kind === "erase" ? "Erase" : TARGET_LABEL[c.target];
+
+/**
+ * A change that is pinned on a visual but not sent yet. `box` is on the
+ * visual's frame (where the pin shows); `area` and `strokes` are on the
+ * picture itself (lib/visual/picture-tools).
+ */
+export type DraftPin = {
+  id: string;
+  itemId: string;
+  artboard: ArtboardKind;
+  visualId: string;
+  kind: PinKind;
+  target: Target;
+  box: Box;
+  area: Box | null;
+  strokes?: Stroke[];
+  note: string;
+  /** Which frame of the visual the box is on (a carousel has several). */
+  frame: number;
+  /** The parts a comment on that frame can be about. */
+  offered: Target[];
+  /** Where the whole picture sits on that frame, in shares of the frame: puts a box on the picture back on the frame. */
+  pic?: Box;
+  /** The picture's shape, width over height (a stroke's width is a share of its shorter side). */
+  aspect?: number;
+};
+/** A draft as a surface makes it; the board adds whose it is. */
+export type NewDraft = Omit<DraftPin, "id" | "itemId" | "artboard" | "visualId">;
+export type DraftOps = {
+  /** False when it wasn't taken (the limit is reached, or there is no visual to pin it on). */
+  add: (d: NewDraft) => boolean;
+  update: (id: string, patch: Partial<Pick<DraftPin, "note" | "target">>) => void;
+  remove: (id: string) => void;
+  /** Which draft's field is open; null closes it. */
+  open: (id: string | null) => void;
+};
+
 // ---- watching queued picture work ------------------------------------------------
 
 export type Watched = {
   jobId: string; contentItemId: string; artboard: string; label: string;
   /** The picture before this job, for undo. */ prev?: string | null;
+  /** What to say when it is done (else "Picture ready"). */ done?: string;
   /** Set while the job waits after a failed try: why it failed and when it tries again. */
   retrying?: { error: string; at: string; attempt: number; of: number } | null;
 };
@@ -109,7 +157,7 @@ export function WorkingOverlay({ label, retrying }: { label: string; retrying?: 
           <p className="mt-1 text-ink-muted">{retrying.error}</p>
         </div>
       ) : (
-        <span role="status" className="inline-flex items-center gap-2 text-sm font-medium text-ink"><AgentDots /> {label}</span>
+        <span role="status" className="inline-flex items-center gap-2 text-sm font-medium text-ink text-center"><AgentDots /> {label}</span>
       )}
     </div>
   );
@@ -120,8 +168,10 @@ export function WorkingOverlay({ label, retrying }: { label: string; retrying?: 
 /** The picture menu's width (18rem), in the canvas's own unzoomed pixels. */
 const MENU_W = 288;
 
-export function PictureMenu({ has, mode, hasPrevious, busy, onDraw, onPrevious, onRemove }: {
+export function PictureMenu({ has, mode, hasPrevious, busy, cutout = null, onDraw, onPrevious, onRemove }: {
   has: boolean; mode: PictureMode | null; hasPrevious: boolean; busy: boolean;
+  /** The picture is a cut-out (its background removed): its transparent PNG, and the name to save it under. */
+  cutout?: { url: string; name: string } | null;
   onDraw: (mode: PictureMode) => void; onPrevious: () => void; onRemove: () => void;
 }) {
   // Closed, or open towards the side that has room: the menu hangs from the
@@ -168,7 +218,13 @@ export function PictureMenu({ has, mode, hasPrevious, busy, onDraw, onPrevious, 
                 {mode === "with_text"
                   ? <MenuItem onClick={pick(() => onDraw("live_text"))}>Make the heading editable text again</MenuItem>
                   : <MenuItem onClick={pick(() => onDraw("with_text"))}>Draw the heading into the picture</MenuItem>}
-                {hasPrevious && <MenuItem onClick={pick(onPrevious)}>Back to the previous version</MenuItem>}
+                {hasPrevious && <MenuItem onClick={pick(onPrevious)}>{cutout ? "Back to the version before" : "Back to the previous version"}</MenuItem>}
+                {/* A real download link (the picture's own same-origin link), never a new window. */}
+                {cutout && (
+                  <a role="menuitem" href={cutout.url} download={cutout.name} onClick={() => setOpen(false)} className="hu-menu__item">
+                    <span className="flex-1 truncate">Download cut-out</span>
+                  </a>
+                )}
                 <MenuSeparator />
                 <MenuItem danger onClick={pick(onRemove)}>Take the picture off</MenuItem>
               </>
@@ -180,50 +236,58 @@ export function PictureMenu({ has, mode, hasPrevious, busy, onDraw, onPrevious, 
   );
 }
 
-// ---- comment on a spot -----------------------------------------------------------------
+// ---- where the picture is ---------------------------------------------------------------
 
-type Box = { x: number; y: number; w: number; h: number };
-type Draft = { frame: HTMLElement; box: Box; target: Target; offered: Target[] };
+const rectOf = (r: DOMRect): Rect => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+
+/**
+ * The picture on a visual, on screen: the slot the layout gives it, and where
+ * the WHOLE picture sits (it is cropped to the slot, centred, or sits whole
+ * inside it when it is a cut-out). `within` is the visual's frame, or anything
+ * that holds its picture. Reads layout: handlers and animation frames only.
+ */
+export function pictureOnScreen(within: HTMLElement): { img: HTMLImageElement; slot: Rect; full: Rect; natural: { w: number; h: number } } | null {
+  const img = within.querySelector<HTMLImageElement>("img[data-part='picture']");
+  if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+  const slot = rectOf(img.getBoundingClientRect());
+  const natural = { w: img.naturalWidth, h: img.naturalHeight };
+  const fit = getComputedStyle(img).objectFit === "contain" ? "contain" : "cover";
+  return { img, slot, full: pictureRectIn(slot, natural, fit), natural };
+}
 
 /**
  * The box (fractions of the visual frame) as fractions of the PICTURE itself:
- * through where the picture sits in the layout and its object-cover crop
- * (centred). The redraw works in the picture's pixels, which differ from the
+ * through where the picture sits in the layout and how it is cropped to its
+ * slot. The redraw works in the picture's pixels, which differ from the
  * frame's whenever the picture is cropped or fills only part of the frame.
  */
-function pictureArea(frame: HTMLElement, box: Box): Box | null {
-  const img = frame.querySelector<HTMLImageElement>("img[data-part='picture']");
-  if (!img || !img.naturalWidth || !img.naturalHeight) return null;
-  const f = frame.getBoundingClientRect();
-  const r = img.getBoundingClientRect();
-  const s = Math.max(r.width / img.naturalWidth, r.height / img.naturalHeight);
-  const dw = img.naturalWidth * s;
-  const dh = img.naturalHeight * s;
-  const ox = r.left + (r.width - dw) / 2;
-  const oy = r.top + (r.height - dh) / 2;
-  const x = (f.left + box.x * f.width - ox) / dw;
-  const y = (f.top + box.y * f.height - oy) / dh;
-  const w = (box.w * f.width) / dw;
-  const h = (box.h * f.height) / dh;
+export function pictureArea(frame: HTMLElement, box: Box): Box | null {
+  const p = pictureOnScreen(frame);
   // Keep the part that is on the picture; the server cleans it again.
-  const x0 = Math.max(0, x), y0 = Math.max(0, y);
-  const x1 = Math.min(1, x + w), y1 = Math.min(1, y + h);
-  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+  return p ? boxIn(p.full, rectOfBox(rectOf(frame.getBoundingClientRect()), box)) : null;
 }
+
+/** A point on the screen as a share of the picture on this visual (kept on the picture); null when it has none. */
+export function picturePoint(frame: HTMLElement, clientX: number, clientY: number): Point | null {
+  const p = pictureOnScreen(frame);
+  return p ? pointIn(p.full, clientX, clientY) : null;
+}
+
+// ---- comment on a spot -----------------------------------------------------------------
 
 const STATUS_TONE: Record<VisualComment["status"], string> = {
   open: "border-[var(--accent)]", working: "border-[var(--accent)]", applied: "border-[var(--ok-line)]", failed: "border-[var(--danger-line)]",
 };
 const UNDONE_TONE = "border-dashed border-[var(--line-strong)]";
 
-/** What sending a comment on each part does, said under the box before it is sent. */
+/** What sending a comment on each part does, said in the field before it is sent. */
 const TARGET_HINT: Record<Target, string> = {
-  picture: "Only the marked area of the picture is redrawn.",
-  headline: "Rewrites this text in your voice. The heading is shared by this piece's post image, quote card and carousel cover.",
+  picture: "Only this area of the picture is redrawn. Uses 1 picture.",
+  headline: "Rewrites the heading in your voice, on all three visuals of this piece.",
   body: "Rewrites this text in your voice.",
   cta: "Rewrites this text in your voice.",
-  logo: "Changes the design of all three visuals of this piece: post image, quote card and carousel.",
-  background: "Changes the design of all three visuals of this piece: post image, quote card and carousel.",
+  logo: "Changes the design of all three visuals of this piece.",
+  background: "Changes the design of all three visuals of this piece.",
 };
 
 /**
@@ -264,25 +328,131 @@ function partAt(frame: HTMLElement, x: number, y: number): Target {
   return "background";
 }
 
-type Rect = { left: number; top: number; width: number; height: number };
+/** The field's width on screen, whatever the canvas zoom. */
+const FIELD_W = 252;
 
 /**
- * Wraps one visual. Off: just the visual. On: drag a box on it, then say what
- * to change. Boxes are kept as fractions of the frame they were drawn on, so
- * they hold at any zoom and in the full-size export. Positions on screen are
- * measured in event handlers and an animation frame, never during render.
+ * The field beside a pin that is not sent yet: what the change is about (the
+ * part chips, for a comment), the words, and a small remove button. Enter
+ * moves on; Escape closes it (and takes an empty pin away).
+ *
+ * It sits inside the visual's own layer (no dialog, nothing floating) and is
+ * drawn at screen size whatever the canvas zoom: the canvas publishes its zoom
+ * as --cv-z, and the field is scaled by its inverse. Under the pin's box, or
+ * over it when the box is low on the visual. `rect` is the box, in the
+ * surface's own (unzoomed) pixels.
  */
-export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, onSend, onRetry, onDismiss, children }: {
-  enabled: boolean;
+export function DraftField({ rect, flip, label, chips, note, onNote, placeholder, hint, onEnter, onEscape, onRemove, removeLabel }: {
+  rect: Rect; flip: boolean; label: string;
+  chips?: { label: string; value: Target; items: Target[]; onChange: (t: Target) => void };
+  note: string; onNote: (v: string) => void; placeholder: string; hint?: string;
+  onEnter: () => void; onEscape: () => void; onRemove: () => void; removeLabel: string;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  // Focus once, when the field appears (and again after a chip is picked): a
+  // field that took focus on every render would pull it off the chips.
+  useEffect(() => { input.current?.focus({ preventScroll: true }); }, []);
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="absolute z-40 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-2 flex flex-col gap-2 cursor-default text-left fade-in pointer-events-auto"
+      style={{
+        width: FIELD_W,
+        // Never past the visual's right edge at this zoom, never before its left.
+        left: `max(0px, min(${rect.left.toFixed(1)}px, calc(100% - ${FIELD_W}px / var(--cv-z, 1))))`,
+        ...(flip ? { bottom: `calc(100% - ${(rect.top - 16).toFixed(1)}px)` } : { top: rect.top + rect.height + 8 }),
+        transform: "scale(calc(1 / var(--cv-z, 1)))",
+        transformOrigin: flip ? "bottom left" : "top left",
+      }}
+    >
+      {chips && chips.items.length > 1 && (
+        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label={chips.label}>
+          {chips.items.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="radio"
+              aria-checked={chips.value === t}
+              onClick={() => { chips.onChange(t); input.current?.focus({ preventScroll: true }); }}
+              className={`min-h-8 px-2.5 rounded-full border text-xs ${chips.value === t ? "bg-ink text-on-ink border-ink" : "border-line hover:border-line-strong"}`}
+            >
+              {TARGET_LABEL[t]}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        <input
+          ref={input}
+          value={note}
+          maxLength={500}
+          onChange={(e) => onNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); onEnter(); }
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onEscape(); }
+          }}
+          placeholder={placeholder}
+          aria-label="What to change"
+          enterKeyHint="done"
+          className="field !min-h-11 !py-2 flex-1 min-w-0"
+        />
+        <BoardIconButton label={removeLabel} onClick={onRemove}><X size={14} aria-hidden="true" /></BoardIconButton>
+      </div>
+      {hint && <p className="text-xs text-ink-faint leading-snug">{hint}</p>}
+    </div>
+  );
+}
+
+/** A numbered pin that is not sent yet. With `onOpen` it is a button that opens its field. */
+export function DraftDot({ no, at, note, open, onOpen }: { no: number; at: { left: number; top: number }; note: string; open?: boolean; onOpen?: () => void }) {
+  const cls = `absolute z-20 w-6 h-6 rounded-full text-xs font-medium flex items-center justify-center ring-2 ring-paper bg-accent text-accent-fg ${note.trim() ? "" : "outline outline-1 outline-dashed outline-offset-2 outline-[var(--accent)]"}`;
+  if (!onOpen) return <span aria-hidden="true" className={cls} style={at}>{no}</span>;
+  return (
+    <button
+      type="button"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={onOpen}
+      aria-expanded={!!open}
+      aria-label={`Change ${no}, not sent yet${note.trim() ? `: ${note.trim()}` : ". Needs a comment"}`}
+      className={`${cls} pointer-events-auto`}
+      style={at}
+    >
+      {no}
+    </button>
+  );
+}
+
+/**
+ * Wraps one visual. `off`: just the visual. `on` (the Comment tool): a click
+ * (or a dragged box) adds a numbered pin with a field beside it; the pins wait
+ * for Send in the tool strip. `show` (another picture tool is in use): the
+ * pins are drawn but nothing here takes a click.
+ *
+ * Boxes are kept as fractions of the frame they were drawn on, so they hold at
+ * any zoom and in the full-size export. Positions on screen are measured in
+ * event handlers and an animation frame, never during render.
+ */
+export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draftNumbers, openDraft, onDraft, pictureLock, onRefuse, onRetry, onDismiss, children }: {
+  mode: "off" | "show" | "on";
   /** Earlier comments on this visual, oldest first. */
   comments: VisualComment[];
   /** The number each comment carries: its place among the PIECE's comments, the same as in the side panel. */
   numbers?: Record<string, number>;
   /** A picture change that has since been undone (the picture in use isn't the one it made). */
   isUndone?: (c: VisualComment) => boolean;
-  /** Which frame an element is in (a carousel has several); defaults to the nearest frame. */
-  frameOf?: (el: Element) => HTMLElement | null;
-  onSend: (draft: { target: Target; box: Box; note: string; area?: Box | null }) => Promise<boolean>;
+  /** This visual's comments that are not sent yet, in the order they were made. */
+  drafts: DraftPin[];
+  /** The number each draft carries: after the piece's sent comments. */
+  draftNumbers: Record<string, number>;
+  /** The draft whose field is open, if it is one of these. */
+  openDraft: string | null;
+  onDraft: DraftOps;
+  /** Why this visual's picture can't take a comment right now, when it can't. */
+  pictureLock?: string | null;
+  /** A click was refused: say why. */
+  onRefuse?: (why: string) => void;
   /** Run a comment that didn't go through again. */
   onRetry?: (c: VisualComment) => Promise<void>;
   onDismiss: (id: string) => void;
@@ -292,25 +462,23 @@ export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, 
   const start = useRef<{ x: number; y: number; frame: HTMLElement } | null>(null);
   const [live, setLive] = useState<Rect | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
-  // `at` is where the panel opens on screen: under the box, or over it when the screen ends first.
-  const [draft, setDraft] = useState<(Omit<Draft, "frame"> & { rect: Rect; at: { left: number; top?: number; bottom?: number }; area: Box | null }) | null>(null);
-  const [note, setNote] = useState("");
-  const [sending, setSending] = useState(false);
   const [openPin, setOpenPin] = useState<string | null>(null);
+  // Where each sent comment and each draft sits, and how tall the visual is (a field low on it opens upwards).
   const [pins, setPins] = useState<Record<string, Rect>>({});
+  const [height, setHeight] = useState(0);
+  const on = mode === "on";
 
-  // Leaving comment mode drops a half-written comment (state adjusted during render, not in an effect).
-  const [wasEnabled, setWasEnabled] = useState(enabled);
-  if (wasEnabled !== enabled) {
-    setWasEnabled(enabled);
-    if (!enabled) { setDraft(null); setLive(null); setOpenPin(null); }
+  // Leaving comment mode drops a box being dragged and closes an open pin (state adjusted during render, not in an effect).
+  const [wasOn, setWasOn] = useState(on);
+  if (wasOn !== on) {
+    setWasOn(on);
+    if (!on) { setLive(null); setOpenPin(null); }
   }
 
-  const nearestFrame = useCallback((el: Element): HTMLElement | null =>
-    frameOf ? frameOf(el) : (el as HTMLElement).closest<HTMLElement>("[data-part='background']"), [frameOf]);
+  const framesOf = () => (wrap.current ? [...wrap.current.querySelectorAll<HTMLElement>("[data-part='background']")] : []);
 
   /** A box on a frame, in the wrapper's own (unzoomed) pixels. Reads layout: handlers and frames only. */
-  const rectOf = useCallback((frame: HTMLElement, b: Box): Rect | null => {
+  const rectIn = useCallback((frame: HTMLElement, b: Box): Rect | null => {
     const w = wrap.current?.getBoundingClientRect();
     const r = frame.getBoundingClientRect();
     if (!w || !wrap.current) return null;
@@ -318,35 +486,46 @@ export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, 
     return { left: (r.left - w.left + b.x * r.width) / z, top: (r.top - w.top + b.y * r.height) / z, width: (b.w * r.width) / z, height: (b.h * r.height) / z };
   }, []);
 
-  // Where the saved comments sit, measured after layout (and again if the visual resizes).
+  // The drafts change with every key typed; they are measured again only when one moves, comes or goes.
+  const draftsNow = useRef(drafts);
+  useEffect(() => { draftsNow.current = drafts; }, [drafts]);
+  const draftKey = drafts.map((d) => `${d.id}:${d.frame}:${d.box.x},${d.box.y},${d.box.w},${d.box.h}`).join("|");
+
+  // Where the pins sit, measured after layout (and again if the visual resizes).
   useEffect(() => {
-    if (!enabled || !wrap.current) return;
+    if (mode === "off" || !wrap.current) return;
     const el = wrap.current;
     let raf = 0;
     const measure = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const out: Record<string, Rect> = {};
-        const fallback = el.querySelector<HTMLElement>("[data-part='background']");
+        const frames = [...el.querySelectorAll<HTMLElement>("[data-part='background']")];
         for (const c of comments) {
           const part = el.querySelector(`[data-part='${c.target}']`);
-          const frame = (part && nearestFrame(part)) ?? fallback;
-          const rect = frame ? rectOf(frame, c.box) : null;
+          const frame = part?.closest<HTMLElement>("[data-part='background']") ?? frames[0];
+          const rect = frame ? rectIn(frame, c.box) : null;
           if (rect) out[c.id] = rect;
         }
+        for (const d of draftsNow.current) {
+          const frame = frames[d.frame] ?? frames[0];
+          const rect = frame ? rectIn(frame, d.box) : null;
+          if (rect) out[d.id] = rect;
+        }
         setPins(out);
+        setHeight(el.offsetHeight);
       });
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, [enabled, comments, nearestFrame, rectOf]);
+  }, [mode, comments, draftKey, rectIn]);
 
   const frameAt = (x: number, y: number): HTMLElement | null => {
     for (const el of document.elementsFromPoint(x, y)) {
       if (!wrap.current?.contains(el)) continue;
-      const f = nearestFrame(el);
+      const f = (el as HTMLElement).closest<HTMLElement>("[data-part='background']");
       if (f) return f;
     }
     return null;
@@ -362,47 +541,42 @@ export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, 
 
   const down = (e: React.PointerEvent) => {
     e.stopPropagation();
-    if (e.button !== 0 || draft) return;
+    if (e.button !== 0) return;
+    setOpenPin(null);
     const frame = frameAt(e.clientX, e.clientY);
     if (!frame) return;
     start.current = { x: e.clientX, y: e.clientY, frame };
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const move = (e: React.PointerEvent) => {
     const s0 = start.current;
     if (!s0) return;
-    setLive(rectOf(s0.frame, frac(s0.frame, s0, { x: e.clientX, y: e.clientY })));
+    setLive(rectIn(s0.frame, frac(s0.frame, s0, { x: e.clientX, y: e.clientY })));
   };
+  const cancel = () => { start.current = null; setLive(null); };
   const up = (e: React.PointerEvent) => {
     const s0 = start.current;
     start.current = null;
     setLive(null);
     if (!s0) return;
     let box = frac(s0.frame, s0, { x: e.clientX, y: e.clientY });
+    const r = s0.frame.getBoundingClientRect();
     // A click, not a drag: a small box around the point.
     if (box.w < 0.03 || box.h < 0.03) {
-      const r = s0.frame.getBoundingClientRect();
       const x = Math.max(0, (s0.x - r.left) / r.width - 0.08);
       const y = Math.max(0, (s0.y - r.top) / r.height - 0.06);
       box = { x, y, w: Math.min(0.16, 1 - x), h: Math.min(0.12, 1 - y) };
     }
-    const r = s0.frame.getBoundingClientRect();
     const target = partAt(s0.frame, r.left + (box.x + box.w / 2) * r.width, r.top + (box.y + box.h / 2) * r.height);
-    const rect = rectOf(s0.frame, box);
-    if (!rect) return;
-    const PANEL_W = 300, PANEL_H = 270, M = 12;
-    const bx = { left: r.left + box.x * r.width, top: r.top + box.y * r.height, bottom: r.top + (box.y + box.h) * r.height };
-    const left = Math.max(M, Math.min(bx.left, window.innerWidth - PANEL_W - M));
-    const at = window.innerHeight - bx.bottom >= PANEL_H + M || bx.top < PANEL_H + M
-      ? { left, top: Math.min(bx.bottom + 8, window.innerHeight - PANEL_H - M) }
-      : { left, bottom: window.innerHeight - bx.top + 8 };
-    setDraft({ box, target, offered: partsIn(s0.frame), rect, at, area: pictureArea(s0.frame, box) });
-    setNote("");
+    if (target === "picture" && pictureLock) return onRefuse?.(pictureLock);
+    const frame = Math.max(0, framesOf().indexOf(s0.frame));
+    const offered = partsIn(s0.frame).filter((t) => t !== "picture" || !pictureLock);
+    onDraft.add({ kind: "comment", target, box, area: pictureArea(s0.frame, box), note: "", frame, offered });
   };
 
   const undone = (c: VisualComment) => !!isUndone?.(c);
-  // Pins are numbered and placed in the order given; one that would cover another moves aside (lib/visual/pins).
-  const spots = placePins(comments.flatMap((c) => (pins[c.id] ? [{ id: c.id, left: pins[c.id].left, top: pins[c.id].top }] : [])));
+  // Pins are numbered and placed in the order given, sent ones first; one that would cover another moves aside (lib/visual/pins).
+  const spots = placePins([...comments, ...drafts].flatMap((c) => (pins[c.id] ? [{ id: c.id, left: pins[c.id].left, top: pins[c.id].top }] : [])));
   const retry = async (c: VisualComment) => {
     if (!onRetry) return;
     setRetrying(c.id);
@@ -413,29 +587,29 @@ export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, 
     }
   };
 
-  const send = async () => {
-    if (!draft || !note.trim()) return;
-    setSending(true);
-    const area = draft.target === "picture" ? draft.area : null;
-    const ok = await onSend({ target: draft.target, box: draft.box, note: note.trim(), area });
-    setSending(false);
-    if (ok) { setDraft(null); setNote(""); }
-  };
+  const opened = on ? drafts.find((d) => d.id === openDraft && pins[d.id]) : undefined;
+  // The layer with an open field or note rises over its neighbours, so what reaches past this visual is not under theirs.
+  const raised = !!opened || !!openPin;
 
   return (
     <div ref={wrap} className="relative">
       {children}
-      {enabled && (
+      {mode !== "off" && (
         <div
-          className="absolute inset-0 z-20 cursor-crosshair touch-none"
-          onPointerDown={down}
-          onPointerMove={move}
-          onPointerUp={up}
-          aria-label="Drag a box on the visual to comment on that part"
+          className={`absolute inset-0 ${raised ? "z-30" : "z-20"} ${on ? "cursor-crosshair touch-none" : "pointer-events-none"}`}
+          onPointerDown={on ? down : undefined}
+          onPointerMove={on ? move : undefined}
+          onPointerUp={on ? up : undefined}
+          onPointerCancel={on ? cancel : undefined}
+          role="group"
+          aria-label={on ? "Click a part of this visual to comment on it" : "Comments on this visual"}
         >
           {/* The boxes first, then the pins over all of them, so a pin is never under another comment's box. */}
           {comments.map((c) => pins[c.id] && (
             <div key={c.id} className={`absolute border-2 rounded-xs pointer-events-none ${undone(c) ? UNDONE_TONE : STATUS_TONE[c.status]}`} style={pins[c.id]} />
+          ))}
+          {drafts.map((d) => pins[d.id] && (
+            <div key={d.id} className={`absolute border-2 rounded-xs pointer-events-none border-[var(--accent)] ${d.id === opened?.id ? "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]" : "bg-[color-mix(in_srgb,var(--accent)_6%,transparent)]"}`} style={pins[d.id]} />
           ))}
           {comments.map((c, n) => {
             const at = spots[c.id];
@@ -446,6 +620,7 @@ export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, 
               <div key={c.id} className={`absolute ${openPin === c.id ? "z-30" : "z-20"}`} style={at}>
                 <button
                   type="button"
+                  tabIndex={on ? 0 : -1}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => setOpenPin(openPin === c.id ? null : c.id)}
                   className={`w-6 h-6 rounded-full text-xs font-medium flex items-center justify-center ring-2 ring-paper ${undone(c) ? "bg-paper text-ink-muted border border-line-strong" : "bg-ink text-on-ink"}`}
@@ -454,9 +629,9 @@ export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, 
                 >
                   {no}
                 </button>
-                {openPin === c.id && (
+                {on && openPin === c.id && (
                   <div onPointerDown={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-2 w-64 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-3 text-left cursor-default">
-                    <p className="text-xs text-ink-faint">{no} · {TARGET_LABEL[c.target]} · {state.label}</p>
+                    <p className="text-xs text-ink-faint">{no} · {commentWhat(c)} · {state.label}</p>
                     <p className="text-sm mt-0.5">{c.note}</p>
                     <p className="text-xs mt-2 text-ink-muted whitespace-pre-line">
                       {c.status === "working" ? <span className="inline-flex items-center gap-1.5"><AgentDots /> Working on it</span> : state.text}
@@ -476,58 +651,33 @@ export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, 
               </div>
             );
           })}
-          {live && <div className="absolute border-2 border-dashed border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]" style={live} />}
-          {draft && (
-            <>
-              <div className="absolute border-2 border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]" style={draft.rect} />
-              {createPortal(
-              <div
-                role="dialog"
-                aria-label="Change this part"
-                onPointerDown={(e) => e.stopPropagation()}
-                className="fixed w-[min(300px,calc(100vw-24px))] bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-3 flex flex-col gap-2.5 cursor-default pop"
-                style={{ ...draft.at, zIndex: "var(--z-popover)" }}
-              >
-                <div className="flex items-center gap-1.5">
-                  <MessageSquare size={14} aria-hidden="true" />
-                  <p className="text-xs font-medium flex-1">Change this part</p>
-                  <BoardIconButton label="Cancel comment" onClick={() => setDraft(null)}><X size={14} aria-hidden="true" /></BoardIconButton>
-                </div>
-                <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="What the comment is about">
-                  {draft.offered.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      role="radio"
-                      aria-checked={draft.target === t}
-                      onClick={() => setDraft({ ...draft, target: t })}
-                      className={`min-h-8 px-2.5 rounded-full border text-xs ${draft.target === t ? "bg-ink text-on-ink border-ink" : "border-line hover:border-line-strong"}`}
-                    >
-                      {TARGET_LABEL[t]}
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  ref={(el) => el?.focus({ preventScroll: true })}
-                  rows={2}
-                  value={note}
-                  maxLength={500}
-                  onChange={(e) => setNote(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send(); if (e.key === "Escape") setDraft(null); }}
-                  placeholder={draft.target === "picture" ? "e.g. Put a coffee cup here" : draft.target === "logo" ? "e.g. Make the logo smaller" : "e.g. Shorter and punchier"}
-                  className="field text-sm"
-                  aria-label="What to change"
-                />
-                <p className="text-xs text-ink-faint">
-                  {TARGET_HINT[draft.target]}
-                </p>
-                <button type="button" onClick={send} disabled={sending || !note.trim()} className={btnClass("primary", "sm")}>
-                  {sending ? <><AgentDots /> Sending…</> : "Send"}
-                </button>
-              </div>,
-              document.body,
-              )}
-            </>
+          {drafts.map((d) => spots[d.id] && (
+            <DraftDot
+              key={d.id}
+              no={draftNumbers[d.id] ?? 0}
+              at={spots[d.id]}
+              note={d.note}
+              open={d.id === opened?.id}
+              onOpen={on ? () => { setOpenPin(null); onDraft.open(d.id === openDraft ? null : d.id); } : undefined}
+            />
+          ))}
+          {live && <div className="absolute border-2 border-dashed border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] pointer-events-none" style={live} />}
+          {opened && (
+            <DraftField
+              key={opened.id}
+              rect={pins[opened.id]}
+              flip={height > 0 && pins[opened.id].top + pins[opened.id].height / 2 > height * 0.55}
+              label={`Change ${draftNumbers[opened.id] ?? ""}`}
+              chips={{ label: "What the comment is about", value: opened.target, items: opened.offered, onChange: (t) => onDraft.update(opened.id, { target: t }) }}
+              note={opened.note}
+              onNote={(v) => onDraft.update(opened.id, { note: v })}
+              placeholder="Add a comment..."
+              hint={TARGET_HINT[opened.target]}
+              onEnter={() => { if (opened.note.trim()) onDraft.open(null); }}
+              onEscape={() => (opened.note.trim() ? onDraft.open(null) : onDraft.remove(opened.id))}
+              onRemove={() => onDraft.remove(opened.id)}
+              removeLabel="Remove this comment"
+            />
           )}
         </div>
       )}

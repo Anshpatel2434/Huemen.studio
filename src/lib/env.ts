@@ -84,6 +84,18 @@ const schema = z.object({
   AI_IMAGE_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
   // Runpod only: the endpoint that redraws an area (image in, image out).
   AI_IMAGE_EDIT_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
+  // Runpod only: the endpoint that fills a bigger frame (Resize on the Visual
+  // board, where the new shape is larger than the picture). It gets the whole
+  // picture on a flat matte, so it must be a model that edits by instruction
+  // and keeps the rest still.
+  AI_IMAGE_EXTEND_MODEL: z.preprocess(blankIsUnset, z.string().default("google-nano-banana-2-edit")),
+  // Remove background on the Visual board: an open model run inside the app
+  // (lib/ai/providers/cutout-onnx), no cost per use. "off" (the default) shows
+  // the tool disabled with the reason; "onnx" needs the model file at
+  // AI_CUTOUT_MODEL_PATH (npm run models:fetch); "mock" is the stand-in for
+  // development and tests.
+  AI_CUTOUT_PROVIDER: z.preprocess(blankIsUnset, z.enum(["off", "onnx", "mock"]).default("off")),
+  AI_CUTOUT_MODEL_PATH: z.preprocess(blankIsUnset, z.string().default("./models/isnet-general-use.onnx")),
   RUNPOD_API_KEY: z.preprocess(blankIsUnset, z.string().optional()),
   // A picture or an area redraw can take a while; bounded per call.
   AI_IMAGE_TIMEOUT_MS: z.preprocess(blankIsUnset, z.coerce.number().int().positive().default(180000)),
@@ -168,6 +180,9 @@ export function configProblems(env: Env, phase?: string): string[] {
     }
     if (env.AI_IMAGE_PROVIDER === "mock") {
       out.push("AI_IMAGE_PROVIDER=mock is the stand-in picture maker. Production needs AI_IMAGE_PROVIDER=openai or runpod.");
+    }
+    if (env.AI_CUTOUT_PROVIDER === "mock") {
+      out.push("AI_CUTOUT_PROVIDER=mock is the stand-in for background removal. Production needs AI_CUTOUT_PROVIDER=onnx (with the model file) or off.");
     }
     if (env.AUTH_DRIVER === "dev" && !env.AUTH_ALLOW_DEV_SIGNIN) {
       out.push("AUTH_DRIVER=dev lets anyone sign in as anyone. Use AUTH_DRIVER=email in production (or AUTH_ALLOW_DEV_SIGNIN=true for a protected throwaway test only).");

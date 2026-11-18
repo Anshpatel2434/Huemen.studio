@@ -56,6 +56,12 @@ export interface PictureRef {
   /** The image_assets row (kind 'picture') in use. */
   id: string;
   mode: PictureMode;
+  /**
+   * The picture has had its background removed (a PNG with alpha): it sits on
+   * the scheme's ground, contained, without the shade. Only ever `true`;
+   * left out otherwise, so designs saved before it existed compare equal.
+   */
+  cutout?: boolean;
 }
 
 export interface Design {
@@ -116,8 +122,10 @@ function parsePictures(raw: unknown): Partial<Record<ArtboardKind, PictureRef>> 
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const out: Partial<Record<ArtboardKind, PictureRef>> = {};
   for (const k of ARTBOARDS) {
-    const p = o[k] as { id?: unknown; mode?: unknown } | undefined;
-    if (p && typeof p.id === "string" && UUID.test(p.id)) out[k] = { id: p.id, mode: p.mode === "with_text" ? "with_text" : "live_text" };
+    const p = o[k] as { id?: unknown; mode?: unknown; cutout?: unknown } | undefined;
+    if (p && typeof p.id === "string" && UUID.test(p.id)) {
+      out[k] = { id: p.id, mode: p.mode === "with_text" ? "with_text" : "live_text", ...(p.cutout === true ? { cutout: true } : {}) };
+    }
   }
   return out;
 }

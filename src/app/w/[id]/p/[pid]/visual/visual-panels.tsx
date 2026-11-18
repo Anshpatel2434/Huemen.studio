@@ -3,9 +3,11 @@
 /**
  * Pieces of the visual board that are not the canvas itself:
  *
- *   PictureVersions   every version of a visual's picture (fresh draws and
- *                     area changes), newest first, the one in use marked;
- *                     click one to use it. Lives in the Details panel.
+ *   PictureVersions   every version of a visual's picture (fresh draws, area
+ *                     and markup changes, erases, resizes, cut-outs), newest
+ *                     first, each named by how it came to be, the one in use
+ *                     marked; click one to use it. Lives in the Details panel.
+ *   RangeSlider       the same slider as Type size, for any range (Resize's zoom).
  *   HeadingCheck      a quiet note under a visual whose picture has the
  *                     heading drawn into it: either the piece's heading has
  *                     changed since (stale), or the spelling is for the person to check.
@@ -25,6 +27,8 @@ import { FORMATS } from "@/lib/content/formats";
 import { SCALE, scaleAt, scaleForKey, type ArtboardKind, type PictureMode } from "@/lib/visual/design";
 import { exportSizes } from "@/lib/visual/export";
 import { fontFaceCss, googleFontsHref, type FontPlan } from "@/lib/visual/fonts";
+import { PICTURE_OP_LABEL, type PictureOp } from "@/lib/visual/picture-tools";
+import { rangeAt, rangeForKey, type Range } from "./picture-tools-maths";
 
 /**
  * The brand fonts for this page (lib/visual/fonts): @font-face rules for the
@@ -108,11 +112,78 @@ export function ScaleSlider({ value, onChange, label = "Type size" }: { value: n
   );
 }
 
-/** One version of a visual's picture, as the page loads it (lib/data/pictures PictureVersion). */
+/**
+ * A slider for any range, the same Huemen control as Type size (no native
+ * range input): drag or click the track, arrow keys one step, Page Up/Down
+ * two, Home and End. `snap` lets a caller add a stop of its own (Resize snaps
+ * to the zoom at which the picture just fills the frame).
+ */
+export function RangeSlider({ value, range, onChange, label, valueText, snap }: {
+  value: number; range: Range; onChange: (v: number) => void; label: string; valueText: string;
+  snap?: (v: number) => number;
+}) {
+  const track = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const land = (v: number) => (snap ? snap(v) : v);
+  const at = (clientX: number) => {
+    const r = track.current?.getBoundingClientRect();
+    return r && r.width ? land(rangeAt((clientX - r.left) / r.width, range)) : value;
+  };
+  const set = (n: number) => { if (n !== value) onChange(n); };
+  const pct = Math.min(100, Math.max(0, ((value - range.min) / (range.max - range.min)) * 100));
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={range.min}
+      aria-valuemax={range.max}
+      aria-valuenow={Math.round(value)}
+      aria-valuetext={valueText}
+      aria-orientation="horizontal"
+      onKeyDown={(e) => {
+        const n = rangeForKey(value, e.key, range);
+        if (n === null) return;
+        e.preventDefault();
+        e.stopPropagation();
+        set(land(n));
+      }}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        dragging.current = true;
+        set(at(e.clientX));
+      }}
+      onPointerMove={(e) => { if (dragging.current) set(at(e.clientX)); }}
+      onPointerUp={() => { dragging.current = false; }}
+      onPointerCancel={() => { dragging.current = false; }}
+      className="relative min-h-11 px-2 flex items-center cursor-pointer touch-none select-none outline-none rounded-sm focus-visible:ring-2 focus-visible:ring-ink"
+    >
+      <div ref={track} className="relative w-full h-1 rounded-full bg-field">
+        <div aria-hidden="true" className="absolute inset-y-0 left-0 rounded-full bg-ink" style={{ width: `${pct}%` }} />
+        <div aria-hidden="true" className="absolute top-1/2 w-4 h-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-paper border-2 border-ink" style={{ left: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One version of a visual's picture, as the page loads it (lib/data/pictures
+ * PictureVersion). `op` is how it came to be, `cutout` that its background is
+ * removed (a PNG with alpha), `width` and `height` its own pixels.
+ */
 export type Version = {
   id: string; contentItemId: string; artboard: ArtboardKind; mode: PictureMode;
   heading: string | null; parentId: string | null; createdAt: string; url: string;
+  op?: PictureOp; width?: number; height?: number; cutout?: boolean;
 };
+
+/** How a version came to be, in the strip's words. Versions from before the picture tools carry no `op`. */
+export function versionLabel(v: Pick<Version, "op" | "parentId" | "mode">): string {
+  if (v.op && v.op !== "draw" && PICTURE_OP_LABEL[v.op]) return PICTURE_OP_LABEL[v.op];
+  if (!v.op && v.parentId) return "area change";
+  return v.mode === "with_text" ? "new, heading drawn in" : PICTURE_OP_LABEL.draw;
+}
 
 const KINDS: { key: ArtboardKind; label: string }[] = [
   { key: "post", label: "Post image" }, { key: "quote", label: "Quote card" }, { key: "carousel", label: "Carousel cover" },
@@ -155,7 +226,7 @@ export function PictureVersions({ versions, inUse, busy, onUse }: {
               {all.slice(0, MAX_SHOWN).map((v, n) => {
                 const on = inUse[key] === v.id;
                 const no = all.length - n;
-                const what = v.parentId ? "area change" : v.mode === "with_text" ? "new, heading drawn in" : "new picture";
+                const what = versionLabel(v);
                 return (
                   <li key={v.id}>
                     <button

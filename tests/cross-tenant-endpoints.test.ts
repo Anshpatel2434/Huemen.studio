@@ -73,6 +73,7 @@ import * as cronRoute from "@/app/api/cron/route";
 import * as clientError from "@/app/api/client-error/route";
 import { newJob, newComment } from "./helpers/cross-tenant";
 import { generateVisuals } from "@/lib/data/pipeline";
+import { drawPicture } from "@/lib/data/pictures";
 import * as projects from "@/app/w/[id]/project-actions";
 import * as setup from "@/app/w/[id]/setup/actions";
 import * as conn from "@/app/settings/connections/actions";
@@ -399,6 +400,33 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
       return { ...v, commentId: await newComment(fx.A, v.itemId, v.visualId, fx.scopeA.userId!) };
     },
     ok: returns(),
+  });
+  // The picture tools (2026-11-18). Each needs a visual that has a picture: a fresh one, drawn by the stand-in.
+  const freshPicture = async (fx: Fixture) => {
+    const v = await freshVisual(fx);
+    await drawPicture({ ...fx.scopeA, projectId: fx.PA }, v.itemId, "post", "live_text");
+    return v;
+  };
+  // Several pins, one Send: B can neither pin on A's picture nor queue a job in A's workspace.
+  on(f, pictures, "sendPictureCommentsAction", (fn, t) => fn(t.tenantId, t.projectId, {
+    visualId: t.visualId,
+    pins: [
+      { kind: "comment", box: { x: 0.1, y: 0.1, w: 0.3, h: 0.2 }, area: { x: 0.1, y: 0.1, w: 0.3, h: 0.2 }, note: `${MARK} a plant here` },
+      { kind: "erase", box: { x: 0.5, y: 0.5, w: 0.2, h: 0.2 }, area: null, strokes: [{ w: 0.06, pts: [[0.5, 0.6], [0.7, 0.6]] }], note: "" },
+    ],
+  }), {
+    fresh: freshPicture,
+    ok: (o, c) => { returns(isOk)(o); expect(c).toContain("visual_comments"); expect(c).toContain("jobs"); },
+  });
+  // A new shape: the crop runs in the request, so A's own call makes a new picture version at once.
+  on(f, pictures, "resizePictureAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, "post", { ratio: 1, place: { x: 0, y: -0.25, w: 1, h: 1.5 } }), {
+    fresh: freshPicture,
+    ok: (o, c) => { returns((v) => isOk(v) && typeof (v as { pictureId?: unknown }).pictureId === "string")(o); expect(c).toContain("image_assets"); },
+  });
+  // Remove background (the stand-in under test): queued in A's workspace only.
+  on(f, pictures, "removeBackgroundAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, "post"), {
+    fresh: freshPicture,
+    ok: (o, c) => { returns(isOk)(o); expect(c).toContain("jobs"); },
   });
   // Undo of a copy edit made on the visual board.
   on(f, pictures, "revertCopyAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, { hook: "Reverted on the visual board" }, null, null), {
