@@ -28,6 +28,11 @@ export const SIZES: Record<ImageShape, { size: string; width: number; height: nu
   landscape: { size: "1536x1024", width: 1536, height: 1024 },
 };
 
+/** The words for each kind of change (ImageEditRequest `intent`); the mask says where. */
+export const ERASE_PROMPT = "Remove everything in the masked area and fill it with the surrounding background or surface, continuing its texture, light and colours. Add nothing new. Change nothing outside the masked area. No text, letters or logos.";
+export const EXTEND_PROMPT = "The solid green area is empty canvas. Fill it so the scene continues naturally from the picture beside it. Do not change, move or resize anything that is not green. No text, letters or logos.";
+export const MARKS_PROMPT = "The bright magenta hand-drawn marks on this picture are instructions, not part of it: they show where to change it. Follow the marks and the request below, then remove the marks completely.";
+
 /** What the model is told on top of the brief, every time. */
 function fullPrompt(prompt: string, negative?: string): string {
   return [prompt.trim(), negative?.trim() ? `Avoid: ${negative.trim()}` : ""].filter(Boolean).join("\n\n").slice(0, 30_000);
@@ -88,13 +93,32 @@ export function openaiImageProvider(config: OpenAiImageConfig, fetchImpl: FetchL
     },
     async edit(req: ImageEditRequest, model: string) {
       const shape = req.shape ?? "square";
+      const intent = req.intent ?? "area";
+      // This API takes a real mask, so every intent is the same call: the mask
+      // says where, the words say what (ImageEditRequest `intent`).
+      let source = req.source;
+      let prompt = req.prompt;
+      if (intent === "erase") prompt = ERASE_PROMPT;
+      else if (intent === "extend") prompt = EXTEND_PROMPT;
+      else if (req.marks) {
+        // Markup: the drawn marks are shown on the picture itself.
+        try {
+          const { default: sharp } = await import("sharp");
+          const { width, height } = await sharp(Buffer.from(req.source)).metadata();
+          const marks = await sharp(Buffer.from(req.marks)).resize(width, height, { fit: "fill" }).ensureAlpha().png().toBuffer();
+          source = new Uint8Array(await sharp(Buffer.from(req.source)).composite([{ input: marks }]).png().toBuffer());
+        } catch {
+          throw new ProviderError("bad_request", "The marks on the picture couldn't be read.");
+        }
+        prompt = `${MARKS_PROMPT}\n\n${req.prompt}`;
+      }
       const form = new FormData();
       form.append("model", model);
-      form.append("prompt", fullPrompt(req.prompt));
+      form.append("prompt", fullPrompt(prompt));
       form.append("size", SIZES[shape].size);
       form.append("n", "1");
       form.append("output_format", "png");
-      form.append("image", new Blob([new Uint8Array(req.source)], { type: "image/png" }), "picture.png");
+      form.append("image", new Blob([new Uint8Array(source)], { type: "image/png" }), "picture.png");
       form.append("mask", new Blob([new Uint8Array(req.mask)], { type: "image/png" }), "mask.png");
       const res = await call("/images/edits", { method: "POST", body: form }, "Changing the picture");
       return picture(res, model, shape);

@@ -117,6 +117,52 @@ whole flow works locally.
   every pixel outside it, whatever the model returns. On the heading, body or
   call to action the text is rewritten; on the logo or background the design
   settings change. Every change is undoable, and picture versions are kept.
+- **Picture tools** (the canvas strip: C comment, M markup, E erase,
+  B remove background, R resize; the wire shapes are in
+  [`src/lib/visual/picture-tools.ts`](src/lib/visual/picture-tools.ts)).
+  - *Several pins, one Send.* Up to 8 picture pins go in one job
+    (`picture_edit` with `commentIds`), applied in order, each from the result
+    of the one before. Progress is saved per pin, so a retry never redoes a
+    pin; a pin that can't be done fails on its own; a job that stops fails
+    every pin still waiting. Each pin is one picture against the cap. The
+    pin's area on the picture, its kind and its strokes are kept on the
+    `visual_comments` row (migration 0025), so Try again redraws the same area.
+  - *Markup.* Marks drawn on the picture plus a note: the model is shown the
+    marks on the close-up and told to follow them, then remove them. Only the
+    padded box around the marks can change (`keepOutside`).
+  - *Erase.* Brush over something: only brushed pixels can change, byte for
+    byte (`keepInsideMask`). Two prompt variants live behind `ERASE_VARIANT` in
+    the RunPod provider (magenta tint, the default, or a clean close-up).
+  - *Resize.* A new shape. Where the picture still covers the frame it is a
+    crop: done in the request, free, nothing logged. Otherwise the picture is
+    set on a flat green matte at about 1 megapixel, the extend model
+    (`AI_IMAGE_EXTEND_MODEL`, default `google-nano-banana-2-edit`, about $0.09 a resize; live trial 2026-11-18: the only RunPod edit model that kept the picture in place, drift 0.017 against qwen-image-edit-2511 0.108, Kontext 0.139, Seedream 0.215) fills the green,
+    a drift check retries once and then refuses, and the original is pasted
+    back over its place (`keepOriginal`). Refused under 40% cover ("Draw a new
+    picture in this shape instead") and on pictures with the heading drawn in.
+  - *Remove background.* An open model inside the app (ISNet general-use on
+    `onnxruntime-node`, CPU, no cost per use): `AI_CUTOUT_PROVIDER=onnx` and
+    `npm run models:fetch` (about 170 MB into the git-ignored `models/`,
+    checked against a pinned SHA-256). Off by default; the tool then shows
+    disabled with the reason. The cut-out is a PNG with alpha, a new version;
+    it is logged with `image_count 0` but still stopped by the image cap and
+    the per-minute limits. Refused with no clear subject (under 3% or over 90%
+    kept) and on pictures with the heading drawn in; further edits on a cut-out
+    are refused until the version before is put back.
+    `npm run smoke:cutout [picture.png]` prints the time and memory on a host:
+    on the development PC about 6 s for the first cut-out (it opens the
+    model), 2 to 4 s after, about 1 GB at the most, about 300 MB held. Fits a
+    normal Node host or container; on Vercel it needs large functions (or a
+    smaller model build) and is best left off. On Linux hosts set
+    `ONNXRUNTIME_NODE_INSTALL=skip` for the install (CI does): otherwise
+    `npm ci` also downloads the runtime's GPU build, which is never used.
+- **Pool size for job hosts.** A picture job holds one pooled connection for
+  the whole model call (the per-visual lock) and uses a second for its own
+  queries, so a host that runs jobs needs `DATABASE_POOL_MAX` of at least 2
+  per job it runs at once, plus what its requests use (the default 10 suits
+  one server). A query waits at most 20 s for a free connection
+  (`POOL_CONNECT_TIMEOUT_MS`, `src/db/pool.ts`) and then fails plainly, which
+  the queue retries.
 - **Switching on.** `AI_IMAGE_PROVIDER=openai`, `OPENAI_API_KEY`,
   `AI_IMAGE_MODEL` (the current GPT Image model name), then
   `npm run smoke:pictures` once: it draws one picture, redraws one area, and

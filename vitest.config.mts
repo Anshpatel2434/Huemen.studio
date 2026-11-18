@@ -20,6 +20,9 @@ export default defineConfig({
       AI_TEXT_PROVIDER: "mock",
       AI_IMAGE_PROVIDER: "mock",
       AI_TRANSCRIBE_PROVIDER: "off",
+      // Remove background: the stand-in, never the real model (a developer's
+      // .env may say onnx; the suite must not load a 170 MB model per worker).
+      AI_CUTOUT_PROVIDER: "mock",
     },
   },
   resolve: {

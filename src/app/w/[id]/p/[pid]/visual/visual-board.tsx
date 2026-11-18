@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy, MessageSquare, History, Sparkles } from "lucide-react";
+import { Type, Image as ImageIcon, Ruler, ChevronDown, Palette, AlertTriangle, SlidersHorizontal, X, Download, Trash2, LayoutGrid, Check, RotateCcw, Copy, MessageSquare, History, Sparkles, PenLine, Eraser, ImageMinus, Crop } from "lucide-react";
 import { AgentDots, Badge, Choice, Modal, Segmented, Shortcut, SubmitButton, Tabs, useToast } from "@/components/ui";
 import { RightDock, usePanels } from "@/components/project-panels";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { nodeToPngBlob, saveBlob, zipBlobs } from "@/lib/ui/png";
 import { deleteVisualsAction, generateVisualsAction, saveDesignAction } from "../pipeline-actions";
-import { Canvas, Artboard } from "@/components/canvas";
+import { Canvas, Artboard, type CanvasTool } from "@/components/canvas";
 import { CanvasHistory, EditableText, useCanvasHistory } from "@/components/canvas-edit";
 import { askRewriteAction, patchContentAction } from "../content/actions";
 import { EmptyState } from "@/components/ui";
@@ -28,10 +28,17 @@ import { patchForSlide, slidesOf, type Slide } from "@/lib/visual/slides";
 import { exportBase } from "@/lib/visual/export";
 import type { VisualComment } from "@/lib/data/visual-comments";
 import type { JobView } from "@/lib/jobs/types";
-import { addCommentAction, approveAgainAction, dismissCommentAction, retryCommentAction, revertCopyAction, setPictureAction, startPictureAction } from "./picture-actions";
+import {
+  addCommentAction, approveAgainAction, dismissCommentAction, removeBackgroundAction, resizePictureAction, retryCommentAction, revertCopyAction,
+  sendPictureCommentsAction, setPictureAction, startPictureAction,
+} from "./picture-actions";
 import { retryJobAction } from "../../../jobs/actions";
-import { CommentSurface, PictureMenu, TARGET_LABEL, WorkingOverlay, commentState, useJobWatch, type Watched } from "./visual-comments-ui";
+import { CommentSurface, PictureMenu, TARGET_LABEL, WorkingOverlay, commentState, commentWhat, useJobWatch, type DraftOps, type DraftPin, type Watched } from "./visual-comments-ui";
 import { BoardIconButton, BrandFonts, ExportSizes, HeadingCheck, PictureVersions, ScaleSlider, lineage, sameHeading, useFitStates, useFontRenders, type Version } from "./visual-panels";
+import { PictureSurface, ResizeModal, ToolLine, type Picked, type PictureTool } from "./picture-tools-ui";
+import { areaOnFrame, draftSummary, isPicturePin, strokesBox, summaryLine } from "./picture-tools-maths";
+import { ERASE_NOTE, MAX_PINS_PER_SEND, MAX_STROKES, type CutoutStatus, type PicturePin, type ResizeInput, type Stroke } from "@/lib/visual/picture-tools";
+import type { Box } from "@/lib/visual/region-types";
 
 type Item = {
   id: string; format: string; hook: string; body: string; cta: string; status: string; pillarName: string | null;
@@ -46,6 +53,24 @@ const WIRE: Scheme = { name: "Wireframe", bg: "#FFFFFF", fg: "#1F1F1F", accent: 
 const WIRE_FONTS: Fonts = { display: "var(--font-sans)", accent: "var(--font-sans)" };
 
 const KIND_LABEL: Record<ArtboardKind, string> = { post: "Post image", quote: "Quote card", carousel: "Carousel" };
+const KINDS: ArtboardKind[] = ["post", "quote", "carousel"];
+
+/** What each picture tool wants next, said in the tool strip's own line. */
+const TOOL_TEXT: Record<PictureTool, string> = {
+  comment: "Click a part to add a comment",
+  markup: "Draw on the picture, then say what to change",
+  erase: "Brush over what to remove",
+  cutout: "Click the picture to remove its background",
+  resize: "Click the picture to resize it",
+};
+const NO_PICTURE = "Add a picture first";
+const IS_CUTOUT = "This picture has its background removed. Go back to the version before to change it.";
+const HEADING_DRAWN_IN = "This picture has its heading drawn in. Switch to live text first.";
+const PICTURE_BUSY = "This picture is being changed. Give it a moment.";
+/** What the board says when an area change finishes. */
+const DONE_AREA = "Picture changed. Only the marked area was redrawn.";
+/** A comment pin left without words is taken away when the person moves on to another (`keep` is the one being opened). */
+const tidy = (all: DraftPin[], keep?: string) => all.filter((d) => d.id === keep || d.kind !== "comment" || d.note.trim() !== "");
 
 type BoardProps = {
   tenantId: string; projectId: string; brandName: string; logo: string | null; items: Item[]; palette: string[]; fonts: string[]; imageStyle: string; selectedId: string | null; initialScheme: number;
@@ -56,6 +81,8 @@ type BoardProps = {
   comments: VisualComment[];
   /** Picture work still queued or running when the page loaded. */
   jobs: Watched[];
+  /** Whether Remove background can run here, and why not when it can't (lib/ai/cutout). */
+  cutout: CutoutStatus;
 };
 
 /**
@@ -83,7 +110,7 @@ export function VisualBoard(props: BoardProps) {
   );
 }
 
-function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fontPlan, imageStyle, selectedId, initialScheme, versions, comments: savedComments, jobs }: BoardProps) {
+function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fontPlan, imageStyle, selectedId, initialScheme, versions, comments: savedComments, jobs, cutout }: BoardProps) {
   const history = useCanvasHistory();
   const router = useRouter();
   const toast = useToast();
@@ -93,7 +120,9 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
   const pictureFor = (i: Item, k: ArtboardKind) => {
     const ref = i.design?.pictures?.[k];
     const info = ref ? pictures.get(ref.id) : undefined;
-    return ref && info ? { id: ref.id, url: info.url, mode: ref.mode, parentId: info.parentId, heading: info.heading } : null;
+    return ref && info
+      ? { id: ref.id, url: info.url, mode: ref.mode, parentId: info.parentId, heading: info.heading, cutout: !!(ref.cutout ?? info.cutout), width: info.width ?? 0, height: info.height ?? 0 }
+      : null;
   };
   /** The heading is drawn into this visual's picture, and the piece's heading no longer reads that. */
   const stale = (i: Item, k: ArtboardKind) => {
@@ -108,12 +137,17 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
     router.refresh();
   }, [tenantId, projectId, router]);
   const onJobDone = useCallback((w: Watched, job: JobView) => {
-    const made = (job.result as { pictureId?: string } | null)?.pictureId;
+    const result = job.result as { pictureId?: string; changed?: number; failed?: number } | null;
+    // Several changes sent together run one after another: a job that stopped part-way has still made the ones before
+    // (its progress carries the newest picture), and that much can be undone too.
+    const made = result?.pictureId ?? (typeof job.progress?.last === "string" ? job.progress.last : undefined);
+    const i = items.find((x) => x.id === w.contentItemId);
+    const k = w.artboard as ArtboardKind;
+    // Undo goes back to the picture before the job: for several changes, the picture before all of them.
+    if (i && made && made !== (w.prev ?? null)) history.push({ label: w.label.toLowerCase(), undo: () => setPicture(i, k, w.prev ?? null), redo: () => setPicture(i, k, made) });
     if (job.status === "succeeded" && made) {
-      const i = items.find((x) => x.id === w.contentItemId);
-      const k = w.artboard as ArtboardKind;
-      if (i) history.push({ label: w.label.toLowerCase(), undo: () => setPicture(i, k, w.prev ?? null), redo: () => setPicture(i, k, made) });
-      toast(w.label === "Changing the picture" ? "Picture changed. Only the marked area was redrawn." : "Picture ready");
+      if (result?.failed) toast(`${result.changed ?? 0} of ${(result.changed ?? 0) + result.failed} changes went through. The pins that didn't say why.`, "danger");
+      else toast(w.done ?? (w.label.startsWith("Changing the picture") ? DONE_AREA : "Picture ready"));
     } else {
       toast(job.error ?? "That didn't go through.", "danger", {
         label: "Try again",
@@ -131,8 +165,17 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
     watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Drawing a picture", prev: pictureFor(i, k)?.id ?? null });
   };
 
+  // ---- the picture tools: one is in use at a time; changes wait as drafts until Send ----
+  const [tool, setTool] = useState<PictureTool | null>(null);
+  /** Changes pinned on visuals and not sent yet: comments, markup and erase, in the order they were made. */
+  const [drafts, setDrafts] = useState<DraftPin[]>([]);
+  /** The draft whose field is open (one on the whole board). */
+  const [openDraft, setOpenDraft] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  /** The picture Resize was clicked on. */
+  const [resizing, setResizing] = useState<{ item: Item; kind: ArtboardKind; url: string; natural: { w: number; h: number }; fit: number } | null>(null);
+
   // ---- comments pinned on a spot ---------------------------------------------------
-  const [commenting, setCommenting] = useState(false);
   const [extraComments, setExtraComments] = useState<VisualComment[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const allComments = useMemo(() => {
@@ -240,7 +283,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
     const target = r.comment.target;
     setExtraComments((all) => [...all.filter((c) => c.id !== r.comment.id), r.comment]);
     if (r.jobId) {
-      watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Changing the picture", prev: pictureFor(i, k)?.id ?? null });
+      watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Changing the picture", prev: pictureFor(i, k)?.id ?? null, done: DONE_AREA });
       toast("Redrawing the marked area. It takes a moment.", "neutral");
       return;
     }
@@ -269,18 +312,6 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
       toast(r.comment.result ?? "That didn't change anything.", "danger");
     }
     router.refresh();
-  };
-  const sendComment = (i: Item, k: ArtboardKind) => async (d: { target: VisualComment["target"]; box: { x: number; y: number; w: number; h: number }; note: string; area?: { x: number; y: number; w: number; h: number } | null }) => {
-    const visualId = i.visuals[k];
-    if (!visualId) return false;
-    const was = { copy: { hook: i.hook, body: i.body, cta: i.cta }, design: designOf(i), status: i.status };
-    const r = await addCommentAction(tenantId, projectId, { visualId, target: d.target, box: d.box, note: d.note, area: d.area ?? null });
-    if (!r.ok) {
-      toast(r.error, "danger");
-      return false;
-    }
-    settleComment(i, k, r, was);
-    return true;
   };
   /** Try again: the same comment (same box, same words) is run again. */
   const retryComment = async (c: VisualComment) => {
@@ -318,6 +349,232 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
     const i = items.find((x) => x.id === c.contentItemId);
     const k = i && (Object.keys(i.visuals) as ArtboardKind[]).find((a) => i.visuals[a] === c.visualId);
     return !i || !k || !lineage(i.design?.pictures?.[k]?.id, versions).has(c.resultPictureId);
+  };
+
+  // ---- drafts: pinned, numbered, sent together ------------------------------------------
+  /** A draft's number: after the piece's sent comments, in the order the drafts were made. */
+  const draftNumbers = useMemo(() => {
+    const out: Record<string, number> = {};
+    const count = new Map<string, number>();
+    for (const c of allComments) count.set(c.contentItemId, (count.get(c.contentItemId) ?? 0) + 1);
+    for (const d of drafts) {
+      const n = (count.get(d.itemId) ?? 0) + 1;
+      count.set(d.itemId, n);
+      out[d.id] = n;
+    }
+    return out;
+  }, [allComments, drafts]);
+  const openDraftPin = useCallback((id: string | null) => {
+    setDrafts((all) => tidy(all, id ?? undefined));
+    setOpenDraft(id);
+  }, []);
+  const removeDraft = useCallback((id: string) => {
+    setDrafts((all) => all.filter((d) => d.id !== id));
+    setOpenDraft((cur) => (cur === id ? null : cur));
+  }, []);
+  /** Why a picture can't be changed by a tool right now, when it can't. Said in a toast where it is clicked. */
+  const lockFor = (i: Item, k: ArtboardKind, t: PictureTool): string | null => {
+    const p = pictureFor(i, k);
+    if (!p) return null;
+    if (working(i, k)) return PICTURE_BUSY;
+    if (p.cutout) return IS_CUTOUT;
+    if ((t === "resize" || t === "cutout") && p.mode === "with_text") return HEADING_DRAWN_IN;
+    return null;
+  };
+  const refuse = useCallback((why: string) => toast(why, "neutral"), [toast]);
+  /** Room for one more change on this piece? Each Send carries at most MAX_PINS_PER_SEND. */
+  const roomFor = (i: Item) => {
+    if (drafts.filter((d) => d.itemId === i.id).length < MAX_PINS_PER_SEND) return true;
+    toast(`That's ${MAX_PINS_PER_SEND} changes on this piece. Send them, then add more.`, "neutral");
+    return false;
+  };
+  const draftOps = (i: Item, k: ArtboardKind): DraftOps => ({
+    add: (d) => {
+      const visualId = i.visuals[k];
+      if (!visualId) { toast("Generate this visual first, then comment on it.", "neutral"); return false; }
+      if (!roomFor(i)) return false;
+      const id = crypto.randomUUID();
+      setDrafts((all) => [...tidy(all), { ...d, id, itemId: i.id, artboard: k, visualId }]);
+      setOpenDraft(id);
+      return true;
+    },
+    update: (id, patch) => setDrafts((all) => all.map((d) => (d.id === id ? { ...d, ...patch } : d))),
+    remove: removeDraft,
+    open: openDraftPin,
+  });
+  /**
+   * A stroke drawn on a picture. Each visual has ONE markup change and ONE
+   * erase change: more strokes add to it. `on.pic` is where the whole picture
+   * sits on its frame, so the strokes' box on the picture can be shown on the frame.
+   */
+  const addStroke = (i: Item, k: ArtboardKind) => (kind: "markup" | "erase", stroke: Stroke, on: { frame: number; pic: Box; aspect: number }): boolean => {
+    const visualId = i.visuals[k];
+    if (!visualId) return false;
+    const mine = drafts.find((d) => d.visualId === visualId && d.kind === kind);
+    if (!mine && !roomFor(i)) return false;
+    if ((mine?.strokes?.length ?? 0) >= MAX_STROKES) {
+      toast(`That's ${MAX_STROKES} strokes on this picture. Send them, or undo one, before drawing more.`, "neutral");
+      return false;
+    }
+    const strokes = [...(mine?.strokes ?? []), stroke];
+    const area = strokesBox(strokes, on.aspect);
+    if (!area) return false;
+    const id = mine?.id ?? crypto.randomUUID();
+    const next: DraftPin = {
+      id, itemId: i.id, artboard: k, visualId, kind, target: "picture", strokes, area, box: areaOnFrame(area, on.pic),
+      note: kind === "erase" ? ERASE_NOTE : mine?.note ?? "", frame: on.frame, offered: ["picture"], pic: on.pic, aspect: on.aspect,
+    };
+    setDrafts((all) => (mine ? all.map((d) => (d.id === id ? next : d)) : [...tidy(all), next]));
+    // Markup: the note's field opens beside the marks as soon as there is one.
+    if (kind === "markup" && !mine?.note.trim()) setOpenDraft(id);
+    return true;
+  };
+  /** Undo the last stroke of the tool in use (the change it belonged to goes when it was its only one). */
+  const undoStroke = (kind: "markup" | "erase") => {
+    const last = [...drafts].reverse().find((d) => d.kind === kind && d.strokes?.length);
+    if (!last) return;
+    const strokes = (last.strokes ?? []).slice(0, -1);
+    const area = strokesBox(strokes, last.aspect ?? 1);
+    if (!strokes.length || !area) return removeDraft(last.id);
+    setDrafts((all) => all.map((d) => (d.id === last.id ? { ...d, strokes, area, box: last.pic ? areaOnFrame(area, last.pic) : d.box } : d)));
+  };
+  const clearStrokes = (kind: "markup" | "erase") => {
+    setDrafts((all) => all.filter((d) => d.kind !== kind));
+    setOpenDraft(null);
+  };
+  /** Close, or Escape: leave the tool and drop what was not sent. */
+  const closeTool = useCallback(() => {
+    setTool(null);
+    setDrafts([]);
+    setOpenDraft(null);
+  }, []);
+  // Escape leaves the tool (the canvas does that) and discards the drafts. Not while typing, and not when it is closing a dialog or a menu.
+  const pending = tool !== null || drafts.length > 0;
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if ((e.target as HTMLElement | null)?.closest?.("input, textarea, [contenteditable], [role='dialog'], [role='menu']")) return;
+      if (document.querySelector("[role='dialog'][aria-modal='true'], [role='menu']")) return;
+      closeTool();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pending, closeTool]);
+
+  /**
+   * Send every draft. Words and design changes go one by one (each is applied
+   * in its request and can be undone on its own). Picture changes go together,
+   * ONE job per visual, in the order they were made; undo then returns to the
+   * picture before all of them. What didn't go through stays pinned, with the
+   * server's reason in a toast.
+   */
+  const sendDrafts = async () => {
+    if (sending || !draftSummary(drafts).ready) return;
+    setSending(true);
+    setOpenDraft(null);
+    const sent = new Set<string>();
+    let queued = 0;
+    try {
+      // What each piece is as the changes land: the next change's undo goes back to this, not to the page's older copy.
+      const now = new Map<string, { copy: { hook: string; body: string; cta: string }; design: Design; status: string }>();
+      for (const d of drafts.filter((x) => !isPicturePin(x))) {
+        const i = items.find((x) => x.id === d.itemId);
+        if (!i) continue;
+        const was = now.get(i.id) ?? { copy: { hook: i.hook, body: i.body, cta: i.cta }, design: designOf(i), status: i.status };
+        const r = await addCommentAction(tenantId, projectId, { visualId: d.visualId, target: d.target, box: d.box, note: d.note.trim(), area: null });
+        if (!r.ok) { toast(r.error, "danger"); continue; }
+        sent.add(d.id);
+        settleComment(i, d.artboard, r, was);
+        if (r.comment.status === "applied" && r.after) {
+          const words = d.target === "headline" || d.target === "body" || d.target === "cta";
+          now.set(i.id, {
+            copy: { hook: r.after.hook, body: r.after.body, cta: r.after.cta },
+            design: r.after.design ?? was.design,
+            // Changed words move an approved piece back to edited.
+            status: words && was.status === "approved" ? "edited" : was.status,
+          });
+        }
+      }
+      const byVisual = new Map<string, DraftPin[]>();
+      for (const d of drafts.filter(isPicturePin)) byVisual.set(d.visualId, [...(byVisual.get(d.visualId) ?? []), d]);
+      for (const [visualId, pins] of byVisual) {
+        const i = items.find((x) => x.id === pins[0].itemId);
+        if (!i) continue;
+        const k = pins[0].artboard;
+        const payload: PicturePin[] = pins.map((d) => ({ kind: d.kind, box: d.box, area: d.area, ...(d.strokes?.length ? { strokes: d.strokes } : {}), note: d.kind === "erase" ? ERASE_NOTE : d.note.trim() }));
+        const r = await sendPictureCommentsAction(tenantId, projectId, { visualId, pins: payload });
+        if (!r.ok) { toast(r.error, "danger"); continue; }
+        for (const d of pins) sent.add(d.id);
+        queued += pins.length;
+        const made = r.comments;
+        setExtraComments((all) => [...all.filter((c) => !made.some((m) => m.id === c.id)), ...made]);
+        const n = pins.length;
+        watch({
+          jobId: r.jobId, contentItemId: i.id, artboard: k, prev: pictureFor(i, k)?.id ?? null,
+          label: n === 1 ? "Changing the picture" : `Changing the picture (${n} changes)`,
+          done: n === 1 ? DONE_AREA : `Picture changed: ${n} changes. Only the marked areas were redrawn.`,
+        });
+      }
+      if (queued) toast(queued === 1 ? "Changing the picture. It takes a moment." : `Changing the picture: ${queued} changes, one after another. It takes a moment.`, "neutral");
+    } catch {
+      toast("That didn't go through. Your changes are still pinned; send them again.", "danger");
+    } finally {
+      setSending(false);
+      setDrafts((all) => all.filter((d) => !sent.has(d.id)));
+      // Everything went: the tool has done its job.
+      if (drafts.every((d) => sent.has(d.id))) setTool(null);
+    }
+  };
+
+  // ---- remove background, resize ---------------------------------------------------------
+  const starting = useRef(false);
+  const removeBackground = async (i: Item, k: ArtboardKind) => {
+    if (starting.current) return;
+    starting.current = true;
+    try {
+      const r = await removeBackgroundAction(tenantId, projectId, i.id, k);
+      if (!r.ok) return toast(r.error, "danger");
+      watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Removing the background", prev: pictureFor(i, k)?.id ?? null, done: "Background removed. The picture now sits on your background colour." });
+      setTool(null);
+    } catch {
+      toast("That didn't go through. Try again.", "danger");
+    } finally {
+      starting.current = false;
+    }
+  };
+  /** A picture was clicked in Remove background or Resize. */
+  const pickPicture = (i: Item, k: ArtboardKind) => (m: Picked) => {
+    const p = pictureFor(i, k);
+    if (!p) return;
+    if (tool === "cutout") return void removeBackground(i, k);
+    // The version's own size when the page has it; else what the browser read from the file.
+    const natural = p.width > 0 && p.height > 0 ? { w: p.width, h: p.height } : m.natural;
+    if (tool === "resize") setResizing({ item: i, kind: k, url: p.url, natural, fit: m.slot });
+  };
+  const applyResize = async (input: ResizeInput): Promise<boolean> => {
+    if (!resizing) return false;
+    const { item: i, kind: k } = resizing;
+    const prev = pictureFor(i, k)?.id ?? null;
+    try {
+      const r = await resizePictureAction(tenantId, projectId, i.id, k, input);
+      if (!r.ok) { toast(r.error, "danger"); return false; }
+      if (r.pictureId) {
+        // A crop: done in the request. The same undo as choosing a version.
+        const made = r.pictureId;
+        history.push({ label: "crop picture", undo: () => setPicture(i, k, prev), redo: () => setPicture(i, k, made) });
+        toast("Picture cropped.");
+        router.refresh();
+      } else if (r.jobId) {
+        watch({ jobId: r.jobId, contentItemId: i.id, artboard: k, label: "Resizing the picture", prev, done: "Picture resized. The new part was drawn to match." });
+      }
+      setResizing(null);
+      setTool(null);
+      return true;
+    } catch {
+      toast("That didn't go through. Try again.", "danger");
+      return false;
+    }
   };
 
   const designed = items.filter((i) => i.scheme !== null);
@@ -480,6 +737,32 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
     );
   };
 
+  // ---- the picture tools in the canvas strip, and the line they speak in ---------------------
+  // A tool that changes a picture needs one on the open piece; without one it shows disabled, with the reason.
+  const needsPicture = focus && KINDS.some((k) => !!pictureFor(focus, k)) ? undefined : NO_PICTURE;
+  const toolItems: CanvasTool[] = [
+    { id: "comment", label: "Comment", key: "C", icon: <MessageSquare size={18} aria-hidden="true" /> },
+    { id: "markup", label: "Markup", key: "M", icon: <PenLine size={18} aria-hidden="true" />, off: needsPicture },
+    { id: "erase", label: "Erase", key: "E", icon: <Eraser size={18} aria-hidden="true" />, off: needsPicture },
+    { id: "cutout", label: "Remove background", key: "B", icon: <ImageMinus size={18} aria-hidden="true" />, off: needsPicture ?? (cutout.available ? undefined : cutout.reason ?? "Not set up here yet") },
+    { id: "resize", label: "Resize", key: "R", icon: <Crop size={18} aria-hidden="true" />, off: needsPicture },
+  ];
+  const strokeTool = tool === "markup" || tool === "erase" ? tool : null;
+  const noStrokes = !strokeTool || !drafts.some((d) => d.kind === strokeTool);
+  const toolLine = tool || drafts.length ? (
+    <ToolLine
+      text={tool ? TOOL_TEXT[tool] : "Changes not sent yet"}
+      summary={summaryLine(drafts)}
+      actions={strokeTool ? [
+        { label: "Undo stroke", run: () => undoStroke(strokeTool), disabled: noStrokes },
+        { label: "Clear", run: () => clearStrokes(strokeTool), disabled: noStrokes },
+      ] : []}
+      send={drafts.length || tool === "comment" || strokeTool ? { ready: draftSummary(drafts).ready, busy: sending, run: () => void sendDrafts() } : null}
+      onClose={closeTool}
+      closeLabel={drafts.length ? "Close and discard (Esc)" : "Close (Esc)"}
+    />
+  ) : undefined;
+
   return (
     <div className="absolute inset-0 flex flex-row-reverse">
       <BrandFonts plan={fontPlan} />
@@ -519,7 +802,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
             return (
               <Section id="comments" icon={MessageSquare} title={`Comments${mine.length ? ` · ${mine.length}` : ""}`} open={open} setOpen={setOpen}>
                 {mine.length === 0 ? (
-                  <p className="text-sm text-ink-muted">Pick the comment tool in the bar under the canvas (or press C), drag a box on a visual and say what to change. A box on a picture redraws only that area.</p>
+                  <p className="text-sm text-ink-muted">Pick Comment in the bar under the canvas (or press C), click a part of a visual and say what to change. Add as many as you like, then Send. A comment on a picture redraws only that area.</p>
                 ) : (
                   <ol className="flex flex-col gap-2.5">
                     {mine.map((c) => {
@@ -527,7 +810,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
                       const state = commentState(c, isUndone(c));
                       return (
                         <li key={c.id} className="text-sm border border-hairline rounded-md p-2.5">
-                          <p className="text-xs text-ink-faint">{commentNumbers[c.id]} · {TARGET_LABEL[c.target]} · {state.label}</p>
+                          <p className="text-xs text-ink-faint">{commentNumbers[c.id]} · {commentWhat(c)} · {state.label}</p>
                           <p className="mt-0.5">{c.note}</p>
                           {c.status !== "working" && <p className="text-xs text-ink-muted mt-1 whitespace-pre-line">{state.text}</p>}
                           {c.status !== "working" && (
@@ -614,7 +897,8 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
         {/* The view switch: a strip at the top left of the visible canvas, like the tool strip below it. */}
         {items.length > 0 && (
           <div className="hu-strip absolute top-3 left-3 z-20" role="radiogroup" aria-label="Canvas view" onPointerDown={(e) => e.stopPropagation()}>
-            <button type="button" role="radio" aria-checked={wire} onClick={() => setView("wireframe")} className="hu-strip__btn">Wireframe</button>
+            {/* The picture tools belong to the designed view: going to the wireframe leaves the tool (what is pinned waits). */}
+            <button type="button" role="radio" aria-checked={wire} onClick={() => { setView("wireframe"); setTool(null); setOpenDraft(null); }} className="hu-strip__btn">Wireframe</button>
             <button type="button" role="radio" aria-checked={!wire} disabled={!designed.length} aria-label={designed.length ? undefined : "Design (generate visuals first)"} onClick={() => setView("design")} className="hu-strip__btn">Design</button>
           </div>
         )}
@@ -625,7 +909,16 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
             </div>
           </div>
         ) : (
-          <Canvas comment={wire ? undefined : { on: commenting, onChange: setCommenting }}>
+          <Canvas
+            tools={wire ? undefined : {
+              items: toolItems,
+              active: tool,
+              // Changing tool keeps what is pinned; only Close and Escape discard it.
+              onChange: (id) => { setTool(id as PictureTool | null); openDraftPin(null); },
+              onOff: (t) => refuse(t.off ?? NO_PICTURE),
+              line: toolLine,
+            }}
+          >
             <div className="flex flex-col gap-16 p-4 pt-16" data-canvas-bg="1">
               {shown.map((i) => {
                 const fmt = formatByKey(i.format);
@@ -645,17 +938,54 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
                     mode={pic(k)?.mode ?? null}
                     hasPrevious={!!pic(k)?.parentId}
                     busy={!!working(i, k)}
+                    cutout={pic(k)?.cutout ? { url: pic(k)!.url, name: `${nameOf(i)}-${k}-cutout.png` } : null}
                     onDraw={(mode) => void drawPicture(i, k, mode)}
                     onPrevious={() => { const p0 = pic(k); if (p0?.parentId) { const cur = p0.id; const prev = p0.parentId; history.push({ label: "previous picture", undo: () => setPicture(i, k, cur), redo: () => setPicture(i, k, prev) }); void setPicture(i, k, prev).catch(() => toast("Couldn't go back a version.", "danger")); } }}
                     onRemove={() => { const cur = pic(k)?.id ?? null; history.push({ label: "remove picture", undo: () => setPicture(i, k, cur), redo: () => setPicture(i, k, null) }); void setPicture(i, k, null).catch(() => toast("Couldn't take the picture off.", "danger")); }}
                   />
                 );
-                const surface = (k: ArtboardKind, child: React.ReactNode, frameOf?: (el: Element) => HTMLElement | null) => (
-                  <CommentSurface enabled={commenting && !wire} comments={commentsOn(i.visuals[k])} numbers={commentNumbers} isUndone={isUndone} frameOf={frameOf} onSend={sendComment(i, k)} onRetry={retryComment} onDismiss={dismissComment}>
-                    {child}
-                    {working(i, k) && <WorkingOverlay label={working(i, k)!.label} retrying={working(i, k)!.retrying} />}
-                  </CommentSurface>
-                );
+                // One visual under the tools: the picture tools over its picture, the comment pins over all of it.
+                const surface = (k: ArtboardKind, child: React.ReactNode) => {
+                  const visualId = i.visuals[k];
+                  const mine = visualId ? drafts.filter((d) => d.visualId === visualId) : [];
+                  const t = wire ? null : tool;
+                  const ops = draftOps(i, k);
+                  return (
+                    <PictureSurface
+                      tool={t}
+                      pictureKey={pic(k)?.id}
+                      lock={t ? lockFor(i, k, t) : null}
+                      drafts={mine.filter((d) => d.kind !== "comment")}
+                      numbers={draftNumbers}
+                      openDraft={openDraft}
+                      onStroke={addStroke(i, k)}
+                      onDraft={ops}
+                      onPick={pickPicture(i, k)}
+                      onRefuse={refuse}
+                    >
+                      <CommentSurface
+                        mode={t === "comment" ? "on" : t === "markup" || t === "erase" ? "show" : "off"}
+                        // Sent comments show in Comment; while drawing, only what is waiting to be sent.
+                        comments={t === "comment" ? commentsOn(visualId) : []}
+                        numbers={commentNumbers}
+                        isUndone={isUndone}
+                        drafts={mine.filter((d) => d.kind === "comment")}
+                        draftNumbers={draftNumbers}
+                        openDraft={openDraft}
+                        onDraft={ops}
+                        pictureLock={lockFor(i, k, "comment")}
+                        onRefuse={refuse}
+                        onRetry={retryComment}
+                        onDismiss={dismissComment}
+                      >
+                        {child}
+                        {working(i, k) && <WorkingOverlay label={working(i, k)!.label} retrying={working(i, k)!.retrying} />}
+                      </CommentSurface>
+                    </PictureSurface>
+                  );
+                };
+                // While a tool is in use, a pin's field may reach past its visual's edge.
+                const spill = !wire && tool !== null;
                 // Under a visual whose picture has the heading drawn into it: stale (the heading changed since), or to be read by the person.
                 const headingNote = (k: ArtboardKind) => !wire && pic(k)?.mode === "with_text" && (
                   <HeadingCheck stale={stale(i, k)} busy={!!working(i, k)} onRedraw={() => void drawPicture(i, k, "with_text")} onLiveText={() => void drawPicture(i, k, "live_text")} />
@@ -697,6 +1027,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
                         label={`Post image · ${POST_LAYOUTS.find((l) => l.key === d.layouts.post)?.label}`}
                         meta={fmt.frame.label}
                         width={DISPLAY_W}
+                        spill={spill}
                         actions={<>{picMenu("post")}<ExportButton busy={busy === `${i.id}:single`} onClick={() => exportOne(i, "post", `${i.id}:single`, fmt.frame.w, fmt.frame.h)} /></>}
                       >
                         {surface("post", <PostImage layout={d.layouts.post} w={fmt.frame.w} h={fmt.frame.h} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} eyebrow={i.pillarName ?? undefined} text={text} frameRef={frameRef(`${i.id}:single`)} picture={pic("post")} />)}
@@ -708,6 +1039,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
                         label={`Quote card · ${QUOTE_LAYOUTS.find((l) => l.key === d.layouts.quote)?.label}`}
                         meta="1:1 · 1080×1080"
                         width={DISPLAY_W}
+                        spill={spill}
                         actions={<>{picMenu("quote")}<ExportButton busy={busy === `${i.id}:quote`} onClick={() => exportOne(i, "quote", `${i.id}:quote`, 1080, 1080)} /></>}
                       >
                         {surface("quote", <QuoteCard layout={d.layouts.quote} s={sc} t={d.tweaks} fonts={fp} brand={brandName} logo={logo} text={text} frameRef={frameRef(`${i.id}:quote`)} picture={pic("quote")} />)}
@@ -720,6 +1052,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
                         label={`Carousel ·${CAROUSEL_LAYOUTS.find((l) => l.key === d.layouts.carousel)?.label}`}
                         meta={`${slides.length} frames · 1080×1350`}
                         width={slides.length * 170 + (slides.length - 1) * 8 + 16}
+                        spill={spill}
                         actions={<>{picMenu("carousel")}<ExportButton label="Download the carousel frames" busy={busy === `${i.id}:frames`} onClick={() => exportFrames(i, slides)} /></>}
                       >
                         {surface("carousel", <CarouselFrames
@@ -769,6 +1102,9 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
             toast(`${KIND_LABEL[kind]}: ${label}`);
           }}
         />
+      )}
+      {resizing && (
+        <ResizeModal url={resizing.url} natural={resizing.natural} fit={resizing.fit} onClose={() => setResizing(null)} onApply={applyResize} />
       )}
       <ConfirmModal
         open={removing !== null}
@@ -847,7 +1183,7 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
   item: Item; kind: ArtboardKind; onKind: (k: ArtboardKind) => void; design: Design; slides: string[]; ctaIndex: number;
   scheme: ReturnType<typeof schemesFrom>[number]; fonts: Fonts; brand: string; logo: string | null; onClose: () => void;
   /** The picture on this artboard, if it has one: every option is shown with it, as it will look. */
-  picture: { url: string; mode: PictureMode } | null;
+  picture: { url: string; mode: PictureMode; cutout?: boolean } | null;
   onKeep: (kind: ArtboardKind, key: string, label: string) => void;
 }) {
   const fmt = formatByKey(item.format);

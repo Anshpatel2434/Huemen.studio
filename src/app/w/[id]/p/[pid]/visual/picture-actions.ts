@@ -11,11 +11,15 @@
  */
 import { revalidatePath } from "next/cache";
 import { actionProjectScope } from "@/lib/auth/workspace";
-import { enqueueJob, retryJob, startWorker } from "@/lib/jobs";
+import { enqueueJob, startWorker } from "@/lib/jobs";
 import { ARTBOARDS, type ArtboardKind, type Design, type PictureMode } from "@/lib/visual/design";
+import type { PicturePin, ResizeInput } from "@/lib/visual/picture-tools";
 import { ContentConflictError, listContent } from "@/lib/data/content";
-import { designOf, PictureError, removePicture, selectPictureVersion } from "@/lib/data/pictures";
-import { addComment, applyTemplateComment, CommentError, dismissComment, failedComment, finishComment, type VisualComment } from "@/lib/data/visual-comments";
+import { cutOutRefusal, designOf, PictureError, removePicture, resizeKind, resizePicture, selectPictureVersion } from "@/lib/data/pictures";
+import {
+  addComment, addPictureComments, applyTemplateComment, CommentError, dismissComment, failedComment, failWaitingComments, finishComment, setCommentsJob,
+  type VisualComment,
+} from "@/lib/data/visual-comments";
 import { approveAgain, revertCopy } from "@/lib/data/visual-copy";
 import { recordOpener } from "@/lib/data/voice-pack";
 import { learnFromApproval } from "@/lib/data/learning";
@@ -76,6 +80,8 @@ export async function addCommentAction(
   try {
     comment = await addComment(scope, {
       visualId: String(input?.visualId ?? ""), target: String(input?.target ?? ""), box: input?.box ?? {}, note: String(input?.note ?? ""),
+      // The box on the picture itself is kept on the comment's row, so Try again redraws the same area.
+      area: input?.area ?? null,
     });
   } catch (e) {
     return { ok: false, error: say(e) };
@@ -112,10 +118,10 @@ export async function retryCommentAction(
     return { ok: false, error: say(e) };
   }
   if (comment.target === "picture") {
-    const again = comment.jobId ? await retryJob(scope, comment.jobId) : false;
-    const jobId = again && comment.jobId
-      ? comment.jobId
-      : await enqueueJob(scope, "picture_edit", { projectId, commentId: comment.id }, { label: "Changing the picture", maxAttempts: 3 });
+    // A job of its own, by id only: the comment's row carries its area, its kind
+    // and its strokes. The job it first ran in may have carried other pins of
+    // the same Send, and putting that one back would run those again too.
+    const jobId = await enqueueJob(scope, "picture_edit", { projectId, commentIds: [comment.id], commentId: comment.id }, { label: "Changing the picture", maxAttempts: 3 });
     await finishComment(scope, comment.id, { status: "working", result: "Trying again.", jobId });
     startWorker();
     return { ok: true, comment: { ...comment, status: "working", result: "Trying again.", jobId }, jobId, after: null };
@@ -125,6 +131,94 @@ export async function retryCommentAction(
   const item = (await listContent(scope)).find((i) => i.id === comment.contentItemId);
   const after = item ? { hook: item.hook, body: item.body, cta: item.cta, design: await designOf(scope, comment.contentItemId) } : null;
   return { ok: true, comment: done, jobId: null, after };
+}
+
+/**
+ * Several pins on one visual's picture, one Send (lib/visual/picture-tools
+ * PicturePin: a comment, a markup or an erase each). Every pin is checked
+ * before any is kept; then one job runs them in order, each starting from the
+ * result of the one before, and the board watches that one job. Each pin is
+ * one picture.
+ */
+export async function sendPictureCommentsAction(
+  tenantId: string, projectId: string,
+  input: { visualId: string; pins: PicturePin[] },
+): Promise<Result<{ comments: VisualComment[]; jobId: string }>> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  let comments: VisualComment[];
+  try {
+    ({ comments } = await addPictureComments(scope, String(input?.visualId ?? ""), input?.pins));
+  } catch (e) {
+    return { ok: false, error: say(e) };
+  }
+  const ids = comments.map((c) => c.id);
+  let jobId: string;
+  try {
+    // `commentId` (the first pin) rides along for anything that still looks a job up by one comment.
+    jobId = await enqueueJob(
+      scope, "picture_edit", { projectId, commentIds: ids, commentId: ids[0] },
+      { label: ids.length === 1 ? "Changing the picture" : `Changing the picture (${ids.length} changes)`, maxAttempts: 3 },
+    );
+    await setCommentsJob(scope, ids, jobId);
+  } catch (e) {
+    // Nothing will run them: the pins say so instead of sitting on "working".
+    await failWaitingComments(scope, ids, "That didn't go through. Try again.").catch(() => undefined);
+    return { ok: false, error: say(e) };
+  }
+  startWorker();
+  return { ok: true, comments: comments.map((c) => ({ ...c, jobId })), jobId };
+}
+
+/**
+ * A new shape for one visual's picture (lib/visual/picture-tools ResizeInput).
+ * Where the picture covers the whole new frame it is a crop: done here, at
+ * once, free, and the new version's id comes back. Otherwise the image model
+ * draws the extra area: queued (one picture), and the job to watch comes back.
+ */
+export async function resizePictureAction(
+  tenantId: string, projectId: string, contentItemId: string, artboard: string, input: ResizeInput,
+): Promise<Result<{ pictureId: string | null; jobId: string | null }>> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const kind = artboardOf(artboard);
+  if (!kind) return { ok: false, error: "That visual doesn't take a picture." };
+  const itemId = String(contentItemId ?? "");
+  // Only the numbers: what is queued is exactly what was checked.
+  const asked: ResizeInput = {
+    ratio: Number(input?.ratio),
+    place: { x: Number(input?.place?.x), y: Number(input?.place?.y), w: Number(input?.place?.w), h: Number(input?.place?.h) },
+  };
+  try {
+    if ((await resizeKind(scope, itemId, kind, asked)) === "crop") {
+      const pictureId = await resizePicture(scope, itemId, kind, asked);
+      revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
+      return { ok: true, pictureId, jobId: null };
+    }
+  } catch (e) {
+    return { ok: false, error: say(e) };
+  }
+  const jobId = await enqueueJob(scope, "picture_resize", { projectId, contentItemId: itemId, artboard: kind, input: asked }, { label: "Resizing the picture", maxAttempts: 3 });
+  startWorker();
+  return { ok: true, pictureId: null, jobId };
+}
+
+/**
+ * Remove the background of one visual's picture. Queued (the model runs on
+ * this server and takes a few seconds); refused plainly, before anything is
+ * queued, where it can't run: not switched on here, the model file missing,
+ * the heading drawn into the picture, or a picture that is already a cut-out.
+ */
+export async function removeBackgroundAction(
+  tenantId: string, projectId: string, contentItemId: string, artboard: string,
+): Promise<Result<{ jobId: string }>> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const kind = artboardOf(artboard);
+  if (!kind) return { ok: false, error: "That visual doesn't take a picture." };
+  const itemId = String(contentItemId ?? "");
+  const refusal = await cutOutRefusal(scope, itemId, kind);
+  if (refusal) return { ok: false, error: refusal };
+  const jobId = await enqueueJob(scope, "picture_cutout", { projectId, contentItemId: itemId, artboard: kind }, { label: "Removing the background", maxAttempts: 2 });
+  startWorker();
+  return { ok: true, jobId };
 }
 
 /**

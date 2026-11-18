@@ -6,7 +6,7 @@ run after pulling `main`:
 
 1. `npm ci`
 2. Database (Docker, port 5544): `npm run db:up`, then `npm run db:migrate`
-   (applies everything up to `0024_admin_tables_read_only`). Seed demo data with
+   (applies everything up to `0025_picture_tools`). Seed demo data with
    `npm run db:seed` if the database is new. Never `npm run db:reset` on a
    database you want to keep: it wipes it.
 3. Copy `.env.example` to `.env` and set these (keys are your own; never commit
@@ -23,6 +23,8 @@ run after pulling `main`:
    | `AI_TRANSCRIBE_PROVIDER` / `AI_TRANSCRIBE_MODEL` | `groq` / `whisper-large-v3-turbo` |
    | `AI_IMAGE_PROVIDER` | `runpod` |
    | `AI_IMAGE_MODEL` / `AI_IMAGE_EDIT_MODEL` | `qwen-image-t2i` / `qwen-image-edit` (RunPod public endpoints, about $0.02 a picture) |
+   | `AI_IMAGE_EXTEND_MODEL` | `google-nano-banana-2-edit` (the default; draws the extra area when Resize makes a picture bigger, about $0.09 each) |
+   | `AI_CUTOUT_PROVIDER` | `onnx` (Remove background, on this machine's CPU), after `npm run models:fetch` |
    | `AI_PROVIDER_NO_TRAINING` | `true` |
    | `QUEUE_DRIVER` | `pg` |
    | `STORAGE_DRIVER` / `STORAGE_LOCAL_DIR` | `local` / `./.storage` |

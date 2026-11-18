@@ -36,6 +36,9 @@ jobs:
       STORAGE_DRIVER: local
       AI_TEXT_PROVIDER: mock
       AI_IMAGE_PROVIDER: mock
+      # onnxruntime-node (Remove background) would download its CUDA build on
+      # linux/x64 during npm ci. Huemen runs it on the CPU only, so skip that.
+      ONNXRUNTIME_NODE_INSTALL: skip
 
     steps:
       - uses: actions/checkout@v4

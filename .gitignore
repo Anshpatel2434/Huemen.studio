@@ -50,3 +50,6 @@ next-env.d.ts
 
 # Internal design reference (not for handover repo)
 Relume_images/
+
+# Model files fetched by `npm run models:fetch` (Remove background). Never committed.
+/models/

@@ -123,6 +123,19 @@ Open after the run (not fixed): model quality on the open Groq model (invented n
 | OpenAI and no training | OpenAI does not use API inputs or outputs for training by default. `AI_PROVIDER_NO_TRAINING` now covers the image provider too: a real provider will not start without it. |
 | Pictures and area redraws run in the job queue | A picture takes longer than a request should; the board shows the work on the visual and offers Try again if it stops. Each counts against the monthly image cap. |
 
+## Picture tools (2026-11-18)
+
+| Decision | Rationale |
+|----------|-----------|
+| Several picture pins go in one Send and one job, applied in order | Each starts from the result of the one before, so the last version carries every change and Undo returns to the picture before the batch. Progress is saved per pin: a retry never redoes (or charges for) a pin. A pin that can't be done fails on its own; a job that stops fails the pins still waiting. At most 8 pins, each one picture. |
+| A pin's area, kind and strokes live on its `visual_comments` row (migration 0025) | The picture-coordinate area used to live only in the job payload, so Try again could redraw the wrong box. RLS unchanged; a CHECK keeps markup and erase on the picture, and the strokes column is size-capped. |
+| Markup: the drawn marks are instructions, never kept | The model is shown the marks on the close-up and told to follow them and the note, then remove them; the area that may change is the padded box around the marks, and `keepOutside` guards the rest. |
+| Erase: only brushed pixels can change, byte for byte | `keepInsideMask` uses the model's answer only where the brush went. Two ways to show the model what goes are kept behind `ERASE_VARIANT` (magenta tint by default, or a clean close-up) until the live trial picks one. |
+| Resize: a crop where the picture covers the frame, otherwise the model draws only the new area | A crop runs in the request with sharp: free, no generation log. A bigger frame puts the picture on a flat green matte at about a megapixel, the extend model (`AI_IMAGE_EXTEND_MODEL`, default `google-nano-banana-2-edit`, chosen in a live trial on 2026-11-18: qwen-image-edit-2511, FLUX Kontext and Seedream re-composed the whole picture, which the drift check refused) fills it, a drift check retries once and then refuses, and the original is pasted back over its place. Under 40% cover, or with the heading drawn in, it is refused. |
+| Remove background runs an open model inside the app | ISNet general-use (Apache-2.0; confirm the licence file before shipping) on `onnxruntime-node` (MIT), CPU only. Not `@imgly` (AGPL) and not RMBG (non-commercial). The model file is fetched by `npm run models:fetch` with a pinned SHA-256 into a git-ignored folder. Off by default; logged with `image_count 0` but still stopped by the image cap and the per-minute limits. About 1 GB while it runs on a normal host; on Vercel it needs large functions or a smaller model build. |
+| A cut-out takes no further AI edits in v1 | An edit would draw a background back in. The board says so plainly; Undo goes back to the picture it was cut from. |
+| The audit trail names the model that ran an edit | Area redraws and extensions run on their own endpoints; `generation_logs.model` now says which, not the drawing model. |
+
 ## Audit fixes (2026-11-03)
 
 | Decision | Rationale |

@@ -9,16 +9,26 @@
  *     native range input, with the same values (80 to 140 in steps of 5)
  *   - icon buttons on the board are named by aria-label, with no native
  *     title tooltip, and the picture menu button says whether it is open
+ *
+ * And the picture tools' side of the board (2026-11-18):
+ *
+ *   - the canvas tool strip takes a board's tools generically (each with a key
+ *     and the app's own tip, never title=); the tools' own file is held to the
+ *     no-native-controls rule
+ *   - a cut-out picture sits whole on the layout's own paint in every layout:
+ *     contained, with no dark shade and the scheme's colours for the words
+ *   - a picture version is named by how it came to be
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { artboardsFor, clampScale, DEFAULT_TWEAKS, POST_LAYOUTS, scaleAt, scaleForKey, SCALE } from "@/lib/visual/design";
+import { artboardsFor, CAROUSEL_LAYOUTS, clampScale, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, scaleAt, scaleForKey, SCALE } from "@/lib/visual/design";
 import { FORMATS, formatUsesCarousel } from "@/lib/content/formats";
-import { PostImage, schemesFrom } from "@/app/w/[id]/p/[pid]/visual/visual-layouts";
-import { BoardIconButton, ScaleSlider } from "@/app/w/[id]/p/[pid]/visual/visual-panels";
+import { CarouselFrames, PostImage, QuoteCard, schemesFrom } from "@/app/w/[id]/p/[pid]/visual/visual-layouts";
+import { BoardIconButton, ScaleSlider, versionLabel } from "@/app/w/[id]/p/[pid]/visual/visual-panels";
+import { ToolBtn } from "@/components/canvas";
 
 const DIR = join(process.cwd(), "src/app/w/[id]/p/[pid]/visual");
 const source = (f: string) => readFileSync(join(DIR, f), "utf8");
@@ -107,12 +117,145 @@ describe("Type size: a Huemen slider, same values", () => {
     expect(html).not.toContain("<input");
   });
   it("no native range input, select or browser dialog anywhere on the visual board", () => {
-    for (const f of readdirSync(DIR).filter((x) => x.endsWith(".tsx"))) {
+    const files = readdirSync(DIR).filter((x) => x.endsWith(".tsx"));
+    // The picture tools (2026-11-18) are part of the board and held to the same rule.
+    expect(files).toContain("picture-tools-ui.tsx");
+    for (const f of files) {
       const src = source(f);
       expect(src, f).not.toMatch(/type=["']range["']/);
+      expect(src, f).not.toMatch(/type=["'](date|time|datetime-local|color)["']/);
       expect(src, f).not.toMatch(/<select[\s>]/);
       expect(src, f).not.toMatch(/\b(window\.)?(alert|confirm|prompt)\(/);
     }
+  });
+  it("the picture tools draw their own controls: no native tooltip, no dialog of the browser's, no window.open", () => {
+    const src = source("picture-tools-ui.tsx");
+    // No title= on an HTML element (the Huemen Modal's `title` prop is its heading, not a tooltip).
+    expect(src).not.toMatch(/<[a-z][\w-]*\b[^>]*\stitle=/);
+    expect(src).not.toMatch(/window\.open\(/);
+    expect(src).not.toMatch(/<IconButton[\s>]/);
+    // Resize's zoom is the board's own slider.
+    expect(src).toContain("<RangeSlider");
+  });
+});
+
+describe("the canvas tool strip", () => {
+  const canvas = readFileSync(join(process.cwd(), "src/components/canvas.tsx"), "utf8");
+  it("has no native title tooltip: tools are named by aria-label and the app's own tip", () => {
+    expect(canvas).not.toMatch(/title=/);
+    expect(canvas).toContain("data-tip={name}");
+    expect(canvas).toContain("aria-label={name}");
+  });
+  it("takes a board's tools generically, and no longer a comment switch", () => {
+    expect(canvas).toContain("tools?: CanvasTools");
+    expect(canvas).not.toMatch(/comment\??:/);
+    // The tool's line is a row inside the strip, never a floating hint.
+    expect(canvas).toContain('className="hu-strip__line"');
+  });
+  it("draws a tool with its key in the tip, and a tool that is off as disabled with the reason", () => {
+    const on = renderToStaticMarkup(createElement(ToolBtn, { label: "Comment (C)", on: true, onClick: () => {} }, "x"));
+    expect(on).toContain('aria-label="Comment (C)"');
+    expect(on).toContain('data-tip="Comment (C)"');
+    expect(on).toContain('aria-pressed="true"');
+    expect(on).not.toContain("aria-disabled");
+    const off = renderToStaticMarkup(createElement(ToolBtn, { label: "Erase (E)", off: "Add a picture first", onClick: () => {} }, "x"));
+    expect(off).toContain('aria-label="Erase (E). Add a picture first"');
+    expect(off).toContain('data-tip="Erase (E). Add a picture first"');
+    expect(off).toContain('aria-disabled="true"');
+    expect(off).not.toContain("title=");
+  });
+  it("the board gives it Comment, Markup, Erase, Remove background and Resize, each with its key", () => {
+    const board = source("visual-board.tsx");
+    for (const [label, key] of [["Comment", "C"], ["Markup", "M"], ["Erase", "E"], ["Remove background", "B"], ["Resize", "R"]]) {
+      expect(board, label).toContain(`label: "${label}", key: "${key}"`);
+    }
+    expect(board).toContain("tools={wire ? undefined : {");
+  });
+});
+
+describe("a cut-out picture on a visual", () => {
+  const s = schemesFrom(["#F6F1E9", "#1F4D3A", "#141414"])[0];
+  const fonts = { display: "var(--font-sans)", accent: "var(--font-serif)" };
+  const url = "/api/storage/cut.png?token=t";
+  const text = () => "Clarity beats charisma.";
+  const post = (layout: (typeof POST_LAYOUTS)[number]["key"], cutout: boolean, w = 1080, h = 1350) =>
+    renderToStaticMarkup(createElement(PostImage, { layout, w, h, s, t: DEFAULT_TWEAKS, fonts, brand: "Acme", text, picture: { url, mode: "live_text" as const, cutout } }));
+  const quote = (layout: (typeof QUOTE_LAYOUTS)[number]["key"], cutout: boolean) =>
+    renderToStaticMarkup(createElement(QuoteCard, { layout, s, t: DEFAULT_TWEAKS, fonts, brand: "Acme", text, picture: { url, mode: "live_text" as const, cutout } }));
+  const carousel = (layout: (typeof CAROUSEL_LAYOUTS)[number]["key"], cutout: boolean) =>
+    renderToStaticMarkup(createElement(CarouselFrames, { layout, slides: ["One", "Two"], s, t: DEFAULT_TWEAKS, fonts, frameWidth: 170, text, cover: { url, mode: "live_text" as const, cutout } }));
+  // The dark shade over a backdrop picture, and the black the frame is painted under it.
+  const SHADE = /rgba\(0,0,0,0\.\d+\)/;
+  const BLACK = /background:#000[;"]/;
+
+  it("sits whole in every post layout, square and banner: contained, no shade, no black ground", () => {
+    for (const l of POST_LAYOUTS) {
+      for (const [w, h] of [[1080, 1350], [1584, 396]]) {
+        const html = post(l.key, true, w, h);
+        expect(html, `${l.key} ${w}`).toContain("object-contain");
+        expect(html, `${l.key} ${w}`).not.toContain("object-cover");
+        expect(html, `${l.key} ${w}`).not.toMatch(SHADE);
+        expect(html, `${l.key} ${w}`).not.toMatch(BLACK);
+        expect(html, `${l.key} ${w}`).toContain('data-part="picture"');
+        expect(html, `${l.key} ${w}`).toContain('data-part="headline"');
+      }
+    }
+  });
+  it("the same in every quote layout and on a carousel cover", () => {
+    for (const l of QUOTE_LAYOUTS) {
+      const html = quote(l.key, true);
+      expect(html, l.key).toContain("object-contain");
+      expect(html, l.key).not.toMatch(SHADE);
+      expect(html, l.key).not.toMatch(BLACK);
+    }
+    for (const l of CAROUSEL_LAYOUTS) {
+      const html = carousel(l.key, true);
+      expect(html, l.key).toContain("object-contain");
+      expect(html, l.key).not.toMatch(SHADE);
+      expect(html, l.key).not.toMatch(BLACK);
+    }
+  });
+  it("keeps the scheme's own colours for the words (not white over a picture)", () => {
+    const cut = post("statement", true);
+    const backdrop = post("statement", false);
+    expect(backdrop).toContain("color:#ffffff");
+    expect(cut).not.toContain("color:#ffffff");
+    expect(cut).toContain(`background:${s.bg}`);
+  });
+  it("an ordinary picture is unchanged: cropped to fill, shaded where words sit on it", () => {
+    const html = post("statement", false);
+    expect(html).toContain("object-cover");
+    expect(html).not.toContain("object-contain");
+    expect(html).toMatch(SHADE);
+    expect(quote("classic", false)).toMatch(SHADE);
+    expect(carousel("standard", false)).toMatch(SHADE);
+  });
+  it("a cut-out is never treated as a picture with the heading drawn in", () => {
+    const html = renderToStaticMarkup(createElement(PostImage, { layout: "statement", w: 1080, h: 1350, s, t: DEFAULT_TWEAKS, fonts, brand: "Acme", text, picture: { url, mode: "with_text" as const, cutout: true } }));
+    expect(html).toContain('data-part="headline"');
+    expect(html).toContain("object-contain");
+  });
+});
+
+describe("picture versions say how each came to be", () => {
+  it("uses the picture tools' labels, and today's for versions from before them", () => {
+    expect(versionLabel({ op: "cutout", parentId: "p", mode: "live_text" })).toBe("background removed");
+    expect(versionLabel({ op: "resize", parentId: "p", mode: "live_text" })).toBe("resized");
+    expect(versionLabel({ op: "erase", parentId: "p", mode: "live_text" })).toBe("erased");
+    expect(versionLabel({ op: "markup", parentId: "p", mode: "live_text" })).toBe("markup change");
+    expect(versionLabel({ op: "area", parentId: "p", mode: "live_text" })).toBe("area change");
+    expect(versionLabel({ op: "draw", parentId: null, mode: "live_text" })).toBe("new picture");
+    expect(versionLabel({ op: "draw", parentId: null, mode: "with_text" })).toBe("new, heading drawn in");
+    // No `op` (drawn before the picture tools): what the strip said before.
+    expect(versionLabel({ parentId: "p", mode: "live_text" })).toBe("area change");
+    expect(versionLabel({ parentId: null, mode: "live_text" })).toBe("new picture");
+    expect(versionLabel({ parentId: null, mode: "with_text" })).toBe("new, heading drawn in");
+  });
+  it("a cut-out is downloaded through a real link, not a new window", () => {
+    const src = source("visual-comments-ui.tsx");
+    expect(src).toContain("download={cutout.name}");
+    expect(src).toContain("Download cut-out");
+    expect(src).not.toMatch(/window\.open\(/);
   });
 });
 
@@ -124,7 +267,7 @@ describe("icon buttons on the board", () => {
     expect(html).not.toContain("title=");
   });
   it("the board uses them, not the shared IconButton (which sets title)", () => {
-    for (const f of ["visual-board.tsx", "visual-comments-ui.tsx", "visual-panels.tsx"]) {
+    for (const f of ["visual-board.tsx", "visual-comments-ui.tsx", "visual-panels.tsx", "picture-tools-ui.tsx"]) {
       expect(source(f), f).not.toMatch(/<IconButton[\s>]/);
     }
   });

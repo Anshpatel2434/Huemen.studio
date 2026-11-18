@@ -20,6 +20,11 @@
  * it behind the words, Split gives it one half and the words the other on the
  * scheme's ground, and so on. Only a picture with the heading drawn into it
  * ("with_text") fills the whole visual, because cropping it would cut the words.
+ *
+ * A cut-out (a picture with its background removed) is a subject, not a
+ * backdrop: it sits whole (never cropped) on the colour the layout paints
+ * there without a picture, with no dark shade over it and the words in the
+ * scheme's own colours. Every layout takes one the same way.
  */
 import { useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { CarouselLayout, PictureMode, PostLayout, QuoteLayout, Tweaks } from "@/lib/visual/design";
@@ -30,8 +35,16 @@ export type { Scheme };
 export type TextSlot = { kind: "post" } | { kind: "quote" } | { kind: "slide"; index: number };
 export type RenderText = (slot: TextSlot) => ReactNode;
 export type Fonts = { display: string; accent: string };
-/** A picture on a visual: its same-origin link, and whether the heading is drawn into it. */
-export type Picture = { url: string; mode: PictureMode } | null;
+/**
+ * A picture on a visual: its same-origin link, whether the heading is drawn
+ * into it, and whether it is a cut-out (background removed, a PNG with alpha).
+ */
+export type Picture = { url: string; mode: PictureMode; cutout?: boolean } | null;
+
+/** The picture is a backdrop the words are set on (dark shade, white words). A cut-out never is. */
+const isBackdrop = (p: Picture | undefined): boolean => !!p && !p.cutout;
+/** The heading is drawn into the picture, so the picture is the whole visual. Not so for a cut-out. */
+const isDrawnIn = (p: Picture | undefined): boolean => !!p && p.mode === "with_text" && !p.cutout;
 
 /**
  * One artboard. A size container, so every type size below is a share of the
@@ -170,11 +183,15 @@ const overPicture = (t: Tweaks): Paint => ({
   showMarks: t.accent !== "none", bold: t.accent === "bold",
 });
 
-/** The picture, filling the box it is in. Drawn as an <img> so the PNG export rasterises it with the rest. */
-function PictureFill({ url }: { url: string }) {
+/**
+ * The picture, filling the box it is in (a cut-out sits whole inside it
+ * instead, on whatever is painted behind). Drawn as an <img> so the PNG export
+ * rasterises it with the rest.
+ */
+function PictureFill({ url, cutout = false }: { url: string; cutout?: boolean }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img data-part="picture" src={url} alt="" crossOrigin="anonymous" draggable={false} className="absolute inset-0 w-full h-full object-cover" />
+    <img data-part="picture" data-cutout={cutout ? "" : undefined} src={url} alt="" crossOrigin="anonymous" draggable={false} className={`absolute inset-0 w-full h-full ${cutout ? "object-contain" : "object-cover"}`} />
   );
 }
 
@@ -187,6 +204,21 @@ function Shade({ t, even = false }: { t: Tweaks; even?: boolean }) {
     : `linear-gradient(to top, rgba(0,0,0,${shade}) 0%, rgba(0,0,0,${shade * 0.55}) 45%, rgba(0,0,0,0) 75%)`;
   return <div className="absolute inset-0 pointer-events-none" style={{ background }} />;
 }
+
+/**
+ * A cut-out in a layout that puts the picture BEHIND the words: the subject
+ * stands in the top half and the words take the bottom half, so they never
+ * sit on it (2026-11-18: the heading landed across the cut-out scales).
+ */
+function CutoutTop({ url }: { url: string }) {
+  return (
+    <div className="absolute left-[9%] right-[9%] top-[6%] bottom-[50%]">
+      <PictureFill url={url} cutout />
+    </div>
+  );
+}
+/** Where the words go over a cut-out: the bottom half of the frame. */
+const CUT_TEXT = "absolute inset-x-0 bottom-0 top-[50%]";
 
 /** The heading is drawn into the picture: the picture is the whole visual, with the sign-off in the corner. */
 function DrawnIn({ w, h, picture, t, brand, logo, frameRef }: {
@@ -231,6 +263,9 @@ function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRe
   const p = paint(s, t, "normal");
   const o = overPicture(t);
   const shadow = "0 1px 6px rgba(0,0,0,.35)";
+  // A backdrop picture takes white words over a shade; a cut-out keeps the layout's own paint.
+  const over = isBackdrop(picture);
+  const cut = !!picture?.cutout;
   const headline = (n: number, x: { font?: string; color?: string; align?: CSSProperties["textAlign"]; extra?: CSSProperties; cls?: string; over?: boolean } = {}) => (
     <Fit
       part="headline"
@@ -254,10 +289,11 @@ function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRe
       <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
         <div className="absolute inset-0 flex" data-banner="split">
           <div className="flex-[68] min-w-0 flex items-center" style={{ padding: "3% 4% 3% 5%" }}>{headline(1.2)}</div>
-          <div className="flex-[32] min-w-0 relative overflow-hidden flex flex-col justify-end" style={{ background: picture ? "#000" : band, color: picture ? WHITE : onBand(s, band), padding: "3% 4%", gap: "1.5cqw" }}>
-            {picture && <><PictureFill url={picture.url} /><Shade t={t} /></>}
+          <div className="flex-[32] min-w-0 relative overflow-hidden flex flex-col justify-end" style={{ background: over ? "#000" : band, color: over ? WHITE : onBand(s, band), padding: "3% 4%", gap: "1.5cqw" }}>
+            {picture && <PictureFill url={picture.url} cutout={cut} />}
+            {over && <Shade t={t} />}
             <span className="relative h-[2px] w-[22%] bg-current opacity-70 shrink-0" />
-            <span className="relative">{sign(picture ? WHITE : "currentColor", !!picture)}</span>
+            <span className="relative">{sign(over ? WHITE : "currentColor", over)}</span>
           </div>
         </div>
       </Frame>
@@ -265,13 +301,14 @@ function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRe
   }
   if (layout === "framed") {
     // A hairline frame around a centred line, the sign-off centred under it; a picture sits behind, shaded evenly.
-    const c = picture ? o : p;
+    const c = over ? o : p;
     return (
-      <Frame w={w} h={h} bg={picture ? "#000" : p.bg} fg={picture ? WHITE : p.fg} frameRef={frameRef}>
-        {picture && <><PictureFill url={picture.url} /><Shade t={t} even /></>}
-        <div className="absolute flex flex-col items-center" data-banner="framed" style={{ inset: "6% 3%", padding: "2% 6%", gap: "1cqw", border: `${p.bold ? 3 : 1.5}px solid ${picture ? WHITE : p.showMarks ? p.accent : p.fg}` }}>
-          {headline(1.05, { align: "center", color: c.words, over: !!picture })}
-          {sign(picture ? WHITE : p.bold ? p.sign : p.fg, !!picture, { fontSize: fz(0.52, null) })}
+      <Frame w={w} h={h} bg={over ? "#000" : p.bg} fg={over ? WHITE : p.fg} frameRef={frameRef}>
+        {picture && <PictureFill url={picture.url} cutout={cut} />}
+        {over && <Shade t={t} even />}
+        <div className="absolute flex flex-col items-center" data-banner="framed" style={{ inset: "6% 3%", padding: "2% 6%", gap: "1cqw", border: `${p.bold ? 3 : 1.5}px solid ${over ? WHITE : p.showMarks ? p.accent : p.fg}` }}>
+          {headline(1.05, { align: "center", color: c.words, over })}
+          {sign(over ? WHITE : p.bold ? p.sign : p.fg, over, { fontSize: fz(0.52, null) })}
         </div>
       </Frame>
     );
@@ -281,7 +318,7 @@ function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRe
     return (
       <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
         <div className="absolute inset-0 flex" data-banner="editorial">
-          {picture && <div className="w-[26%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>}
+          {picture && <div className="w-[26%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} cutout={cut} /></div>}
           <div className="flex-1 min-w-0 flex items-center" style={{ padding: "3% 5%", gap: "3cqw" }}>
             <div className="flex-1 min-w-0 self-stretch flex flex-col justify-center" style={{ gap: "0.6cqw" }}>
               <p className="tracking-[0.2em] uppercase shrink-0 max-w-full truncate" style={{ fontFamily: MONO, color: p.showMarks ? p.sign : p.fg, fontSize: fz(0.5, null) }}>№ 01 · {eyebrow || brand}</p>
@@ -296,12 +333,13 @@ function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRe
   }
   // statement (the original): an accent bar, the line, the sign-off; a picture fills the frame behind them.
   return (
-    <Frame w={w} h={h} bg={picture ? "#000" : p.bg} fg={picture ? WHITE : p.fg} frameRef={frameRef}>
-      {picture && <><PictureFill url={picture.url} /><Shade t={t} /></>}
+    <Frame w={w} h={h} bg={over ? "#000" : p.bg} fg={over ? WHITE : p.fg} frameRef={frameRef}>
+      {picture && <PictureFill url={picture.url} cutout={cut} />}
+      {over && <Shade t={t} />}
       <div className="absolute inset-0 flex items-center" data-banner="statement" style={{ gap: "3cqw", padding: "3% 5%" }}>
-        {!picture && p.showMarks && <span className="shrink-0 self-stretch rounded-full" style={{ width: "0.7%", background: p.accent }} />}
-        {headline(1.2, { color: picture ? WHITE : p.words, over: !!picture })}
-        {sign(picture ? WHITE : p.sign, !!picture)}
+        {!over && p.showMarks && <span className="shrink-0 self-stretch rounded-full" style={{ width: "0.7%", background: p.accent }} />}
+        {headline(1.2, { color: over ? WHITE : p.words, over })}
+        {sign(over ? WHITE : p.sign, over)}
       </div>
     </Frame>
   );
@@ -311,7 +349,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
   layout: PostLayout; w: number; h: number; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; eyebrow?: string;
   text: RenderText; frameRef?: (el: HTMLDivElement | null) => void; picture?: Picture;
 }) {
-  if (picture?.mode === "with_text") return <DrawnIn w={w} h={h} picture={picture} t={t} brand={brand} logo={logo} frameRef={frameRef} />;
+  if (picture && isDrawnIn(picture)) return <DrawnIn w={w} h={h} picture={picture} t={t} brand={brand} logo={logo} frameRef={frameRef} />;
   if (w > h * BANNER_RATIO) return <Banner layout={layout} w={w} h={h} s={s} t={t} fonts={fonts} brand={brand} logo={logo} eyebrow={eyebrow} text={text} frameRef={frameRef} picture={picture} />;
 
   const p = paint(s, t, "normal");
@@ -326,6 +364,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
     <Signoff brand={brand} logo={logo} size={t.logo} style={{ color, fontFamily: MONO, fontSize: fz(0.62, null), ...extra }} />
   );
   const band = p.showMarks ? p.accent : p.fg;
+  const cut = !!picture?.cutout;
   const eyebrowLine = (color: string) => (
     <p className="tracking-[0.2em] uppercase shrink-0 max-w-full truncate" style={{ fontFamily: MONO, color, fontSize: fz(0.58, null) }}>№ 01 · {eyebrow || brand}</p>
   );
@@ -337,7 +376,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
           {picture ? (
             // The picture has the top half; the words sit under it on the scheme's ground.
             <>
-              <div className="flex-[54] min-h-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>
+              <div className="flex-[54] min-h-0 relative overflow-hidden"><PictureFill url={picture.url} cutout={cut} /></div>
               <div className="flex-[46] min-h-0 flex flex-col justify-between px-[9%] py-[7%]" style={{ ...al, gap: GAP }}>
                 {p.showMarks && <span className="h-[2px] w-[16%] shrink-0" style={{ background: p.accent }} />}
                 {headline(1.2)}
@@ -363,7 +402,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
         <div className="h-full p-[6%]">
           <div className="h-full flex flex-col justify-between" style={{ ...al, alignItems: "center", textAlign: "center", gap: GAP, padding: picture ? "0 0 7%" : "8%", border: `${p.bold ? 3 : 1.5}px solid ${p.showMarks ? p.accent : p.fg}` }}>
             {/* The picture is set inside the frame, above the centred line. */}
-            {picture ? <div className="w-full flex-[52] min-h-0 relative overflow-hidden"><PictureFill url={picture.url} /></div> : <span />}
+            {picture ? <div className="w-full flex-[52] min-h-0 relative overflow-hidden"><PictureFill url={picture.url} cutout={cut} /></div> : <span />}
             <div className={`min-h-0 w-full flex flex-col justify-center ${picture ? "flex-[36] px-[8%]" : ""}`} style={picture ? undefined : { flex: "0 1 auto" }}>{headline(picture ? 1.1 : 1.3)}</div>
             {sign()}
           </div>
@@ -377,7 +416,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
         <div className="h-full flex" style={picture ? undefined : { padding: "9%", gap: "6%" }}>
           {/* The picture runs down one side like a magazine column. */}
           {picture
-            ? <div className="w-[40%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>
+            ? <div className="w-[40%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} cutout={cut} /></div>
             : p.showMarks && !center && <span className="shrink-0 w-[3px] self-stretch" style={{ background: p.accent }} />}
           <div className="flex-1 min-w-0 min-h-0 flex flex-col justify-between" style={{ ...al, gap: GAP, padding: picture ? "9% 7%" : undefined }}>
             {eyebrowLine(p.showMarks ? p.sign : p.fg)}
@@ -389,7 +428,7 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
     );
   }
   // statement (the original)
-  if (picture) {
+  if (picture && !cut) {
     const o = overPicture(t);
     return (
       <Frame w={w} h={h} bg="#000" fg="#fff" frameRef={frameRef}>
@@ -404,7 +443,9 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
   }
   return (
     <Frame w={w} h={h} bg={p.bg} fg={p.fg} frameRef={frameRef}>
-      <div className="h-full flex flex-col justify-between p-[9%]" style={{ ...al, gap: GAP }}>
+      {/* A cut-out stands on the scheme's ground, behind the layout as it is without a picture. */}
+      {picture && <CutoutTop url={picture.url} />}
+      <div className={`${picture ? CUT_TEXT : "h-full"} flex flex-col justify-between p-[9%]`} style={{ ...al, gap: GAP }}>
         <span className="rounded-full shrink-0" style={{ height: p.bold ? "4%" : "3%", width: "14%", background: p.mark }} />
         {headline(1.45)}
         {sign()}
@@ -418,10 +459,13 @@ export function PostImage({ layout, w, h, s, t, fonts, brand, logo, eyebrow, tex
 export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, picture = null }: {
   layout: QuoteLayout; s: Scheme; t: Tweaks; fonts: Fonts; brand: string; logo?: string | null; text: RenderText; frameRef?: (el: HTMLDivElement | null) => void; picture?: Picture;
 }) {
-  if (picture?.mode === "with_text") return <DrawnIn w={1080} h={1080} picture={picture} t={t} brand={brand} logo={logo} frameRef={frameRef} />;
+  if (picture && isDrawnIn(picture)) return <DrawnIn w={1080} h={1080} picture={picture} t={t} brand={brand} logo={logo} frameRef={frameRef} />;
 
   // Classic and Centred set the words straight on a picture; Minimal keeps them on the scheme's ground beside it.
-  const over = !!picture && layout !== "minimal";
+  // `behind`: the picture is under the words. `over`: it is a backdrop too (white words on a shade); a cut-out is not.
+  const behind = !!picture && layout !== "minimal";
+  const over = behind && isBackdrop(picture);
+  const cut = !!picture?.cutout;
   const p = over ? overPicture(t) : paint(s, t, "inverse");
   const center = layout === "centered" || t.align === "center";
   const al: CSSProperties = { textAlign: center ? "center" : "left", alignItems: center ? "center" : "flex-start" };
@@ -438,14 +482,15 @@ export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, pi
   );
   const frame = (children: ReactNode) => (
     <Frame w={1080} h={1080} bg={over ? "#000" : p.bg} fg={p.fg} frameRef={frameRef}>
-      {over && picture && <><PictureFill url={picture.url} /><Shade t={t} even={layout === "centered"} /></>}
+      {behind && picture && (cut ? <CutoutTop url={picture.url} /> : <PictureFill url={picture.url} />)}
+      {over && <Shade t={t} even={layout === "centered"} />}
       {children}
     </Frame>
   );
 
   if (layout === "centered") {
     return frame(
-      <div className={`${over ? "absolute inset-0" : "h-full"} flex flex-col justify-center gap-4 p-[11%]`} style={al}>
+      <div className={`${behind ? (cut ? CUT_TEXT : "absolute inset-0") : "h-full"} flex flex-col justify-center gap-4 p-[11%]`} style={al}>
         {mark(p.bold ? 4.4 : 3.6, "leading-[0.6]")}
         {words(1.2)}
         <span className="h-[2px] w-[12%] shrink-0" style={{ background: p.showMarks ? p.accent : p.fg }} />
@@ -456,7 +501,7 @@ export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, pi
   if (layout === "minimal") {
     return frame(
       <div className="h-full flex">
-        {picture && <div className="w-[42%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} /></div>}
+        {picture && <div className="w-[42%] shrink-0 relative overflow-hidden"><PictureFill url={picture.url} cutout={cut} /></div>}
         <div className="flex-1 min-w-0 h-full flex flex-col justify-center" style={{ padding: picture ? "9%" : "11%" }}>
           <div className="min-h-0 flex gap-[6%] items-stretch" style={{ flex: "0 1 auto" }}>
             {p.showMarks && !center && <span className="shrink-0 rounded-full" style={{ width: p.bold ? 5 : 3, background: p.accent }} />}
@@ -471,7 +516,7 @@ export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, pi
   }
   // classic (the original)
   return frame(
-    <div className={`${over ? "absolute inset-0 justify-end" : "h-full justify-center"} flex flex-col p-[10%]`} style={al}>
+    <div className={`${behind ? (cut ? CUT_TEXT : "absolute inset-0") : "h-full"} ${over ? "justify-end" : "justify-center"} flex flex-col p-[10%]`} style={al}>
       {mark(3, "leading-none")}
       {words(1.25, true, fonts.accent, over ? "end" : "center")}
       <div className="mt-4 shrink-0 max-w-full flex">{sign()}</div>
@@ -498,7 +543,7 @@ export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, 
       {slides.map((_, k) => {
         const first = k === 0;
         const pic = first ? cover : null;
-        if (pic?.mode === "with_text") {
+        if (pic && isDrawnIn(pic)) {
           return (
             <div key={k} className="shrink-0" style={{ width: frameWidth }}>
               <DrawnIn w={1080} h={1350} picture={pic} t={t} brand={brand} logo={logo} frameRef={frameRef?.(k)} />
@@ -507,14 +552,16 @@ export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, 
         }
         const alt = layout === "standard" && k % 2 === 1;
         // On a cover picture the frame keeps its layout (number, counter, progress), drawn in white over the shade.
-        const p = pic ? overPicture(t) : paint(s, t, alt ? "inverse" : "normal");
+        // A cut-out keeps the frame's own colours, with nothing over it.
+        const over = isBackdrop(pic);
+        const p = over ? overPicture(t) : paint(s, t, alt ? "inverse" : "normal");
         const al: CSSProperties = { textAlign: t.align, alignItems: center ? "center" : "flex-start", gap: "5cqw" };
         const part = first ? "headline" : k === ctaIndex ? "cta" : "body";
         const size = fz(first ? 0.95 : 0.72, t, 170);
         const body = (
-          <div className="min-h-0 w-full flex gap-[0.3em]" style={{ flex: "0 1 auto", justifyContent: center ? "center" : "flex-start", color: p.words, fontFamily: fonts.display, textShadow: pic ? SHADOW : undefined }}>
+          <div className="min-h-0 w-full flex gap-[0.3em]" style={{ flex: "0 1 auto", justifyContent: center ? "center" : "flex-start", color: p.words, fontFamily: fonts.display, textShadow: over ? SHADOW : undefined }}>
             {k === ctaIndex && <span className="shrink-0 leading-snug" style={{ fontSize: size }}>→</span>}
-            <Fit part={part} size={size} v={pic ? "end" : "center"} className={`${first ? "font-medium" : ""} leading-snug`} box={{ flex: center ? "0 1 auto" : "1 1 0%", width: "auto", minWidth: 0 }}>
+            <Fit part={part} size={size} v={over ? "end" : "center"} className={`${first ? "font-medium" : ""} leading-snug`} box={{ flex: center ? "0 1 auto" : "1 1 0%", width: "auto", minWidth: 0 }}>
               {text({ kind: "slide", index: k })}
             </Fit>
           </div>
@@ -524,16 +571,17 @@ export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, 
         );
         return (
           <div key={k} className="shrink-0" style={{ width: frameWidth }}>
-            <Frame w={1080} h={1350} bg={pic ? "#000" : p.bg} fg={p.fg} frameRef={frameRef?.(k)}>
-              {pic && <><PictureFill url={pic.url} /><Shade t={t} /></>}
+            <Frame w={1080} h={1350} bg={over ? "#000" : p.bg} fg={p.fg} frameRef={frameRef?.(k)}>
+              {pic && (pic.cutout ? <CutoutTop url={pic.url} /> : <PictureFill url={pic.url} />)}
+              {over && <Shade t={t} />}
               {layout === "numbered" ? (
-                <div className={`${pic ? "absolute inset-0" : "h-full"} flex flex-col justify-between p-[10%]`} style={al}>
-                  <span className="font-medium leading-none shrink-0" style={{ fontFamily: fonts.display, color: p.showMarks ? p.accent : p.fg, fontSize: fz(p.bold ? 2.4 : 2, t, 170), textShadow: pic ? SHADOW : undefined }}>{String(k + 1).padStart(2, "0")}</span>
+                <div className={`${pic ? (pic.cutout ? CUT_TEXT : "absolute inset-0") : "h-full"} flex flex-col justify-between p-[10%]`} style={al}>
+                  <span className="font-medium leading-none shrink-0" style={{ fontFamily: fonts.display, color: p.showMarks ? p.accent : p.fg, fontSize: fz(p.bold ? 2.4 : 2, t, 170), textShadow: over ? SHADOW : undefined }}>{String(k + 1).padStart(2, "0")}</span>
                   {body}
                   {count(p.fg, { opacity: 0.6 })}
                 </div>
               ) : layout === "progress" ? (
-                <div className={`${pic ? "absolute inset-0" : "h-full"} flex flex-col justify-between p-[10%] pb-[8%]`} style={al}>
+                <div className={`${pic ? (pic.cutout ? CUT_TEXT : "absolute inset-0") : "h-full"} flex flex-col justify-between p-[10%] pb-[8%]`} style={al}>
                   {body}
                   <div className="w-full flex gap-[3%] shrink-0">
                     {slides.map((__, j) => (
@@ -542,7 +590,7 @@ export function CarouselFrames({ layout, slides, s, t, fonts, frameWidth, text, 
                   </div>
                 </div>
               ) : (
-                <div className={`${pic ? "absolute inset-0" : "h-full"} flex flex-col justify-between p-[10%]`} style={al}>
+                <div className={`${pic ? (pic.cutout ? CUT_TEXT : "absolute inset-0") : "h-full"} flex flex-col justify-between p-[10%]`} style={al}>
                   {count(p.showMarks ? p.sign : p.fg, { fontWeight: 500, fontSize: fz(0.55, null, 170) })}
                   {body}
                 </div>

@@ -9,10 +9,20 @@
  *   redrawArea     one marked box of the current picture is redrawn as asked;
  *                  everything outside the box is the original, pixel for pixel
  *                  (lib/visual/region). The result is a new version.
+ *                  The picture tools (2026-11-18) use the same call for a
+ *                  Markup change (marks drawn on the picture, a note) and an
+ *                  Erase (a brushed area), each with its own guarantee.
+ *   resizePicture  a new shape: a crop where the picture covers the new
+ *                  frame (sharp, no model call), otherwise the image model
+ *                  draws the extra area and the original is pasted back over
+ *                  its place.
+ *   cutOutPicture  the background removed (lib/ai cutoutImage): a PNG with
+ *                  alpha, as a new version.
  *   previousPicture / removePicture / pictureLinks / pictureVersions
  *
- * Slow calls run in the job queue (lib/jobs kinds picture_generate and
- * picture_edit); these functions are what the jobs call.
+ * Slow calls run in the job queue (lib/jobs kinds picture_generate,
+ * picture_edit, picture_resize and picture_cutout); these functions are what
+ * the jobs call.
  *
  * Server-only.
  */
@@ -20,18 +30,26 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { withTenantSession } from "@/db/session";
-import { editImage, generateImage, runTask } from "@/lib/ai";
+import { cutoutImage, editImage, generateImage, runTask } from "@/lib/ai";
+import { cutoutStatus } from "@/lib/ai/cutout";
 import { imageBrief } from "@/lib/ai/tasks";
 import type { ImageShape } from "@/lib/ai/types";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
-import { keepOutside, regionMask, type Box } from "@/lib/visual/region";
+import {
+  cleanBox, cleanStrokes, driftOf, keepInsideMask, marksLeft, keepOriginal, keepOutside, placeOnCanvas, regionMask, strokeMask, strokesBox, strokesOverlay,
+  visiblePart, type Box, type PixelRect,
+} from "@/lib/visual/region";
+import {
+  clearSubject, coversFrame, MIN_EXTEND_COVER, RESIZE_RATIO, type PictureOp, type PinKind, type ResizeInput, type Stroke,
+} from "@/lib/visual/picture-tools";
 import { parseDesign, type ArtboardKind, type Design, type PictureMode } from "@/lib/visual/design";
 import { schemeIndex, schemesFrom, type Scheme } from "@/lib/visual/schemes";
 import { stripMarkers } from "@/lib/visual/markers";
 import { loadFoundation } from "@/lib/data/foundation";
+import { logger } from "@/lib/observability/log";
 import type { ProjectScope } from "./projects";
 
 export class PictureError extends Error {
@@ -96,11 +114,12 @@ export async function designOf(scope: ProjectScope, contentItemId: string): Prom
 }
 
 /** Point one visual at a picture (or at none). The rest of the design is untouched. */
-async function attach(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, ref: { id: string; mode: PictureMode } | null): Promise<void> {
+async function attach(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, ref: { id: string; mode: PictureMode; cutout?: boolean } | null): Promise<void> {
   const design = await designOf(scope, contentItemId);
   if (!design) throw new PictureError("Make the visuals first; a picture goes on one of them.");
   const pictures = { ...design.pictures };
-  if (ref) pictures[artboard] = ref;
+  // `cutout` is only ever stored as true (lib/visual/design PictureRef).
+  if (ref) pictures[artboard] = { id: ref.id, mode: ref.mode, ...(ref.cutout ? { cutout: true } : {}) };
   else delete pictures[artboard];
   await withTenantSession(scope, (c) =>
     c.query(
@@ -114,7 +133,7 @@ interface PictureRow {
   id: string;
   storage_key: string;
   prompt: string | null;
-  params: { artboard?: ArtboardKind; mode?: PictureMode; shape?: ImageShape; heading?: string | null; avoid?: string } | null;
+  params: { artboard?: ArtboardKind; mode?: PictureMode; shape?: ImageShape; heading?: string | null; avoid?: string; op?: PictureOp; cutout?: boolean } | null;
   parent_id: string | null;
   width: number | null;
   height: number | null;
@@ -137,7 +156,13 @@ async function savePicture(
   scope: ProjectScope,
   piece: Piece,
   bytes: Uint8Array,
-  meta: { artboard: ArtboardKind; mode: PictureMode; shape: ImageShape; prompt: string; model: string; avoid?: string; heading: string | null; parentId: string | null },
+  meta: {
+    artboard: ArtboardKind; mode: PictureMode; shape: ImageShape; prompt: string; model: string; avoid?: string; heading: string | null; parentId: string | null;
+    /** How this version came to be (lib/visual/picture-tools PictureOp), for the versions strip. */
+    op: PictureOp;
+    /** The background has been removed: the file is a PNG with alpha. */
+    cutout?: boolean;
+  },
 ): Promise<string> {
   const info = await sharp(Buffer.from(bytes)).metadata().catch(() => null);
   if (!info?.width || !info.height || info.format !== "png") throw new PictureError("The picture came back unreadable. Try again.");
@@ -156,7 +181,10 @@ async function savePicture(
          VALUES ($1,$2,$3,'picture',$4,$5,$6,$7,$8,$9,$10,'ready',$11,$12,true) RETURNING id`,
         [
           scope.tenantId, scope.projectId, piece.id, meta.prompt, meta.model,
-          JSON.stringify({ artboard: meta.artboard, mode: meta.mode, shape: meta.shape, heading: meta.heading, avoid: meta.avoid ?? "" }),
+          JSON.stringify({
+            artboard: meta.artboard, mode: meta.mode, shape: meta.shape, heading: meta.heading, avoid: meta.avoid ?? "",
+            op: meta.op, ...(meta.cutout ? { cutout: true } : {}),
+          }),
           `${info.width}:${info.height}`, key, info.width, info.height, scope.userId, meta.parentId,
         ],
       )
@@ -277,7 +305,7 @@ async function drawPictureNow(scope: ProjectScope, contentItemId: string, artboa
   const avoid = [brief.avoid.trim(), mode === "with_text" ? ALWAYS_AVOID.replace(", text, letters", "") : ALWAYS_AVOID].filter(Boolean).join(", ");
   const out = await generateImage(scope, { context, prompt, negativePrompt: avoid, shape, contentItemId });
   const id = await savePicture(scope, piece, out.bytes, {
-    artboard, mode, shape, prompt, model: out.model, avoid: brief.avoid, heading: mode === "with_text" ? piece.hook : null, parentId: null,
+    artboard, mode, shape, prompt, model: out.model, avoid: brief.avoid, heading: mode === "with_text" ? piece.hook : null, parentId: null, op: "draw",
   });
   await attach(scope, contentItemId, artboard, { id, mode });
   return id;
@@ -289,39 +317,391 @@ async function drawPictureNow(scope: ProjectScope, contentItemId: string, artboa
  * inside the area, so nothing else in the picture can change. Returns the new
  * version's id.
  */
-export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, box: Box, note: string): Promise<string> {
-  return oneAtATime(scope, contentItemId, artboard, () => redrawAreaNow(scope, contentItemId, artboard, box, note));
+export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, edit: AreaEdit): Promise<string>;
+export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, box: Box, note: string): Promise<string>;
+export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, boxOrEdit: Box | AreaEdit, note?: string): Promise<string> {
+  // The first form is the one that grew (a kind, strokes); the second is how a plain comment has always been sent.
+  const edit: AreaEdit = "box" in boxOrEdit ? boxOrEdit : { box: boxOrEdit, note: note ?? "", kind: "comment" };
+  return oneAtATime(scope, contentItemId, artboard, () => redrawAreaNow(scope, contentItemId, artboard, edit));
 }
 
-async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, box: Box, note: string): Promise<string> {
+/**
+ * One change to an area of a picture.
+ *
+ *   comment  `box` is the area and `note` what to put there (as before).
+ *   markup   `strokes` are marks drawn on the picture (a circle, an arrow) and
+ *            `note` says what to do. The area that may change is the box
+ *            around the marks, padded (a drawn circle is a ring, so the marks
+ *            themselves are not the area); the model is shown the marks and
+ *            told to follow them, then remove them. `box` is used when there
+ *            are no strokes.
+ *   erase    `strokes` are the brushed area: what is under it is removed and
+ *            filled from around it. Only brushed pixels can change.
+ */
+export interface AreaEdit {
+  box: Box;
+  note: string;
+  kind?: PinKind;
+  strokes?: Stroke[];
+}
+
+/** The padding around drawn marks (a share of the picture's shorter side): what the marks point at may reach past them. */
+export const MARKUP_PAD = 0.08;
+/** The colour the model is shown the marks in: one a picture is unlikely to have. */
+export const MARKS_COLOUR = "#ff00ff";
+/** More than this share of the marked area still in the marks colour after an edit, and it is not kept. */
+const MARKS_LEFT_MAX = 0.004;
+/** The widest soft edge inside a brushed area, in pixels; a thin brush gets a thinner one so its middle is fully erased. */
+const ERASE_FEATHER = 12;
+
+export const CUTOUT_LOCKED = "This picture has its background removed. Go back to the version before to change it.";
+
+interface CurrentPicture {
+  piece: Piece;
+  ref: { id: string; mode: PictureMode; cutout?: boolean };
+  row: PictureRow;
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+  cutout: boolean;
+}
+
+/** The picture a visual shows now: its row, its file and its size. Refuses plainly when any of it is gone. */
+async function currentPicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<CurrentPicture> {
   const piece = await pieceOf(scope, contentItemId);
   const ref = (await designOf(scope, contentItemId))?.pictures[artboard];
   if (!ref) throw new PictureError("That visual has no picture to change.");
-  const current = await pictureRow(scope, ref.id);
-  if (!current) throw new PictureError("That picture isn't there any more. Draw a new one.");
-  const obj = await storage().get(current.storage_key);
+  const row = await pictureRow(scope, ref.id);
+  if (!row) throw new PictureError("That picture isn't there any more. Draw a new one.");
+  const obj = await storage().get(row.storage_key);
   if (!obj) throw new PictureError("That picture's file is missing. Draw a new one.");
   const meta = await sharp(Buffer.from(obj.data)).metadata();
   if (!meta.width || !meta.height) throw new PictureError("That picture couldn't be read.");
+  return { piece, ref, row, bytes: obj.data, width: meta.width, height: meta.height, cutout: ref.cutout === true || row.params?.cutout === true };
+}
 
-  const mask = await regionMask(box, meta.width, meta.height);
+async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, edit: AreaEdit): Promise<string> {
+  const now = await currentPicture(scope, contentItemId, artboard);
+  const { piece, ref, row: current, bytes, width, height } = now;
+  // A cut-out is a subject on nothing: an edit would draw a background back in. v1 says no, plainly.
+  if (now.cutout) throw new PictureError(CUTOUT_LOCKED);
+  const kind: PinKind = edit.kind === "markup" || edit.kind === "erase" ? edit.kind : "comment";
+  const strokes = kind === "comment" ? [] : cleanStrokes(edit.strokes);
   const shape = current.params?.shape ?? shapeFor(artboard, piece.format);
   const context = await loadBrandContext(scope, "en", formatByKey(piece.format).platform, "write");
-  const prompt = [
-    `Change only the marked area: ${note.replace(/\s+/g, " ").trim().slice(0, 500)}`,
-    "Keep everything else exactly as it is: the same subject, style, light and colours.",
-    current.prompt ? `The picture: ${current.prompt.slice(0, 1500)}` : "",
-    ref.mode === "with_text" && current.params?.heading
-      ? `Any text in the area must read exactly as asked; elsewhere the text stays "${current.params.heading}".`
-      : "No words, letters or logos.",
-  ].filter(Boolean).join("\n");
-  const out = await editImage(scope, { context, prompt, source: obj.data, mask, shape, contentItemId });
-  const merged = await keepOutside(obj.data, out.bytes, box);
-  const id = await savePicture(scope, piece, merged, {
-    artboard, mode: ref.mode, shape, prompt: current.prompt ?? prompt, model: out.model,
-    avoid: current.params?.avoid, heading: current.params?.heading ?? null, parentId: current.id,
-  });
+  const words = ref.mode === "with_text" && current.params?.heading
+    ? `Any text in the area must read exactly as asked; elsewhere the text stays "${current.params.heading}".`
+    : "No words, letters or logos.";
+  const keep = (merged: Uint8Array, prompt: string, model: string, op: PictureOp) =>
+    savePicture(scope, piece, merged, {
+      artboard, mode: ref.mode, shape, prompt: current.prompt ?? prompt, model,
+      avoid: current.params?.avoid, heading: current.params?.heading ?? null, parentId: current.id, op,
+    });
+
+  let id: string;
+  if (kind === "erase") {
+    if (strokes.length === 0) throw new PictureError("Brush over what to erase first.");
+    const mask = await strokeMask(strokes, width, height);
+    const prompt = [
+      "Change only the marked area: remove what is there and fill it with the surrounding background or surface, continuing its texture, light and colours. Add nothing new.",
+      "Keep everything else exactly as it is: the same subject, style, light and colours.",
+      "No words, letters or logos.",
+    ].join("\n");
+    const out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "erase" });
+    const thinnest = Math.min(...strokes.map((s) => s.w)) * Math.min(width, height);
+    const feather = Math.max(1, Math.min(ERASE_FEATHER, Math.round(thinnest / 4)));
+    const merged = await keepInsideMask(bytes, out.bytes, mask, feather);
+    // Never save a result with the brush paint still in it.
+    const area = strokesBox(strokes, 0, width / height);
+    if (area && (await marksLeft(bytes, merged, area)) > MARKS_LEFT_MAX) {
+      throw new PictureError("The erase came back with the brush marks still in it, so it wasn't kept. Try again, or brush a little wider.");
+    }
+    id = await keep(merged, prompt, out.model, "erase");
+  } else {
+    // Markup: the area is the padded box around the marks; with nothing drawn, the box that came with it.
+    const marked = kind === "markup" && strokes.length > 0;
+    const box = (marked ? strokesBox(strokes, MARKUP_PAD, width / height) : null) ?? cleanBox(edit.box);
+    if (!box) throw new PictureError("Mark a bigger area to change.");
+    const mask = await regionMask(box, width, height);
+    const prompt = [
+      `Change only the marked area: ${edit.note.replace(/\s+/g, " ").trim().slice(0, 500)}`,
+      "Keep everything else exactly as it is: the same subject, style, light and colours.",
+      current.prompt ? `The picture: ${current.prompt.slice(0, 1500)}` : "",
+      words,
+    ].filter(Boolean).join("\n");
+    const marks = marked ? await strokesOverlay(strokes, width, height, MARKS_COLOUR) : undefined;
+    const out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "area", ...(marks ? { marks } : {}) });
+    let merged = await keepOutside(bytes, out.bytes, box);
+    let model = out.model;
+    // A model that copies the marks into the picture gets one more go without
+    // them (the note and the area still say what to do); never saved with marks.
+    if (marks && (await marksLeft(bytes, merged, box)) > MARKS_LEFT_MAX) {
+      const again = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "area" });
+      merged = await keepOutside(bytes, again.bytes, box);
+      model = again.model;
+      if ((await marksLeft(bytes, merged, box)) > MARKS_LEFT_MAX) {
+        throw new PictureError("The change came back with your marks still in it, so it wasn't kept. Try again.");
+      }
+    }
+    id = await keep(merged, prompt, model, marked ? "markup" : "area");
+  }
   await attach(scope, contentItemId, artboard, { id, mode: ref.mode });
+  return id;
+}
+
+// ---- Resize ------------------------------------------------------------------------------
+
+/** The flat colour the new area is filled with before the model draws it (and what the model is told to fill). */
+export const EXTEND_MATTE = "#00ff00";
+/** Above this (lib/visual/region driftOf) the model moved the original, and its answer is not kept. */
+export const DRIFT_LIMIT = 0.05;
+/** A crop smaller than this on its shorter side is refused: it would be drawn blurry. */
+const MIN_CROP_SIDE = 256;
+
+/** The canvas for a new shape: about a megapixel, both sides multiples of 16 (what the image models take). */
+export function canvasFor(ratio: number): { width: number; height: number } {
+  const h = Math.sqrt(1024 * 1024 / ratio);
+  const to16 = (n: number) => Math.max(256, Math.round(n / 16) * 16);
+  return { width: to16(h * ratio), height: to16(h) };
+}
+
+const shapeOfRatio = (ratio: number): ImageShape => (ratio > 1.15 ? "landscape" : ratio < 1 / 1.15 ? "portrait" : "square");
+
+export interface ResizePlan {
+  ratio: number;
+  /** Where the picture sits in the new frame, its height worked out from its own shape. */
+  place: Box;
+  /** The frame is fully covered: a crop, no model call. */
+  crop: boolean;
+  /** crop: the part of the picture that is kept, in its own pixels. */
+  cut: PixelRect;
+  /** extend: the canvas and where the picture sits on it, in pixels. */
+  canvas: { width: number; height: number };
+  placePx: PixelRect;
+}
+
+/**
+ * Work out a resize from what the board sent and the picture's own size.
+ * Refuses (PictureError) a shape or a placing that can't be used: outside
+ * RESIZE_RATIO, the picture outside the frame, a crop that is too small or
+ * changes nothing, or a frame the picture covers too little of.
+ */
+export function planResize(input: ResizeInput, width: number, height: number): ResizePlan {
+  const ratio = Number(input?.ratio);
+  if (!Number.isFinite(ratio) || ratio < RESIZE_RATIO.min || ratio > RESIZE_RATIO.max) throw new PictureError("That shape is too tall or too wide for a picture.");
+  const x = Number(input?.place?.x);
+  const y = Number(input?.place?.y);
+  const w = Number(input?.place?.w);
+  if (![x, y, w].every(Number.isFinite) || w < 0.05 || w > 8 || Math.abs(x) > 8 || Math.abs(y) > 8) throw new PictureError("Place the picture inside the new frame first.");
+  // The picture keeps its own shape: its height in the frame follows from its width there.
+  const h = (w * ratio) / (width / height);
+  const place = { x, y, w, h };
+  if (x >= 1 || y >= 1 || x + w <= 0 || y + h <= 0) throw new PictureError("Place the picture inside the new frame first.");
+
+  // Crop: the frame, in the picture's own pixels.
+  const cutLeft = Math.min(width - 1, Math.max(0, Math.round((-x / w) * width)));
+  const cutTop = Math.min(height - 1, Math.max(0, Math.round((-y / h) * height)));
+  const cut = {
+    left: cutLeft,
+    top: cutTop,
+    width: Math.max(1, Math.min(width - cutLeft, Math.round(width / w))),
+    height: Math.max(1, Math.min(height - cutTop, Math.round(height / h))),
+  };
+  const canvas = canvasFor(ratio);
+  const placePx = {
+    left: Math.round(x * canvas.width),
+    top: Math.round(y * canvas.height),
+    width: Math.max(1, Math.round(w * canvas.width)),
+    height: Math.max(1, Math.round(h * canvas.height)),
+  };
+  const crop = coversFrame(place);
+  if (crop) {
+    if (cut.width === width && cut.height === height) throw new PictureError("The picture already has that shape.");
+    if (Math.min(cut.width, cut.height) < MIN_CROP_SIDE) throw new PictureError("That crop is too small to stay sharp. Zoom out a little.");
+  } else {
+    const seen = visiblePart(placePx, canvas);
+    const cover = seen ? (seen.width * seen.height) / (canvas.width * canvas.height) : 0;
+    if (cover < MIN_EXTEND_COVER) throw new PictureError("Draw a new picture in this shape instead.");
+  }
+  return { ratio, place, crop, cut, canvas, placePx };
+}
+
+const NOT_WITH_TEXT = "This picture has its heading drawn in, so it can't be reshaped. Draw one without the heading first.";
+
+/** The checks a resize makes before any work, and its plan. */
+async function resizeOf(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput): Promise<{ now: CurrentPicture; plan: ResizePlan }> {
+  const now = await currentPicture(scope, contentItemId, artboard);
+  if (now.cutout) throw new PictureError(CUTOUT_LOCKED);
+  if (now.ref.mode === "with_text") throw new PictureError(NOT_WITH_TEXT);
+  return { now, plan: planResize(input, now.width, now.height) };
+}
+
+/**
+ * Whether this resize is a crop (done at once, free) or needs the image model
+ * to draw the extra area (queued, one picture). Refuses plainly what can't be
+ * done, before anything is queued.
+ */
+export async function resizeKind(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput): Promise<"crop" | "extend"> {
+  return (await resizeOf(scope, contentItemId, artboard, input)).plan.crop ? "crop" : "extend";
+}
+
+/**
+ * Give a visual's picture a new shape. Where the picture covers the whole new
+ * frame it is cropped (no model call, nothing logged, nothing charged).
+ * Otherwise it is set on a flat matte in the new frame, the image model fills
+ * the matte, and the original is pasted back over its place, so the only new
+ * pixels are the ones outside it. Returns the new version's id.
+ */
+export async function resizePicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput): Promise<string> {
+  return oneAtATime(scope, contentItemId, artboard, () => resizePictureNow(scope, contentItemId, artboard, input));
+}
+
+async function resizePictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput): Promise<string> {
+  const { now, plan } = await resizeOf(scope, contentItemId, artboard, input);
+  const { piece, ref, row: current, bytes } = now;
+  const shape = shapeOfRatio(plan.ratio);
+  const keep = (png: Uint8Array, model: string) =>
+    savePicture(scope, piece, png, {
+      artboard, mode: ref.mode, shape, prompt: current.prompt ?? "", model,
+      avoid: current.params?.avoid, heading: null, parentId: current.id, op: "resize",
+    });
+
+  let id: string;
+  if (plan.crop) {
+    const cut = new Uint8Array(await sharp(Buffer.from(bytes)).extract(plan.cut).png().toBuffer());
+    id = await keep(cut, "crop");
+  } else {
+    const { canvas, placePx } = plan;
+    const source = await placeOnCanvas(bytes, canvas, placePx, EXTEND_MATTE);
+    // The mask: the matte may change, the picture's own place may not.
+    const seen = visiblePart(placePx, canvas)!;
+    const raw = Buffer.alloc(canvas.width * canvas.height * 4);
+    for (let y = seen.top; y < seen.top + seen.height; y++) {
+      for (let x = seen.left; x < seen.left + seen.width; x++) raw[(y * canvas.width + x) * 4 + 3] = 255;
+    }
+    const mask = new Uint8Array(await sharp(raw, { raw: { width: canvas.width, height: canvas.height, channels: 4 } }).png().toBuffer());
+    const context = await loadBrandContext(scope, "en", formatByKey(piece.format).platform, "write");
+    const prompt = [
+      "Fill the solid green area so it continues the scene naturally. Do not change, move or resize anything that is not green.",
+      current.prompt ? `The picture: ${current.prompt.slice(0, 1500)}` : "",
+      "No text, letters or logos.",
+    ].filter(Boolean).join("\n");
+
+    let answer: Uint8Array | null = null;
+    let model = "";
+    let problem = "";
+    // One more go when the answer can't be used: the model moved the picture, or left the matte.
+    for (let attempt = 0; attempt < 2 && !answer; attempt++) {
+      const out = await editImage(scope, { context, prompt, source, mask, shape, contentItemId, intent: "extend" });
+      const sized = new Uint8Array(await sharp(Buffer.from(out.bytes)).resize(canvas.width, canvas.height, { fit: "fill" }).png().toBuffer());
+      model = out.model;
+      const drift = await driftOf(sized, bytes, placePx);
+      const matte = drift > DRIFT_LIMIT ? 0 : await matteLeft(sized, seen);
+      if (drift > DRIFT_LIMIT) problem = "The picture came back shifted, so it was not kept. Try again.";
+      else if (matte > 0.03) problem = "The new area came back empty, so it was not kept. Try again.";
+      else answer = sized;
+      if (!answer) {
+        // What was measured, so a refusal can be judged (stdout, never the picture).
+        logger.info("picture_extend_rejected", { tenantId: scope.tenantId, model, drift: Number(drift.toFixed(4)), matte: Number(matte.toFixed(4)), attempt });
+        if (process.env.NODE_ENV !== "production") {
+          await storage().put(tenantKey(scope.tenantId!, "debug", `extend-${Date.now()}-${attempt}.png`), sized, "image/png").catch(() => undefined);
+        }
+      }
+    }
+    if (!answer) throw new PictureError(problem);
+    id = await keep(await keepOriginal(answer, bytes, placePx), model);
+  }
+  await attach(scope, contentItemId, artboard, { id, mode: ref.mode });
+  return id;
+}
+
+/** The share of the new area (everything outside `kept`) that is still the matte's flat green. */
+async function matteLeft(png: Uint8Array, kept: PixelRect): Promise<number> {
+  const { data, info } = await sharp(Buffer.from(png)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  let area = 0;
+  let green = 0;
+  for (let y = 0; y < info.height; y += 2) {
+    for (let x = 0; x < info.width; x += 2) {
+      if (x >= kept.left && x < kept.left + kept.width && y >= kept.top && y < kept.top + kept.height) continue;
+      area++;
+      const i = (y * info.width + x) * 3;
+      if (data[i + 1] > 215 && data[i] < 70 && data[i + 2] < 70) green++;
+    }
+  }
+  return area ? green / area : 0;
+}
+
+// ---- Remove background ----------------------------------------------------------------------
+
+/**
+ * Remove the background of a visual's picture: the subject on nothing, a PNG
+ * with alpha, kept as a new version (the one before is still there, one Undo
+ * away). The visual then shows it on its own ground colour. Refused, plainly,
+ * where it would not work: the heading drawn into the picture, a picture that
+ * is already a cut-out, or one with no clear subject.
+ */
+export async function cutOutPicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<string> {
+  return oneAtATime(scope, contentItemId, artboard, () => cutOutPictureNow(scope, contentItemId, artboard));
+}
+
+/** The refusals a cut-out makes before any work (so the action can say no at once, without queueing). */
+export async function cutOutRefusal(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<string | null> {
+  const status = cutoutStatus();
+  if (!status.available) return status.reason;
+  try {
+    const now = await currentPicture(scope, contentItemId, artboard);
+    if (now.cutout) return "This picture already has its background removed.";
+    if (now.ref.mode === "with_text") return "This picture has its heading drawn in, so its background can't be removed. Draw one without the heading first.";
+    return null;
+  } catch (e) {
+    if (e instanceof PictureError) return e.message;
+    throw e;
+  }
+}
+
+/**
+ * A cut-out cropped to its subject: the box around every pixel that is not
+ * (almost) transparent, grown by `pad` of the subject's longer side and kept
+ * inside the picture. A picture with nothing solid comes back as it was.
+ */
+export async function trimToSubject(png: Uint8Array, pad = 0.04): Promise<Uint8Array> {
+  const img = sharp(Buffer.from(png)).ensureAlpha();
+  const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  let x0 = width, y0 = height, x1 = -1, y1 = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * channels + channels - 1] > 16) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return png;
+  const p = Math.round(Math.max(x1 - x0, y1 - y0) * pad);
+  const left = Math.max(0, x0 - p), top = Math.max(0, y0 - p);
+  const right = Math.min(width, x1 + 1 + p), bottom = Math.min(height, y1 + 1 + p);
+  if (left === 0 && top === 0 && right === width && bottom === height) return png;
+  const out = await sharp(Buffer.from(png)).extract({ left, top, width: right - left, height: bottom - top }).png().toBuffer();
+  return new Uint8Array(out);
+}
+
+async function cutOutPictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<string> {
+  const refusal = await cutOutRefusal(scope, contentItemId, artboard);
+  if (refusal) throw new PictureError(refusal);
+  const { piece, ref, row: current, bytes } = await currentPicture(scope, contentItemId, artboard);
+  const out = await cutoutImage(scope, { source: bytes, contentItemId });
+  if (!clearSubject(out.coverage)) throw new PictureError("There's no clear subject to cut out in this picture.");
+  // Only the subject is kept (with a little room): the empty frame around it
+  // would make it small on the visual (2026-11-18: the scales filled a fifth of their space).
+  const trimmed = await trimToSubject(out.bytes);
+  const id = await savePicture(scope, piece, trimmed, {
+    artboard, mode: ref.mode, shape: current.params?.shape ?? shapeFor(artboard, piece.format), prompt: current.prompt ?? "", model: out.model,
+    avoid: current.params?.avoid, heading: null, parentId: current.id, op: "cutout", cutout: true,
+  });
+  await attach(scope, contentItemId, artboard, { id, mode: ref.mode, cutout: true });
   return id;
 }
 
@@ -337,7 +717,8 @@ export async function previousPicture(scope: ProjectScope, contentItemId: string
     await c.query("UPDATE image_assets SET is_current=false WHERE id=$1", [current.id]);
     await c.query("UPDATE image_assets SET is_current=true WHERE id=$1", [parent.id]);
   });
-  await attach(scope, contentItemId, artboard, { id: parent.id, mode: ref.mode });
+  // The version before may be a different kind of picture (the one a cut-out was made from is not a cut-out).
+  await attach(scope, contentItemId, artboard, { id: parent.id, mode: ref.mode, cutout: parent.params?.cutout === true });
   return true;
 }
 
@@ -392,7 +773,7 @@ export async function selectPictureVersion(scope: ProjectScope, contentItemId: s
     await c.query("UPDATE image_assets SET is_current=false WHERE content_item_id=$1 AND project_id=$2 AND kind='picture' AND params->>'artboard'=$3", [contentItemId, scope.projectId, artboard]);
     await c.query("UPDATE image_assets SET is_current=true WHERE id=$1", [pictureId]);
   });
-  await attach(scope, contentItemId, artboard, { id: pictureId, mode: row.params?.mode === "with_text" ? "with_text" : "live_text" });
+  await attach(scope, contentItemId, artboard, { id: pictureId, mode: row.params?.mode === "with_text" ? "with_text" : "live_text", cutout: row.params?.cutout === true });
   return true;
 }
 
@@ -424,7 +805,16 @@ export interface PictureVersion {
   createdAt: string;
   /** Same-origin signed link (8 hours). */
   url: string;
+  /** How this version came to be (lib/visual/picture-tools PICTURE_OP_LABEL). */
+  op: PictureOp;
+  /** The file's size in pixels (0 when it was never recorded). */
+  width: number;
+  height: number;
+  /** The background has been removed: a PNG with alpha. */
+  cutout: boolean;
 }
+
+const PICTURE_OPS: readonly PictureOp[] = ["draw", "area", "markup", "erase", "resize", "cutout"];
 
 /** How many versions of one visual's picture the board lists (newest first). */
 export const MAX_VERSIONS_SHOWN = 12;
@@ -458,5 +848,10 @@ export async function pictureVersions(scope: ProjectScope): Promise<PictureVersi
       parentId: r.parent_id,
       createdAt: new Date(r.created_at).toISOString(),
       url: appSignedUrl(r.storage_key, 8 * 60 * 60),
+      // Versions made before the op was recorded: a version made from another was an area change.
+      op: PICTURE_OPS.includes(r.params?.op as PictureOp) ? (r.params!.op as PictureOp) : r.parent_id ? "area" : "draw",
+      width: r.width ?? 0,
+      height: r.height ?? 0,
+      cutout: r.params?.cutout === true,
     }));
 }

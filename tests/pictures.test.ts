@@ -10,17 +10,23 @@
  *   - another workspace can't draw on, redraw or comment on A's visuals (INV-1)
  */
 import "dotenv/config";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import sharp from "sharp";
 import { appPool } from "@/db/pool";
 import { createProject, unlockStage, type ProjectScope } from "@/lib/data/projects";
 import { generateContent, listContent, patchContent } from "@/lib/data/content";
 import { deleteVisuals, generateVisuals, listVisuals } from "@/lib/data/pipeline";
-import { colourLines, designOf, drawPicture, pictureInstructions, pictureLinks, pictureVersions, previousPicture, redrawArea, selectPictureVersion, shapeFor } from "@/lib/data/pictures";
-import { addComment, applyTemplateComment, failedComment, getComment } from "@/lib/data/visual-comments";
+import {
+  colourLines, cutOutPicture, cutOutRefusal, CUTOUT_LOCKED, designOf, drawPicture, pictureInstructions, pictureLinks, pictureVersions, previousPicture, redrawArea,
+  resizeKind, resizePicture, selectPictureVersion, shapeFor,
+} from "@/lib/data/pictures";
+import { addComment, addPictureComments, applyTemplateComment, failedComment, getComment, setCommentsJob } from "@/lib/data/visual-comments";
+import { mockImageProvider } from "@/lib/ai/providers/mock";
+import { tenantKey } from "@/lib/storage";
 import { approveAgain, revertCopy } from "@/lib/data/visual-copy";
-import { cleanBox, keepOutside, regionMask } from "@/lib/visual/region";
+import { cleanBox, keepOutside, regionMask, strokeMask } from "@/lib/visual/region";
 import { openaiImageProvider } from "@/lib/ai/providers/openai-image";
 import { selectImageProvider } from "@/lib/ai";
 import { ProviderError } from "@/lib/ai/errors";
@@ -469,5 +475,389 @@ describe("the picture brief's rules (pure)", () => {
       "This visual's colours (hex): ground #F6F1E9, ink #141414, accent #1F4D3A.",
     ]);
     expect(colourLines([], null)).toEqual(["Brand palette: none set, so the house colours stand in."]);
+  });
+});
+
+// ---- the picture tools (2026-11-18) -------------------------------------------------------
+
+/** Put a picture of our own on a visual, as its current version (a known picture makes the checks exact). */
+async function plant(s: ProjectScope, item: string, artboard: "post" | "quote", png: Uint8Array, mode: "live_text" | "with_text" = "live_text") {
+  const key = tenantKey(s.tenantId!, "pictures", `${randomUUID()}.png`);
+  await storage().put(key, png, "image/png");
+  const { width, height } = await sharp(Buffer.from(png)).metadata();
+  const [row] = await admin<{ id: string }>(
+    `INSERT INTO image_assets (tenant_id, project_id, content_item_id, kind, prompt, model, params, aspect_ratio, storage_key, width, height, status, is_current)
+     VALUES ($1,$2,$3,'picture','A planted test picture','test',$4,$5,$6,$7,$8,'ready',false) RETURNING id`,
+    [s.tenantId, s.projectId, item, JSON.stringify({ artboard, mode, shape: "portrait", heading: mode === "with_text" ? "A heading" : null, op: "draw" }), `${width}:${height}`, key, width, height],
+  );
+  expect(await selectPictureVersion(s, item, artboard, row.id)).toBe(true);
+  return row.id;
+}
+
+const pictureRowOf = async (id: string) =>
+  (await admin<{ parent_id: string | null; params: { op?: string; cutout?: boolean; shape?: string }; storage_key: string; width: number; height: number }>(
+    "SELECT parent_id, params, storage_key, width, height FROM image_assets WHERE id=$1", [id],
+  ))[0];
+const fileOf = async (id: string) => pixels((await storage().get((await pictureRowOf(id)).storage_key))!.data);
+const imageLogs = async (s: ProjectScope) =>
+  (await admin<{ n: number }>("SELECT count(*)::int AS n FROM generation_logs WHERE tenant_id=$1 AND kind='image'", [s.tenantId]))[0].n;
+const setImageCap = (s: ProjectScope, cap: number | null) =>
+  admin("INSERT INTO tenant_usage_caps (tenant_id, monthly_image_hard) VALUES ($1, $2) ON CONFLICT (tenant_id) DO UPDATE SET monthly_image_hard = $2", [s.tenantId, cap]);
+
+/** What sendPictureCommentsAction does after it has checked the session: keep the pins, queue ONE job, point the pins at it. */
+async function send(s: ProjectScope, visualId: string, pins: unknown[]) {
+  const { comments } = await addPictureComments(s, visualId, pins);
+  const ids = comments.map((c) => c.id);
+  const jobId = await enqueueJob(s, "picture_edit", { projectId: s.projectId, commentIds: ids, commentId: ids[0] }, { label: `Changing the picture (${ids.length} changes)`, maxAttempts: 3 });
+  await setCommentsJob(s, ids, jobId);
+  return { ids, jobId };
+}
+const jobsOf = async (s: ProjectScope) => (await admin<{ n: number }>("SELECT count(*)::int AS n FROM jobs WHERE tenant_id=$1 AND kind='picture_edit'", [s.tenantId]))[0].n;
+
+const PIN_BOX = { x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
+const ERASE_STROKES = [{ w: 0.06, pts: [[0.3, 0.8], [0.6, 0.8]] as [number, number][] }];
+const threePins = () => [
+  { kind: "comment", box: PIN_BOX, area: { x: 0.05, y: 0.05, w: 0.2, h: 0.15 }, note: "a plant here" },
+  { kind: "markup", box: PIN_BOX, area: null, strokes: [{ w: 0.008, pts: [[0.6, 0.3], [0.8, 0.35], [0.7, 0.45]] }], note: "make what I circled warmer" },
+  { kind: "erase", box: PIN_BOX, area: null, strokes: ERASE_STROKES, note: "" },
+];
+const SUBJECT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#b0c4de"/><rect x="100" y="125" width="200" height="250" fill="#8b0000"/></svg>';
+const subjectPng = async () => new Uint8Array(await sharp(Buffer.from(SUBJECT_SVG)).png().toBuffer());
+
+describe("picture tools: several pins, one Send", () => {
+  it("a 3-pin Send is ONE job that applies the pins in order, each from the one before, and keeps each pin's area on its row", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    const start = (await designOf(A, itemA))!.pictures.post!.id;
+    const jobsBefore = await jobsOf(A);
+    const logsBefore = await imageLogs(A);
+    const { ids, jobId } = await send(A, v.id, threePins());
+    expect(await jobsOf(A)).toBe(jobsBefore + 1);
+    // Stored as asked: the kind, the picture's own area, the strokes; Erase writes its own note.
+    const pins = await Promise.all(ids.map((id) => getComment(A, id)));
+    expect(pins.map((p) => [p!.kind, p!.status, p!.jobId])).toEqual([["comment", "working", jobId], ["markup", "working", jobId], ["erase", "working", jobId]]);
+    expect(pins[0]!.area).toEqual({ x: expect.closeTo(0.05, 5), y: expect.closeTo(0.05, 5), w: expect.closeTo(0.2, 5), h: expect.closeTo(0.15, 5) });
+    expect(pins[1]!.strokes).toHaveLength(1);
+    expect(pins[2]!.note).toBe("Erase what is brushed over");
+
+    const job = await settle(A, jobId);
+    expect(job?.status).toBe("succeeded");
+    const done = await Promise.all(ids.map((id) => getComment(A, id)));
+    expect(done.map((p) => p!.status)).toEqual(["applied", "applied", "applied"]);
+    const made = done.map((p) => p!.resultPictureId!);
+    // A chain: start <- comment <- markup <- erase, and the visual shows the last.
+    const rows = await Promise.all(made.map(pictureRowOf));
+    expect(rows.map((r) => r.parent_id)).toEqual([start, made[0], made[1]]);
+    expect(rows.map((r) => r.params.op)).toEqual(["area", "markup", "erase"]);
+    expect((job!.result as { pictureId: string }).pictureId).toBe(made[2]);
+    expect((await designOf(A, itemA))!.pictures.post!.id).toBe(made[2]);
+    // One picture charge per pin.
+    expect(await imageLogs(A)).toBe(logsBefore + 3);
+    // The versions strip can say how each came to be.
+    expect((await pictureVersions(A)).find((x) => x.id === made[1])).toMatchObject({ op: "markup", cutout: false, width: 1024, height: 1536 });
+
+    // Erase changed only brushed pixels.
+    const a = await fileOf(made[1]);
+    const b = await fileOf(made[2]);
+    const mask = await pixels(await strokeMask(ERASE_STROKES, a.width, a.height));
+    let outside = 0;
+    let inside = 0;
+    for (let i = 0; i < a.width * a.height; i++) {
+      const differs = [0, 1, 2, 3].some((c) => a.data[i * 4 + c] !== b.data[i * 4 + c]);
+      if (differs && mask.data[i * 4 + 3] >= 128) outside++;
+      if (differs && mask.data[i * 4 + 3] < 128) inside++;
+    }
+    expect(outside).toBe(0);
+    expect(inside).toBeGreaterThan(0);
+  });
+
+  it("a slice that fails part way carries on from where it stopped: done pins are never redone", { timeout: 90_000 }, async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    const real = mockImageProvider.edit.bind(mockImageProvider);
+    let calls = 0;
+    // The service is down for the second pin (both of the facade's own tries), then back.
+    const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(async (req, model) => {
+      calls++;
+      if (calls === 2 || calls === 3) throw new ProviderError("server", "The image service is down.", true);
+      return real(req, model);
+    });
+    try {
+      const { ids, jobId } = await send(A, v.id, threePins());
+      for (let i = 0; i < 6; i++) {
+        await drainJobs({ budgetMs: 20_000, onlyTenants: tenants });
+        const j = await getJob(A, jobId);
+        if (j && j.attempts >= 1) break;
+      }
+      const mid = await getJob(A, jobId);
+      expect(mid?.status).toBe("queued"); // back in the queue, with backoff
+      expect(mid?.attempts).toBe(1);
+      expect(Object.keys((mid!.progress as { done: Record<string, string> }).done)).toEqual([ids[0]]);
+      const first = (await getComment(A, ids[0]))!;
+      expect(first.status).toBe("applied");
+      expect((await getComment(A, ids[1]))!.status).toBe("working");
+
+      // The backoff has passed: it carries on with pin 2, not pin 1 again.
+      await admin("UPDATE jobs SET run_after = now() WHERE id=$1", [jobId]);
+      const callsBefore = calls;
+      expect((await settle(A, jobId))?.status).toBe("succeeded");
+      expect(calls - callsBefore).toBe(2);
+      const after = await Promise.all(ids.map((id) => getComment(A, id)));
+      expect(after.map((p) => p!.status)).toEqual(["applied", "applied", "applied"]);
+      expect(after[0]!.resultPictureId).toBe(first.resultPictureId);
+      expect((await pictureRowOf(after[1]!.resultPictureId!)).parent_id).toBe(first.resultPictureId);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("a pin that can't be done fails on its own and the rest go through; a job that stops for good fails every pin still waiting", { timeout: 90_000 }, async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    // A pin whose row is gone before it runs: its own failure, the other carries on.
+    const own = await send(A, v.id, threePins().slice(0, 2));
+    await admin("DELETE FROM visual_comments WHERE id=$1", [own.ids[0]]);
+    const j1 = await settle(A, own.jobId);
+    expect(j1?.status).toBe("succeeded");
+    expect(j1!.result).toMatchObject({ changed: 1, failed: 1 });
+    expect((await getComment(A, own.ids[1]))!.status).toBe("applied");
+
+    // The service refuses the key on the second pin: no retry can fix that, so the job stops.
+    const real = mockImageProvider.edit.bind(mockImageProvider);
+    let calls = 0;
+    const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(async (req, model) => {
+      calls++;
+      if (calls >= 2) throw new ProviderError("auth", "Bad key.");
+      return real(req, model);
+    });
+    try {
+      const { ids, jobId } = await send(A, v.id, threePins());
+      expect((await settle(A, jobId))?.status).toBe("failed");
+      const pins = await Promise.all(ids.map((id) => getComment(A, id)));
+      expect(pins.map((p) => p!.status)).toEqual(["applied", "failed", "failed"]);
+      expect(pins[1]!.result).toMatch(/couldn't sign in/);
+      expect(pins[2]!.result).toBe(pins[1]!.result);
+      expect(pins[0]!.result).toBe("Redrew the marked area.");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("refuses a Send with no pins, too many, a bad pin (keeping none of it), or from another workspace", async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    const count = async () => (await admin<{ n: number }>("SELECT count(*)::int AS n FROM visual_comments WHERE tenant_id=$1", [A.tenantId]))[0].n;
+    const before = await count();
+    await expect(addPictureComments(A, v.id, [])).rejects.toThrow(/at least one/);
+    await expect(addPictureComments(A, v.id, Array.from({ length: 9 }, () => threePins()[0]))).rejects.toThrow(/more than 8/);
+    await expect(addPictureComments(A, v.id, [threePins()[0], { kind: "markup", box: PIN_BOX, area: null, strokes: [], note: "x" }])).rejects.toThrow(/Draw on the picture/);
+    await expect(addPictureComments(A, v.id, [{ kind: "erase", box: PIN_BOX, area: null, note: "" }])).rejects.toThrow(/Brush over/);
+    await expect(addPictureComments(A, v.id, [{ kind: "comment", box: PIN_BOX, area: null, note: "  " }])).rejects.toThrow(/Say what/);
+    await expect(addPictureComments(A, v.id, [{ kind: "paint", box: PIN_BOX, note: "x" }])).rejects.toThrow(/isn't a change/);
+    await expect(addPictureComments({ ...B, projectId: A.projectId }, v.id, threePins())).rejects.toThrow(/isn't in this project/);
+    await expect(addPictureComments(B, v.id, threePins())).rejects.toThrow(/isn't in this project/);
+    // Marks and erasing are only for the picture.
+    await expect(addComment(A, { visualId: v.id, target: "headline", box: PIN_BOX, note: "x", kind: "erase", strokes: ERASE_STROKES })).rejects.toThrow(/for the picture/);
+    expect(await count()).toBe(before);
+    // The database says the same, whatever the application does (migration 0025).
+    await expect(admin(
+      "INSERT INTO visual_comments (tenant_id, content_item_id, visual_id, target, box_x, box_y, box_w, box_h, note, kind) VALUES ($1,$2,$3,'headline',0.1,0.1,0.2,0.2,'x','erase')",
+      [A.tenantId, itemA, v.id],
+    )).rejects.toThrow(/visual_comments_kind_target_check/);
+  });
+
+  it("Try again redraws the area kept on the pin's row, not the pin's box on the visual", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    const area = { x: 0.05, y: 0.05, w: 0.2, h: 0.15 }; // on the picture
+    const box = { x: 0.6, y: 0.6, w: 0.3, h: 0.3 }; // where the pin shows on the visual: elsewhere
+    const c = await addComment(A, { visualId: v.id, target: "picture", box, area, note: "warmer here" });
+    expect(c.area).toEqual({ x: expect.closeTo(0.05, 5), y: expect.closeTo(0.05, 5), w: expect.closeTo(0.2, 5), h: expect.closeTo(0.15, 5) });
+    // It fails the first time (the cap), and the area is nowhere but on the row.
+    await setImageCap(A, 0);
+    const j1 = await enqueueJob(A, "picture_edit", { projectId: A.projectId, commentIds: [c.id] }, { label: "Changing the picture" });
+    expect((await settle(A, j1))?.status).toBe("failed");
+    expect((await getComment(A, c.id))?.status).toBe("failed");
+    await setImageCap(A, null);
+
+    // Try again queues the pin by its id only (retryCommentAction): the area comes from the row.
+    const again = await failedComment(A, c.id);
+    const before = (await designOf(A, itemA))!.pictures.post!.id;
+    const j2 = await enqueueJob(A, "picture_edit", { projectId: A.projectId, commentIds: [again.id], commentId: again.id }, { label: "Changing the picture" });
+    expect((await settle(A, j2))?.status).toBe("succeeded");
+    const was = await fileOf(before);
+    const now = await fileOf((await getComment(A, c.id))!.resultPictureId!);
+    const changed = (b: typeof box) => {
+      let n = 0;
+      for (let y = Math.floor(b.y * was.height); y < (b.y + b.h) * was.height; y += 4) {
+        for (let x = Math.floor(b.x * was.width); x < (b.x + b.w) * was.width; x += 4) {
+          const i = (y * was.width + x) * 4;
+          if (was.data[i] !== now.data[i] || was.data[i + 1] !== now.data[i + 1] || was.data[i + 2] !== now.data[i + 2]) n++;
+        }
+      }
+      return n;
+    };
+    expect(changed(area)).toBeGreaterThan(0);
+    expect(changed(box)).toBe(0);
+  });
+});
+
+describe("picture tools: Resize", () => {
+  it("a covered frame is a crop: no model call, no generation log, the new shape, a version marked resized", async () => {
+    if (!dbReachable) return;
+    const start = (await designOf(A, itemA))!.pictures.post!.id; // 1024 x 1536 from the stand-in
+    const square = { ratio: 1, place: { x: 0, y: -0.25, w: 1, h: 1.5 } };
+    expect(await resizeKind(A, itemA, "post", square)).toBe("crop");
+    const logs = await imageLogs(A);
+    const id = await resizePicture(A, itemA, "post", square);
+    expect(await imageLogs(A)).toBe(logs);
+    const row = await pictureRowOf(id);
+    expect([row.width, row.height, row.parent_id, row.params.op, row.params.shape]).toEqual([1024, 1024, start, "resize", "square"]);
+    // The middle of the picture, exactly.
+    const was = await fileOf(start);
+    const now = await fileOf(id);
+    const at = (p: typeof was, x: number, y: number) => [...p.data.subarray((y * p.width + x) * 4, (y * p.width + x) * 4 + 3)];
+    expect(at(now, 500, 0)).toEqual(at(was, 500, 256));
+    expect(at(now, 1023, 1023)).toEqual(at(was, 1023, 1279));
+    expect(await previousPicture(A, itemA, "post")).toBe(true);
+  });
+
+  it("a bigger frame is drawn by the model and logged once; the original comes back pixel for pixel in its place", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const start = (await designOf(A, itemA))!.pictures.post!.id;
+    const wide = { ratio: 1, place: { x: (1 - 1024 / 1536) / 2, y: 0, w: 1024 / 1536, h: 1 } };
+    expect(await resizeKind(A, itemA, "post", wide)).toBe("extend");
+    const logs = await imageLogs(A);
+    const id = await resizePicture(A, itemA, "post", wide);
+    expect(await imageLogs(A)).toBe(logs + 1);
+    const row = await pictureRowOf(id);
+    expect([row.width % 16, row.height % 16, row.width]).toEqual([0, 0, row.height]);
+    expect([row.parent_id, row.params.op, row.params.shape]).toEqual([start, "resize", "square"]);
+    const now = await fileOf(id);
+    // No matte green left anywhere.
+    let green = 0;
+    for (let i = 0; i < now.data.length; i += 16) if (now.data[i + 1] > 215 && now.data[i] < 70 && now.data[i + 2] < 70) green++;
+    expect(green).toBe(0);
+    // Inside its place (past the soft edge), the original at that size, exactly.
+    const left = Math.round(wide.place.x * row.width);
+    const placedW = Math.round(wide.place.w * row.width);
+    const src = (await storage().get((await pictureRowOf(start)).storage_key))!.data;
+    const ref = await pixels(new Uint8Array(await sharp(Buffer.from(src)).removeAlpha().resize(placedW, row.height, { fit: "fill" }).png().toBuffer()));
+    let moved = 0;
+    for (let y = 0; y < row.height; y += 9) {
+      for (let x = 20; x < placedW - 20; x += 9) {
+        const a = (y * now.width + left + x) * 4;
+        const b = (y * ref.width + x) * 4;
+        if (now.data[a] !== ref.data[b] || now.data[a + 1] !== ref.data[b + 1] || now.data[a + 2] !== ref.data[b + 2]) moved++;
+      }
+    }
+    expect(moved).toBe(0);
+    expect(await previousPicture(A, itemA, "post")).toBe(true);
+  });
+
+  it("an answer that moved the picture is tried once more, then refused plainly", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const before = (await designOf(A, itemA))!.pictures.post!.id;
+    let calls = 0;
+    // The service hands back a scene slid sideways: the original's place no longer holds the original.
+    const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(async (req, model) => {
+      calls++;
+      const { width, height } = await sharp(Buffer.from(req.source)).metadata();
+      const slid = await sharp(Buffer.from(req.source)).extend({ left: Math.round(width! / 4), background: "#7f7f7f" }).extract({ left: 0, top: 0, width: width!, height: height! }).png().toBuffer();
+      return { bytes: new Uint8Array(slid), mime: "image/png", model, width, height };
+    });
+    try {
+      const wide = { ratio: 1, place: { x: (1 - 1024 / 1536) / 2, y: 0, w: 1024 / 1536, h: 1 } };
+      await expect(resizePicture(A, itemA, "post", wide)).rejects.toThrow("The picture came back shifted, so it was not kept. Try again.");
+      expect(calls).toBe(2);
+      expect((await designOf(A, itemA))!.pictures.post!.id).toBe(before);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("refuses a picture with its heading drawn in, and a shape that leaves too little of the picture", async () => {
+    if (!dbReachable) return;
+    await expect(resizeKind(A, itemA, "quote", { ratio: 1.5, place: { x: 0, y: 0, w: 1, h: 1 } })).rejects.toThrow(/heading drawn in/);
+    await expect(resizeKind(A, itemA, "post", { ratio: 2.5, place: { x: 0.4, y: 0, w: 0.27, h: 1 } })).rejects.toThrow("Draw a new picture in this shape instead.");
+    await expect(resizeKind({ ...B, projectId: A.projectId }, itemA, "post", { ratio: 1, place: { x: 0, y: -0.25, w: 1, h: 1 } })).rejects.toThrow();
+  });
+});
+
+describe("picture tools: Remove background", () => {
+  it("cuts the subject out as a new version with alpha, logged as no picture, and the visual knows it is a cut-out", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const planted = await plant(A, itemA, "post", await subjectPng());
+    expect(await cutOutRefusal(A, itemA, "post")).toBeNull();
+    const jobId = await enqueueJob(A, "picture_cutout", { projectId: A.projectId, contentItemId: itemA, artboard: "post" }, { label: "Removing the background" });
+    const job = await settle(A, jobId);
+    expect(job?.status).toBe("succeeded");
+    const id = (job!.result as { pictureId: string }).pictureId;
+    const row = await pictureRowOf(id);
+    expect([row.parent_id, row.params.op, row.params.cutout]).toEqual([planted, "cutout", true]);
+    const bytes = (await storage().get(row.storage_key))!.data;
+    const meta = await sharp(Buffer.from(bytes)).metadata();
+    // Kept to its subject (trimToSubject): smaller than the 400 x 500 picture, solid in the middle.
+    expect([meta.format, meta.hasAlpha]).toEqual(["png", true]);
+    expect(meta.width! < 400 && meta.height! < 500).toBe(true);
+    const px = await pixels(bytes);
+    const mid = (Math.floor(meta.height! / 2) * meta.width! + Math.floor(meta.width! / 2)) * 4 + 3;
+    expect(px.data[mid]).toBe(255);
+    expect((await designOf(A, itemA))!.pictures.post).toEqual({ id, mode: "live_text", cutout: true });
+    const [log] = await admin<{ model: string; image_count: number; status: string }>(
+      "SELECT model, image_count, status FROM generation_logs WHERE tenant_id=$1 AND kind='image' ORDER BY created_at DESC LIMIT 1", [A.tenantId],
+    );
+    expect(log).toEqual({ model: "cutout:mock", image_count: 0, status: "ok" });
+    expect((await pictureVersions(A)).find((x) => x.id === id)).toMatchObject({ op: "cutout", cutout: true });
+  });
+
+  it("a cut-out takes no further changes until the version before is put back", async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    expect(await cutOutRefusal(A, itemA, "post")).toBe("This picture already has its background removed.");
+    await expect(redrawArea(A, itemA, "post", { box: PIN_BOX, note: "x" })).rejects.toThrow(CUTOUT_LOCKED);
+    await expect(redrawArea(A, itemA, "post", PIN_BOX, "x")).rejects.toThrow(CUTOUT_LOCKED);
+    await expect(redrawArea(A, itemA, "post", { box: PIN_BOX, note: "", kind: "erase", strokes: ERASE_STROKES })).rejects.toThrow(CUTOUT_LOCKED);
+    await expect(resizePicture(A, itemA, "post", { ratio: 1, place: { x: 0, y: -0.125, w: 1, h: 1 } })).rejects.toThrow(CUTOUT_LOCKED);
+    await expect(addPictureComments(A, v.id, threePins())).rejects.toThrow(CUTOUT_LOCKED);
+    await expect(addComment(A, { visualId: v.id, target: "picture", box: PIN_BOX, note: "x" })).rejects.toThrow(CUTOUT_LOCKED);
+    // Undo goes back to the picture it was cut from, which is not a cut-out.
+    expect(await previousPicture(A, itemA, "post")).toBe(true);
+    expect((await designOf(A, itemA))!.pictures.post!.cutout).toBeUndefined();
+    expect(await cutOutRefusal(A, itemA, "post")).toBeNull();
+  });
+
+  it("refuses a picture with its heading drawn in, and one with no clear subject (nothing is kept)", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    expect(await cutOutRefusal(A, itemA, "quote")).toMatch(/heading drawn in/);
+    await expect(cutOutPicture(A, itemA, "quote")).rejects.toThrow(/heading drawn in/);
+    const flat = await plant(A, itemA, "post", new Uint8Array(await sharp({ create: { width: 300, height: 300, channels: 3, background: "#b0c4de" } }).png().toBuffer()));
+    await expect(cutOutPicture(A, itemA, "post")).rejects.toThrow("There's no clear subject to cut out in this picture.");
+    expect((await designOf(A, itemA))!.pictures.post!.id).toBe(flat);
+    await expect(cutOutPicture({ ...B, projectId: A.projectId }, itemA, "post")).rejects.toThrow();
+  });
+});
+
+describe("picture tools: the image cap stops each tool", () => {
+  it("at a cap of 0 a Send, an extension and a cut-out all stop with the plain reason; a crop is free and still works", { timeout: 90_000 }, async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    await plant(A, itemA, "post", await subjectPng());
+    await setImageCap(A, 0);
+    try {
+      const { ids, jobId } = await send(A, v.id, threePins());
+      expect((await settle(A, jobId))?.status).toBe("failed");
+      for (const id of ids) {
+        const pin = await getComment(A, id);
+        expect(pin?.status).toBe("failed");
+        expect(pin?.result).toMatch(/switched off/);
+      }
+      await expect(resizePicture(A, itemA, "post", { ratio: 1.6, place: { x: 0.25, y: 0, w: 0.5, h: 1 } })).rejects.toMatchObject({ name: "UsageCapError" });
+      await expect(cutOutPicture(A, itemA, "post")).rejects.toMatchObject({ name: "UsageCapError" });
+      const crop = await resizePicture(A, itemA, "post", { ratio: 1, place: { x: 0, y: -0.125, w: 1, h: 1 } });
+      expect((await pictureRowOf(crop)).params.op).toBe("resize");
+    } finally {
+      await setImageCap(A, null);
+    }
   });
 });

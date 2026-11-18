@@ -7,15 +7,44 @@
  * the bottom centre of the visible canvas.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, MessageSquare, PanelRight } from "lucide-react";
+import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, PanelRight } from "lucide-react";
 import { usePanels, useRightToggle } from "@/components/project-panels";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
 const ZOOMS = [25, 50, 75, 100, 150];
 
+/** One tool a board adds to the strip, beside Select and Hand. */
+export type CanvasTool = {
+  id: string;
+  label: string;
+  /** The key that switches it on and off (one letter). */
+  key: string;
+  icon: ReactNode;
+  /** Why it can't be used right now: the tool shows disabled, with this in its tip. */
+  off?: string;
+};
+
+/**
+ * A board's own tools in the strip. One is on at a time (`active`); choosing
+ * Select or Hand, pressing V, H or Escape, or the tool's own key again leaves
+ * it. `line` is a second row INSIDE the strip, above the buttons: what the
+ * tool wants next, its counts and its Send and Close. Nothing floats.
+ */
+export type CanvasTools = {
+  items: CanvasTool[];
+  active: string | null;
+  onChange: (id: string | null) => void;
+  line?: ReactNode;
+  /** A tool that is `off` was pressed (a tap has no hover to show the tip): say why. */
+  onOff?: (tool: CanvasTool) => void;
+};
+
+/** Keys go to whatever is being typed in, and to an open dialog, before any tool. */
+const elsewhere = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.("input, textarea, [contenteditable], [role='dialog']");
+
 export function Canvas({
-  children, device, onDevice, initialZoom, toolbarExtra, onBackground, comment,
+  children, device, onDevice, initialZoom, toolbarExtra, onBackground, tools,
 }: {
   children: ReactNode;
   device?: Device;
@@ -24,11 +53,8 @@ export function Canvas({
   toolbarExtra?: ReactNode;
   /** A plain click on empty canvas (clears the selection). */
   onBackground?: () => void;
-  /**
-   * A Comment tool in the strip, beside Select and Hand (key C). Choosing
-   * Select or Hand leaves it; Escape too.
-   */
-  comment?: { on: boolean; onChange: (on: boolean) => void };
+  /** The board's own tools (Comment, Markup and so on), each with a key. */
+  tools?: CanvasTools;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -110,20 +136,26 @@ export function Canvas({
     return () => ro.disconnect();
   }, [fit, initialZoom]);
 
-  // The comment tool changes every render (a new object); the key handler reads it through a ref.
-  const commentRef = useRef(comment);
-  useEffect(() => { commentRef.current = comment; }, [comment]);
+  // The tools change every render (a new object); the key handler reads them through a ref.
+  const toolsRef = useRef(tools);
+  useEffect(() => { toolsRef.current = tools; }, [tools]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      const comment = commentRef.current;
-      const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [contenteditable]")) return;
-      if (e.code === "Space") { setSpace(true); e.preventDefault(); }
-      if (e.key === "h") { setTool("hand"); comment?.onChange(false); }
-      if (e.key === "v") { setTool("select"); comment?.onChange(false); }
-      if (e.key === "c" && !e.metaKey && !e.ctrlKey && comment) comment.onChange(!comment.on);
-      if (e.key === "Escape" && comment?.on) comment.onChange(false);
+      const tools = toolsRef.current;
+      if (elsewhere(e.target)) return;
+      // Space pans, except on a focused control, where it presses that control (a strip button, a slider).
+      if (e.code === "Space" && !(e.target as HTMLElement | null)?.closest?.("button, a, [role='slider'], [role='radio'], summary")) { setSpace(true); e.preventDefault(); }
+      // A tool's key, and V and H, are plain keys: with Ctrl, Cmd or Alt they are someone else's shortcut.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === "h") { setTool("hand"); tools?.onChange(null); }
+        if (k === "v") { setTool("select"); tools?.onChange(null); }
+        const mine = tools?.items.find((it) => it.key.toLowerCase() === k);
+        if (tools && mine && mine.off) tools.onOff?.(mine);
+        else if (tools && mine) { setTool("select"); tools.onChange(tools.active === mine.id ? null : mine.id); }
+      }
+      if (e.key === "Escape" && tools?.active) tools.onChange(null);
       if (e.shiftKey && e.key === "!") fit();
     };
     const up = (e: KeyboardEvent) => { if (e.code === "Space") setSpace(false); };
@@ -187,6 +219,11 @@ export function Canvas({
   return (
     <div className="absolute inset-0 overflow-hidden canvas-dots select-none" ref={wrap}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+      // The canvas moves only by pan and zoom. The browser still scrolls a clipped
+      // box to show a field that gets focus (2026-11-18: an inline comment field
+      // near the edge slid the whole board 112px under the Layers panel), so any
+      // such scroll is put straight back.
+      onScroll={(e) => { const el = e.currentTarget; if (el.scrollLeft || el.scrollTop) { el.scrollLeft = 0; el.scrollTop = 0; } }}
       style={{
         cursor: dragging ? "grabbing" : panning ? "grab" : "default",
         // The background pattern follows pan and zoom (globals.css, canvas backgrounds).
@@ -202,59 +239,103 @@ export function Canvas({
         {children}
       </div>
 
-      {/* The tool strip: bottom centre of the visible canvas, never over a panel. */}
-      <div className="hu-strip absolute bottom-4 left-1/2 -translate-x-1/2 z-20 max-w-[calc(100%-1.5rem)]" onPointerDown={(e) => e.stopPropagation()}>
-        <ToolBtn on={tool === "select" && !comment?.on} onClick={() => { setTool("select"); comment?.onChange(false); }} title="Select (V)"><MousePointer2 size={18} /></ToolBtn>
-        <ToolBtn on={tool === "hand" && !comment?.on} onClick={() => { setTool("hand"); comment?.onChange(false); }} title="Hand (H, or hold Space)"><Hand size={18} /></ToolBtn>
-        {comment && (
-          <ToolBtn on={comment.on} onClick={() => { setTool("select"); comment.onChange(!comment.on); }} title="Comment on a spot (C)"><MessageSquare size={18} /></ToolBtn>
-        )}
-        <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
-        <div className="relative">
-          <button onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} aria-label={`Zoom, ${Math.round(zoom * 100)}%`} className="min-h-11 px-3 rounded-sm flex items-center gap-1 text-sm font-mono tabular-nums hover:bg-hover">
-            {Math.round(zoom * 100)}% <ChevronDown size={15} className="text-ink-faint" aria-hidden="true" />
-          </button>
-          {menu && (
-            <div role="menu" aria-label="Zoom" className="hu-menu absolute bottom-14 left-1/2 -translate-x-1/2 !min-w-44 pop">
-              <button type="button" role="menuitem" onClick={() => { fit(); setMenu(false); }} className="hu-menu__item"><span className="flex-1">Zoom to fit</span> <span className="text-ink-faint font-mono text-xs">⇧1</span></button>
-              {ZOOMS.map((z) => (
-                <button key={z} type="button" role="menuitemradio" aria-checked={Math.round(zoom * 100) === z} onClick={() => zoomTo(z)} className="hu-menu__item font-mono tabular-nums">{z}%</button>
-              ))}
+      {/* The tool strip: bottom centre of the visible canvas, never over a panel.
+          It is as wide as its buttons and no wider than the canvas: on a narrow
+          screen the buttons wrap to rows inside it, so the page never scrolls sideways. */}
+      <div className="absolute bottom-4 inset-x-3 z-20 flex justify-center pointer-events-none">
+        <div className="hu-strip hu-strip--rows pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
+          {tools?.line && <div className="hu-strip__line">{tools.line}</div>}
+          <div className="hu-strip__row">
+            <ToolBtn on={tool === "select" && !tools?.active} onClick={() => { setTool("select"); tools?.onChange(null); }} label="Select (V)"><MousePointer2 size={18} /></ToolBtn>
+            <ToolBtn on={tool === "hand" && !tools?.active} onClick={() => { setTool("hand"); tools?.onChange(null); }} label="Hand (H, or hold Space)"><Hand size={18} /></ToolBtn>
+            {tools && tools.items.length > 0 && (
+              <>
+                <span className="hu-strip__sep" aria-hidden="true" />
+                {tools.items.map((it) => (
+                  <ToolBtn
+                    key={it.id}
+                    on={tools.active === it.id}
+                    off={it.off}
+                    label={`${it.label} (${it.key.toUpperCase()})`}
+                    onClick={() => {
+                      if (it.off) return tools.onOff?.(it);
+                      setTool("select");
+                      tools.onChange(tools.active === it.id ? null : it.id);
+                    }}
+                  >
+                    {it.icon}
+                  </ToolBtn>
+                ))}
+              </>
+            )}
+            <span className="hu-strip__sep" aria-hidden="true" />
+            <div className="relative">
+              <button onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} aria-label={`Zoom, ${Math.round(zoom * 100)}%`} className="min-h-11 px-3 rounded-sm flex items-center gap-1 text-sm font-mono tabular-nums hover:bg-hover">
+                {Math.round(zoom * 100)}% <ChevronDown size={15} className="text-ink-faint" aria-hidden="true" />
+              </button>
+              {menu && (
+                <div role="menu" aria-label="Zoom" className="hu-menu absolute bottom-14 left-1/2 -translate-x-1/2 !min-w-44 pop">
+                  <button type="button" role="menuitem" onClick={() => { fit(); setMenu(false); }} className="hu-menu__item"><span className="flex-1">Zoom to fit</span> <span className="text-ink-faint font-mono text-xs">⇧1</span></button>
+                  {ZOOMS.map((z) => (
+                    <button key={z} type="button" role="menuitemradio" aria-checked={Math.round(zoom * 100) === z} onClick={() => zoomTo(z)} className="hu-menu__item font-mono tabular-nums">{z}%</button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+            {onDevice && (
+              <>
+                <span className="hu-strip__sep" aria-hidden="true" />
+                <ToolBtn on={device === "desktop"} onClick={() => onDevice("desktop")} label="Desktop"><Monitor size={17} /></ToolBtn>
+                <ToolBtn on={device === "tablet"} onClick={() => onDevice("tablet")} label="Tablet"><Tablet size={17} /></ToolBtn>
+                <ToolBtn on={device === "mobile"} onClick={() => onDevice("mobile")} label="Mobile"><Smartphone size={17} /></ToolBtn>
+              </>
+            )}
+            {toolbarExtra}
+            {/* Outside the project editor (the pillar map) the panel's switch is a tool like any other. */}
+            {rightToggle && panels?.toggleIn === "strip" && (
+              <>
+                <span className="hu-strip__sep" aria-hidden="true" />
+                <ToolBtn on={rightToggle.shown} onClick={rightToggle.toggle} label={`${rightToggle.label} panel`}><PanelRight size={17} /></ToolBtn>
+              </>
+            )}
+          </div>
         </div>
-        {onDevice && (
-          <>
-            <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
-            <ToolBtn on={device === "desktop"} onClick={() => onDevice("desktop")} title="Desktop"><Monitor size={17} /></ToolBtn>
-            <ToolBtn on={device === "tablet"} onClick={() => onDevice("tablet")} title="Tablet"><Tablet size={17} /></ToolBtn>
-            <ToolBtn on={device === "mobile"} onClick={() => onDevice("mobile")} title="Mobile"><Smartphone size={17} /></ToolBtn>
-          </>
-        )}
-        {toolbarExtra}
-        {/* Outside the project editor (the pillar map) the panel's switch is a tool like any other. */}
-        {rightToggle && panels?.toggleIn === "strip" && (
-          <>
-            <span className="w-px h-6 bg-hairline mx-0.5" aria-hidden="true" />
-            <ToolBtn on={rightToggle.shown} onClick={rightToggle.toggle} title={`${rightToggle.label} panel`}><PanelRight size={17} /></ToolBtn>
-          </>
-        )}
       </div>
     </div>
   );
 }
 
-export function ToolBtn({ children, on, onClick, title }: { children: ReactNode; on?: boolean; onClick: () => void; title: string }) {
+/**
+ * A button in the tool strip: an icon named by aria-label, with the app's own
+ * tip on hover and keyboard focus (data-tip, components.css; a native tooltip
+ * is system UI). `off` is why it can't be used now: it stays focusable so the
+ * reason can be read, looks disabled, and says the reason in its tip.
+ */
+export function ToolBtn({ children, on, onClick, label, off }: { children?: ReactNode; on?: boolean; onClick: () => void; label: string; off?: string }) {
+  const name = off ? `${label}. ${off}` : label;
   return (
-    <button type="button" onClick={onClick} data-tip={title} aria-label={title} aria-pressed={on} className={`hu-iconbtn !rounded-sm ${on ? "!bg-accent-soft !text-accent-ink" : ""}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      data-tip={name}
+      aria-label={name}
+      aria-pressed={on}
+      aria-disabled={off ? true : undefined}
+      className={`hu-iconbtn !rounded-sm ${on ? "!bg-accent-soft !text-accent-ink" : ""} ${off ? "opacity-45 !cursor-not-allowed hover:!bg-transparent" : ""}`}
+    >
       {children}
     </button>
   );
 }
 
 /** Artboard frame label + white board, used on every canvas. */
-export function Artboard({ label, meta, width, children, selected, onSelect, onEdit, actions, onDragStart, onDragEnd, dimmed }: {
+export function Artboard({ label, meta, width, children, selected, onSelect, onEdit, actions, onDragStart, onDragEnd, dimmed, spill }: {
   label: string; meta?: string; width: number; children: ReactNode; selected?: boolean; onSelect?: () => void; actions?: ReactNode;
+  /**
+   * Let what is pinned on the board reach past its edge (a comment's field, a
+   * pin's note). The board otherwise clips to its corners.
+   */
+  spill?: boolean;
   /**
    * A plain, visible way in (design system: conventional patterns, nothing to
    * discover): opens the piece's editor, the same as clicking the board.
@@ -293,7 +374,7 @@ export function Artboard({ label, meta, width, children, selected, onSelect, onE
       </div>
       <div
         onClick={onSelect}
-        className={`theme-light bg-paper rounded-xs overflow-hidden transition-shadow ${onSelect ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"}`}
+        className={`theme-light bg-paper rounded-xs ${spill ? "" : "overflow-hidden"} transition-shadow ${onSelect ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-accent" : "ring-1 ring-[var(--hairline)] hover:ring-[var(--line)]"}`}
       >
         {children}
       </div>
