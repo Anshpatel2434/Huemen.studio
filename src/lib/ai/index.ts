@@ -95,6 +95,8 @@ export function selectImageProvider(env: Env, fetchImpl?: ImageFetch): ImageProv
           apiKey: env.RUNPOD_API_KEY, timeoutMs: env.AI_IMAGE_TIMEOUT_MS,
           editModel: env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit",
           extendModel: env.AI_IMAGE_EXTEND_MODEL,
+          eraseModel: env.AI_IMAGE_ERASE_MODEL,
+          eraseVariant: env.AI_IMAGE_ERASE_VARIANT,
         },
         fetchImpl as never,
       );
@@ -218,6 +220,47 @@ const logStatus = (err: unknown): "error" | "timeout" =>
   err instanceof ProviderError && err.kind === "timeout" ? "timeout" : "error";
 
 /**
+ * The one daily-limit fallback (brief §05: retry and fallback policy defined
+ * once, here). When a call on the strong route fails because the provider's
+ * DAILY allowance for that model is used up, the same call is made once more
+ * on the cheap route's model, which has its own allowance (Groq counts per
+ * model). A per-minute limit is not a reason: it frees up in seconds and keeps
+ * its own plain message. AI_TEXT_FALLBACKS=off switches this off, as it does
+ * the provider's own fallbacks. Returns the route to retry on, or null.
+ */
+export function dailyFallbackRoute(env: Env, route: TextRoute, err: unknown): "cheap" | null {
+  if (env.AI_TEXT_FALLBACKS === "off" || route !== "strong") return null;
+  if (!(err instanceof ProviderError) || err.kind !== "rate_limit" || err.limit.window !== "day") return null;
+  try {
+    // The same model twice would hit the same used-up allowance.
+    return resolveTextModel(env, "cheap") !== resolveTextModel(env, "strong") ? "cheap" : null;
+  } catch {
+    return null; // no cheap model named: nothing to fall back to
+  }
+}
+
+/**
+ * Run `call` on the strong route; if it hits the daily allowance, run it once
+ * on the cheap route. Each attempt writes its own generation_logs row (with
+ * the model that actually ran), so the audit trail shows both. When the
+ * fallback fails too, the person gets the plain daily-limit message (the
+ * strong route's error), not a second, different one.
+ */
+async function withDailyFallback<T>(route: TextRoute, call: (route: TextRoute) => Promise<T>): Promise<T> {
+  try {
+    return await call(route);
+  } catch (err) {
+    const next = dailyFallbackRoute(getEnv(), route, err);
+    if (!next) throw err;
+    try {
+      return await call(next);
+    } catch {
+      throw err;
+    }
+  }
+}
+
+/**
  * The hard stop (brief §4.6: a soft warning and a hard stop, admin-set). Runs
  * before the provider is reached. Successful calls this month are counted
  * against the cap; failed ones cost nothing and are not. No cap row, or a
@@ -273,6 +316,13 @@ export function temperatureFor(taskKey: string): number | undefined {
 }
 
 export async function generateText(
+  scope: SessionScope,
+  req: TextGenRequest & { systemTemplate: string; contentItemId?: string | null },
+) {
+  return withDailyFallback(req.route ?? "strong", (route) => generateTextOn(scope, { ...req, route }));
+}
+
+async function generateTextOn(
   scope: SessionScope,
   req: TextGenRequest & { systemTemplate: string; contentItemId?: string | null },
 ) {
@@ -332,17 +382,43 @@ export async function generateText(
  * would show the person two different drafts in one place. The log row is
  * written when the stream ends, success or failure, before the caller saves.
  */
-export async function* streamText(
-  scope: SessionScope,
-  req: TextGenRequest & {
-    systemTemplate: string;
-    contentItemId?: string | null;
-    /** Replaces the draft contract, for a stream that is not a draft (the agent's answers). */
-    contract?: string;
-    /** A fixed output spec placed in the cached system part (see assemblePrompt). */
-    systemContract?: string;
-  },
-): AsyncGenerator<{ type: "delta"; text: string } | { type: "done"; text: string; model: string; logId: string | null }> {
+type StreamReq = TextGenRequest & {
+  systemTemplate: string;
+  contentItemId?: string | null;
+  /** Replaces the draft contract, for a stream that is not a draft (the agent's answers). */
+  contract?: string;
+  /** A fixed output spec placed in the cached system part (see assemblePrompt). */
+  systemContract?: string;
+};
+type StreamEvent = { type: "delta"; text: string } | { type: "done"; text: string; model: string; logId: string | null };
+
+export async function* streamText(scope: SessionScope, req: StreamReq): AsyncGenerator<StreamEvent> {
+  const route = req.route ?? "strong";
+  // The daily-limit fallback (withDailyFallback's policy), for a stream: only
+  // while nothing has reached the screen, so the person never sees two
+  // different drafts in one place.
+  let shown = false;
+  try {
+    for await (const ev of streamTextOn(scope, { ...req, route })) {
+      if (ev.type === "delta") shown = true;
+      yield ev;
+    }
+  } catch (err) {
+    const next = shown ? null : dailyFallbackRoute(getEnv(), route, err);
+    if (!next) throw err;
+    let shownAgain = false;
+    try {
+      for await (const ev of streamTextOn(scope, { ...req, route: next })) {
+        if (ev.type === "delta") shownAgain = true;
+        yield ev;
+      }
+    } catch (again) {
+      throw shownAgain ? again : err;
+    }
+  }
+}
+
+async function* streamTextOn(scope: SessionScope, req: StreamReq): AsyncGenerator<StreamEvent> {
   const env = getEnv();
   const route = req.route ?? "strong";
   let model = `${env.AI_TEXT_PROVIDER}-${route}`;
@@ -447,7 +523,9 @@ export async function editImage(
  */
 function editModelName(env: Env, intent: ImageEditRequest["intent"]): string | undefined {
   if (env.AI_IMAGE_PROVIDER !== "runpod") return undefined;
-  return intent === "extend" ? env.AI_IMAGE_EXTEND_MODEL : env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit";
+  if (intent === "extend") return env.AI_IMAGE_EXTEND_MODEL;
+  if (intent === "erase") return env.AI_IMAGE_ERASE_MODEL;
+  return env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit";
 }
 
 /**
@@ -565,6 +643,16 @@ export interface TaskInput {
  * the template version is stamped on every content_item).
  */
 export async function runTaskStamped<T>(
+  scope: SessionScope,
+  task: TaskDef<T>,
+  input: TaskInput,
+): Promise<{ data: T; model: string; template: { id: string | null; version: number }; logId: string | null }> {
+  // A task with pictures runs on the vision model, not a route: no fallback.
+  if (input.images?.length) return runTaskOn(scope, task, input);
+  return withDailyFallback(input.route ?? "strong", (route) => runTaskOn(scope, task, { ...input, route }));
+}
+
+async function runTaskOn<T>(
   scope: SessionScope,
   task: TaskDef<T>,
   input: TaskInput,

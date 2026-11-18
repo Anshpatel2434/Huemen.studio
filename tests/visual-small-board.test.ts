@@ -201,6 +201,15 @@ describe("a cut-out picture on a visual", () => {
       }
     }
   });
+  it("in the banners that put the picture behind the words, a cut-out stands in its own column instead", () => {
+    for (const key of ["statement", "framed"] as const) {
+      const html = post(key, true, 1584, 396);
+      expect(html, key).toContain("data-cutout-column");
+      // The only picture is the one in the column: nothing full-frame behind the words.
+      expect(html.match(/data-part="picture"/g), key).toHaveLength(1);
+      expect(post(key, false, 1584, 396), key).not.toContain("data-cutout-column");
+    }
+  });
   it("the same in every quote layout and on a carousel cover", () => {
     for (const l of QUOTE_LAYOUTS) {
       const html = quote(l.key, true);

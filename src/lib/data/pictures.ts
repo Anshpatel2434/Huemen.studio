@@ -39,7 +39,7 @@ import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import {
-  cleanBox, cleanStrokes, driftOf, keepInsideMask, marksLeft, keepOriginal, keepOutside, placeOnCanvas, regionMask, strokeMask, strokesBox, strokesOverlay,
+  changeInside, cleanBox, cleanStrokes, driftOf, keepInsideMask, marksLeft, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
   visiblePart, type Box, type PixelRect,
 } from "@/lib/visual/region";
 import {
@@ -353,6 +353,12 @@ export const MARKS_COLOUR = "#ff00ff";
 const MARKS_LEFT_MAX = 0.004;
 /** The widest soft edge inside a brushed area, in pixels; a thin brush gets a thinner one so its middle is fully erased. */
 const ERASE_FEATHER = 12;
+/**
+ * Less change than this inside the brushed area (mean colour difference, 0-1)
+ * and an erase removed nothing. Live: a kept rod measured 0.019, a real
+ * change 0.13.
+ */
+export const ERASE_MIN_CHANGE = 0.03;
 
 export const CUTOUT_LOCKED = "This picture has its background removed. Go back to the version before to change it.";
 
@@ -407,10 +413,20 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
       "Keep everything else exactly as it is: the same subject, style, light and colours.",
       "No words, letters or logos.",
     ].join("\n");
-    const out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "erase" });
     const thinnest = Math.min(...strokes.map((s) => s.w)) * Math.min(width, height);
     const feather = Math.max(1, Math.min(ERASE_FEATHER, Math.round(thinnest / 4)));
-    const merged = await keepInsideMask(bytes, out.bytes, mask, feather);
+    let out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "erase" });
+    let merged = await keepInsideMask(bytes, out.bytes, mask, feather);
+    // A model that hands the brushed part back as it was removed nothing (live,
+    // a rod on a pan, 2026-11-18): one more go, then a plain refusal, never a
+    // new version that looks like the old one.
+    if ((await changeInside(bytes, merged, mask)) < ERASE_MIN_CHANGE) {
+      out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "erase" });
+      merged = await keepInsideMask(bytes, out.bytes, mask, feather);
+      if ((await changeInside(bytes, merged, mask)) < ERASE_MIN_CHANGE) {
+        throw new PictureError("The erase came back with nothing removed, so it wasn't kept. Try brushing a little wider.");
+      }
+    }
     // Never save a result with the brush paint still in it.
     const area = strokesBox(strokes, 0, width / height);
     if (area && (await marksLeft(bytes, merged, area)) > MARKS_LEFT_MAX) {
@@ -431,6 +447,10 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
     ].filter(Boolean).join("\n");
     const marks = marked ? await strokesOverlay(strokes, width, height, MARKS_COLOUR) : undefined;
     const out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "area", ...(marks ? { marks } : {}) });
+    if (process.env.NODE_ENV === "development") {
+      // Dev only: the model's whole answer, so the blend at the area's edge can be judged against it.
+      await storage().put(tenantKey(scope.tenantId!, "debug", `area-${Date.now()}.png`), out.bytes, "image/png").catch(() => undefined);
+    }
     let merged = await keepOutside(bytes, out.bytes, box);
     let model = out.model;
     // A model that copies the marks into the picture gets one more go without
@@ -455,6 +475,16 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
 export const EXTEND_MATTE = "#00ff00";
 /** Above this (lib/visual/region driftOf) the model moved the original, and its answer is not kept. */
 export const DRIFT_LIMIT = 0.05;
+/**
+ * Above this (lib/visual/region seamOf) the join between the original and the
+ * drawn area shows as a line, and the answer is not kept. Live: a visible
+ * join measured 0.29; a smooth one 0.004; a picture's own texture 0.01.
+ */
+export const SEAM_LIMIT = 0.06;
+/** How many times the extend model is asked before a resize is refused (each try is one paid picture). */
+export const EXTEND_TRIES = 3;
+/** No further try starts after this long (a job's lease is 330 s; one extend call takes 20-60 s). */
+const EXTEND_TRY_BUDGET_MS = 180_000;
 /** A crop smaller than this on its shorter side is refused: it would be drawn blurry. */
 const MIN_CROP_SIDE = 256;
 
@@ -590,26 +620,34 @@ async function resizePictureNow(scope: ProjectScope, contentItemId: string, artb
     let answer: Uint8Array | null = null;
     let model = "";
     let problem = "";
-    // One more go when the answer can't be used: the model moved the picture, or left the matte.
-    for (let attempt = 0; attempt < 2 && !answer; attempt++) {
+    const started = Date.now();
+    // More goes when the answer can't be used: the model moved the picture,
+    // left the matte, or drew the new area with a visible join to the
+    // original (live, about one try in two drifted). No new try starts
+    // once EXTEND_TRY_BUDGET_MS has gone, so the job stays inside its lease.
+    for (let attempt = 0; attempt < EXTEND_TRIES && !answer; attempt++) {
+      if (attempt > 0 && Date.now() - started > EXTEND_TRY_BUDGET_MS) break;
       const out = await editImage(scope, { context, prompt, source, mask, shape, contentItemId, intent: "extend" });
       const sized = new Uint8Array(await sharp(Buffer.from(out.bytes)).resize(canvas.width, canvas.height, { fit: "fill" }).png().toBuffer());
       model = out.model;
       const drift = await driftOf(sized, bytes, placePx);
       const matte = drift > DRIFT_LIMIT ? 0 : await matteLeft(sized, seen);
+      const merged = drift > DRIFT_LIMIT || matte > 0.03 ? null : await keepOriginal(sized, bytes, placePx);
+      const seam = merged ? await seamOf(merged, placePx) : 0;
       if (drift > DRIFT_LIMIT) problem = "The picture came back shifted, so it was not kept. Try again.";
       else if (matte > 0.03) problem = "The new area came back empty, so it was not kept. Try again.";
-      else answer = sized;
+      else if (seam > SEAM_LIMIT) problem = "The new area came back with a visible join, so it was not kept. Try again.";
+      else answer = merged;
       if (!answer) {
         // What was measured, so a refusal can be judged (stdout, never the picture).
-        logger.info("picture_extend_rejected", { tenantId: scope.tenantId, model, drift: Number(drift.toFixed(4)), matte: Number(matte.toFixed(4)), attempt });
-        if (process.env.NODE_ENV !== "production") {
+        logger.info("picture_extend_rejected", { tenantId: scope.tenantId, model, drift: Number(drift.toFixed(4)), matte: Number(matte.toFixed(4)), seam: Number(seam.toFixed(4)), attempt });
+        if (process.env.NODE_ENV === "development") {
           await storage().put(tenantKey(scope.tenantId!, "debug", `extend-${Date.now()}-${attempt}.png`), sized, "image/png").catch(() => undefined);
         }
       }
     }
     if (!answer) throw new PictureError(problem);
-    id = await keep(await keepOriginal(answer, bytes, placePx), model);
+    id = await keep(answer, model);
   }
   await attach(scope, contentItemId, artboard, { id, mode: ref.mode });
   return id;

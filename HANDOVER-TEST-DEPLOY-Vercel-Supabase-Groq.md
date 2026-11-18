@@ -105,7 +105,7 @@ answer quality from this test as a floor, not the real thing.
    | `STORAGE_S3_ENDPOINT` | `https://<project-ref>.supabase.co/storage/v1/s3` |
    | `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | the key pair from section 2, step 7 |
    | `AI_TEXT_PROVIDER` | `mock` for the first deploy, then your Groq provider (section 4) |
-   | `AI_TEXT_FALLBACKS` | `off` (the server-side fallback is an Anthropic feature) |
+   | `AI_TEXT_FALLBACKS` | `default` (on Groq: when the strong model's daily allowance is used up, the call runs once on `AI_TEXT_MODEL_CHEAP`; `off` switches that off) |
    | `AI_TRANSCRIBE_PROVIDER` | `off` |
    | `AI_IMAGE_PROVIDER` | `mock` for this test (stand-in pictures). For ChatGPT Image later: `openai` plus `OPENAI_API_KEY` and `AI_IMAGE_MODEL` (README, Pictures). |
    | `OPENUI_TELEMETRY_DISABLED` | `1` (OpenUI's install script sends anonymous telemetry unless this is set during the build) |

@@ -209,7 +209,7 @@ export function PictureMenu({ has, mode, hasPrevious, busy, cutout = null, onDra
           <Menu label="Picture">
             {!has ? (
               <>
-                <MenuItem onClick={pick(() => onDraw("live_text"))}>Add a picture (heading stays editable text)</MenuItem>
+                <MenuItem onClick={pick(() => onDraw("live_text"))}>Add a picture, heading kept as text</MenuItem>
                 <MenuItem onClick={pick(() => onDraw("with_text"))}>Add a picture with the heading drawn in</MenuItem>
               </>
             ) : (

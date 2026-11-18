@@ -47,3 +47,26 @@ Live on Harrow Lane with real RunPod (about 60 cents in all):
 - Dev-only: rejected extend answers are saved under .storage/tenants/<id>/debug/ and logged as picture_extend_rejected (drift, matte).
 - Key note for the owner: the app runs on a RUNPOD_API_KEY set as a Windows user environment variable (it wins over .env); the key in .env is refused by RunPod (403).
 - Checks: tsc clean; vitest 1259/1259 (88 files); lint 0 errors.
+
+## 2026-11-18 late: picture tools finished, all checked live (uncommitted, on main after #9)
+Screenshots and close-ups: D:\huemen-recordings\2026-11-18\picture-tools-final\ (file names start with the checklist letter).
+Fixes:
+- Resize extend: 3 tries (EXTEND_TRIES), no new try after 180 s (job lease 330 s); new join check (region `seamOf`, SEAM_LIMIT 0.06) after the drift and matte checks, logged in picture_extend_rejected. Live, the first extend passed drift but left a hard line down both sides of the original (seam 0.29); with the check the next extend was clean (0.004).
+- Daily-limit fallback, once in the facade (`dailyFallbackRoute`, `withDailyFallback`): a strong-route text call refused for a DAILY rate limit runs once on AI_TEXT_MODEL_CHEAP, each attempt its own generation_logs row; then the plain daily-limit message. Per-minute limits unchanged; AI_TEXT_FALLBACKS=off switches it off; streams only fall back before any text is shown; vision tasks never. Tests: tests/daily-fallback.test.ts. Not hit live (Groq strong model had allowance all run).
+- Comment seam: S-curve edge scaled to the area (`seamFeather`, 5% of the shorter side, 12-72 px) and 25% close-up context (was 12 px linear, 0.18). Live comment across the scales' chains: no seam at 4x (b4/b5 images). Outside-identical tests kept.
+- Erase (found live): qwen-image-edit "clean" handed a thin rod back untouched twice, "fill" (new: pre-filled patch) drew a pale blob. Erase now runs on its own endpoint, AI_IMAGE_ERASE_MODEL (default google-nano-banana-2-edit, about $0.09) with AI_IMAGE_ERASE_VARIANT (default tint): rod and paint gone cleanly in one call. New guard: an erase with nothing removed (`changeInside` < 0.03) is retried once, then refused plainly. Erase close-up margins now from the stroke's longer side.
+- Cut-out layouts: quote card (classic, centred) keeps a readable quote under a cut-out (smaller mark and margins); banner statement/framed put a cut-out in its own column (were behind the words).
+- Copy: "Rewrite with AI" button is now "Rewrite the words" (house rule, no "AI" in UI); the picture menu item "Add a picture, heading kept as text" no longer truncates.
+Checklist (live, Harrow Lane, real models):
+- a PASS: quote card and carousel cover "Add a picture": brief on gpt-oss-120b, qwen-image-t2i, about 50 s each.
+- b PASS: 2 picture pins + 1 heading pin, one Send: all applied (brass pan, windowsill plant, heading rewritten); Ctrl+Z undid the picture batch, then the heading.
+- c PASS: Markup (bell, no marks left) and Erase (after the fix above; no magenta left).
+- d PASS: piece closed (no ?item), B, one click on the quote picture: cut-out queued at once. Post, quote and carousel cover cut-outs render with the subject on top and words below; Download cut-out is a PNG with transparent corners (59% clear).
+- e PASS: first click opens Resize; crop (free) and landscape extend both made versions; the versions strip labels them ("resized", "erased", "markup change", "area change"). Note: clicking the picture within ~100 ms of picking the tool on a just-loaded page can miss (the click target is measured a frame later); a normal click works.
+- f PASS: pin field near the quote card's right edge: no element scrolled (scrollLeft 0 everywhere), focus in the field.
+- g PASS: Download PNG of the post image with the resized picture and with the cut-out match the board (1080x1350).
+- h PASS: 375x812: strip wraps to two rows, no horizontal scroll (scrollWidth 375); heading pin + Send applied, undone.
+- i PASS: wireframe shows only V, H and zoom (R does nothing); on a piece with no picture Markup, Erase, Remove background and Resize are off with "Add a picture first" in the tip and a toast.
+Spend this round: about $0.45 (qwen edits 7, qwen draws 2, Nano Banana 3); Groq free.
+State left: the test piece's three visuals show cut-outs (post picture extended to 16:9 first); "Back to the version before" restores.
+Checks: tsc clean; vitest 1275/1275 (89 files); eslint 0 errors.

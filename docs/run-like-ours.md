@@ -24,6 +24,7 @@ run after pulling `main`:
    | `AI_IMAGE_PROVIDER` | `runpod` |
    | `AI_IMAGE_MODEL` / `AI_IMAGE_EDIT_MODEL` | `qwen-image-t2i` / `qwen-image-edit` (RunPod public endpoints, about $0.02 a picture) |
    | `AI_IMAGE_EXTEND_MODEL` | `google-nano-banana-2-edit` (the default; draws the extra area when Resize makes a picture bigger, about $0.09 each) |
+   | `AI_IMAGE_ERASE_MODEL` / `AI_IMAGE_ERASE_VARIANT` | `google-nano-banana-2-edit` / `tint` (the defaults; Erase, about $0.09 each) |
    | `AI_CUTOUT_PROVIDER` | `onnx` (Remove background, on this machine's CPU), after `npm run models:fetch` |
    | `AI_PROVIDER_NO_TRAINING` | `true` |
    | `QUEUE_DRIVER` | `pg` |
@@ -43,7 +44,10 @@ run after pulling `main`:
   question or one design reading a minute.
 - Groq counts every image at a fixed ~1,800 tokens whatever its size, so
   several designs are sent as one numbered contact sheet (lib/visual/look-read).
-- The daily allowance ran out twice in one day of testing. For clients, use a
-  paid Groq plan or set `AI_TEXT_PROVIDER=anthropic`.
+- The daily allowance ran out twice in one day of testing. With
+  `AI_TEXT_FALLBACKS=default`, a strong-model call refused for its daily
+  allowance runs once more on `AI_TEXT_MODEL_CHEAP` (its own allowance), so
+  work carries on in a plainer voice; both calls are in generation_logs. For
+  clients, use a paid Groq plan or set `AI_TEXT_PROVIDER=anthropic`.
 
 What changed in this round, and how it was checked: `HANDOVER-2026-11-18-run.md`.

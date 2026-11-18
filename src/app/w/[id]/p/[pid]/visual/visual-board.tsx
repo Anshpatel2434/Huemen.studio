@@ -89,7 +89,7 @@ type BoardProps = {
  * Visual step (Relume's design + style guide, worked like a design tool):
  *
  *   - Every artboard's text is editable (double-click). The headline and quote
- *     also have "Rewrite with AI" (its own button); carousel frames are askable
+ *     also have "Rewrite the words" (its own button); carousel frames are askable
  *     with a click. Edits write back to the post's copy, so Content and Export
  *     stay in step.
  *   - Each artboard kind has several layouts. "Show me options" lays them out
@@ -1243,7 +1243,7 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
 const REWRITE_CHIPS = ["Shorter", "Punchier", "More contrarian", "Warmer", "As a question"];
 
 /**
- * "Rewrite with AI" for the words on the visuals: its own button and box, so a
+ * "Rewrite the words" for the words on the visuals: its own button and box, so a
  * double-click on the words only ever edits them in place. Enter, or Ctrl/⌘+Enter,
  * sends. A failed rewrite keeps the box open with its words.
  */
@@ -1269,10 +1269,10 @@ function RewriteWords({ label, onRewrite }: { label: string; onRewrite: (instruc
   return (
     <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
       <button type="button" aria-expanded={open} disabled={busy} onClick={() => setOpen((o) => !o)} className={btnClass("secondary", "sm")}>
-        {busy ? <><AgentDots /> Rewriting…</> : <><Sparkles size={14} aria-hidden="true" /> Rewrite with AI</>}
+        {busy ? <><AgentDots /> Rewriting…</> : <><Sparkles size={14} aria-hidden="true" /> Rewrite the words</>}
       </button>
       {open && (
-        <div role="dialog" aria-label={`Rewrite the ${label} with AI`} className="absolute left-0 top-11 z-20 w-80 bg-paper border border-hairline rounded-md shadow-[var(--shadow-overlay)] p-2.5 flex flex-col gap-2">
+        <div role="dialog" aria-label={`Rewrite the ${label}`} className="absolute left-0 top-11 z-20 w-80 bg-paper border border-hairline rounded-md shadow-[var(--shadow-overlay)] p-2.5 flex flex-col gap-2">
           <input
             autoFocus
             value={text}

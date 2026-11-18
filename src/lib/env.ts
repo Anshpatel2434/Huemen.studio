@@ -89,6 +89,13 @@ const schema = z.object({
   // picture on a flat matte, so it must be a model that edits by instruction
   // and keeps the rest still.
   AI_IMAGE_EXTEND_MODEL: z.preprocess(blankIsUnset, z.string().default("google-nano-banana-2-edit")),
+  // Runpod only: the endpoint that erases what is brushed over (Erase on the
+  // Visual board), and how it is shown what goes: "tint" (painted magenta),
+  // "clean" (described as "the object in the middle") or "fill" (cleared and
+  // filled from around it first). Live 2026-11-18: qwen-image-edit kept a thin
+  // rod with "clean" and drew a blob with "fill".
+  AI_IMAGE_ERASE_MODEL: z.preprocess(blankIsUnset, z.string().default("google-nano-banana-2-edit")),
+  AI_IMAGE_ERASE_VARIANT: z.preprocess(blankIsUnset, z.enum(["tint", "clean", "fill"]).default("tint")),
   // Remove background on the Visual board: an open model run inside the app
   // (lib/ai/providers/cutout-onnx), no cost per use. "off" (the default) shows
   // the tool disabled with the reason; "onnx" needs the model file at
