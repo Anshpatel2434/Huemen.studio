@@ -10,7 +10,7 @@
 import { actionScope } from "@/lib/auth/workspace";
 import { checkText, judgeText, rewriteText, type CheckOutcome } from "@/lib/data/check";
 import { userMessage } from "@/lib/ai/errors";
-import type { JudgeResult } from "@/lib/ai/tasks";
+import type { LineFinding } from "@/lib/ai/tasks";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -29,7 +29,7 @@ export async function checkAction(tenantId: string, text: string, platform: stri
   return guarded(() => checkText(scope, text.slice(0, MAX_CHARS), platform));
 }
 
-export async function judgeAction(tenantId: string, text: string, platform: string | null): Promise<Result<JudgeResult["findings"]>> {
+export async function judgeAction(tenantId: string, text: string, platform: string | null): Promise<Result<LineFinding[]>> {
   const scope = await actionScope(tenantId);
   return guarded(() => judgeText(scope, text.slice(0, MAX_CHARS), platform));
 }

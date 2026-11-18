@@ -12,18 +12,20 @@
  * Typed answers are drafts (`useStepDraft`) until saved, so a reload keeps them.
  */
 import { MIN_SPOKEN_WORDS, spokenHint, wordsIn } from "@/lib/onboarding/spoken";
+import { VoiceRecorder } from "@/components/voice-recorder";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
-import { ArrowLeft, Check, Circle, FileUp, ImagePlus, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, Check, Circle, FileUp, ImagePlus, Loader2, Plus, X } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { AgentDots } from "@/components/ui";
 import { ScoreMeter } from "@/components/composites";
 import { ingestLinkedIn, ingestText, splitPieces, stripEmail, type IngestedPiece } from "@/lib/voice/ingest";
 import { WORDS, MIN_PICKS, MAX_PICKS } from "@/lib/voice/words";
-import { MAX_REFERENCES } from "@/lib/visual/core";
+import { MAX_REFERENCES, type LookReading } from "@/lib/visual/core";
+import { DesignNote, LinkAdd, LookReadingCard, useLookReading } from "@/components/look-reading";
 import { SCREENS, type ScreenKey } from "@/lib/onboarding/screens";
-import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
+import { deleteAssetAction, uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import { sendToStorage, UploadFailed } from "@/lib/upload-client";
 import {
   advanceAction, audienceAction, finishIngestAction, finishOnboardingAction, firstPieceAction, ingestAction, lookAction,
@@ -32,6 +34,7 @@ import {
 import { useStepDraft } from "./draft";
 import { SiteDetailsCard } from "./site-details-card";
 import type { SiteDetails } from "@/lib/integrations/site-details";
+import { colourSource, siteDomain, type SavedPiece } from "./screen-text";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -63,9 +66,13 @@ function Split({ tenantId, at, back, title, sub, actions, panel, wide }: {
   tenantId: string; at: ScreenKey; back?: ScreenKey; title: ReactNode; sub?: ReactNode; actions: ReactNode; panel: ReactNode; wide?: boolean;
 }) {
   return (
-    <div className="absolute inset-0 overflow-y-auto bg-paper">
+    // Size containment on the scroller lets the question column take its exact
+    // height (100cqh) and stick there, so a tall panel scrolls past the heading
+    // and Continue instead of pushing them to its middle (2026-11-18 test: the
+    // site read put Continue about 1000px down).
+    <div className="absolute inset-0 overflow-y-auto bg-paper [container-type:size]">
       <div className="min-h-full grid grid-cols-1 lg:grid-cols-2 gap-4 p-3 sm:p-5">
-        <section className="flex flex-col px-2 sm:px-8 py-4 lg:py-8">
+        <section className="flex flex-col px-2 sm:px-8 py-4 lg:py-8 lg:sticky lg:top-5 lg:self-start lg:h-[calc(100cqh-2.5rem)] lg:overflow-y-auto">
           <div className="min-h-11">
             {back && (
               <Link href={`/w/${tenantId}/onboarding?s=${back}`} className="inline-flex items-center gap-1.5 min-h-11 px-3 -ml-3 rounded-full text-sm text-ink-muted hover:text-ink hover:bg-hover">
@@ -227,7 +234,7 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
                   <span className="w-14 h-14 rounded-xl bg-field grid place-items-center text-xl font-medium shrink-0" aria-hidden="true">{(found.profile?.name || found.title || found.url.replace(/^https?:\/\/(www\.)?/, ""))[0]?.toUpperCase()}</span>
                 )}
                 <div className="min-w-0">
-                  <p className="text-lg leading-snug truncate">{found.profile?.name || found.title || found.url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</p>
+                  <p className="text-lg leading-snug truncate">{found.profile?.name || found.title || siteDomain(found.url)}</p>
                   <p className="text-sm text-ink-muted mt-1 line-clamp-3">{found.profile?.whatTheyDo || found.description || "No description on the home page. You'll add one in a moment."}</p>
                   {found.profile?.audience && <p className="text-sm text-ink-muted mt-1 line-clamp-2">Who it&apos;s for: {found.profile.audience.replace(/^for\s+/i, "")}</p>}
                 </div>
@@ -236,7 +243,7 @@ export function SiteScreen({ tenantId, found: initial }: { tenantId: string; fou
                 <span className="label-mono text-ink-faint">Colours</span>
                 {found.palette.length ? (
                   <span className="flex gap-1.5">
-                    {found.palette.slice(0, 6).map((c) => <span key={c} title={c} className="w-7 h-7 rounded-lg border border-hairline" style={{ background: c }} />)}
+                    {found.palette.slice(0, 6).map((c) => <span key={c} role="img" aria-label={`Colour ${c}`} className="w-7 h-7 rounded-lg border border-hairline" style={{ background: c }} />)}
                   </span>
                 ) : <span className="text-sm text-ink-muted">None found</span>}
                 {found.fonts.length > 0 && <span className="text-sm text-ink-muted">· {found.fonts.slice(0, 2).join(", ")}</span>}
@@ -347,10 +354,39 @@ const PROMPTS = ["What you do, and why you do it.", "A story from your work that
 const TARGET = 10;
 
 
-export function WritingScreen({ tenantId, sources, writeFor, pieces, words, links }: {
+/** What is on file, newest first: so "4 pieces added" can be checked, not taken on trust. */
+function OnFile({ saved, total }: { saved: SavedPiece[]; total: number }) {
+  const [all, setAll] = useState(false);
+  if (!saved.length) return null;
+  const shown = all ? saved : saved.slice(0, 4);
+  return (
+    <div className="flex flex-col gap-1 text-left border-t border-hairline pt-3 mt-1">
+      <p className="label-mono text-ink-faint mb-1">On file · newest first</p>
+      <ul className="flex flex-col divide-y divide-hairline">
+        {shown.map((p) => (
+          <li key={p.id} className="flex flex-col gap-0.5 py-2">
+            <span className="text-sm line-clamp-2">{p.excerpt || "Untitled piece"}</span>
+            <span className="label-mono text-ink-faint">{p.label}</span>
+          </li>
+        ))}
+      </ul>
+      {saved.length > 4 && (
+        <button type="button" className={`${quiet} self-start -ml-3`} onClick={() => setAll(!all)}>
+          {all ? "Show fewer" : total > saved.length ? `Show the latest ${saved.length}` : `Show all ${saved.length}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function WritingScreen({ tenantId, sources, writeFor, pieces, words, saved: onFile = [], links, canRecord = false }: {
   tenantId: string; sources: string[]; writeFor: string[]; pieces: number; words: number;
+  /** The pieces already saved, newest first (screen-text `savedPieces`). */
+  saved?: SavedPiece[];
   /** Reading their own writing from a link (site, blog, Substack, Medium, podcast). */
   links: ReactNode;
+  /** Speech to text is switched on, so the spoken answers can be recorded, not only typed. */
+  canRecord?: boolean;
 }) {
   const router = useRouter();
   const known = CHANNELS.map((c) => c.key);
@@ -546,6 +582,12 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, link
                     <label key={q} className="block">
                       <span className="block text-sm font-medium mb-1.5">{q}</span>
                       <textarea rows={3} value={notes[i]} onChange={(e) => setNotes(notes.map((v, j) => (j === i ? e.target.value : v)))} className="field text-sm" />
+                      {/* Say it instead of typing it: the recording is transcribed into the box, then discarded. */}
+                      {canRecord && (
+                        <span className="block mt-1.5">
+                          <VoiceRecorder tenantId={tenantId} enabled onText={(t) => setNotes(notes.map((v, j) => (j === i ? (v.trim() ? `${v.trim()}\n\n${t}` : t) : v)))} />
+                        </span>
+                      )}
                       {/* Only once they have started: an empty box needs no scolding. */}
                       {hint && (
                         <span className={`block text-xs mt-1 ${hint.ok ? "text-ink-faint" : "text-accent-ink"}`}>{hint.text}</span>
@@ -576,6 +618,7 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, link
             </div>
             <p className="text-xs text-ink-faint text-left">Rather connect Gmail or LinkedIn? <Link href="/settings/connections" className="underline underline-offset-2 hover:text-ink">Connect accounts</Link></p>
           </div>
+          {onFile.length > 0 && <div className="px-1"><OnFile saved={onFile} total={pieces} /></div>}
         </div>
       }
     />
@@ -586,8 +629,12 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, link
 // 5 · Look
 // =============================================================================
 
-export function LookScreen({ tenantId, references, palette, site }: {
+export function LookScreen({ tenantId, references, palette, site, sitePalette = [], look: savedLook = null }: {
   tenantId: string; references: { id: string; url: string }[]; palette: string[]; site: string | null;
+  /** The colours the site read gave, to tell them apart from the person's own. */
+  sitePalette?: string[];
+  /** The stored reading of the designs (look_read), if any. */
+  look?: LookReading | null;
 }) {
   const router = useRouter();
   const [colours, setColours] = useStepDraft<string[]>("short:colours", [palette[0] ?? "#FFFFFF", palette[1] ?? "#0A0A0A"]);
@@ -595,6 +642,13 @@ export function LookScreen({ tenantId, references, palette, site }: {
   const [error, setError] = useState<string | null>(null);
   const [moving, go] = useTransition();
   const bad = colours.some((c) => !HEX.test(c));
+  // Names the site only while a value is still what the read gave (2026-11-18 test: edited colours kept "From <site>").
+  const source = colourSource(colours, sitePalette, site);
+  // The reading runs after an add or a removal, in its own action: Continue never waits on it.
+  const { look, reading, error: readError, read } = useLookReading(tenantId, savedLook);
+  const [removing, remove] = useTransition();
+  const pickColour = (hex: string, role: "background" | "accent") =>
+    setColours(colours.map((c, i) => (i === (role === "background" ? 0 : 1) ? hex.toUpperCase() : c)));
 
   const upload = (file: File | undefined) => {
     if (!file) return;
@@ -608,12 +662,21 @@ export function LookScreen({ tenantId, references, palette, site }: {
         fd.append("key", await sendToStorage(tenantId, "asset", file, file.name));
         const r = await uploadAssetChecked(fd);
         if (r.error) setError(r.error);
-        else router.refresh();
+        else {
+          router.refresh();
+          read();
+        }
       } catch (e) {
         setError(e instanceof UploadFailed ? e.message : "That file couldn't be used. Use a PNG, JPG or WebP under 5 MB.");
       }
     });
   };
+
+  const drop = (id: string) => remove(async () => {
+    await deleteAssetAction(tenantId, id);
+    router.refresh();
+    read();
+  });
 
   const slots = Array.from({ length: MAX_REFERENCES }, (_, i) => references[i] ?? null);
   const firstEmpty = slots.findIndex((s) => !s);
@@ -634,11 +697,28 @@ export function LookScreen({ tenantId, references, palette, site }: {
       }
       panel={
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 items-start">
             {slots.map((r, i) =>
               r ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={r.id} src={r.url} alt={`Design ${i + 1}`} className="aspect-square w-full object-cover rounded-2xl border border-hairline bg-paper" />
+                <div key={r.id} className="flex flex-col gap-2.5 min-w-0">
+                  <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={r.url} alt={`Design ${i + 1}`} className="aspect-square w-full object-cover rounded-2xl border border-hairline bg-paper" />
+                    <button
+                      type="button"
+                      disabled={removing || uploading}
+                      onClick={() => drop(r.id)}
+                      aria-label={`Remove design ${i + 1}`}
+                      className="hu-iconbtn absolute top-1.5 right-1.5 bg-paper"
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  </div>
+                  {(() => {
+                    const d = look?.designs.find((x) => x.assetId === r.id.toLowerCase());
+                    return d ? <DesignNote summary={d.summary} colours={d.colours} onUse={pickColour} /> : null;
+                  })()}
+                </div>
               ) : (
                 <label
                   key={`empty-${i}`}
@@ -652,11 +732,18 @@ export function LookScreen({ tenantId, references, palette, site }: {
             )}
           </div>
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          {references.length < MAX_REFERENCES && <LinkAdd tenantId={tenantId} disabled={uploading} onAdded={read} />}
+
+          {(references.length > 0 || look) && (
+            <Card>
+              <LookReadingCard referenceIds={references.map((r) => r.id)} look={look} reading={reading} error={readError} onRead={read} />
+            </Card>
+          )}
 
           <Card className="flex flex-col gap-4">
             <div className="flex items-baseline justify-between gap-3">
               <p className="text-sm font-medium">Your colours</p>
-              {site && <span className="label-mono text-ink-faint truncate">From {site.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</span>}
+              {source && <span className="label-mono text-ink-faint truncate">{source}</span>}
             </div>
             <div className="grid grid-cols-2 gap-3">
               {["Background", "Accent"].map((role, i) => (
@@ -738,18 +825,21 @@ export function WordsScreen({ tenantId, saved }: { tenantId: string; saved: stri
 // 7 · First piece
 // =============================================================================
 
-export function DraftScreen({ tenantId, name, first, state }: {
+export function DraftScreen({ tenantId, name, first, state, reason = null }: {
   tenantId: string;
   name: string;
   first: { id: string; hook: string | null; body: string | null; cta: string | null; score: number | null; band: string | null } | null;
   /** The write in flight or failed, from the server checkpoint. */
   state: "writing" | "failed" | null;
+  /** Why the last write failed, in plain words (a limit and when it frees up). */
+  reason?: string | null;
 }) {
   const router = useRouter();
   const [writing, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
-  const has = !!first?.body;
+  // A piece is there when it has any words: a short one can be hook only.
+  const has = !!(first?.body || first?.hook);
 
   const write = () => start(async () => {
     setError(null);
@@ -826,7 +916,7 @@ export function DraftScreen({ tenantId, name, first, state }: {
           )}
           {!busy && !has && (
             <div className="flex flex-col items-start gap-3">
-              <p className="text-sm text-ink-muted flex items-center gap-2"><Circle size={14} aria-hidden="true" /> {error ?? (state === "failed" ? "The first piece didn't come through." : "No piece yet.")}</p>
+              <p className="text-sm text-ink-muted flex items-start gap-2"><Circle size={14} aria-hidden="true" className="mt-0.5 shrink-0" /> <span>{state === "failed" && reason ? `The first piece didn't come through. ${reason}` : error ?? (state === "failed" ? "The first piece didn't come through." : "No piece yet.")}</span></p>
               <button type="button" onClick={write} className={btnClass("secondary", "sm")}>Write it</button>
             </div>
           )}

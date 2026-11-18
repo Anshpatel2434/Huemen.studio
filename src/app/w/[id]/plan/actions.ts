@@ -10,7 +10,7 @@ import { redirect } from "next/navigation";
 import { actionScope } from "@/lib/auth/workspace";
 import {
   addCalendarEntry, archiveIdea, captureIdea, createOffer, deleteCalendarEntry, deleteOffer, updateOffer,
-  getCalendarEntry, getIdea, markIdeaStarted, markSlotStarted, setIdeaPillar,
+  getCalendarEntry, getIdea, isIsoDate, markIdeaStarted, markSlotStarted, moveCalendarEntry, setIdeaPillar,
 } from "@/lib/data/planning";
 import { FORMATS } from "@/lib/content/formats";
 import { startPiece } from "@/lib/data/create";
@@ -51,6 +51,8 @@ export async function convertIdeaAction(fd: FormData) {
     topic: idea.raw_text,
     format: String(fd.get("format") ?? "") || null,
     ideaId: idea.id,
+    // The pillar the idea was tagged with goes with it, as it does for a calendar slot.
+    pillarId: idea.pillar_id,
   });
   await markIdeaStarted(scope, idea.id);
   refresh(t);
@@ -83,7 +85,10 @@ export async function startFromSlotAction(fd: FormData) {
 export async function addCalendarEntryAction(fd: FormData) {
   const { t, scope } = await ctx(fd);
   const date = String(fd.get("date") ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  // A real day, and not one that has gone: the page doesn't offer "+" on past
+  // days, and a form posted for one is refused here too. A day of slack, so
+  // "today" in a time zone behind the server's still counts.
+  if (!isIsoDate(date) || date < new Date(Date.now() - 864e5).toISOString().slice(0, 10)) return;
   await addCalendarEntry(scope, {
     date,
     pillarId: String(fd.get("pillarId") ?? "") || null,
@@ -121,6 +126,19 @@ export async function deleteCalendarEntryAction(fd: FormData) {
   const { t, scope } = await ctx(fd);
   await deleteCalendarEntry(scope, String(fd.get("id")));
   refresh(t);
+}
+
+/**
+ * Move a slot to another day: the plan changed, the piece didn't. The slot
+ * keeps its topic, channel, pillar and the piece it started. A slot that
+ * isn't in this workspace, or a date that isn't a day, comes back as
+ * "not moved" rather than as an error.
+ */
+export async function moveCalendarEntryAction(tenantId: string, id: string, date: string): Promise<{ ok: boolean }> {
+  const scope = await actionScope(tenantId);
+  const ok = await moveCalendarEntry(scope, String(id), String(date));
+  if (ok) refresh(tenantId);
+  return { ok };
 }
 
 const offerFrom = (fd: FormData, name: string) => ({

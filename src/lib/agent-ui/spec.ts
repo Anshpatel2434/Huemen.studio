@@ -61,9 +61,9 @@ export const PROPS = {
   Para: z.object({ text: z.string() }),
   Bullets: z.object({ items: z.array(z.string()) }),
   Note: z.object({ text: z.string(), tone: z.enum(["tip", "warn"]).optional() }),
-  ScoreBar: z.object({ label: z.string(), score: z.number(), note: z.string().optional() }),
-  Checklist: z.object({ children }),
-  CheckItem: z.object({ label: z.string(), done: z.boolean(), page: page.optional() }),
+  // The brief's score and open items. The server supplies both (lib/agent-ui/status):
+  // the model places this component and never types a score or a done mark.
+  BriefStatus: z.object({}),
   IdeaCard: z.object({ title: z.string(), format, pillar: z.string().optional(), why: z.string().optional() }),
   WeekPlan: z.object({ children }),
   PlanSlot: z.object({ day: z.string(), title: z.string(), format, pillar: z.string().optional() }),
@@ -81,9 +81,7 @@ export const DESCRIPTIONS: Record<ComponentName, string> = {
   Para: "One short paragraph of plain text. No markdown.",
   Bullets: "A short list of plain-text points.",
   Note: 'A highlighted line: "tip" for advice, "warn" for something to fix first.',
-  ScoreBar: "A 0-100 score with a label and an optional one-line note, e.g. brief completeness.",
-  Checklist: "A list of CheckItem rows.",
-  CheckItem: "One row of a Checklist: done or still to do, with an optional page that fixes it.",
+  BriefStatus: "The brief's score and its open items, drawn from the brief itself. Takes no arguments: put it where the status belongs. Never write a score, a percentage or a checklist yourself.",
   IdeaCard: "A post idea the person can draft in one click. title is the topic in their words; pillar must be one of their pillars.",
   WeekPlan: "A posting plan: a list of PlanSlot rows in order.",
   PlanSlot: 'One planned post: day (e.g. "Mon"), the topic, its format and pillar. Has its own Draft button.',
@@ -95,7 +93,7 @@ export const DESCRIPTIONS: Record<ComponentName, string> = {
 
 export const COMPONENT_GROUPS = [
   { name: "Text", components: ["Heading", "Para", "Bullets", "Note"] },
-  { name: "Status", components: ["ScoreBar", "Checklist", "CheckItem"] },
+  { name: "Status", components: ["BriefStatus"] },
   { name: "Planning", components: ["IdeaCard", "WeekPlan", "PlanSlot", "PillarCard", "HookOptions"] },
   { name: "Next steps", components: ["OpenPage", "FollowUps"] },
 ];

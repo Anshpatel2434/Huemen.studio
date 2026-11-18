@@ -4,8 +4,9 @@
  * Onboarding screen 1, after the read: what the other pages said, read by
  * rules (lib/integrations/site-details): services, projects, testimonials,
  * client logos, contact. Projects and testimonials can be kept as facts the
- * drafts may use (identity.proofs); nothing becomes a fact until the person
- * saves it, and the screen shows the wording that will be saved.
+ * drafts may use (identity.proofs); nothing is ticked to start with, nothing
+ * becomes a fact until the person saves it, and the screen shows the wording
+ * that will be saved.
  */
 import { useState, useTransition, type ReactNode } from "react";
 import { Check } from "lucide-react";
@@ -55,9 +56,10 @@ function Keep({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => 
 }
 
 export function SiteDetailsCard({ tenantId, details: d }: { tenantId: string; details: SiteDetails }) {
-  // Projects with something to say, and every testimonial, start ticked: the person unticks what they don't want.
-  const [projects, setProjects] = useState<Set<number>>(() => new Set(d.projects.map((_, i) => i).filter((i) => d.projects[i].summary || d.projects[i].result)));
-  const [quotes, setQuotes] = useState<Set<number>>(() => new Set(d.testimonials.map((_, i) => i)));
+  // Nothing starts ticked: a site read may not be the person's own (2026-11-18
+  // test read another firm's site), so a fact is kept only when someone picks it.
+  const [projects, setProjects] = useState<Set<number>>(() => new Set());
+  const [quotes, setQuotes] = useState<Set<number>>(() => new Set());
   const [saved, setSaved] = useState<string | null>(null);
   const [saving, save] = useTransition();
   const toggle = (set: Set<number>, put: (s: Set<number>) => void, i: number, on: boolean) => {
@@ -68,6 +70,13 @@ export function SiteDetailsCard({ tenantId, details: d }: { tenantId: string; de
     setSaved(null);
   };
   const picked = projects.size + quotes.size;
+  const tickable = d.projects.length + d.testimonials.length;
+  const allOn = tickable > 0 && picked === tickable;
+  const tickAll = (on: boolean) => {
+    setProjects(new Set(on ? d.projects.map((_, i) => i) : []));
+    setQuotes(new Set(on ? d.testimonials.map((_, i) => i) : []));
+    setSaved(null);
+  };
   const nothing = !d.services.length && !d.projects.length && !d.testimonials.length && !d.clients.length;
   const reach = [...d.contact.emails, ...d.contact.phones, d.contact.address].filter(Boolean);
   const example = d.projects[0] ? projectProof(d.projects[0]) : d.testimonials[0] ? testimonialProof(d.testimonials[0]) : null;
@@ -153,6 +162,9 @@ export function SiteDetailsCard({ tenantId, details: d }: { tenantId: string; de
             >
               {saving ? "Saving" : picked ? `Keep ${picked} as ${picked === 1 ? "a fact" : "facts"}` : "Tick some to keep"}
             </button>
+            {tickable > 1 && (
+              <button type="button" className={quiet} disabled={saving} onClick={() => tickAll(!allOn)}>{allOn ? "Untick all" : "Tick all"}</button>
+            )}
             {saved && <span className="text-sm text-ink-muted flex items-center gap-1.5" role="status"><Check size={14} aria-hidden="true" /> {saved}</span>}
           </div>
         </div>

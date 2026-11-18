@@ -36,7 +36,18 @@ export function ThemeProvider({ initial, children }: { initial: ThemePref; child
     const calm = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (calm && typeof document.startViewTransition === "function") {
       document.documentElement.classList.add("theme-switching");
-      document.startViewTransition(swap).finished.finally(() => document.documentElement.classList.remove("theme-switching"));
+      // The transition can time out or be skipped (a hidden tab, a busy page). Its
+      // `finished` promise then rejects; without a handler that is an unhandled
+      // rejection, which the dev overlay reports. If the swap did not run, run it
+      // now without the animation.
+      const vt = document.startViewTransition(swap);
+      vt.finished
+        .catch(() => {
+          if (document.documentElement.dataset.theme !== next) {
+            try { swap(); } catch { /* the swap itself failed: nothing more to do here */ }
+          }
+        })
+        .finally(() => document.documentElement.classList.remove("theme-switching"));
     } else {
       swap();
     }
@@ -61,8 +72,8 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     <button
       type="button"
       onClick={() => setTheme(next)}
-      title={`Switch to ${next} view`}
       aria-label={`Switch to ${next} view`}
+      data-tip={`Switch to ${next} view`}
       className={`hu-iconbtn ${className}`}
     >
       <Icon size={17} aria-hidden="true" />
@@ -88,7 +99,7 @@ export function ThemeSwitch({ className = "" }: { className?: string }) {
             type="button"
             role="radio"
             aria-checked={on}
-            title={title}
+            aria-description={title}
             onClick={() => setTheme(v)}
             className="hu-seg__item !px-2"
           >

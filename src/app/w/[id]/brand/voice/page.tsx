@@ -29,6 +29,7 @@ import { LEARN_MIN_EDIT, RELEARN_EVERY } from "@/lib/voice/learn";
 import { Select } from "@/components/select";
 import { GuardedForm } from "@/components/unsaved-guard";
 import { unsavedKey } from "@/lib/ui/unsaved";
+import { asSentence } from "../sentence";
 
 export const metadata = { title: "Voice" };
 export const dynamic = "force-dynamic";
@@ -49,9 +50,10 @@ function Tag({ confidence, count }: { confidence?: string; count?: number }) {
       className={`label-mono px-1.5 h-5 inline-flex items-center rounded-xs ${
         measured ? "bg-ok-soft text-ok" : "bg-field text-ink-faint"
       }`}
-      title={measured ? `Measured across ${count ?? 0} pieces of your writing` : "Not measured — you told us, or we inferred it"}
     >
       {measured ? `measured · ${count ?? 0}` : confidence}
+      {/* The longer meaning, said rather than hidden in a hover tooltip. */}
+      <span className="sr-only">{measured ? " pieces of your writing" : ": not measured. You told us, or we inferred it"}</span>
     </span>
   );
 }
@@ -165,7 +167,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
 
         {conf.score < 70 && (
           <Alert tone="warning" title={`${conf.score}% confident, so still learning`}>
-            {conf.missing.slice(0, 2).map((m) => `${m}.`).join(" ")}{" "}
+            {conf.missing.slice(0, 2).map(asSentence).join(" ")}{" "}
             {!pack.onboarding.completedAt && <Link href={`/w/${id}/onboarding`}>Carry on setting up</Link>}
           </Alert>
         )}
@@ -354,6 +356,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             <Hidden id={id} />
             <textarea
               name="text"
+              aria-label="Your writing, pasted. Put a line with --- between pieces"
               rows={5}
               required
               placeholder={"Paste your writing. Put a line with --- between pieces.\n\nA post keeps its own paragraphs: a single blank line never splits it."}
@@ -432,28 +435,29 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
           <Card label="In your words">
             <Hidden id={id} />
             <div className="flex flex-col gap-4">
-              <label className="block">
-                <span className="label-mono text-ink-faint">Your voice in one line</span>
-                <input name="voiceLine" defaultValue={pack.voiceLine || suggestedLine} placeholder="An essayist who finds the big idea in a small moment." className="field mt-1.5" />
-                {suggestedLine && <span className="block text-xs text-ink-faint mt-1">Suggested from your answers. Rewrite it in your words, or save it as it is.</span>}
-              </label>
-              <label className="block">
-                <span className="label-mono text-ink-faint">The one reader you picture</span>
-                <input name="reader" defaultValue={pack.identity.reader?.value ?? ""} placeholder="A newly promoted engineering manager, on a Tuesday afternoon, avoiding a hard conversation." className="field mt-1.5" />
-              </label>
-              <label className="block">
-                <span className="label-mono text-ink-faint">The one idea every piece carries</span>
-                <input name="carries" defaultValue={pack.identity.carries?.value ?? ""} placeholder="Most brand problems are not brand problems. They are clarity problems." className="field mt-1.5" />
-              </label>
-              <label className="block">
-                <span className="label-mono text-ink-faint">Hard rules — one per line. These beat every other instruction.</span>
-                <textarea name="hardRules" rows={3} defaultValue={rules.join("\n")} placeholder="Never claim a title. Let the reader conclude it." className="field mt-1.5" />
-                {!pack.hardRules.length && <span className="block text-xs text-ink-faint mt-1">Drafted from your lines and habits. The facts rule always stays one of the three.</span>}
-              </label>
-              <label className="block">
-                <span className="label-mono text-ink-faint">Words you&apos;d never use</span>
-                <input name="neverWords" defaultValue={never.join(", ")} placeholder="synergy, hustle, leverage" className="field mt-1.5" />
-              </label>
+              {/* Each label is tied to its field by id, so the field's name is the label, not the placeholder. */}
+              <div className="block">
+                <label htmlFor="voice-line" className="label-mono text-ink-faint">Your voice in one line</label>
+                <input id="voice-line" name="voiceLine" defaultValue={pack.voiceLine || suggestedLine} placeholder="An essayist who finds the big idea in a small moment." aria-describedby={suggestedLine ? "voice-line-hint" : undefined} className="field mt-1.5" />
+                {suggestedLine && <span id="voice-line-hint" className="block text-xs text-ink-faint mt-1">Suggested from your answers. Rewrite it in your words, or save it as it is.</span>}
+              </div>
+              <div className="block">
+                <label htmlFor="voice-reader" className="label-mono text-ink-faint">The one reader you picture</label>
+                <input id="voice-reader" name="reader" defaultValue={pack.identity.reader?.value ?? ""} placeholder="A newly promoted engineering manager, on a Tuesday afternoon, avoiding a hard conversation." className="field mt-1.5" />
+              </div>
+              <div className="block">
+                <label htmlFor="voice-carries" className="label-mono text-ink-faint">The one idea every piece carries</label>
+                <input id="voice-carries" name="carries" defaultValue={pack.identity.carries?.value ?? ""} placeholder="Most brand problems are not brand problems. They are clarity problems." className="field mt-1.5" />
+              </div>
+              <div className="block">
+                <label htmlFor="voice-hard-rules" className="label-mono text-ink-faint">Hard rules — one per line. These beat every other instruction.</label>
+                <textarea id="voice-hard-rules" name="hardRules" rows={3} defaultValue={rules.join("\n")} placeholder="Never claim a title. Let the reader conclude it." aria-describedby={!pack.hardRules.length ? "voice-hard-rules-hint" : undefined} className="field mt-1.5" />
+                {!pack.hardRules.length && <span id="voice-hard-rules-hint" className="block text-xs text-ink-faint mt-1">Drafted from your lines and habits. The facts rule always stays one of the three.</span>}
+              </div>
+              <div className="block">
+                <label htmlFor="voice-never-words" className="label-mono text-ink-faint">Words you&apos;d never use</label>
+                <input id="voice-never-words" name="neverWords" defaultValue={never.join(", ")} placeholder="synergy, hustle, leverage" className="field mt-1.5" />
+              </div>
               <div><SubmitButton pendingLabel="Saving…" size="md">Save</SubmitButton></div>
             </div>
           </Card>
@@ -472,7 +476,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                     {notes[b.id]?.confirmed && <span className="label-mono px-1.5 h-5 inline-flex items-center rounded-xs bg-ok-soft text-ok">confirmed</span>}
                   </div>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-3 text-ink-muted">{b.body}</p>
-                  <textarea name="note" rows={2} defaultValue={notes[b.id]?.note ?? ""} placeholder="What makes this one unmistakably you?" className="field font-[inherit]" readOnly={!owner} />
+                  <textarea name="note" aria-label="What makes this one unmistakably you?" rows={2} defaultValue={notes[b.id]?.note ?? ""} placeholder="What makes this one unmistakably you?" className="field font-[inherit]" readOnly={!owner} />
                   {owner && <div><SubmitButton pendingLabel="Saving…" size="sm" variant={notes[b.id]?.confirmed ? "ghost" : "secondary"}>{notes[b.id]?.confirmed ? "Update" : "That's it"}</SubmitButton></div>}
                 </GuardedForm>
               ))}
@@ -504,8 +508,8 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
                       </label>
                     ))}
                   </div>
-                  <input name="off" required placeholder="What's off about it? (too salesy, too formal, not how I'd open)" className="field" />
-                  <textarea name="fixed" rows={2} placeholder="Optional: the first line, the way you'd actually write it" className="field font-[inherit]" />
+                  <input name="off" required aria-label="What's off about it?" placeholder="What's off about it? (too salesy, too formal, not how I'd open)" className="field" />
+                  <textarea name="fixed" aria-label="The first line, the way you'd actually write it (optional)" rows={2} placeholder="Optional: the first line, the way you'd actually write it" className="field font-[inherit]" />
                   <p className="text-xs text-ink-faint">It stops shaping your measured voice, and drafts are told to avoid exactly this.</p>
                   <div><SubmitButton pendingLabel="Saving…" size="sm">Save</SubmitButton></div>
                 </GuardedForm>
@@ -521,7 +525,7 @@ export default async function VoicePage({ params, searchParams }: PageProps<"/w/
             <p className="text-sm text-ink-muted mb-2">
               {pack.redPen.selfCheck?.value?.length ? "Your questions." : "Drafted from your measurements. Edit any line, add your own, or clear it to go back to the drafted list."}
             </p>
-            <textarea name="selfCheck" rows={Math.min(10, selfCheck.length + 1)} defaultValue={selfCheck.join("\n")} className="field font-[inherit] leading-relaxed" />
+            <textarea name="selfCheck" aria-label="Self-check questions, one per line" rows={Math.min(10, selfCheck.length + 1)} defaultValue={selfCheck.join("\n")} className="field font-[inherit] leading-relaxed" />
             <div className="mt-2"><SubmitButton pendingLabel="Saving…" size="sm" variant="secondary">Save self-check</SubmitButton></div>
           </Card>
         </GuardedForm>

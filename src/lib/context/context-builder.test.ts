@@ -86,3 +86,58 @@ describe("buildBrandContext (INV-2)", () => {
     expect(buildBrandContext({ ...fullFoundation, language: "hi" }).language).toBe("hi");
   });
 });
+
+// ---- 2026-11-18 audit: the rewrite and the reply carry their material (C2, H1) ----
+
+const material = {
+  stories: [{ title: "The pilot that failed", body: "Our first pilot closed in March." }],
+  proofs: [{ claim: "12 founders coached through a first hire", source: "case notes" }],
+};
+
+describe("the rewrite and the reply carry the facts and stories their rules name (C2, H1)", () => {
+  it("a rewrite block has the stories and the facts the rewrite rule cites", () => {
+    const ctx = buildBrandContext({ voicePack: { ...material, corpusPieces: 20 }, task: "rewrite" });
+    expect(ctx.serialized).toContain("Facts they can stand behind.");
+    expect(ctx.serialized).toContain("12 founders coached through a first hire [case notes]");
+    expect(ctx.serialized).toContain("The pilot that failed: Our first pilot closed in March.");
+  });
+  it("a reply block (LinkedIn comment, WhatsApp, Slack) has the facts and the stories", () => {
+    const ctx = buildBrandContext({ voicePack: material, task: "reply" });
+    expect(ctx.serialized).toContain("Facts they can stand behind.");
+    expect(ctx.serialized).toContain("Stories they tell.");
+    expect(ctx.serialized).toContain("The pilot that failed");
+  });
+  it("a check block still does not carry the material (it judges, it does not write)", () => {
+    const ctx = buildBrandContext({ voicePack: material, task: "check" });
+    expect(ctx.serialized).not.toContain("Facts they can stand behind.");
+  });
+});
+
+describe("a cap on the brand context is recorded, never silent (H2)", () => {
+  it("records a warning when a list the loader cut has more than it shows", () => {
+    const ctx = buildBrandContext({ caps: [{ section: "Offers", shown: 12, total: 14 }, { section: "Content pillars", shown: 5, total: 5 }] });
+    expect(ctx.warnings).toContain("Offers: 12 of 14 reach the prompt; the rest do not.");
+    expect(ctx.warnings.some((w) => w.startsWith("Content pillars"))).toBe(false);
+  });
+  it("records a warning for an offer whose deliverables are cut, and keeps six", () => {
+    const deliverables = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"];
+    const ctx = buildBrandContext({ brandProfile: { offers: [{ name: "Cohort", deliverables }] } });
+    expect(ctx.serialized).toContain("    Includes: One; Two; Three; Four; Five; Six");
+    expect(ctx.serialized).not.toContain("Seven");
+    expect(ctx.warnings).toContain('Offer "Cohort" lists 8 deliverables; 6 reach the prompt.');
+  });
+  it("cuts a long sample at a sentence and records it", () => {
+    const sentence = "Every sentence here is a complete thought about the work. ";
+    const body = sentence.repeat(40).trim(); // about 2,400 characters
+    const ctx = buildBrandContext({ voicePack: { samples: [{ channel: "linkedin", body }] } });
+    const shown = ctx.serialized.split("\n").find((l) => l.includes("(linkedin)")) ?? "";
+    expect(shown.length).toBeLessThanOrEqual(1500 + "  [1] (linkedin) ".length);
+    expect(shown.endsWith("the work.")).toBe(true);
+    expect(ctx.warnings.some((w) => w.includes("Their writing sample 1 is longer than 1,500 characters"))).toBe(true);
+  });
+  it("keeps a short sample whole and records nothing about it", () => {
+    const ctx = buildBrandContext({ voicePack: { samples: [{ channel: "linkedin", body: "A short post. It fits." }] } });
+    expect(ctx.serialized).toContain("[1] (linkedin) A short post. It fits.");
+    expect(ctx.warnings.some((w) => w.includes("longer than"))).toBe(false);
+  });
+});

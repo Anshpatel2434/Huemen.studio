@@ -38,6 +38,7 @@ import { listAssets } from "@/lib/data/assets";
 import { listPillars } from "@/lib/data/planning";
 import { LEGACY_STEP, screenIndex, type ScreenKey } from "@/lib/onboarding/screens";
 import { userMessage } from "@/lib/ai/errors";
+import { MIN_SPOKEN_WORDS, wordsIn } from "@/lib/onboarding/spoken";
 
 const refresh = (t: string) => revalidatePath(`/w/${t}`, "layout");
 
@@ -110,7 +111,8 @@ export async function finishIngestAction(tenantId: string) {
 export async function voiceNotesAction(tenantId: string, notes: string[]) {
   const { scope } = await actionActor(tenantId);
   const pack = await requirePack(scope);
-  const bodies = notes.map((n) => n.trim()).filter((n) => n.split(/\s+/).length >= 10);
+  // The same rule the screen shows (lib/onboarding/spoken), so what it promised is what is kept.
+  const bodies = notes.map((n) => n.trim()).filter((n) => wordsIn(n) >= MIN_SPOKEN_WORDS);
   await addSamples(scope, pack.id, bodies.map((body) => ({ body, channel: "spoken", kind: "spoken" as const, source: "voice_note" as const })));
   await finishIngest(scope, await requirePack(scope));
   refresh(tenantId);
@@ -184,11 +186,18 @@ export async function firstPieceAction(tenantId: string): Promise<string> {
   if (!projectId) {
     // The short flow asks nothing about pillars up front; the first piece still
     // comes from one, made from the brief and the writing.
-    if (!(await listPillars(scope)).length) await generatePillars(scope).catch(() => 0);
-    const [topic] = await proposeTopics(scope);
-    topicTitle = topic?.title ?? "What I'd tell myself starting out";
-    projectId = await startPiece(scope, { topic: topicTitle, format, pillarName: topic?.pillar });
-    await unlockStage({ ...scope, projectId }, "content");
+    try {
+      if (!(await listPillars(scope)).length) await generatePillars(scope).catch(() => 0);
+      const [topic] = await proposeTopics(scope);
+      topicTitle = topic?.title ?? "What I'd tell myself starting out";
+      projectId = await startPiece(scope, { topic: topicTitle, format, pillarName: topic?.pillar });
+      await unlockStage({ ...scope, projectId }, "content");
+    } catch (e) {
+      // Picking the topic can hit the same limits as the writing: say why here too.
+      await updateOnboarding(scope, pack, { firstPiece: { state: "failed", at: new Date().toISOString(), reason: userMessage(e) } }).catch(() => undefined);
+      refresh(tenantId);
+      throw e;
+    }
   }
   // The checkpoint goes down before the slow part.
   await updateOnboarding(scope, pack, { firstProjectId: projectId, step: 4, firstPiece: { state: "writing", at: new Date().toISOString() } });
@@ -207,7 +216,9 @@ export async function firstPieceAction(tenantId: string): Promise<string> {
     await scoreProject(p).catch(() => undefined);
     await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "done", at: new Date().toISOString() } });
   } catch (e) {
-    await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "failed", at: new Date().toISOString() } });
+    // The reason is kept with the checkpoint: a thrown message never reaches the
+    // browser in production, and "didn't come through" alone hid a daily limit.
+    await updateOnboarding(scope, await requirePack(scope), { firstPiece: { state: "failed", at: new Date().toISOString(), reason: userMessage(e) } });
     refresh(tenantId);
     throw e;
   }
@@ -391,17 +402,26 @@ export async function siteAction(tenantId: string, url: string) {
     let read;
     try {
       read = await readSite(raw);
-    } catch {
+    } catch (e) {
+      // Say why when we know (not public, unusual port, too slow, not a page).
+      if (e instanceof WebImportError) throw e;
       throw new WebImportError("We couldn't open that site. Check the address, or carry on without it.");
     }
     const at = new Date().toISOString();
     const site = { url: read.url, title: read.title, description: read.description, palette: read.palette, fonts: read.fonts, logo: read.logo, dark: read.dark, at, plan: read.plan };
-    await updateOnboarding(scope, await requirePack(scope), { site });
+    const pack = await requirePack(scope);
+    const prev = pack.onboarding.site;
+    await updateOnboarding(scope, pack, { site });
     const v = await loadVisualIdentity(scope);
+    // Colours and fonts that are still exactly what the previous site read gave
+    // are that site's, not the person's: a new site replaces them. Anything the
+    // person changed or set themselves stays (2026-11-17 test: reading a second
+    // site kept the first site's palette and fonts mixed in).
+    const same = (a: unknown[], b: unknown[] | undefined) => !!b && a.length === b.length && a.every((x, i) => JSON.stringify(x) === JSON.stringify(b[i]));
     await saveVisualIdentity(scope, {
       ...v,
-      palette: v.palette.length ? v.palette : site.palette,
-      fonts: v.fonts.length ? v.fonts : site.fonts,
+      palette: !v.palette.length || same(v.palette, prev?.palette) ? site.palette : v.palette,
+      fonts: !v.fonts.length || same(v.fonts, prev?.fonts) ? site.fonts : v.fonts,
       core: { ...(v.core ?? {}), site: { url: read.url, logo: read.logo, at } },
     });
     refresh(tenantId);
@@ -459,17 +479,17 @@ export async function siteProofsAction(tenantId: string, picks: SitePicks) {
   });
 }
 
-/** Screen 2: their name and what they do. A blank field keeps what the brief had. */
+/** Screen 2: their name and what they do (both required on the screen). */
 export async function nameAction(tenantId: string, v: { name: string; niche: string }) {
   const { scope, actor } = await actionActor(tenantId);
-  await saveAbout(scope, actor, await requirePack(scope), { name: v.name, niche: v.niche, audience: "", offers: "", positioning: "" });
+  await saveAbout(scope, actor, await requirePack(scope), { name: v.name, niche: v.niche });
   await advanceAction(tenantId, "audience");
 }
 
 /** Screen 3: who it's for, what they offer, and (optionally) why them. */
 export async function audienceAction(tenantId: string, v: { audience: string; offers: string; positioning: string }) {
   const { scope, actor } = await actionActor(tenantId);
-  await saveAbout(scope, actor, await requirePack(scope), { name: "", niche: "", ...v });
+  await saveAbout(scope, actor, await requirePack(scope), { audience: v.audience, offers: v.offers, positioning: v.positioning });
   await advanceAction(tenantId, "writing");
 }
 
@@ -481,7 +501,10 @@ export async function lookAction(tenantId: string, colours: string[]) {
   const { scope } = await actionActor(tenantId);
   const v = await loadVisualIdentity(scope);
   const ok = colours.filter((c) => /^#[0-9a-f]{6}$/i.test(c));
-  const palette = [...ok, ...v.palette.filter((c) => !ok.some((o) => o.toLowerCase() === c.toLowerCase()))].slice(0, 8);
+  // The two colours REPLACE the palette's first two. Keeping the replaced ones
+  // pushed the old accent into third place, which the default scheme draws as
+  // its background, so an edited accent never showed (2026-11-17 round-two test).
+  const palette = [...ok, ...v.palette.slice(ok.length).filter((c) => !ok.some((o) => o.toLowerCase() === c.toLowerCase()))].slice(0, 8);
   const references = (await listAssets(scope)).filter((a) => a.kind === "reference_image").map((a) => a.id);
   await saveVisualIdentity(scope, { ...v, palette, core: { ...(v.core ?? {}), references } });
   await advanceAction(tenantId, "words");

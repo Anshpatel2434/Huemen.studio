@@ -24,13 +24,17 @@ import type {
 } from "./types";
 import { mockImageProvider, mockTextProvider } from "./providers/mock";
 import { anthropicTextProvider } from "./providers/anthropic";
+import { groqTextProvider, GROQ_BASE } from "./providers/groq";
 import { openaiTranscriber, type FetchLike, type Transcriber } from "./providers/openai-transcribe";
 import { openaiImageProvider, type FetchLike as ImageFetch } from "./providers/openai-image";
-import { assemblePrompt } from "./prompt";
+import { runpodImageProvider } from "./providers/runpod-image";
+import { assemblePrompt, taskRules } from "./prompt";
+import { cleanDeep, cleanModelText, streamCleaner } from "@/lib/content/clean";
+import { isUuid } from "@/lib/content/ids";
 import { AiConfigError, ProviderError, UsageCapError } from "./errors";
 import { takeHit } from "@/lib/ratelimit";
 import type { Env } from "@/lib/env";
-import type { Effort, TextRoute } from "./types";
+import { MAX_TASK_IMAGES, type Effort, type TextImage, type TextRoute } from "./types";
 import type { TaskDef } from "./tasks";
 import { resolveTemplate } from "./templates";
 import type { BrandContext } from "@/lib/context/context-builder";
@@ -44,6 +48,7 @@ export { assemblePrompt } from "./prompt";
  * silently produced mock copy — a deployment that looked configured and wasn't.
  */
 let _anthropic: StreamingTextProvider | null = null;
+let _groq: StreamingTextProvider | null = null;
 
 export function selectTextProvider(env: Env): StreamingTextProvider {
   switch (env.AI_TEXT_PROVIDER) {
@@ -56,9 +61,13 @@ export function selectTextProvider(env: Env): StreamingTextProvider {
         apiKey: env.ANTHROPIC_API_KEY || undefined,
       });
       return _anthropic;
+    case "groq":
+      if (!env.GROQ_API_KEY) throw new AiConfigError("AI_TEXT_PROVIDER=groq needs GROQ_API_KEY.");
+      _groq ??= groqTextProvider({ apiKey: env.GROQ_API_KEY, timeoutMs: env.AI_TEXT_TIMEOUT_MS });
+      return _groq;
     case "openai":
       throw new AiConfigError(
-        'AI_TEXT_PROVIDER=openai is not built. Use "anthropic", or "mock" for local development.',
+        'AI_TEXT_PROVIDER=openai is not built. Use "anthropic" or "groq", or "mock" for local development.',
       );
   }
 }
@@ -76,8 +85,15 @@ export function selectImageProvider(env: Env, fetchImpl?: ImageFetch): ImageProv
       if (!env.OPENAI_API_KEY) throw new AiConfigError("AI_IMAGE_PROVIDER=openai needs OPENAI_API_KEY.");
       if (!env.AI_IMAGE_MODEL) throw new AiConfigError("AI_IMAGE_PROVIDER=openai needs AI_IMAGE_MODEL (the current GPT Image model name).");
       return openaiImageProvider({ apiKey: env.OPENAI_API_KEY, timeoutMs: env.AI_IMAGE_TIMEOUT_MS }, fetchImpl);
+    case "runpod":
+      if (!env.RUNPOD_API_KEY) throw new AiConfigError("AI_IMAGE_PROVIDER=runpod needs RUNPOD_API_KEY.");
+      if (!env.AI_IMAGE_MODEL) throw new AiConfigError("AI_IMAGE_PROVIDER=runpod needs AI_IMAGE_MODEL (a Runpod public endpoint id, e.g. qwen-image-t2i).");
+      return runpodImageProvider(
+        { apiKey: env.RUNPOD_API_KEY, timeoutMs: env.AI_IMAGE_TIMEOUT_MS, editModel: env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit" },
+        fetchImpl as never,
+      );
     case "replicate":
-      throw new AiConfigError('AI_IMAGE_PROVIDER=replicate is not built. Use "openai", or "mock" for local development.');
+      throw new AiConfigError('AI_IMAGE_PROVIDER=replicate is not built. Use "openai" or "runpod", or "mock" for local development.');
   }
 }
 
@@ -93,6 +109,21 @@ export function resolveTextModel(env: Env, route: TextRoute): string {
   throw new AiConfigError(
     `${route === "cheap" ? "AI_TEXT_MODEL_CHEAP" : "AI_TEXT_MODEL_STRONG"} is not set. ` +
       `Name a model for the ${route} route in .env (see .env.example).`,
+  );
+}
+
+/**
+ * The model that looks at pictures (vision), from config. AI_VISION_MODEL
+ * names it; on Anthropic the strong model reads images too, so it is used when
+ * AI_VISION_MODEL is unset. Groq needs it named (a vision-capable model such
+ * as qwen/qwen3.8-27b). Never guessed in code.
+ */
+export function resolveVisionModel(env: Env): string {
+  if (env.AI_VISION_MODEL) return env.AI_VISION_MODEL;
+  if (env.AI_TEXT_PROVIDER === "mock") return "mock-vision";
+  if (env.AI_TEXT_PROVIDER === "anthropic" && env.AI_TEXT_MODEL_STRONG) return env.AI_TEXT_MODEL_STRONG;
+  throw new AiConfigError(
+    "AI_VISION_MODEL is not set. Name a model that reads images in .env (see .env.example), e.g. qwen/qwen3.8-27b on Groq.",
   );
 }
 
@@ -113,14 +144,14 @@ async function logGeneration(
     error?: string;
     contentItemId?: string | null;
   },
-): Promise<void> {
-  if (!scope.tenantId) return; // logs are tenant-scoped (INV-1)
-  await withTenantSession(scope, (c) =>
-    c.query(
+): Promise<string | null> {
+  if (!scope.tenantId) return null; // logs are tenant-scoped (INV-1)
+  const r = await withTenantSession(scope, (c) =>
+    c.query<{ id: string }>(
       `INSERT INTO generation_logs
          (tenant_id, kind, model, tokens_in, tokens_out, image_count,
           latency_ms, status, error, user_id, content_item_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
       [
         scope.tenantId,
         row.kind,
@@ -132,9 +163,26 @@ async function logGeneration(
         row.status,
         row.error ?? null,
         scope.userId,
-        row.contentItemId ?? null,
+        // Only a real id: a malformed one must not turn a logged call into a database error.
+        isUuid(row.contentItemId) ? row.contentItemId : null,
       ],
     ),
+  );
+  return r.rows[0]?.id ?? null;
+}
+
+/**
+ * Tie a model call to the piece it was made for, after the fact. A new draft
+ * (or an outline) is written before its piece exists, so its log row is
+ * written without one; the caller links it here once the piece is saved.
+ * Every model call made for a piece then carries its content_item_id
+ * (generation_logs is the audit trail: AGENTS.md §3). Never overwrites a
+ * link, and RLS keeps it inside the workspace (INV-1).
+ */
+export async function linkGeneration(scope: SessionScope, logId: string | null | undefined, contentItemId: string): Promise<void> {
+  if (!scope.tenantId || !isUuid(logId) || !isUuid(contentItemId)) return;
+  await withTenantSession(scope, (c) =>
+    c.query(`UPDATE generation_logs SET content_item_id = $1 WHERE id = $2 AND content_item_id IS NULL`, [contentItemId, logId]),
   );
 }
 
@@ -197,6 +245,27 @@ export async function enforceCap(scope: SessionScope, kind: "text" | "image"): P
   if (row && row.used >= row.cap) throw new UsageCapError(kind, row.used, row.cap);
 }
 
+/**
+ * Sampling temperature by use (audit M1). A judgement, or a rewrite, should give
+ * the same answer on a rerun, so it runs low. A draft may vary, so it runs
+ * moderate. Tasks not listed keep the provider's default. Chosen here, never in
+ * feature code. No seed: the providers do not offer a reliable one.
+ */
+export const TEMPERATURE = { judge: 0.2, rewrite: 0.3, draft: 0.7 } as const;
+
+const TASK_TEMPERATURE: Record<string, number> = {
+  voice_judge: TEMPERATURE.judge,
+  rewrite_in_voice: TEMPERATURE.rewrite,
+  rewrite_part: TEMPERATURE.rewrite,
+  // Reading designs is a judgement: the same designs should read the same way twice.
+  look_read: TEMPERATURE.judge,
+};
+
+/** The temperature a task runs at, or undefined to keep the provider default. */
+export function temperatureFor(taskKey: string): number | undefined {
+  return TASK_TEMPERATURE[taskKey];
+}
+
 export async function generateText(
   scope: SessionScope,
   req: TextGenRequest & { systemTemplate: string; contentItemId?: string | null },
@@ -217,8 +286,8 @@ export async function generateText(
       variants: req.variants,
     });
     const effort = resolveEffort(env, route);
-    const result = await withRetry(() => provider.generate({ ...req, prompt }, model, { effort }));
-    await logGeneration(scope, {
+    const result = await withRetry(() => provider.generate({ ...req, prompt }, model, { effort, temperature: TEMPERATURE.draft }));
+    const logId = await logGeneration(scope, {
       kind: "text",
       // The model that SERVED the call: differs from the configured one when a
       // refusal fallback ran, and the audit trail should say who wrote it.
@@ -229,7 +298,13 @@ export async function generateText(
       status: "ok",
       contentItemId: req.contentItemId ?? null,
     });
-    return result;
+    // The one clean-up for model text (lib/content/clean), before any caller sees it.
+    const clean = { noEmDash: req.context.writing?.noEmDash };
+    const variants = result.variants.map((v) => cleanModelText(v, clean));
+    // Fewer versions than asked for are kept, but said, not hidden (audit L2).
+    const wanted = Math.max(1, req.variants ?? 1);
+    const warnings = variants.length < wanted ? [`The model returned ${variants.length} of the ${wanted} versions asked for.`] : [];
+    return { ...result, variants, warnings, logId };
   } catch (err) {
     await logGeneration(scope, {
       kind: "text",
@@ -261,13 +336,16 @@ export async function* streamText(
     /** A fixed output spec placed in the cached system part (see assemblePrompt). */
     systemContract?: string;
   },
-): AsyncGenerator<{ type: "delta"; text: string } | { type: "done"; text: string; model: string }> {
+): AsyncGenerator<{ type: "delta"; text: string } | { type: "done"; text: string; model: string; logId: string | null }> {
   const env = getEnv();
   const route = req.route ?? "strong";
   let model = `${env.AI_TEXT_PROVIDER}-${route}`;
   const started = Date.now();
   let text = "";
   let logged = false;
+  // What reaches the screen is already clean (lib/content/clean), so the
+  // words on the canvas are the words that get saved.
+  const cleaner = streamCleaner({ noEmDash: req.context.writing?.noEmDash });
   try {
     await enforceCap(scope, "text");
     const provider = selectTextProvider(env);
@@ -279,14 +357,24 @@ export async function* streamText(
       contract: req.contract,
       systemContract: req.systemContract,
     });
-    for await (const ev of provider.stream({ ...req, prompt }, model, { effort: resolveEffort(env, route) })) {
+    for await (const ev of provider.stream({ ...req, prompt }, model, { effort: resolveEffort(env, route), temperature: TEMPERATURE.draft })) {
       if (ev.type === "delta") {
-        text += ev.text;
-        yield ev;
+        const out = cleaner.push(ev.text);
+        text += out;
+        if (out) yield { type: "delta", text: out };
         continue;
       }
+      const tail = cleaner.flush();
+      text += tail;
+      if (tail) yield { type: "delta", text: tail };
+      // What the person watched (text) must be what gets saved (final). If a
+      // provider ends with different words, nothing is kept (audit H3).
+      const final = ev.text ? cleanModelText(ev.text, { noEmDash: req.context.writing?.noEmDash }) : text;
+      if (final !== text) {
+        throw new ProviderError("unknown", "The draft changed while it was being written, so it was not kept. Try again.", true);
+      }
       logged = true;
-      await logGeneration(scope, {
+      const logId = await logGeneration(scope, {
         kind: "text",
         model: ev.model,
         tokensIn: ev.tokensIn,
@@ -295,7 +383,7 @@ export async function* streamText(
         status: "ok",
         contentItemId: req.contentItemId ?? null,
       });
-      yield { type: "done", text: ev.text || text, model: ev.model };
+      yield { type: "done", text: final, model: ev.model, logId };
       return;
     }
     throw new ProviderError("unparseable", "The stream ended without finishing.");
@@ -386,9 +474,23 @@ async function imageCall(
 export async function runTask<T>(
   scope: SessionScope,
   task: TaskDef<T>,
-  input: { context: BrandContext; taskInput: string; route?: TextRoute; contentItemId?: string | null },
+  input: TaskInput,
 ): Promise<T> {
   return (await runTaskStamped(scope, task, input)).data;
+}
+
+export interface TaskInput {
+  context: BrandContext;
+  taskInput: string;
+  route?: TextRoute;
+  contentItemId?: string | null;
+  /**
+   * Pictures for the model to look at (vision), at most MAX_TASK_IMAGES,
+   * already downscaled. A task with pictures runs on the vision model
+   * (resolveVisionModel); everything else (cap, template, context, retry,
+   * log) is the same as any task.
+   */
+  images?: TextImage[];
 }
 
 /**
@@ -399,26 +501,35 @@ export async function runTask<T>(
 export async function runTaskStamped<T>(
   scope: SessionScope,
   task: TaskDef<T>,
-  input: { context: BrandContext; taskInput: string; route?: TextRoute; contentItemId?: string | null },
-): Promise<{ data: T; model: string; template: { id: string | null; version: number } }> {
+  input: TaskInput,
+): Promise<{ data: T; model: string; template: { id: string | null; version: number }; logId: string | null }> {
   const env = getEnv();
   const route = input.route ?? "strong";
-  let model = `${env.AI_TEXT_PROVIDER}-${route}`;
+  const images = input.images ?? [];
+  const vision = images.length > 0;
+  let model = vision ? `${env.AI_TEXT_PROVIDER}-vision` : `${env.AI_TEXT_PROVIDER}-${route}`;
   const started = Date.now();
   try {
+    if (images.length > MAX_TASK_IMAGES) throw new Error(`At most ${MAX_TASK_IMAGES} pictures can go with one request.`);
     await enforceCap(scope, "text");
     const provider = selectTextProvider(env);
-    model = resolveTextModel(env, route);
+    model = vision ? resolveVisionModel(env) : resolveTextModel(env, route);
     const template = await resolveTemplate(scope, task.key);
     const prompt = assemblePrompt(template.body, input.context, input.taskInput, {
       templateKey: task.key,
-      contract: task.contract,
+      // The task's own contract, then the shared rules it asks for (facts,
+      // the ask, the measured length, plain characters), read from the one
+      // context so a rewrite is held to the same numbers as a draft.
+      contract: [task.contract, ...taskRules(task.rules, input.context)].join("\n"),
     });
-    const req = { templateKey: task.key, context: input.context, taskInput: input.taskInput, route, prompt };
+    const req = { templateKey: task.key, context: input.context, taskInput: input.taskInput, route, prompt, ...(vision ? { images } : {}) };
+    // The route's thinking depth is set for the route's model; the vision
+    // model is another model, so nothing is sent for it.
+    const effort = vision ? undefined : resolveEffort(env, route);
     const result = await withRetry(() =>
-      provider.structured(req, model, task.schema, { effort: resolveEffort(env, route) }),
+      provider.structured(req, model, task.schema, { effort, temperature: temperatureFor(task.key) }),
     );
-    await logGeneration(scope, {
+    const logId = await logGeneration(scope, {
       kind: "text",
       model: result.model,
       tokensIn: result.tokensIn,
@@ -427,7 +538,10 @@ export async function runTaskStamped<T>(
       status: "ok",
       contentItemId: input.contentItemId ?? null,
     });
-    return { data: result.data, model: result.model, template: { id: template.id, version: template.version } };
+    // Every string a task returns is model text: cleaned here, once, except
+    // the fields that quote the input back (task.verbatim).
+    const data = cleanDeep(result.data, { noEmDash: input.context.writing?.noEmDash }, task.verbatim);
+    return { data, model: result.model, template: { id: template.id, version: template.version }, logId };
   } catch (err) {
     await logGeneration(scope, {
       kind: "text",
@@ -457,6 +571,15 @@ export function selectTranscriber(env: Env, fetchImpl?: FetchLike): Transcriber 
       if (!env.AI_TRANSCRIBE_MODEL) throw new AiConfigError("AI_TRANSCRIBE_PROVIDER=openai needs AI_TRANSCRIBE_MODEL.");
       return openaiTranscriber(
         { apiKey: env.OPENAI_API_KEY, model: env.AI_TRANSCRIBE_MODEL, timeoutMs: env.AI_TEXT_TIMEOUT_MS },
+        fetchImpl,
+      );
+    }
+    case "groq": {
+      if (!env.GROQ_API_KEY) throw new AiConfigError("AI_TRANSCRIBE_PROVIDER=groq needs GROQ_API_KEY.");
+      if (!env.AI_TRANSCRIBE_MODEL) throw new AiConfigError("AI_TRANSCRIBE_PROVIDER=groq needs AI_TRANSCRIBE_MODEL (e.g. whisper-large-v3-turbo).");
+      // Groq's Whisper is the same multipart endpoint shape as OpenAI's.
+      return openaiTranscriber(
+        { apiKey: env.GROQ_API_KEY, model: env.AI_TRANSCRIBE_MODEL, timeoutMs: env.AI_TEXT_TIMEOUT_MS, endpoint: `${GROQ_BASE}/audio/transcriptions` },
         fetchImpl,
       );
     }

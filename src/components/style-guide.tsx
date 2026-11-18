@@ -9,13 +9,15 @@
  * from, notes, layout, motifs, photo style and reference designs.
  */
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 import { Check, Globe, ImagePlus, Moon, Plus, Shuffle, Sun, X } from "lucide-react";
 import { btnClass } from "@/components/btn";
 import { deleteAssetAction, readSiteBrandAction, saveVisualAction, uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import { sendToStorage, UploadFailed } from "@/lib/upload-client";
-import { MAX_REFERENCES, type SiteBrand, type VisualCore } from "@/lib/visual/core";
+import { MAX_REFERENCES, type LookReading, type SiteBrand, type VisualCore } from "@/lib/visual/core";
+import { DesignNote, LinkAdd, LookReadingCard, useLookReading } from "@/components/look-reading";
 import type { VisualIdentity } from "@/lib/data/foundation";
+import { colourName } from "@/components/colour-name";
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -29,26 +31,8 @@ const lum = (h: string) => {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
 const onColour = (h: string) => (lum(h) > 0.45 ? "#0A0A0A" : "#FFFFFF");
-function hsl(h: string) {
-  const [r, g, b] = rgb(h).map((v) => v / 255);
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
-  if (max === min) return { h: 0, s: 0, l };
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  const hue = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return { h: hue * 60, s, l };
-}
-/** A plain-words name for a colour: "Deep green", "Soft cream", "Ink". */
-function nameOf(h: string): string {
-  const { h: hue, s, l } = hsl(h);
-  if (s < 0.12) return l > 0.94 ? "White" : l > 0.8 ? "Mist" : l > 0.55 ? "Stone" : l > 0.25 ? "Graphite" : "Ink";
-  const names: [number, string][] = [[15, "Red"], [40, "Orange"], [55, "Gold"], [70, "Yellow"], [160, "Green"], [190, "Teal"], [250, "Blue"], [290, "Violet"], [335, "Magenta"], [360, "Red"]];
-  let base = names.find(([max]) => hue < max)?.[1] ?? "Red";
-  if (base === "Orange" && l > 0.8) base = "Cream";
-  if (base === "Yellow" && l > 0.85) base = "Cream";
-  const tone = l > 0.85 ? "Soft" : l > 0.65 ? "Light" : l < 0.25 ? "Deep" : s > 0.7 ? "Bright" : "";
-  return tone ? `${tone} ${base.toLowerCase()}` : base;
-}
+/** A plain-words name for a colour (components/colour-name). */
+const nameOf = colourName;
 const shades = (h: string) => [0.85, 0.6, 0.3, 0, -0.3, -0.55, -0.75].map((t) => (t >= 0 ? mix(h, "#FFFFFF", t) : mix(h, "#000000", -t)));
 
 // Curated looks to shuffle through: [ground, accent, ink, support].
@@ -79,10 +63,12 @@ const stack = (f: string | undefined, fallback: string) => (f ? `"${f}", ${fallb
 
 // ---- the page ---------------------------------------------------------------------------
 
-export function StyleGuide({ tenantId, initial, references, brandName, hook }: {
+export function StyleGuide({ tenantId, initial, references, brandName, hook, look: savedLook = null }: {
   tenantId: string;
   initial: VisualIdentity;
   references: { id: string; url: string }[];
+  /** The stored reading of the reference designs (look_read), if any. */
+  look?: LookReading | null;
   /** For the preview: whose post it is, and a line from their writing. */
   brandName: string;
   hook: string;
@@ -103,6 +89,27 @@ export function StyleGuide({ tenantId, initial, references, brandName, hook }: {
   const [saved, setSaved] = useState(false);
   const [saving, start] = useTransition();
   const touch = () => { setDirty(true); setSaved(false); };
+  const lookState = useLookReading(tenantId, savedLook);
+  // A new reading seeds layout, motifs and photo style on the server only
+  // where they were empty; the fields here follow, so a later Save doesn't
+  // write the empty ones back over it.
+  const [seededAt, setSeededAt] = useState(savedLook?.at ?? null);
+  const fresh = lookState.look;
+  if (fresh && !fresh.stale && fresh.at !== seededAt) {
+    setSeededAt(fresh.at);
+    if (!layout.trim() && fresh.layout) setLayout(fresh.layout);
+    if (!motifs.trim() && fresh.motifs) setMotifs(fresh.motifs);
+    if (!photoStyle.trim() && fresh.photoStyle) setPhotoStyle(fresh.photoStyle);
+  }
+  const pickLookColour = (hex: string, role: "background" | "accent") => {
+    const i = role === "background" ? 0 : 1;
+    const next = [...palette];
+    while (next.length <= i) next.push("#888888");
+    next[i] = hex.toUpperCase();
+    setPalette(next);
+    setOpen(null);
+    touch();
+  };
 
   const bad = palette.some((c) => !HEX.test(c));
   const ok = palette.filter((c) => HEX.test(c));
@@ -118,18 +125,6 @@ export function StyleGuide({ tenantId, initial, references, brandName, hook }: {
   /** Scheme shuffle: the next colour becomes the accent (Relume's "Scheme shuffle"). */
   const shuffleScheme = () => { if (ok.length < 3) return; const [g, a, ...rest] = palette; setPalette([g, ...rest, a]); touch(); };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [contenteditable], button, a")) return;
-      if (e.key === "c" || e.key === "C") shuffleColours();
-      else if (e.key === "t" || e.key === "T") shuffleType();
-      else if (e.code === "Space") { e.preventDefault(); shuffleScheme(); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
   const save = () => start(async () => {
     await saveVisualAction(tenantId, {
       palette, fonts, imageStyleNotes: notes,
@@ -140,8 +135,41 @@ export function StyleGuide({ tenantId, initial, references, brandName, hook }: {
     router.refresh();
   });
 
+  const canSave = !saving && !bad && dirty;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Ctrl/⌘ S saves from anywhere on the page, fields included.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        if (canSave) save();
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, [contenteditable], button, a")) return;
+      if (e.key === "c" || e.key === "C") shuffleColours();
+      else if (e.key === "t" || e.key === "T") shuffleType();
+      else if (e.code === "Space") { e.preventDefault(); shuffleScheme(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <div className="flex flex-col gap-10">
+      {/* The tool strip: the shortcuts, whether there's anything to keep, and Save.
+          A flat bar across the top of the guide that stays in reach while scrolling,
+          never a floating pill over the page. */}
+      <div className="sticky top-0 z-10 -mb-4 bg-paper border-y border-hairline py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p className="text-sm text-ink-muted flex flex-wrap items-center gap-1.5">
+          Shuffle <Kbd>C</Kbd> colours <Kbd>T</Kbd> type <Kbd>Space</Kbd> scheme
+        </p>
+        <span className="flex-1" aria-hidden="true" />
+        <span className="text-sm text-ink-muted" role="status">
+          {saved ? <span className="text-ok inline-flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved. Every visual reads it now.</span> : dirty ? "Unsaved changes" : "Nothing to save"}
+        </span>
+        <button type="button" onClick={save} disabled={!canSave} aria-keyshortcuts="Control+S Meta+S" className={btnClass("primary", "sm")}>{saving ? "Saving" : "Save style guide"}</button>
+      </div>
       <FontLoader fonts={fonts} />
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.92fr)] gap-8 items-start">
         {/* Left: colours and type */}
@@ -158,7 +186,7 @@ export function StyleGuide({ tenantId, initial, references, brandName, hook }: {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 auto-rows-[11rem]">
               <div className="row-span-2 rounded-2xl overflow-hidden border border-hairline flex flex-col" aria-label="Neutrals">
                 <div className="bg-paper px-4 pt-4 pb-6 text-sm font-medium">Neutrals</div>
-                {neutrals.map((n) => <div key={n} className="flex-1" style={{ background: n }} title={n} />)}
+                {neutrals.map((n) => <div key={n} role="img" aria-label={`Neutral ${n}`} className="flex-1" style={{ background: n }} />)}
               </div>
               {palette.map((c, i) => (
                 <ColourCard
@@ -253,18 +281,8 @@ export function StyleGuide({ tenantId, initial, references, brandName, hook }: {
           <Area label="Layout grid" value={layout} onChange={(v) => { setLayout(v); touch(); }} placeholder="Wide margins, one column, text left-aligned" />
           <Area label="Motifs" value={motifs} onChange={(v) => { setMotifs(v); touch(); }} placeholder="A hand-drawn underline under the key phrase" />
         </div>
-        <References tenantId={tenantId} references={references} />
+        <References tenantId={tenantId} references={references} reading={lookState} onUseColour={pickLookColour} />
       </More>
-
-      {/* Save: always in reach, says when there's something to keep. */}
-      <div className="sticky bottom-4 z-10 flex justify-end">
-        <div className="flex items-center gap-3 bg-paper border border-hairline rounded-full pl-5 pr-1.5 py-1.5 shadow-[var(--shadow)]">
-          <span className="text-sm text-ink-muted" role="status">
-            {saved ? <span className="text-ok inline-flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Saved. Every visual reads it now.</span> : dirty ? "Unsaved changes" : "Shuffle with C, T and Space"}
-          </span>
-          <button type="button" onClick={save} disabled={saving || bad || !dirty} className={btnClass("primary", "sm")}>{saving ? "Saving" : "Save style guide"}</button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -276,6 +294,10 @@ const Head = ({ title, children }: { title: string; children?: ReactNode }) => (
     <h2 className="text-[1.75rem] leading-none tracking-[-0.015em] flex-1">{title}</h2>
     {children}
   </div>
+);
+
+const Kbd = ({ children }: { children: ReactNode }) => (
+  <kbd className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-field text-ink-muted">{children}</kbd>
 );
 
 const ShuffleBtn = ({ onClick, k }: { onClick: () => void; k: string }) => (
@@ -316,12 +338,16 @@ function ColourCard({ colour, role, big, open, onOpen, use, onChange, onUse, onR
   );
 }
 
-const Area = ({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) => (
-  <label className="block">
-    <span className="hu-label !flex mb-2">{label}</span>
-    <textarea rows={2} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="field" />
-  </label>
-);
+/** A labelled note field: the visible label is tied to the textarea by id, so it, not the placeholder, names it. */
+function Area({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+  const id = useId();
+  return (
+    <div className="block">
+      <label htmlFor={id} className="hu-label !flex mb-2">{label}</label>
+      <textarea id={id} rows={2} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="field" />
+    </div>
+  );
+}
 
 function More({ tenantId, site, onSite, children }: { tenantId: string; site: VisualCore["site"]; onSite: (f: SiteBrand & { url: string }) => void; children: ReactNode }) {
   const [url, setUrl] = useState(site?.url ?? "");
@@ -350,7 +376,12 @@ function More({ tenantId, site, onSite, children }: { tenantId: string; site: Vi
   );
 }
 
-function References({ tenantId, references }: { tenantId: string; references: { id: string; url: string }[] }) {
+function References({ tenantId, references, reading, onUseColour }: {
+  tenantId: string;
+  references: { id: string; url: string }[];
+  reading: ReturnType<typeof useLookReading>;
+  onUseColour: (hex: string, role: "background" | "accent") => void;
+}) {
   const router = useRouter();
   const [busy, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -366,30 +397,38 @@ function References({ tenantId, references }: { tenantId: string; references: { 
         const r = await uploadAssetChecked(fd);
         if (r.error) return setError(r.error);
         router.refresh();
+        reading.read();
       } catch (e) {
         setError(e instanceof UploadFailed ? e.message : "That file couldn't be used. Use a PNG, JPG or WebP under 5 MB.");
       }
     });
   };
   return (
-    <div className="flex flex-col gap-2">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
+    <div className="flex flex-col gap-3">
       <span className="text-sm font-medium">Designs that look like you <span className="text-ink-faint font-normal">· up to {MAX_REFERENCES}</span></span>
-      <div className="flex flex-wrap gap-3">
-        {references.slice(0, MAX_REFERENCES).map((r) => (
-          <div key={r.id} className="group relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={r.url} alt="A reference design" className="w-32 h-32 object-cover rounded-xl border border-hairline" />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => start(async () => { await deleteAssetAction(tenantId, r.id); router.refresh(); })}
-              aria-label="Remove this reference design"
-              className="hu-iconbtn absolute top-1.5 right-1.5 bg-paper opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-            >
-              <X size={13} aria-hidden="true" />
-            </button>
-          </div>
-        ))}
+      <div className="flex flex-wrap gap-3 items-start">
+        {references.slice(0, MAX_REFERENCES).map((r) => {
+          const d = reading.look?.designs.find((x) => x.assetId === r.id.toLowerCase());
+          return (
+            <div key={r.id} className="flex flex-col gap-2 w-32">
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={r.url} alt="A reference design" className="w-32 h-32 object-cover rounded-xl border border-hairline" />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => start(async () => { await deleteAssetAction(tenantId, r.id); router.refresh(); reading.read(); })}
+                  aria-label="Remove this reference design"
+                  className="hu-iconbtn absolute top-1.5 right-1.5 bg-paper"
+                >
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </div>
+              {d && <DesignNote summary={d.summary} colours={d.colours} onUse={onUseColour} />}
+            </div>
+          );
+        })}
         {references.length < MAX_REFERENCES && (
           <label className="w-32 h-32 rounded-xl border border-dashed border-line flex flex-col items-center justify-center gap-1 text-xs text-ink-muted cursor-pointer hover:border-line-strong">
             <ImagePlus size={18} aria-hidden="true" /> {busy ? "Uploading" : "Add a design"}
@@ -397,8 +436,14 @@ function References({ tenantId, references }: { tenantId: string; references: { 
           </label>
         )}
       </div>
+      {references.length < MAX_REFERENCES && <div className="max-w-md"><LinkAdd tenantId={tenantId} disabled={busy} onAdded={reading.read} /></div>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <p className="text-xs text-ink-faint">Branded posts or ads you already like, kept as a reference for you and your coach. Visuals are drawn from templates and don&apos;t read them yet.</p>
+      <p className="text-xs text-ink-faint">Branded posts or ads you already like. We read the look they share, never copy them, and every picture brief starts from it.</p>
+    </div>
+    <div className="rounded-2xl border border-hairline bg-paper p-5">
+      <LookReadingCard referenceIds={references.map((r) => r.id)} look={reading.look} reading={reading.reading} error={reading.error} onRead={reading.read} />
+      {!references.length && !reading.look && <p className="text-sm text-ink-muted">Add a design and we&apos;ll read its look and match it to your voice.</p>}
+    </div>
     </div>
   );
 }

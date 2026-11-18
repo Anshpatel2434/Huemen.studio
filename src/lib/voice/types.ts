@@ -419,7 +419,8 @@ export interface Onboarding {
    * The first piece being written. Stored before the model is called, so a
    * reload mid-write shows it still writing instead of offering a second one.
    */
-  firstPiece?: { state: "writing" | "done" | "failed"; at: string };
+  /** `reason`: what the person is told when the write failed (a rate limit and when it frees up, say). */
+  firstPiece?: { state: "writing" | "done" | "failed"; at: string; reason?: string };
   /**
    * The scan in flight, so "Building your core" survives a refresh and the
    * page can tell the person when it finishes (design system §15.2).

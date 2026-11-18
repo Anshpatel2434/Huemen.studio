@@ -21,6 +21,7 @@ import sharp from "sharp";
 import { getEnv } from "@/lib/env";
 import { mockImageProvider } from "@/lib/ai/providers/mock";
 import { openaiImageProvider } from "@/lib/ai/providers/openai-image";
+import { runpodImageProvider } from "@/lib/ai/providers/runpod-image";
 import { buildBrandContext } from "@/lib/context/context-builder";
 import { keepOutside, regionMask } from "@/lib/visual/region";
 
@@ -30,10 +31,12 @@ async function main() {
   if (env.AI_IMAGE_PROVIDER === "replicate") throw new Error("AI_IMAGE_PROVIDER=replicate is not built.");
   const provider = env.AI_IMAGE_PROVIDER === "openai"
     ? openaiImageProvider({ apiKey: env.OPENAI_API_KEY!, timeoutMs: env.AI_IMAGE_TIMEOUT_MS })
-    : mockImageProvider;
+    : env.AI_IMAGE_PROVIDER === "runpod"
+      ? runpodImageProvider({ apiKey: env.RUNPOD_API_KEY!, timeoutMs: env.AI_IMAGE_TIMEOUT_MS, editModel: env.AI_IMAGE_EDIT_MODEL || "qwen-image-edit" })
+      : mockImageProvider;
   const model = env.AI_IMAGE_MODEL || "mock-image";
   console.log(`Provider: ${provider.name}, model: ${model}`);
-  if (provider.name === "mock") console.log("This is the stand-in. Set AI_IMAGE_PROVIDER=openai, OPENAI_API_KEY and AI_IMAGE_MODEL to test the real model.");
+  if (provider.name === "mock") console.log("This is the stand-in. Set AI_IMAGE_PROVIDER (openai or runpod), its key and AI_IMAGE_MODEL to test a real model.");
 
   const context = buildBrandContext({
     brandProfile: { niche: "Leadership coaching", positioningStatement: "Helping first-time managers lead without burning out" },

@@ -24,16 +24,18 @@ import type { Session } from "@/lib/auth/types";
 
 const BASE = { DATABASE_URL: "postgres://x", DATABASE_ADMIN_URL: "postgres://x", DATABASE_APP_PASSWORD: "x" };
 const GOOD_SECRET = "a".repeat(64);
+// Production refuses the stand-in providers (audit H2b), so a production fixture names real ones.
+const REAL_AI = { AI_TEXT_PROVIDER: "groq", GROQ_API_KEY: "gsk_x", AI_IMAGE_PROVIDER: "openai", OPENAI_API_KEY: "sk_x", AI_IMAGE_MODEL: "image-model" };
 
 describe("production settings", () => {
   it("refuses the dev sign-in in production", () => {
     expect(() => parseEnv({ ...BASE, NODE_ENV: "production", AUTH_SECRET: GOOD_SECRET })).toThrow(/AUTH_DRIVER=dev/);
   });
   it("allows it only when a throwaway test deploy says so", () => {
-    expect(parseEnv({ ...BASE, NODE_ENV: "production", AUTH_SECRET: GOOD_SECRET, AUTH_ALLOW_DEV_SIGNIN: "true" }).AUTH_DRIVER).toBe("dev");
+    expect(parseEnv({ ...BASE, ...REAL_AI, NODE_ENV: "production", AUTH_SECRET: GOOD_SECRET, AUTH_ALLOW_DEV_SIGNIN: "true" }).AUTH_DRIVER).toBe("dev");
   });
   it("refuses the example secret and short secrets in production", () => {
-    const prod = { ...BASE, NODE_ENV: "production", AUTH_DRIVER: "email", MAIL_PROVIDER: "resend", RESEND_API_KEY: "re_x", MAIL_FROM: "a@b.co" };
+    const prod = { ...BASE, ...REAL_AI, NODE_ENV: "production", AUTH_DRIVER: "email", MAIL_PROVIDER: "resend", RESEND_API_KEY: "re_x", MAIL_FROM: "a@b.co" };
     expect(() => parseEnv({ ...prod, AUTH_SECRET: "CHANGE_ME_32_BYTE_RANDOM_STRING_xxxxx" })).toThrow(/AUTH_SECRET/);
     expect(() => parseEnv({ ...prod, AUTH_SECRET: "0123456789abcdef0123" })).toThrow(/AUTH_SECRET/);
     expect(parseEnv({ ...prod, AUTH_SECRET: GOOD_SECRET }).AUTH_DRIVER).toBe("email");

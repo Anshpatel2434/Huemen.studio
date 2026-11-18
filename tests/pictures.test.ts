@@ -15,10 +15,11 @@ import { Pool } from "pg";
 import sharp from "sharp";
 import { appPool } from "@/db/pool";
 import { createProject, unlockStage, type ProjectScope } from "@/lib/data/projects";
-import { generateContent, listContent } from "@/lib/data/content";
+import { generateContent, listContent, patchContent } from "@/lib/data/content";
 import { deleteVisuals, generateVisuals, listVisuals } from "@/lib/data/pipeline";
-import { designOf, drawPicture, pictureLinks, previousPicture, redrawArea, shapeFor } from "@/lib/data/pictures";
-import { addComment, applyTemplateComment, getComment } from "@/lib/data/visual-comments";
+import { colourLines, designOf, drawPicture, pictureInstructions, pictureLinks, pictureVersions, previousPicture, redrawArea, selectPictureVersion, shapeFor } from "@/lib/data/pictures";
+import { addComment, applyTemplateComment, failedComment, getComment } from "@/lib/data/visual-comments";
+import { approveAgain, revertCopy } from "@/lib/data/visual-copy";
 import { cleanBox, keepOutside, regionMask } from "@/lib/visual/region";
 import { openaiImageProvider } from "@/lib/ai/providers/openai-image";
 import { selectImageProvider } from "@/lib/ai";
@@ -202,7 +203,8 @@ describe("pictures on a visual", () => {
     const id = await drawPicture(A, itemA, "quote", "with_text");
     const [row] = await admin<{ prompt: string; params: { heading: string } }>("SELECT prompt, params FROM image_assets WHERE id=$1", [id]);
     const [item] = await listContent(A);
-    expect(row.prompt).toContain(`Text: "${item.hook.replace(/"/g, "'").slice(0, 120)}"`);
+    // The drawn heading is the stored heading in full (M3): it is never cut to a length.
+    expect(row.prompt).toContain(`Text: "${item.hook.replace(/"/g, "'")}"`);
     expect(row.params.heading).toBe(item.hook);
   });
 
@@ -304,5 +306,168 @@ describe("comments pinned on a visual", () => {
     await expect(addComment(A, { visualId: carousel.id, target: "picture", box: { x: 0, y: 0, w: 0.5, h: 0.5 }, note: "x" })).rejects.toThrow(/no picture yet/);
     await expect(addComment({ ...B, projectId: A.projectId }, { visualId: v.id, target: "headline", box: { x: 0, y: 0, w: 0.5, h: 0.5 }, note: "x" })).rejects.toThrow(/isn't in this project/);
     await expect(addComment(B, { visualId: v.id, target: "headline", box: { x: 0, y: 0, w: 0.5, h: 0.5 }, note: "x" })).rejects.toThrow(/isn't in this project/);
+  });
+});
+
+describe("picture versions, one change at a time, try again, undo", () => {
+  it("two area changes sent together run one after the other: the second starts from the first's result, and neither is lost", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const start = (await designOf(A, itemA))!.pictures.post!.id;
+    const one = { x: 0.05, y: 0.05, w: 0.2, h: 0.2 };
+    const two = { x: 0.65, y: 0.65, w: 0.2, h: 0.2 };
+    const [a, b] = await Promise.all([
+      redrawArea(A, itemA, "post", one, "warmer here"),
+      redrawArea(A, itemA, "post", two, "cooler here"),
+    ]);
+    const rows = await admin<{ id: string; parent_id: string }>("SELECT id, parent_id FROM image_assets WHERE id = ANY($1::uuid[])", [[a, b]]);
+    const parentOf = new Map(rows.map((r) => [r.id, r.parent_id]));
+    // A chain, not two branches off the same version: start <- first <- second.
+    const first = [a, b].find((id) => parentOf.get(id) === start)!;
+    const second = [a, b].find((id) => id !== first)!;
+    expect(first).toBeTruthy();
+    expect(parentOf.get(second)).toBe(first);
+    expect((await designOf(A, itemA))!.pictures.post!.id).toBe(second);
+
+    // The picture in use carries BOTH changes.
+    const key = async (id: string) => (await admin<{ storage_key: string }>("SELECT storage_key FROM image_assets WHERE id=$1", [id]))[0].storage_key;
+    const was = await pixels((await storage().get(await key(start)))!.data);
+    const now = await pixels((await storage().get(await key(second)))!.data);
+    const changedIn = (box: { x: number; y: number; w: number; h: number }) => {
+      let n = 0;
+      for (let y = Math.floor(box.y * was.height); y < (box.y + box.h) * was.height; y += 5) {
+        for (let x = Math.floor(box.x * was.width); x < (box.x + box.w) * was.width; x += 5) {
+          const i = (y * was.width + x) * 4;
+          if (was.data[i] !== now.data[i] || was.data[i + 1] !== now.data[i + 1] || was.data[i + 2] !== now.data[i + 2]) n++;
+        }
+      }
+      return n;
+    };
+    expect(changedIn(one)).toBeGreaterThan(0);
+    expect(changedIn(two)).toBeGreaterThan(0);
+  });
+
+  it("lists every version newest first with the heading it was drawn with, an earlier one can be put back, and B sees none", async () => {
+    if (!dbReachable) return;
+    const all = await pictureVersions(A);
+    const post = all.filter((v) => v.artboard === "post");
+    expect(post.length).toBeGreaterThanOrEqual(4);
+    expect(post.map((v) => v.createdAt)).toEqual([...post.map((v) => v.createdAt)].sort().reverse());
+    expect(post[0].id).toBe((await designOf(A, itemA))!.pictures.post!.id);
+    expect(post.every((v) => v.url.includes("/api/storage/") && v.contentItemId === itemA)).toBe(true);
+    // A fresh draw has no parent; an area change points at the version it was made from.
+    expect(post.at(-1)!.parentId).toBeNull();
+    expect(post[0].parentId).toBe(post[1].id);
+
+    // The quote card's picture has the heading drawn in; the headline was rewritten since, so it is stale.
+    const quote = all.find((v) => v.artboard === "quote")!;
+    expect(quote.mode).toBe("with_text");
+    expect(quote.heading).toBeTruthy();
+    expect(quote.heading).not.toBe((await listContent(A))[0].hook);
+
+    const oldest = post.at(-1)!.id;
+    expect(await selectPictureVersion(A, itemA, "post", oldest)).toBe(true);
+    expect((await designOf(A, itemA))!.pictures.post).toEqual({ id: oldest, mode: "live_text" });
+    // Not a version of another visual, and not from another workspace.
+    expect(await selectPictureVersion(A, itemA, "post", quote.id)).toBe(false);
+    expect(await selectPictureVersion({ ...B, projectId: A.projectId }, itemA, "post", post[0].id)).toBe(false);
+    expect(await pictureVersions(B)).toEqual([]);
+    expect(await pictureVersions({ ...B, projectId: A.projectId })).toEqual([]);
+  });
+
+  it("Try again runs a failed comment again, and never one that went through", async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    await admin("UPDATE content_items SET cta='' WHERE id=$1", [itemA]);
+    const c = await addComment(A, { visualId: v.id, target: "cta", box: { x: 0.1, y: 0.8, w: 0.5, h: 0.1 }, note: "more direct" });
+    const failed = await applyTemplateComment(A, c);
+    expect(failed.status).toBe("failed");
+    expect(failed.result).toMatch(/no text there/);
+
+    await admin("UPDATE content_items SET cta='Book a call with me this week.' WHERE id=$1", [itemA]);
+    const again = await failedComment(A, c.id);
+    expect(again.id).toBe(c.id);
+    expect(again.artboard).toBe("post");
+    const done = await applyTemplateComment(A, again);
+    expect(done.status).toBe("applied");
+    expect((await listContent(A))[0].cta).not.toBe("Book a call with me this week.");
+
+    await expect(failedComment(A, c.id)).rejects.toThrow(/already went through/);
+    await expect(failedComment(B, c.id)).rejects.toThrow(/isn't there/);
+    await expect(failedComment({ ...B, projectId: A.projectId }, c.id)).rejects.toThrow(/isn't there/);
+    expect(done.resultPictureId).toBeNull();
+  });
+
+  it("a picture comment remembers the version it made, so the board can tell when it was undone", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const v = await visual(A);
+    const c = await addComment(A, { visualId: v.id, target: "picture", box: { x: 0.4, y: 0.1, w: 0.2, h: 0.2 }, note: "a plant here" });
+    const jobId = await enqueueJob(A, "picture_edit", { projectId: A.projectId, commentId: c.id }, { label: "Changing the picture" });
+    expect((await settle(A, jobId))?.status).toBe("succeeded");
+    const made = (await designOf(A, itemA))!.pictures.post!.id;
+    expect((await getComment(A, c.id))?.resultPictureId).toBe(made);
+    // Undo: the visual is back on the version before; the comment still says which version it made.
+    expect(await previousPicture(A, itemA, "post")).toBe(true);
+    expect((await designOf(A, itemA))!.pictures.post!.id).not.toBe(made);
+    expect((await getComment(A, c.id))?.resultPictureId).toBe(made);
+  });
+
+  it("undoing a copy edit puts the words and the status back; a stale undo changes nothing", async () => {
+    if (!dbReachable) return;
+    await admin("UPDATE content_items SET status='draft' WHERE id=$1", [itemA]);
+    const before = (await listContent(A))[0];
+    await patchContent(A, itemA, { hook: "A new heading typed on the visual" }, { hook: before.hook });
+    expect((await listContent(A))[0].status).toBe("edited");
+
+    // Another tab changed it since: the undo is refused and nothing moves.
+    await expect(revertCopy(A, itemA, { hook: before.hook }, { hook: "not what is there" }, "draft")).rejects.toThrow();
+    expect((await listContent(A))[0].status).toBe("edited");
+
+    await revertCopy(A, itemA, { hook: before.hook }, { hook: "A new heading typed on the visual" }, "draft");
+    const after = (await listContent(A))[0];
+    expect(after.hook).toBe(before.hook);
+    expect(after.status).toBe("draft");
+
+    // A piece that was already edited stays edited, and a made-up status is ignored.
+    await patchContent(A, itemA, { hook: "Second edit" });
+    await revertCopy(A, itemA, { hook: before.hook }, null, "published");
+    expect((await listContent(A))[0].status).toBe("edited");
+    // Another workspace can't revert A's piece.
+    await revertCopy({ ...B, projectId: A.projectId }, itemA, { hook: "B was here" }, null, "draft");
+    expect((await listContent(A))[0].hook).toBe(before.hook);
+  });
+
+  it("Approve again approves only a piece that still says edited, and only in its own workspace", async () => {
+    if (!dbReachable) return;
+    await admin("UPDATE content_items SET status='approved' WHERE id=$1", [itemA]);
+    await patchContent(A, itemA, { hook: "Heading changed on an approved visual" });
+    expect((await listContent(A))[0].status).toBe("edited");
+    // Another workspace can't approve A's piece.
+    expect(await approveAgain({ ...B, projectId: A.projectId }, itemA)).toBeNull();
+    expect((await listContent(A))[0].status).toBe("edited");
+    expect(await approveAgain(A, itemA)).toEqual({ hook: "Heading changed on an approved visual" });
+    expect((await listContent(A))[0].status).toBe("approved");
+    // Already approved (or moved on since): nothing to do.
+    expect(await approveAgain(A, itemA)).toBeNull();
+  });
+});
+
+describe("the picture brief's rules (pure)", () => {
+  it("the picture is told no codes, no screens and no logos, in either mode", () => {
+    const live = pictureInstructions("live_text", "Copying kills uniqueness");
+    expect(live).toMatch(/^No words, letters, numbers, hex codes or logos/);
+    expect(live).toMatch(/No hex codes, colour codes, UI, app or chat screens, and no logos/);
+    const drawn = pictureInstructions("with_text", "Copying kills uniqueness");
+    expect(drawn).toContain('Text: "Copying kills uniqueness"');
+    expect(drawn).toMatch(/No other words, letters, numbers or codes/);
+    expect(drawn).toMatch(/No hex codes/);
+  });
+
+  it("the brief gets the brand palette and this visual's colours as hex, and says when there is none", () => {
+    const scheme = { name: "Scheme 1", bg: "#f6f1e9", fg: "#141414", accent: "#1f4d3a" };
+    expect(colourLines(["#f6f1e9", "#1f4d3a", "#141414"], scheme)).toEqual([
+      "Brand palette (hex): #F6F1E9, #1F4D3A, #141414",
+      "This visual's colours (hex): ground #F6F1E9, ink #141414, accent #1F4D3A.",
+    ]);
+    expect(colourLines([], null)).toEqual(["Brand palette: none set, so the house colours stand in."]);
   });
 });

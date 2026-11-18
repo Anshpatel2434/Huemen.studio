@@ -14,20 +14,37 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { ArrowUp, Check } from "lucide-react";
 import { Renderer, type ActionEvent } from "@openuidev/react-lang";
-import { AgentDots } from "@/components/ui";
+import { AgentDots, btnClass } from "@/components/ui";
 import { liveDraftHref } from "@/components/live-draft";
-import { agentLibrary } from "@/lib/agent-ui/library";
+import { agentLibrary, BriefStatusContext } from "@/lib/agent-ui/library";
 import { PAGES } from "@/lib/agent-ui/spec";
+import type { BriefStatus } from "@/lib/agent-ui/status";
 import { parseAgentAction } from "@/lib/agent-ui/actions";
 import { askAgent, runAgentAction, type AgentReply } from "./agent-actions";
 
 type Msg =
   | { role: "me"; text: string }
   | { role: "agent"; text: string; tasks?: AgentReply["tasks"] }
-  /** A streamed answer: `ui` is the OpenUI Lang so far. */
-  | { role: "answer"; ui: string; streaming: boolean; failed?: string };
+  /** A streamed answer: `ui` is the OpenUI Lang so far; `status` is the brief's score and gaps, from the server. */
+  | { role: "answer"; ui: string; streaming: boolean; failed?: string; status?: BriefStatus; q?: { text: string; earlier: string[] } };
 
 const FALLBACK = "I couldn't lay that answer out. Ask it another way and I'll try again.";
+
+/**
+ * The piece an edit is about: the one in the URL (Content opens ?item=<id>),
+ * else the one last opened in this project (the Content board keeps it, since
+ * a click on the canvas closes the editor and drops the URL param).
+ */
+function openPieceId(projectId: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get("item");
+    if (fromUrl) return fromUrl;
+    return sessionStorage.getItem(`huemen:open-piece:${projectId}`);
+  } catch {
+    return null;
+  }
+}
 
 export function AgentPanel({ workspaceId, projectId, degraded, completeness }: { workspaceId: string; projectId: string; degraded: boolean; completeness: number }) {
   const router = useRouter();
@@ -53,7 +70,7 @@ export function AgentPanel({ workspaceId, projectId, degraded, completeness }: {
   const streamAnswer = async (question: string, earlier: string[]) => {
     setStreaming(true);
     let at = -1;
-    setMsgs((m) => { at = m.length; return [...m, { role: "answer", ui: "", streaming: true }]; });
+    setMsgs((m) => { at = m.length; return [...m, { role: "answer", ui: "", streaming: true, q: { text: question, earlier } }]; });
     const patch = (fn: (a: Extract<Msg, { role: "answer" }>) => Extract<Msg, { role: "answer" }>) =>
       setMsgs((m) => m.map((x, i) => (i === at && x.role === "answer" ? fn(x) : x)));
     try {
@@ -70,8 +87,13 @@ export function AgentPanel({ workspaceId, projectId, degraded, completeness }: {
         buf = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.trim()) continue;
-          const ev = JSON.parse(line) as { t: "d"; v: string } | { t: "done"; ok: boolean } | { t: "error"; message: string };
-          if (ev.t === "d") patch((a) => ({ ...a, ui: a.ui + ev.v }));
+          const ev = JSON.parse(line) as
+            | { t: "status"; score: number; open: string[] }
+            | { t: "d"; v: string }
+            | { t: "done"; ok: boolean }
+            | { t: "error"; message: string };
+          if (ev.t === "status") patch((a) => ({ ...a, status: { score: ev.score, open: ev.open } }));
+          else if (ev.t === "d") patch((a) => ({ ...a, ui: a.ui + ev.v }));
           else if (ev.t === "done") patch((a) => ({ ...a, streaming: false, failed: ev.ok ? undefined : FALLBACK }));
           else patch((a) => ({ ...a, streaming: false, failed: ev.message }));
         }
@@ -90,13 +112,14 @@ export function AgentPanel({ workspaceId, projectId, degraded, completeness }: {
     setMsgs((m) => [...m, { role: "me", text }]);
     start(async () => {
       try {
-        const r = await askAgent(workspaceId, projectId, text);
+        const r = await askAgent(workspaceId, projectId, text, openPieceId(projectId));
         if (r.stream) {
           void streamAnswer(text, earlier);
           return;
         }
-        setMsgs((m) => [...m, { role: "agent", text: r.text, tasks: r.tasks }]);
-        router.refresh();
+        setMsgs((m) => [...m, { role: "agent", text: r.failed ? `${r.text} Your message is back in the box.` : r.text, tasks: r.tasks }]);
+        if (r.failed) setDraft((d) => d || text);
+        else router.refresh();
       } catch {
         setMsgs((m) => [...m, { role: "agent", text: "That didn't go through. Your message is back in the box, so try again." }]);
         setDraft(text);
@@ -146,8 +169,20 @@ export function AgentPanel({ workspaceId, projectId, degraded, completeness }: {
             if (!m.ui && !m.failed) return null;
             return (
               <div key={i} className="fade-up" aria-busy={m.streaming}>
-                {m.ui && <Renderer response={m.ui} library={agentLibrary} isStreaming={m.streaming} onAction={onAction} />}
-                {m.failed && <p className="text-sm text-ink-muted mt-1">{m.failed}</p>}
+                {m.ui && (
+                  <BriefStatusContext.Provider value={m.status ?? null}>
+                    <Renderer response={m.ui} library={agentLibrary} isStreaming={m.streaming} onAction={onAction} />
+                  </BriefStatusContext.Provider>
+                )}
+                {m.failed && (
+                  <div className="mt-1 flex flex-col items-start gap-1.5">
+                    <p className="text-sm text-ink-muted">{m.failed}</p>
+                    {/* A refused or failed answer can be asked again in one press (2026-11-18: rate limits on the free tier). */}
+                    {m.q && i === msgs.length - 1 && (
+                      <button type="button" disabled={busy} onClick={() => { const q = m.q!; setMsgs((all) => all.filter((_, j) => j !== i)); void streamAnswer(q.text, q.earlier); }} className={btnClass("secondary", "sm")}>Try again</button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           }

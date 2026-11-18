@@ -216,4 +216,10 @@ describe("retry policy", () => {
     expect(classify(new JobStop("no"), 1).retry).toBe(false);
     expect(classify(new RateLimitError("text", "user", 40), 1)).toEqual({ retry: true, afterSeconds: 40 });
   });
+  it("waits out a provider's per-minute limit for as long as it says, and stops at once on a daily one", () => {
+    expect(classify(new ProviderError("rate_limit", "x", false, { window: "minute", retryAfterSeconds: 12 }), 1)).toEqual({ retry: true, afterSeconds: 12 });
+    expect(classify(new ProviderError("rate_limit", "x", false, { window: "minute" }), 2)).toEqual({ retry: true, afterSeconds: 120 });
+    expect(classify(new ProviderError("rate_limit", "x", false, { window: "day", retryAfterSeconds: 60 }), 1).retry).toBe(false);
+    expect(classify(new ProviderError("rate_limit", "x", false, { retryAfterSeconds: 3600 }), 1).retry).toBe(false);
+  });
 });

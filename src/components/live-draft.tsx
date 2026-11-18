@@ -8,13 +8,38 @@
  * strips it from the URL, and streams from /content/stream. Each version gets
  * its own artboard and fills in as it is written. When the piece is saved the
  * canvas opens on it; a failure keeps the input and offers to try again.
+ *
+ * LEAVING MID-DRAFT. The server finishes and saves a draft once it has
+ * started, whoever is still watching (content/stream/route). So reloading,
+ * closing the tab and moving to another page all end the same way: the whole
+ * draft, with its topic, is on the piece. This layer remembers (for this tab)
+ * that a draft was under way, and on the next visit to the step says so:
+ * nothing is lost and nothing appears unexplained. The one way to throw a
+ * draft away is the Stop button, which says it does, keeps listening, and
+ * deletes the piece the moment the server reports it saved.
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
-import { AgentDots, Alert, IconButton } from "@/components/ui";
+import { AgentDots, Alert, IconButton, useToast } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import { formatByKey } from "@/lib/content/formats";
+import { deleteContentAction } from "@/app/w/[id]/p/[pid]/content/actions";
+
+/** "A draft is being written for this piece", kept for the tab so a reload or a return can say what happened. */
+const underWayKey = (projectId: string) => `huemen:live-draft:${projectId}`;
+const noteUnderWay = (projectId: string, topic: string) => {
+  try { sessionStorage.setItem(underWayKey(projectId), JSON.stringify({ topic, at: Date.now() })); } catch { /* private mode: the draft is still saved */ }
+};
+const clearUnderWay = (projectId: string) => {
+  try { sessionStorage.removeItem(underWayKey(projectId)); } catch { /* nothing to clear */ }
+};
+const readUnderWay = (projectId: string): { topic: string; at: number } | null => {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(underWayKey(projectId)) ?? "null") as { topic?: unknown; at?: unknown } | null;
+    return v && typeof v.at === "number" ? { topic: String(v.topic ?? ""), at: v.at } : null;
+  } catch { return null; }
+};
 
 const SEP = /^\s*=====\s*$/m;
 type Input = { format: string; topic: string; pillarId: string | null };
@@ -51,12 +76,19 @@ export function LiveDraftLayer({ tenantId, projectId, brandName }: { tenantId: s
   const pathname = usePathname();
   const sp = useSearchParams();
   const [state, setState] = useState<State>({ phase: "idle" });
+  const toast = useToast();
   const abort = useRef<AbortController | null>(null);
+  /** The draft on screen. `discard` is set by Stop: that run keeps listening and deletes what gets saved. */
+  const live = useRef<{ discard: boolean } | null>(null);
 
   const run = useCallback(async (input: Input) => {
-    abort.current?.abort();
+    // A stopped draft is left to finish (so it can be deleted); any other is replaced.
+    if (!live.current?.discard) abort.current?.abort();
     const ac = new AbortController();
     abort.current = ac;
+    const me = { discard: false };
+    live.current = me;
+    noteUnderWay(projectId, input.topic);
     setState({ phase: "writing", input, text: "" });
     let text = "";
     try {
@@ -79,11 +111,28 @@ export function LiveDraftLayer({ tenantId, projectId, brandName }: { tenantId: s
           const line = buf.slice(0, nl);
           buf = buf.slice(nl + 1);
           if (!line.trim()) continue;
-          const ev = JSON.parse(line) as { t: "d"; v: string } | { t: "saved"; id: string } | { t: "error"; message: string };
-          if (ev.t === "d") {
-            text += ev.v;
-            setState({ phase: "writing", input, text });
+          const ev = JSON.parse(line) as
+            | { t: "d"; v: string }
+            | { t: "r"; v: string }
+            | { t: "notice"; message: string }
+            | { t: "saved"; id: string }
+            | { t: "error"; message: string };
+          if (ev.t === "notice") {
+            toast(ev.message);
+            continue;
+          }
+          if (ev.t === "d" || ev.t === "r") {
+            // "r" replaces the whole draft: it was written again because the first try came back in the wrong shape.
+            text = ev.t === "d" ? text + ev.v : ev.v;
+            if (!me.discard) setState({ phase: "writing", input, text });
           } else if (ev.t === "saved") {
+            if (live.current === me) clearUnderWay(projectId);
+            if (me.discard) {
+              // Stopped: the server saved it anyway (it always finishes), so take it back out.
+              await deleteContentAction(tenantId, projectId, ev.id).catch(() => undefined);
+              router.refresh();
+              return;
+            }
             setState({ phase: "saving", input, text });
             router.replace(`${pathname}?item=${ev.id}`, { scroll: false });
             router.refresh();
@@ -91,17 +140,48 @@ export function LiveDraftLayer({ tenantId, projectId, brandName }: { tenantId: s
             setTimeout(() => setState({ phase: "idle" }), 900);
             return;
           } else {
-            setState({ phase: "error", input, text, message: ev.message });
+            // Nothing was saved, so there is nothing to explain on the next visit.
+            if (live.current === me) clearUnderWay(projectId);
+            if (!me.discard) setState({ phase: "error", input, text, message: ev.message });
             return;
           }
         }
       }
-      setState({ phase: "error", input, text, message: "The draft stopped before it finished. Try again." });
+      if (live.current === me) clearUnderWay(projectId);
+      if (!me.discard) setState({ phase: "error", input, text, message: "The draft stopped before it finished. Try again." });
     } catch (e) {
-      if (ac.signal.aborted) return;
+      // Aborted by leaving the page: the server carries on and saves it; the note stays for the return.
+      if (ac.signal.aborted || me.discard) return;
+      clearUnderWay(projectId);
       setState({ phase: "error", input, text, message: e instanceof Error && e.message ? e.message : "That didn't go through. Try again." });
     }
-  }, [tenantId, projectId, pathname, router]);
+  }, [tenantId, projectId, pathname, router, toast]);
+
+  // Back on the step (a reload, or a return from another page) after leaving
+  // mid-draft: say what happened to it, and bring the saved piece in.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const left = readUnderWay(projectId);
+      if (!left || live.current) return;
+      clearUnderWay(projectId);
+      // Older than this and it finished long ago: it is simply on the board.
+      if (Date.now() - left.at > 5 * 60_000) return;
+      toast(`You left while a draft${left.topic ? ` on "${left.topic.slice(0, 60)}${left.topic.length > 60 ? "…" : ""}"` : ""} was being written. It was not thrown away: it finishes on its own and is saved to this piece.`);
+      // It may still be writing: look again a few times so it appears without a reload.
+      [3000, 9000, 20000, 40000].forEach((ms) => setTimeout(() => router.refresh(), ms));
+    }, 50);
+    return () => clearTimeout(t);
+  }, [projectId, router, toast]);
+
+  /** Stop: the draft on screen is thrown away. Says so, because leaving the page does the opposite. */
+  const stop = () => {
+    // Already saved and opening: there is nothing left to stop.
+    if (state.phase !== "writing") return setState({ phase: "idle" });
+    if (live.current) live.current.discard = true;
+    clearUnderWay(projectId);
+    setState({ phase: "idle" });
+    toast("Stopped. That draft won't be kept.");
+  };
 
   // Start from the URL, once per nonce, then take the request out of the URL.
   // The effect only schedules; the start runs on the next tick, so React's
@@ -122,7 +202,9 @@ export function LiveDraftLayer({ tenantId, projectId, brandName }: { tenantId: s
     return () => clearTimeout(t);
   }, [write, nonce, topic, pillar, projectId, pathname, router, run]);
 
-  useEffect(() => () => abort.current?.abort(), []);
+  // Leaving the step lets go of the stream (the server finishes the draft on
+  // its own). A stopped draft keeps its listener, so it can still be deleted.
+  useEffect(() => () => { if (!live.current?.discard) abort.current?.abort(); }, []);
 
   if (state.phase === "idle") return null;
   const fmt = formatByKey(state.input.format);
@@ -137,7 +219,7 @@ export function LiveDraftLayer({ tenantId, projectId, brandName }: { tenantId: s
           {writing && <span className="inline-flex items-center gap-2 text-sm text-ink-muted"><AgentDots /> Writing in your voice</span>}
           {state.phase === "saving" && <span className="text-sm text-ink-muted">Saved. Opening it…</span>}
           {state.phase !== "error" && (
-            <IconButton label="Stop writing" onClick={() => { abort.current?.abort(); setState({ phase: "idle" }); }}><X size={16} /></IconButton>
+            <IconButton label="Stop and discard this draft" onClick={stop}><X size={16} /></IconButton>
           )}
         </div>
         <div className="flex flex-wrap gap-8 justify-center items-start">

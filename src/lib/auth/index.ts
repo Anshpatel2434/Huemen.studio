@@ -13,7 +13,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getEnv } from "@/lib/env";
-import { getAccount } from "@/lib/data/auth";
+import { endSessions, getAccount } from "@/lib/data/auth";
 import type { Session } from "./types";
 
 const COOKIE = "huemen_session";
@@ -31,12 +31,15 @@ function sign(payload: string): string {
   return createHmac("sha256", getEnv().AUTH_SECRET).update(payload).digest("hex");
 }
 
-function encode(session: Session): string {
-  const payload = Buffer.from(JSON.stringify({ ...session, exp: Date.now() + MAX_AGE_S * 1000 })).toString("base64url");
+/** The signed value: who, until when, and the account's session_version at sign-in. */
+type Signed = Session & { exp?: number; sv?: number };
+
+function encode(session: Session, sv: number): string {
+  const payload = Buffer.from(JSON.stringify({ ...session, sv, exp: Date.now() + MAX_AGE_S * 1000 })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-function decode(token: string): Session | null {
+function decode(token: string): Signed | null {
   const [payload, mac] = token.split(".");
   if (!payload || !mac) return null;
   const expected = sign(payload);
@@ -46,7 +49,7 @@ function decode(token: string): Session | null {
     return null;
   }
   try {
-    const s = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Session & { exp?: number };
+    const s = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Signed;
     return typeof s.exp === "number" && s.exp > Date.now() ? s : null;
   } catch {
     return null;
@@ -67,6 +70,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
   if (!signed) return null;
   const a = await getAccount(signed.userId);
   if (!a || a.status !== "active" || a.tenantStatus !== "active") return null;
+  // Signed out since (here or on another device): this cookie is retired.
+  if ((signed.sv ?? 0) !== a.sessionVersion) return null;
   return { userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email };
 });
 
@@ -83,7 +88,8 @@ export async function requireSession(): Promise<Session> {
  */
 export async function startSession(session: Session): Promise<void> {
   const jar = await cookies();
-  jar.set(COOKIE, encode(session), {
+  const sv = (await getAccount(session.userId))?.sessionVersion ?? 0;
+  jar.set(COOKIE, encode(session, sv), {
     httpOnly: true,
     sameSite: "lax",
     secure: getEnv().NODE_ENV === "production",
@@ -93,8 +99,22 @@ export async function startSession(session: Session): Promise<void> {
   jar.delete(ONBOARDING_LATER_COOKIE);
 }
 
+/**
+ * Sign out: end the session on the server, then clear the cookie. Raising the
+ * account's session_version retires every copy of its session cookie (this
+ * browser, other devices, a copied header), not only the one in this browser.
+ */
 export async function signOut(): Promise<void> {
   const jar = await cookies();
+  const token = jar.get(COOKIE)?.value;
+  const signed = token ? decode(token) : null;
+  // Only a cookie that is still current may end the account's sessions: a
+  // revoked or leaked copy must not be able to sign the person out again and
+  // again (2026-11-17 round-two test).
+  if (signed) {
+    const a = await getAccount(signed.userId);
+    if (a && (signed.sv ?? 0) === a.sessionVersion) await endSessions(a.id);
+  }
   jar.delete(COOKIE);
   jar.delete(ONBOARDING_LATER_COOKIE);
 }

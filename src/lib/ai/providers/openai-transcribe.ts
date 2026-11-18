@@ -15,6 +15,8 @@ export interface TranscribeConfig {
   apiKey: string;
   model: string;
   timeoutMs: number;
+  /** Another OpenAI-compatible transcription endpoint (Groq). */
+  endpoint?: string;
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -25,17 +27,33 @@ export interface Transcriber {
 
 const ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
 
+/**
+ * What Whisper writes for a recording with no speech in it. Its own silence
+ * score is no help (Groq's turbo model reports 0 for a silent file, checked
+ * 2026-11-17), so the well-known filler lines are treated as nothing heard.
+ * None of them is an answer to "what do you do" or "who is it for".
+ */
+const SILENCE_LINES = new Set([
+  "", "you", "thank you", "thanks", "thank you very much", "thanks for watching", "thank you for watching",
+  "bye", "bye bye", "okay", "ok", "so", "the end", "subtitles by the amara org community", "please subscribe",
+]);
+export const heardNothing = (text: string): boolean =>
+  SILENCE_LINES.has(text.toLowerCase().replace(/[^a-z ]+/g, " ").replace(/\s+/g, " ").trim());
+
 export function openaiTranscriber(config: TranscribeConfig, fetchImpl: FetchLike = fetch): Transcriber {
   return {
     async transcribe(audio, filename) {
       const form = new FormData();
       form.append("file", audio, filename);
       form.append("model", config.model);
-      form.append("response_format", "json");
+      // Whisper models can say how likely each stretch is to be silence; a
+      // silent recording otherwise comes back as an invented "Thank you."
+      const whisper = /whisper/i.test(config.model);
+      form.append("response_format", whisper ? "verbose_json" : "json");
 
       let res: Response;
       try {
-        res = await fetchImpl(ENDPOINT, {
+        res = await fetchImpl(config.endpoint ?? ENDPOINT, {
           method: "POST",
           headers: { Authorization: `Bearer ${config.apiKey}` },
           body: form,
@@ -55,9 +73,17 @@ export function openaiTranscriber(config: TranscribeConfig, fetchImpl: FetchLike
         throw new ProviderError(kind, `Transcription failed with ${res.status}.`, kind === "rate_limit" || kind === "server");
       }
 
-      const body = (await res.json().catch(() => null)) as { text?: unknown } | null;
+      const body = (await res.json().catch(() => null)) as { text?: unknown; segments?: { no_speech_prob?: number; text?: string }[] } | null;
       if (!body || typeof body.text !== "string") throw new ProviderError("unparseable", "Transcription reply had no text.");
-      return { text: body.text.trim(), model: config.model };
+      // Keep only the stretches that are probably speech. With nothing left the
+      // answer is "" and the caller says nothing was heard (never invented words).
+      if (Array.isArray(body.segments) && body.segments.length) {
+        const spoken = body.segments.filter((s) => typeof s.no_speech_prob !== "number" || s.no_speech_prob < 0.6);
+        if (spoken.length !== body.segments.length) {
+          return { text: spoken.map((s) => (s.text ?? "").trim()).filter(Boolean).join(" ").trim(), model: config.model };
+        }
+      }
+      return { text: heardNothing(body.text) ? "" : body.text.trim(), model: config.model };
     },
   };
 }

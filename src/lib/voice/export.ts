@@ -102,11 +102,25 @@ function identityMd(p: VoicePack): string {
   ].join("\n");
 }
 
+/**
+ * What to do in place of an invented fact, from the pack itself: the facts
+ * they can stand behind, when they have given some. (This used to say "Use a
+ * [placeholder]", which leaked the drafting contract's own marker into a file
+ * people paste into other tools.)
+ */
+function factsInstead(p: VoicePack): string {
+  const proofs = (p.identity.proofs?.value ?? []).filter((x) => x.claim?.trim());
+  if (!proofs.length) return "Write the line without the fact, or ask them for the real one.";
+  const shown = proofs.slice(0, 5).map((x) => `“${x.claim.trim()}”${x.source?.trim() ? ` (${x.source.trim()})` : ""}`).join("; ");
+  const more = proofs.length > 5 ? `; and ${proofs.length - 5} more` : "";
+  return `Use one of the facts they can stand behind: ${shown}${more}. Otherwise write the line without it.`;
+}
+
 function guardrailsMd(p: VoicePack): string {
   const out = ["# guardrails.md · the overrides", "", "These beat every other instruction. Break one and the output is wrong, however well written.", ""];
   const rails = [
     ...p.guardrails,
-    { id: "facts", name: "Facts", rule: "Never invent a fact, client, number, credential, date or quote.", why: "One wrong fact costs more trust than a hundred good posts earn.", instead: "Use a [placeholder] and flag it.", source: "derived" as const },
+    { id: "facts", name: "Facts", rule: "Never invent a fact, client, number, credential, date or quote.", why: "One wrong fact costs more trust than a hundred good posts earn.", instead: factsInstead(p), source: "derived" as const },
   ];
   rails.forEach((g, i) => {
     out.push(`## ${i + 1}. ${g.name}`, `- **Rule:** ${g.rule}`, `- **Why:** ${g.why || "_in their words, to add_"}`, `- **Instead:** ${g.instead || "_to add_"}`, "");

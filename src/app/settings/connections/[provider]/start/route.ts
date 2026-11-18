@@ -16,6 +16,7 @@ import { ownsVoice } from "@/lib/data/training";
 import { clientFor, listConnections, unavailableReason } from "@/lib/data/connections";
 import { authorizeUrl, CAPABILITIES, PROVIDERS, redirectUri, scopesFor, type CapabilityKey, type ProviderKey } from "@/lib/integrations/providers";
 import { encodeState, newNonce, pkcePair, returnPath, type ReturnTo } from "@/lib/integrations/state";
+import { localRedirect } from "@/lib/local-redirect";
 
 const OAUTH_COOKIE = "huemen_oauth";
 
@@ -27,9 +28,9 @@ export async function GET(req: Request, ctx: RouteContext<"/settings/connections
   if (!(p in PROVIDERS)) return new Response("Not found", { status: 404 });
   const provider = p as ProviderKey;
   const session = await getSession();
-  if (!session) return NextResponse.redirect(new URL("/login?next=/settings/connections", req.url), 303);
+  if (!session) return localRedirect("/login?next=/settings/connections", 303);
   const back = (msg: string) =>
-    NextResponse.redirect(new URL(returnPath(from, session.tenantId, `error=${encodeURIComponent(msg)}`), req.url), 303);
+    localRedirect(returnPath(from, session.tenantId, `error=${encodeURIComponent(msg)}`), 303);
   const scope = { ...(await resolveScope(session, session.tenantId)), tenantId: session.tenantId, isPlatformAdmin: false };
 
   const pack = await loadPackForWorkspace(scope);

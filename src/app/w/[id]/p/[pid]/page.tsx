@@ -3,6 +3,7 @@ import { projectScope } from "@/lib/auth/workspace";
 import { loadBrandContext } from "@/lib/context/context-loader";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Project" };
 
 /** Open a project where the work is: an empty brief → the workspace's intake, else the furthest unlocked step. */
 export default async function ProjectIndex({ params }: PageProps<"/w/[id]/p/[pid]">) {

@@ -171,6 +171,15 @@ export function classify(err: unknown, attempt: number): { retry: boolean; after
   if (err instanceof JobStop || err instanceof UsageCapError || err instanceof AiConfigError) return { retry: false, afterSeconds: 0 };
   if (err instanceof RateLimitError) return { retry: true, afterSeconds: Math.max(5, err.retryAfterSeconds) };
   if (err instanceof ProviderError) {
+    // A provider's rate limit: a per-minute one is waited out (when it says how
+    // long, that long); a daily allowance, or a wait longer than ten minutes,
+    // stops the job at once with the plain reason, instead of the picture card
+    // sitting on "Drawing" through minutes of retries that cannot succeed.
+    if (err.kind === "rate_limit") {
+      const wait = err.limit.retryAfterSeconds;
+      if (err.limit.window === "day" || (wait !== undefined && wait > 600)) return { retry: false, afterSeconds: 0 };
+      return { retry: true, afterSeconds: Math.max(5, wait ?? backoffSeconds(attempt)) };
+    }
     const transient = ["timeout", "rate_limit", "server", "unknown", "unparseable", "truncated"].includes(err.kind);
     return { retry: transient, afterSeconds: backoffSeconds(attempt) };
   }

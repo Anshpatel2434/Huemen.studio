@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Check, FileText } from "lucide-react";
 import { btnClass } from "@/components/btn";
-import { AgentDots } from "@/components/ui";
+import { AgentDots, Choice } from "@/components/ui";
 import { PLATFORM_RULES } from "@/lib/voice/platforms";
 import type { CapabilityKey } from "@/lib/integrations/providers";
 import type { UpcomingEvent } from "@/lib/integrations/google";
@@ -154,10 +154,7 @@ export function CapabilityRun({ tenantId, cap, prompted = false }: { tenantId: s
                     label={`Where ${f.name} was written for`}
                     options={CHANNELS.map((c) => ({ value: c, label: PLATFORM_RULES[c]?.label ?? c }))}
                   />
-                  <label className="flex items-center gap-1.5 min-h-11 text-sm">
-                    <input type="checkbox" checked={f.published} onChange={(e) => setPicked(picked.map((x, j) => (j === i ? { ...x, published: e.target.checked } : x)))} />
-                    Published
-                  </label>
+                  <Choice dense checked={f.published} onChange={(e) => setPicked(picked.map((x, j) => (j === i ? { ...x, published: e.target.checked } : x)))} label="Published" />
                 </div>
               ))}
               <p className="text-xs text-ink-faint">Unpublished documents are measured but never quoted in a draft.</p>
@@ -180,10 +177,13 @@ export function CapabilityRun({ tenantId, cap, prompted = false }: { tenantId: s
             <div className="flex flex-col gap-1.5 border border-hairline rounded-md p-3">
               {events.length === 0 && <p className="text-sm text-ink-muted">Nothing coming up that looks like content.</p>}
               {events.map((e) => (
-                <label key={e.id} className="flex items-start gap-2 min-h-11 text-sm cursor-pointer">
-                  <input type="checkbox" className="mt-1" checked={chosen.includes(e.id)} onChange={() => setChosen(chosen.includes(e.id) ? chosen.filter((x) => x !== e.id) : [...chosen, e.id])} />
-                  <span><span className="font-mono text-xs text-ink-faint tabular-nums">{e.date}</span> {e.title}</span>
-                </label>
+                <Choice
+                  key={e.id}
+                  dense
+                  checked={chosen.includes(e.id)}
+                  onChange={() => setChosen(chosen.includes(e.id) ? chosen.filter((x) => x !== e.id) : [...chosen, e.id])}
+                  label={<><span className="font-mono text-xs text-ink-faint tabular-nums">{e.date}</span> {e.title}</>}
+                />
               ))}
               <div className="flex gap-2 pt-1">
                 <button type="button" disabled={pending || !chosen.length} onClick={saveIdeas} className={btnClass("primary", "sm")}>Save {chosen.length || ""} as ideas</button>

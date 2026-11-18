@@ -18,6 +18,7 @@ import {
 } from "@/lib/data/admin";
 import type { Role } from "@/lib/auth/types";
 import { signLink } from "@/lib/auth/tokens";
+import { inviteLink } from "@/lib/invite/link";
 import { getEnv } from "@/lib/env";
 import { sendAuthMail } from "@/lib/mail";
 import { logger } from "@/lib/observability/log";
@@ -73,7 +74,8 @@ export async function inviteUserAction(formData: FormData) {
       await sendAuthMail({
         to: email,
         subject: `You're invited to ${invited.workspace} on Huemen.studio`,
-        link: `${getEnv().APP_URL}/invite/${signLink("invite", invited.userId, "invited")}`,
+        // On the workspace's own host when it has one (lib/invite/link).
+        link: inviteLink(getEnv().APP_URL, invited.domain, signLink("invite", invited.userId, "invited")),
         lines: [`You've been invited to ${invited.workspace} on Huemen.studio.`, "Accept the invite to set up your account. The link works for 7 days."],
         action: "Accept the invite",
       }).catch((e) => logger.error("invite email not sent", { tenantId, userId: session.userId, invitedUserId: invited.userId, route: "/settings/workspaces", err: e }));

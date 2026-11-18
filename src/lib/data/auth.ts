@@ -22,17 +22,21 @@ export interface AccountRow {
   invitedBy: string | null;
   /** Version stamp for one-time sign-in links (see lib/auth/tokens). */
   lastSeen: string;
+  /** Raised by sign-out; a session cookie carrying an older value is refused (migration 0023). */
+  sessionVersion: number;
 }
 
 const SELECT = `SELECT u.id, u.tenant_id, t.name AS tenant_name, t.status AS tenant_status, u.email, u.role, u.status,
-                       inv.email AS invited_by, coalesce(to_char(u.last_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS.US'), '') AS last_seen
+                       inv.email AS invited_by, coalesce(to_char(u.last_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS.US'), '') AS last_seen,
+                       u.session_version
                   FROM users u JOIN tenants t ON t.id = u.tenant_id LEFT JOIN users inv ON inv.id = u.invited_by`;
 
-function row(r: Record<string, string>): AccountRow {
+function row(r: Record<string, string | number>): AccountRow {
   return {
     id: r.id, tenantId: r.tenant_id, tenantName: r.tenant_name, tenantStatus: r.tenant_status, email: r.email,
     role: r.role as Role, status: r.status as AccountRow["status"], invitedBy: r.invited_by, lastSeen: r.last_seen,
-  };
+    sessionVersion: Number(r.session_version ?? 0),
+  } as AccountRow;
 }
 
 /** The account for an email: active first, then invited, then disabled. */
@@ -53,6 +57,11 @@ export async function getAccount(id: string): Promise<AccountRow | null> {
 /** Record a sign-in. Moving last_seen_at retires every earlier sign-in link. */
 export async function markSignedIn(id: string): Promise<void> {
   await withTenantSession(ADMIN, (c) => c.query("UPDATE users SET last_seen_at = clock_timestamp() WHERE id = $1", [id]));
+}
+
+/** End every session of this account (sign-out): their cookies carry the old version. */
+export async function endSessions(id: string): Promise<void> {
+  await withTenantSession(ADMIN, (c) => c.query("UPDATE users SET session_version = session_version + 1 WHERE id = $1", [id]));
 }
 
 /** invited → active. Returns false if the invite was already used or revoked. */

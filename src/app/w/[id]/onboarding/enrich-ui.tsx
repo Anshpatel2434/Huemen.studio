@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { ArrowRight, Check, ImagePlus, Link2, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import { btnClass } from "@/components/btn";
-import { AgentDots } from "@/components/ui";
+import { AgentDots, Choice } from "@/components/ui";
 import { DIAL_LABELS, LANGUAGES, type DialKey, type LanguageKey, type LanguageMix, type Proof, type Story } from "@/lib/voice/types";
 import { uploadAssetChecked } from "@/app/w/[id]/brand/actions";
 import { sendToStorage, UploadFailed } from "@/lib/upload-client";
@@ -289,10 +289,7 @@ export function UrlImport({ tenantId }: { tenantId: string }) {
         <span className="block text-sm font-medium mb-1"><Link2 size={13} className="inline mr-1" aria-hidden="true" />Links, one per line</span>
         <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={"https://yourname.substack.com\nhttps://medium.com/@yourname\nhttps://yoursite.com/blog"} className="field font-mono text-sm" />
       </label>
-      <label className="flex items-start gap-2 min-h-11 text-sm cursor-pointer">
-        <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="mt-1" />
-        <span>This is my own writing, or a podcast I host. We only learn your voice from your own words.</span>
-      </label>
+      <Choice dense checked={mine} onChange={(e) => setMine(e.target.checked)} label="This is my own writing, or a podcast I host. We only learn your voice from your own words." />
       <button type="button" disabled={pending || !mine || !urls.length} onClick={go} className={`${btnClass("secondary", "sm")} self-start`}>
         {pending ? <><AgentDots /> {busy === "measuring" ? "Building your core" : "Reading"}</> : `Read ${urls.length || ""} ${urls.length === 1 ? "link" : "links"}`}
       </button>
@@ -443,22 +440,16 @@ export function LanguagesEditor({ tenantId, initial }: { tenantId: string; initi
   const [pending, start] = useTransition();
   return (
     <Box title="The languages you write in" sub="Drafts follow your mix, script and all.">
-      <fieldset className="flex flex-col gap-1.5">
+      <fieldset className="flex flex-col">
         <legend className="text-sm font-medium mb-1">Mostly in</legend>
         {LANGUAGES.map((l) => (
-          <label key={l.key} className="flex items-center gap-2 min-h-11 text-sm cursor-pointer">
-            <input type="radio" name="primary-language" checked={primary === l.key} onChange={() => { setSaved(false); setPrimary(l.key); setAlso(also.filter((a) => a !== l.key)); }} />
-            {l.label}
-          </label>
+          <Choice key={l.key} dense type="radio" name="primary-language" checked={primary === l.key} onChange={() => { setSaved(false); setPrimary(l.key); setAlso(also.filter((a) => a !== l.key)); }} label={l.label} />
         ))}
       </fieldset>
-      <fieldset className="flex flex-col gap-1.5">
+      <fieldset className="flex flex-col">
         <legend className="text-sm font-medium mb-1">Also mix in</legend>
         {LANGUAGES.filter((l) => l.key !== primary).map((l) => (
-          <label key={l.key} className="flex items-center gap-2 min-h-11 text-sm cursor-pointer">
-            <input type="checkbox" checked={also.includes(l.key)} onChange={() => { setSaved(false); setAlso(also.includes(l.key) ? also.filter((a) => a !== l.key) : [...also, l.key]); }} />
-            {l.label}
-          </label>
+          <Choice key={l.key} dense checked={also.includes(l.key)} onChange={() => { setSaved(false); setAlso(also.includes(l.key) ? also.filter((a) => a !== l.key) : [...also, l.key]); }} label={l.label} />
         ))}
       </fieldset>
       <label className="block">

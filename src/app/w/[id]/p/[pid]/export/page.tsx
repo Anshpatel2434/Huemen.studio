@@ -4,20 +4,32 @@ import { projectScope } from "@/lib/auth/workspace";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { listContent } from "@/lib/data/content";
 import { listPillars } from "@/lib/data/planning";
+import { listVisuals } from "@/lib/data/pipeline";
 import { brandHealth } from "@/lib/data/insights";
 import { DocPage } from "@/components/doc-page";
 import { btnClass } from "@/components/btn";
-import { formatByKey } from "@/lib/content/formats";
+import { formatByKey, formatUsesCarousel } from "@/lib/content/formats";
 
 export const metadata = { title: "Export" };
 
 export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/export">) {
   const { id, pid } = await params;
   const { scope, project } = await projectScope(id, pid);
-  const [ctx, content, pillars] = await Promise.all([loadBrandContext(scope), listContent(scope), listPillars(scope)]);
+  const [ctx, content, pillars, visuals] = await Promise.all([loadBrandContext(scope), listContent(scope), listPillars(scope), listVisuals(scope)]);
   const { checks, score } = brandHealth(ctx, content, pillars);
   const open = checks.filter((c) => !c.ok).length;
   const approved = content.filter((c) => c.status === "approved");
+  // The pieces with a visual set, and which of its images exist for the format.
+  // Images are drawn in the browser (no server route makes them), so the
+  // Images section links to the Visual page, where each one downloads.
+  const images = content.flatMap((c) => {
+    const kinds = new Set(visuals.filter((v) => v.contentItemId === c.id).map((v) => v.kind));
+    const names: string[] = [];
+    if (kinds.has("single")) names.push("post image");
+    if (kinds.has("quote_card")) names.push("quote card");
+    if (kinds.has("carousel_frame") && formatUsesCarousel(c.format)) names.push("carousel frames");
+    return names.length ? [{ c, names }] : [];
+  });
   const firstFlagged = content.find((c) => c.violations.length || !c.cta.trim());
   const fixHref = ctx.degraded ? `/w/${id}/brand/edit` : firstFlagged ? `/w/${id}/p/${pid}/content?item=${firstFlagged.id}` : `/w/${id}/p/${pid}/content`;
 
@@ -35,12 +47,28 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
                 </div>
               ))}
             </div>
+            {/* "Approved only" needs something approved: with nothing approved it is
+                shown switched off, with the reason, instead of downloading an empty file. */}
             <div className="mt-5 flex flex-wrap gap-2">
-              <a href={`/w/${id}/p/${pid}/export/markdown?scope=approved`} className={`${btnClass("primary")} max-w-full !whitespace-normal`}><FileDown size={15} /> Markdown · approved only</a>
-              <a href={`/w/${id}/p/${pid}/export/markdown`} className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileText size={15} /> Markdown · everything</a>
-              <a href={`/w/${id}/p/${pid}/export/pdf?scope=approved`} className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileDown size={15} /> PDF · approved only</a>
+              {approved.length > 0 ? (
+                <a href={`/w/${id}/p/${pid}/export/markdown?scope=approved`} className={`${btnClass("primary")} max-w-full !whitespace-normal`}><FileDown size={15} /> Markdown · approved only</a>
+              ) : (
+                <button type="button" disabled aria-describedby="export-approved-why" className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileDown size={15} /> Markdown · approved only</button>
+              )}
+              <a href={`/w/${id}/p/${pid}/export/markdown`} className={`${btnClass(approved.length > 0 ? "secondary" : "primary")} max-w-full !whitespace-normal`}><FileText size={15} /> Markdown · everything</a>
+              {approved.length > 0 ? (
+                <a href={`/w/${id}/p/${pid}/export/pdf?scope=approved`} className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileDown size={15} /> PDF · approved only</a>
+              ) : (
+                <button type="button" disabled aria-describedby="export-approved-why" className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileDown size={15} /> PDF · approved only</button>
+              )}
               <a href={`/w/${id}/p/${pid}/export/pdf`} className={`${btnClass("secondary")} max-w-full !whitespace-normal`}><FileText size={15} /> PDF · everything</a>
             </div>
+            {approved.length === 0 && (
+              <p id="export-approved-why" className="text-xs text-ink-muted mt-2">
+                Nothing is approved yet, so there is nothing to export as approved only.{" "}
+                <Link href={`/w/${id}/p/${pid}/content`} className="underline underline-offset-2">Approve a piece on Content</Link>, or export everything.
+              </p>
+            )}
           </div>
 
           <div className="border-y border-hairline">
@@ -58,6 +86,26 @@ export default async function ExportPage({ params }: PageProps<"/w/[id]/p/[pid]/
                   </Link>
                 ))}
               </div>
+            )}
+          </div>
+
+          <div className="border-y border-hairline">
+            <p className="font-medium px-5 pt-5">Images</p>
+            {images.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-ink-muted">No visuals yet. <Link href={`/w/${id}/p/${pid}/content`} className="underline">Generate them from Content</Link>.</p>
+            ) : (
+              <>
+                <p className="px-5 pt-1 text-xs text-ink-muted">Each image is drawn in your browser at its channel size. Download it from the Visual page: a PNG for the post image and quote card, a zip for the carousel frames.</p>
+                <div className="mt-3 divide-y divide-[var(--hairline)]">
+                  {images.map(({ c, names }) => (
+                    <Link key={c.id} href={`/w/${id}/p/${pid}/visual?item=${c.id}`} className="flex items-center gap-3 px-5 h-12 hover:bg-panel text-sm">
+                      <FileDown size={15} className="text-ink-faint shrink-0" aria-hidden="true" />
+                      <span className="flex-1 truncate">{c.hook || "Untitled"}</span>
+                      <span className="text-xs text-ink-faint text-right truncate max-w-[45%]">{names.join(", ")}</span>
+                    </Link>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { LogIn } from "lucide-react";
-import { safeNext } from "@/lib/auth/tokens";
+import { redirect } from "next/navigation";
+import { safeNext, verifyLink } from "@/lib/auth/tokens";
 import { AuthIcon, AuthShell, AuthTitle } from "@/components/auth-shell";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,11 @@ export default async function ContinuePage({ searchParams }: PageProps<"/auth/co
   const sp = await searchParams;
   const token = typeof sp.token === "string" ? sp.token : "";
   const next = safeNext(sp.next);
+  // A missing, garbled or expired link never reaches the button: it goes
+  // straight to the page that can send a fresh one (2026-11-17 test: any
+  // token was shown as "ready" and only failed after the click).
+  const link = verifyLink("signin", token);
+  if (!link.ok) redirect(`/auth/link-expired?${new URLSearchParams({ reason: link.reason, ...(next !== "/dashboard" ? { next } : {}) })}`);
   return (
     <AuthShell>
       <AuthIcon><LogIn size={19} /></AuthIcon>

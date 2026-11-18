@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { MailWarning, UserCheck, ArrowRight } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { verifyLink } from "@/lib/auth/tokens";
@@ -28,13 +29,17 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
   const session = await getSession();
 
   // ---- Dead ends, each with a clear next step.
+  // A link that isn't one of ours, or whose account is gone, is a real 404
+  // (./not-found.tsx says the same thing), not a page that answers 200. This
+  // route has no loading boundary, so the status is still ours to set.
+  const expired = !check.ok && check.reason === "expired";
+  if (!expired && !a) notFound();
   if (!check.ok || !a) {
-    const expired = !check.ok && check.reason === "expired";
     return (
       <AuthShell>
         <AuthIcon><MailWarning size={19} /></AuthIcon>
-        <AuthTitle sub={expired ? "Invites are valid for 7 days. Ask the person who invited you to send a new one." : "This invite link isn't valid. It may have been cut off when it was copied. Ask for a fresh one."}>
-          {expired ? "This invite has expired" : "Invite not found"}
+        <AuthTitle sub="Invites are valid for 7 days. Ask the person who invited you to send a new one.">
+          This invite has expired
         </AuthTitle>
         <Link href="/login" className={`mt-6 w-full ${btnClass("secondary")}`}>Already joined? Sign in</Link>
       </AuthShell>

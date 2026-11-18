@@ -144,6 +144,14 @@ describe("reading the web", () => {
       expect(isPrivateAddress(ip)).toBe(true);
     }
     for (const ip of ["8.8.8.8", "142.250.72.14", "2606:4700:4700::1111"]) expect(isPrivateAddress(ip)).toBe(false);
+    // IPv4 hidden in IPv6, in the spellings `new URL()` produces (2026-11-17 break-it test).
+    for (const ip of ["::ffff:7f00:1", "::ffff:a9fe:a9fe", "::FFFF:0A00:0001", "::7f00:1", "::127.0.0.1", "64:ff9b::7f00:1", "::ffff:0:7f00:1", "::ffff:0:a9fe:a9fe", "64:ff9b:1::a9fe:a9fe", "2002:7f00:1::", "2001:0:4136:e378::1", "2001:db8::1", "ff02::1", "::"]) {
+      expect(isPrivateAddress(ip), ip).toBe(true);
+    }
+    for (const ip of ["::ffff:808:808", "2002:808:808::1", "2a00:1450:4009:81f::200e"]) expect(isPrivateAddress(ip), ip).toBe(false);
+    for (const u of ["http://[::ffff:127.0.0.1]/", "http://[::ffff:a9fe:a9fe]/latest/meta-data/", "http://[::7f00:1]/", "http://[64:ff9b::a9fe:a9fe]/"]) {
+      expect(() => checkUrl(u), u).toThrow(WebImportError);
+    }
     for (const u of ["file:///etc/passwd", "http://localhost/", "http://127.0.0.1/", "http://[::1]/", "http://169.254.169.254/latest/meta-data", "http://intranet.local/", "https://me.com:8443/", "https://user:pw@me.com/", "not a url"]) {
       expect(() => checkUrl(u)).toThrow(WebImportError);
     }

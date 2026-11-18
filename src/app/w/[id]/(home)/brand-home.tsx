@@ -209,7 +209,7 @@ export function BrandHome(props: BrandHomeProps) {
                         <Start tenantId={tenantId} topic={i.rawText.slice(0, 200)} pillar={i.pillarName} ideaId={i.id} format={format}>
                           <button type="submit" className="w-full text-left px-4 py-3 min-h-11 hover:bg-hover flex items-center gap-3">
                             <span className="flex-1 min-w-0 text-sm line-clamp-2">{i.rawText}</span>
-                            {i.pillarName && <span className="label-mono text-ink-faint max-w-[40%] truncate" title={i.pillarName}>{i.pillarName}</span>}
+                            {i.pillarName && <span className="label-mono text-ink-faint max-w-[40%] truncate">{i.pillarName}</span>}
                           </button>
                         </Start>
                       </li>

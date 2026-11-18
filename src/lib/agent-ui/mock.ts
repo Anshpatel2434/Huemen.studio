@@ -89,17 +89,12 @@ export function mockAgentAnswer(context: BrandContext, taskInput: string): strin
     return lines.join("\n");
   }
 
-  const open = context.warnings.slice(0, 4);
-  const done = ["Brand basics", "Voice samples"].slice(0, Math.max(0, 4 - open.length));
-  const items = [...done.map((l) => ({ l, done: true })), ...open.map((l) => ({ l, done: false }))];
-  lines.push(`root = Answer([score, ${items.length ? "list, " : ""}next, more])`);
-  lines.push(
-    `score = ScoreBar("Brief", ${context.completeness}, ${q(context.degraded ? "Drafts will read generic until the open items are done." : "Strong enough for on-brand drafts.")})`,
-  );
-  if (items.length) {
-    lines.push(`list = Checklist([${items.map((_, i) => `c${i}`).join(", ")}])`);
-    items.forEach((it, i) => lines.push(`c${i} = CheckItem(${q(it.l)}, ${it.done}${it.done ? "" : `, "setup"`})`));
-  }
+  // The score and the open items are the brief's own (lib/agent-ui/status); the
+  // stand-in only places the status and writes the words around it.
+  lines.push(`root = Answer([h, p, status, next, more])`);
+  lines.push(`h = Heading("Where the brief stands")`);
+  lines.push(`p = Para(${q(context.degraded ? "Drafts will read generic until the open items below are done." : "Strong enough for on-brand drafts.")})`);
+  lines.push(`status = BriefStatus()`);
   lines.push(`next = OpenPage("Open Getting started", "setup")`);
   lines.push(`more = FollowUps(${list(["What should I write next?", "Plan my week"])})`);
   return lines.join("\n");

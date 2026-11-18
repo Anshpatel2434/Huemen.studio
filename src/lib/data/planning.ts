@@ -18,7 +18,15 @@ import { calendarPlan } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { CALENDAR_DAYS, planSlots } from "@/lib/content/calendar-plan";
 import { FORMATS, formatByKey } from "@/lib/content/formats";
+import { isUuid, uuidOrNull } from "@/lib/content/ids";
 import type { WorkspaceScope } from "./projects";
+
+/*
+ * Ids reach these functions from forms and action arguments. One that is not
+ * an id is a row that is not there: the write does nothing and the read finds
+ * nothing, instead of Postgres raising "invalid input syntax for type uuid"
+ * onto the page (2026-11-17). RLS already makes another workspace's id a miss.
+ */
 
 // ---------------------------------------------------------------- pillars ---
 
@@ -57,6 +65,26 @@ export async function listPillars(scope: WorkspaceScope): Promise<PillarView[]> 
   });
 }
 
+/**
+ * The workspace's newest written pieces (opening line, pillar, format), for the
+ * agent, so "what should I write next" does not hand back a post that exists.
+ * RLS scopes it to the workspace; empty openings are skipped.
+ */
+export async function recentPieces(scope: WorkspaceScope, limit = 12): Promise<{ hook: string; pillar: string | null; format: string }[]> {
+  return withTenantSession(scope, async (c) => {
+    const rows = (
+      await c.query(
+        `SELECT ci.hook, ci.format, p.name AS pillar
+           FROM content_items ci LEFT JOIN pillars p ON p.id = ci.pillar_id
+          WHERE coalesce(btrim(ci.hook), '') <> ''
+          ORDER BY ci.created_at DESC LIMIT $1`,
+        [Math.max(1, Math.min(30, limit))],
+      )
+    ).rows;
+    return rows.map((r) => ({ hook: String(r.hook), pillar: r.pillar ?? null, format: String(r.format) }));
+  });
+}
+
 export async function createPillar(scope: WorkspaceScope, name: string, description?: string): Promise<string> {
   return withTenantSession(scope, async (c) => {
     const bp = (await c.query("SELECT id FROM brand_profiles WHERE project_id IS NULL ORDER BY status='active' DESC, updated_at DESC LIMIT 1")).rows[0];
@@ -71,6 +99,7 @@ export async function createPillar(scope: WorkspaceScope, name: string, descript
 }
 
 export async function updatePillar(scope: WorkspaceScope, id: string, name: string, description: string): Promise<void> {
+  if (!isUuid(id)) return;
   await withTenantSession(scope, (c) =>
     c.query("UPDATE pillars SET name=$1, description=$2 WHERE id=$3 AND project_id IS NULL", [name, description || null, id]),
   );
@@ -78,17 +107,20 @@ export async function updatePillar(scope: WorkspaceScope, id: string, name: stri
 
 /** Canvas drag-to-reorder: `ids` is the new left-to-right order. Unknown ids are ignored. */
 export async function reorderPillars(scope: WorkspaceScope, ids: string[]): Promise<void> {
+  const clean = ids.filter(isUuid);
+  if (!clean.length) return;
   await withTenantSession(scope, (c) =>
     c.query(
       `UPDATE pillars p SET sort_order = o.pos
          FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id, pos)
         WHERE p.id = o.id AND p.project_id IS NULL`,
-      [ids],
+      [clean],
     ),
   );
 }
 
 export async function deletePillar(scope: WorkspaceScope, id: string): Promise<void> {
+  if (!isUuid(id)) return;
   await withTenantSession(scope, (c) => c.query("DELETE FROM pillars WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
@@ -155,14 +187,17 @@ export async function captureIdea(scope: WorkspaceScope, text: string): Promise<
 }
 
 export async function setIdeaPillar(scope: WorkspaceScope, id: string, pillarId: string | null): Promise<void> {
-  await withTenantSession(scope, (c) => c.query("UPDATE ideas SET pillar_id=$1 WHERE id=$2 AND project_id IS NULL", [pillarId, id]));
+  if (!isUuid(id)) return;
+  await withTenantSession(scope, (c) => c.query("UPDATE ideas SET pillar_id=(SELECT id FROM pillars WHERE id = $1::uuid AND project_id IS NULL) WHERE id=$2 AND project_id IS NULL", [uuidOrNull(pillarId), id]));
 }
 
 export async function archiveIdea(scope: WorkspaceScope, id: string): Promise<void> {
+  if (!isUuid(id)) return;
   await withTenantSession(scope, (c) => c.query("UPDATE ideas SET status='archived' WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
 export async function markIdeaConverted(scope: WorkspaceScope, id: string, contentItemId: string): Promise<void> {
+  if (!isUuid(id) || !isUuid(contentItemId)) return;
   await withTenantSession(scope, (c) =>
     c.query("UPDATE ideas SET status='converted', converted_to_content_item_id=$1 WHERE id=$2 AND project_id IS NULL", [contentItemId, id]),
   );
@@ -170,10 +205,12 @@ export async function markIdeaConverted(scope: WorkspaceScope, id: string, conte
 
 /** An idea that became a piece. The piece links back through projects.idea_id. */
 export async function markIdeaStarted(scope: WorkspaceScope, id: string): Promise<void> {
+  if (!isUuid(id)) return;
   await withTenantSession(scope, (c) => c.query("UPDATE ideas SET status='converted' WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
 export async function getIdea(scope: WorkspaceScope, id: string) {
+  if (!isUuid(id)) return undefined;
   return (await withTenantSession(scope, (c) => c.query("SELECT * FROM ideas WHERE id=$1 AND project_id IS NULL", [id]))).rows[0] as
     | { id: string; raw_text: string; pillar_id: string | null }
     | undefined;
@@ -241,6 +278,7 @@ export async function getCalendarEntry(scope: WorkspaceScope, id: string): Promi
 
 /** Remember the piece a slot started, so the slot shows "Open" instead of starting another. */
 export async function markSlotStarted(scope: WorkspaceScope, id: string, projectId: string): Promise<void> {
+  if (!isUuid(id) || !isUuid(projectId)) return;
   await withTenantSession(scope, (c) =>
     c.query("UPDATE calendar_entries SET started_project_id = $2 WHERE id = $1 AND project_id IS NULL", [id, projectId]),
   );
@@ -253,10 +291,30 @@ export async function addCalendarEntry(
   await withTenantSession(scope, (c) =>
     c.query(
       `INSERT INTO calendar_entries (tenant_id, project_id, entry_date, pillar_id, channel, topic, hook_angle, cta)
-       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7)`,
-      [scope.tenantId, e.date, e.pillarId, e.channel || null, e.topic || null, e.hookAngle || null, e.cta || null],
+       VALUES ($1,NULL,$2,(SELECT id FROM pillars WHERE id = $3::uuid AND project_id IS NULL),$4,$5,$6,$7)`,
+      [scope.tenantId, e.date, uuidOrNull(e.pillarId), e.channel || null, e.topic || null, e.hookAngle || null, e.cta || null],
     ),
   );
+}
+
+/** A real calendar day, as YYYY-MM-DD ("2026-02-31" is not one). */
+export function isIsoDate(v: unknown): v is string {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
+
+/**
+ * Move a slot to another day. Everything else about it stays (its topic,
+ * channel, pillar, and the piece it started, if any). Returns false when the
+ * slot isn't in this workspace or the date isn't a day.
+ */
+export async function moveCalendarEntry(scope: WorkspaceScope, id: string, date: string): Promise<boolean> {
+  if (!isUuid(id) || !isIsoDate(date)) return false;
+  const r = await withTenantSession(scope, (c) =>
+    c.query("UPDATE calendar_entries SET entry_date = $2 WHERE id = $1 AND project_id IS NULL", [id, date]),
+  );
+  return (r.rowCount ?? 0) > 0;
 }
 
 /**
@@ -269,7 +327,7 @@ export async function addCalendarEntry(
 export async function generateCalendar(
   scope: WorkspaceScope,
   opts: { start: string; perWeek: number; channels: string[] },
-): Promise<{ planned: number; skipped: number }> {
+): Promise<{ planned: number; skipped: number; omitted: number }> {
   const pillars = await listPillars(scope);
   const taken = await withTenantSession(scope, async (c) =>
     (
@@ -282,7 +340,7 @@ export async function generateCalendar(
   );
   const all = planSlots({ ...opts });
   const slots = planSlots({ ...opts, skip: new Set(taken) });
-  if (slots.length === 0) return { planned: 0, skipped: all.length };
+  if (slots.length === 0) return { planned: 0, skipped: all.length, omitted: 0 };
 
   const fmt = formatByKey(FORMATS.find((f) => f.channel === opts.channels[0])?.key ?? "linkedin_post");
   const { slots: filled } = await runTask(scope, calendarPlan, {
@@ -296,7 +354,8 @@ export async function generateCalendar(
 
   const byName = new Map(pillars.map((p) => [p.name.toLowerCase(), p.id]));
   const bySlot = new Map(filled.map((f) => [f.slot, f]));
-  // The model can return fewer slots than asked; only what was written counts.
+  // The model can return fewer slots than asked; only what was written counts,
+  // and a slot it left out is reported as omitted (audit M2), not as planned or skipped.
   let written = 0;
   await withTenantSession(scope, async (c) => {
     for (const s of slots) {
@@ -306,15 +365,16 @@ export async function generateCalendar(
       const pillarId = byName.get(f.pillar.trim().toLowerCase()) ?? null;
       await c.query(
         `INSERT INTO calendar_entries (tenant_id, project_id, entry_date, pillar_id, channel, topic, hook_angle, cta)
-         VALUES ($1,NULL,$2,$3,$4,$5,$6,$7)`,
+         VALUES ($1,NULL,$2,(SELECT id FROM pillars WHERE id = $3::uuid AND project_id IS NULL),$4,$5,$6,$7)`,
         [scope.tenantId, s.date, pillarId, s.channel, f.topic.trim() || null, f.hookAngle.trim() || null, f.cta.trim() || null],
       );
     }
   });
-  return { planned: written, skipped: all.length - slots.length };
+  return { planned: written, skipped: all.length - slots.length, omitted: slots.length - written };
 }
 
 export async function deleteCalendarEntry(scope: WorkspaceScope, id: string): Promise<void> {
+  if (!isUuid(id)) return;
   await withTenantSession(scope, (c) => c.query("DELETE FROM calendar_entries WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
@@ -360,6 +420,7 @@ export async function updateOffer(
   id: string,
   o: { name: string; format: string; promise: string; deliverables: string[]; pricingLogic: string },
 ): Promise<void> {
+  if (!isUuid(id)) return;
   await withTenantSession(scope, (c) =>
     c.query(
       `UPDATE offers SET name=$2, format=$3, promise=$4, deliverables=$5, pricing_logic_notes=$6
@@ -370,6 +431,7 @@ export async function updateOffer(
 }
 
 export async function deleteOffer(scope: WorkspaceScope, id: string): Promise<void> {
+  if (!isUuid(id)) return;
   await withTenantSession(scope, (c) => c.query("DELETE FROM offers WHERE id=$1 AND project_id IS NULL", [id]));
 }
 
@@ -388,6 +450,7 @@ export interface PillarDetail {
  * every read; a pillar from another workspace reads as null.
  */
 export async function pillarDetail(scope: WorkspaceScope, pillarId: string): Promise<PillarDetail | null> {
+  if (!isUuid(pillarId)) return null;
   return withTenantSession(scope, async (c) => {
     const p = (
       await c.query<{ id: string; name: string; description: string | null }>(

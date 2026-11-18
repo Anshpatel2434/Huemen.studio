@@ -59,7 +59,7 @@ describe("storage round-trip (P0-6/P1-8)", () => {
     expect(assets).toHaveLength(1);
 
     // URL carries a token; the underlying key is tenant-prefixed.
-    const url = new URL(assets[0].url);
+    const url = new URL(assets[0].url, "http://app.test"); // same-origin, relative
     const key = decodeURIComponent(url.pathname.replace("/api/storage/", ""));
     expect(keyBelongsToTenant(key, tenant)).toBe(true);
 

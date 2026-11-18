@@ -18,11 +18,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ImagePlus, MessageSquare, X } from "lucide-react";
-import { AgentDots, IconButton, Menu, MenuItem, MenuSeparator } from "@/components/ui";
+import { AgentDots, Menu, MenuItem, MenuSeparator } from "@/components/ui";
+import { BoardIconButton } from "./visual-panels";
 import { btnClass } from "@/components/btn";
 import type { JobView } from "@/lib/jobs/types";
 import type { PictureMode } from "@/lib/visual/design";
 import type { VisualComment } from "@/lib/data/visual-comments";
+import { placePins } from "@/lib/visual/pins";
 
 export type Target = VisualComment["target"];
 export const TARGET_LABEL: Record<Target, string> = {
@@ -32,23 +34,43 @@ const TARGET_ORDER: Target[] = ["picture", "headline", "body", "cta", "logo", "b
 
 // ---- watching queued picture work ------------------------------------------------
 
-export type Watched = { jobId: string; contentItemId: string; artboard: string; label: string; /** The picture before this job, for undo. */ prev?: string | null };
+export type Watched = {
+  jobId: string; contentItemId: string; artboard: string; label: string;
+  /** The picture before this job, for undo. */ prev?: string | null;
+  /** Set while the job waits after a failed try: why it failed and when it tries again. */
+  retrying?: { error: string; at: string; attempt: number; of: number } | null;
+};
 
 /** Polls each watched job; calls onDone once per job when it stops (succeeded, failed or dead). */
 export function useJobWatch(tenantId: string, initial: Watched[], onDone: (w: Watched, job: JobView) => void) {
   const [watching, setWatching] = useState<Watched[]>(initial);
   const done = useRef(onDone);
   useEffect(() => { done.current = onDone; }, [onDone]);
+  const current = useRef(watching);
+  useEffect(() => { current.current = watching; }, [watching]);
+  // Polling restarts only when the set of jobs changes, not when a card's retry note does.
+  const jobIds = watching.map((w) => w.jobId).join(",");
   useEffect(() => {
-    if (!watching.length) return;
+    if (!jobIds) return;
     let stop = false;
+    const ids = jobIds.split(",");
     const tick = async () => {
-      for (const w of watching) {
+      for (const id of ids) {
         try {
-          const res = await fetch(`/w/${tenantId}/jobs/${w.jobId}`, { cache: "no-store" });
+          const res = await fetch(`/w/${tenantId}/jobs/${id}`, { cache: "no-store" });
           if (!res.ok || stop) continue;
           const job = (await res.json()) as JobView;
-          if (job.status === "queued" || job.status === "running") continue;
+          if (job.status === "queued" || job.status === "running") {
+            // A try failed and the job waits for the next: say so on the card,
+            // rather than "Drawing" through the wait.
+            const retrying = job.status === "queued" && job.attempts > 0 && job.error
+              ? { error: job.error, at: job.runAfter, attempt: job.attempts + 1, of: job.maxAttempts }
+              : null;
+            setWatching((all) => all.map((x) => (x.jobId === id && JSON.stringify(x.retrying ?? null) !== JSON.stringify(retrying) ? { ...x, retrying } : x)));
+            continue;
+          }
+          const w = current.current.find((x) => x.jobId === id);
+          if (!w) continue;
           setWatching((all) => all.filter((x) => x.jobId !== w.jobId));
           done.current(w, job);
         } catch {
@@ -58,27 +80,54 @@ export function useJobWatch(tenantId: string, initial: Watched[], onDone: (w: Wa
     };
     const t = setInterval(tick, 2000);
     return () => { stop = true; clearInterval(t); };
-  }, [tenantId, watching]);
+  }, [tenantId, jobIds]);
   const watch = useCallback((w: Watched) => setWatching((all) => [...all.filter((x) => x.jobId !== w.jobId), w]), []);
   return { watching, watch };
 }
 
-/** Shown over a visual while its picture is being drawn or changed. */
-export function WorkingOverlay({ label }: { label: string }) {
+/** Seconds until an ISO time, never below 0. */
+const secondsUntil = (iso: string) => Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 1000));
+
+/**
+ * Shown over a visual while its picture is being drawn or changed. When a try
+ * has failed and the next is waiting, it says why and when, with a countdown,
+ * instead of looking busy.
+ */
+export function WorkingOverlay({ label, retrying }: { label: string; retrying?: Watched["retrying"] }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!retrying) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [retrying]);
+  const left = retrying ? secondsUntil(retrying.at) : 0;
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--paper)_70%,transparent)] backdrop-blur-[2px] pointer-events-none">
-      <span role="status" className="inline-flex items-center gap-2 text-sm font-medium text-ink"><AgentDots /> {label}</span>
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--paper)_80%,transparent)] backdrop-blur-[2px] pointer-events-none p-6">
+      {retrying ? (
+        <div role="status" className="max-w-[80%] text-center text-sm text-ink">
+          <p className="font-medium">{left > 0 ? `Trying again in ${left < 60 ? `${left}s` : `${Math.ceil(left / 60)} min`}` : "Trying again now"} (try {retrying.attempt} of {retrying.of})</p>
+          <p className="mt-1 text-ink-muted">{retrying.error}</p>
+        </div>
+      ) : (
+        <span role="status" className="inline-flex items-center gap-2 text-sm font-medium text-ink"><AgentDots /> {label}</span>
+      )}
     </div>
   );
 }
 
 // ---- the picture menu ---------------------------------------------------------------
 
+/** The picture menu's width (18rem), in the canvas's own unzoomed pixels. */
+const MENU_W = 288;
+
 export function PictureMenu({ has, mode, hasPrevious, busy, onDraw, onPrevious, onRemove }: {
   has: boolean; mode: PictureMode | null; hasPrevious: boolean; busy: boolean;
   onDraw: (mode: PictureMode) => void; onPrevious: () => void; onRemove: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // Closed, or open towards the side that has room: the menu hangs from the
+  // button's right edge unless that would run it off the canvas's left edge
+  // (a visual at the left of the canvas), where it hangs from the left edge.
+  const [open, setOpen] = useState<false | "left" | "right">(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -89,13 +138,24 @@ export function PictureMenu({ has, mode, hasPrevious, busy, onDraw, onPrevious, 
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", esc); };
   }, [open]);
   const pick = (fn: () => void) => () => { setOpen(false); fn(); };
+  const toggle = () => {
+    if (open) return setOpen(false);
+    const el = ref.current;
+    if (!el) return setOpen("left");
+    const r = el.getBoundingClientRect();
+    // The canvas zooms its content, so the menu's width on screen is 18rem times that zoom.
+    const zoom = r.width / (el.offsetWidth || r.width) || 1;
+    const edge = el.closest("[data-canvas-bg]")?.closest(".canvas-dots")?.getBoundingClientRect().left ?? 0;
+    setOpen(r.right - MENU_W * zoom < edge + 8 ? "right" : "left");
+  };
   return (
     <div ref={ref} className="relative" onPointerDown={(e) => e.stopPropagation()}>
-      <IconButton label={has ? "Picture" : "Add a picture"} onClick={() => setOpen((o) => !o)} disabled={busy} aria-expanded={open}>
-        <ImagePlus size={14} />
-      </IconButton>
+      {/* aria-expanded reaches the button here (the shared IconButton dropped it). */}
+      <BoardIconButton label={has ? "Picture" : "Add a picture"} onClick={toggle} disabled={busy} expanded={!!open}>
+        <ImagePlus size={14} aria-hidden="true" />
+      </BoardIconButton>
       {open && (
-        <div className="absolute right-0 top-9 z-30 w-72">
+        <div className={`absolute ${open === "right" ? "left-0" : "right-0"} top-9 z-30`} style={{ width: MENU_W }}>
           <Menu label="Picture">
             {!has ? (
               <>
@@ -125,9 +185,59 @@ export function PictureMenu({ has, mode, hasPrevious, busy, onDraw, onPrevious, 
 type Box = { x: number; y: number; w: number; h: number };
 type Draft = { frame: HTMLElement; box: Box; target: Target; offered: Target[] };
 
+/**
+ * The box (fractions of the visual frame) as fractions of the PICTURE itself:
+ * through where the picture sits in the layout and its object-cover crop
+ * (centred). The redraw works in the picture's pixels, which differ from the
+ * frame's whenever the picture is cropped or fills only part of the frame.
+ */
+function pictureArea(frame: HTMLElement, box: Box): Box | null {
+  const img = frame.querySelector<HTMLImageElement>("img[data-part='picture']");
+  if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+  const f = frame.getBoundingClientRect();
+  const r = img.getBoundingClientRect();
+  const s = Math.max(r.width / img.naturalWidth, r.height / img.naturalHeight);
+  const dw = img.naturalWidth * s;
+  const dh = img.naturalHeight * s;
+  const ox = r.left + (r.width - dw) / 2;
+  const oy = r.top + (r.height - dh) / 2;
+  const x = (f.left + box.x * f.width - ox) / dw;
+  const y = (f.top + box.y * f.height - oy) / dh;
+  const w = (box.w * f.width) / dw;
+  const h = (box.h * f.height) / dh;
+  // Keep the part that is on the picture; the server cleans it again.
+  const x0 = Math.max(0, x), y0 = Math.max(0, y);
+  const x1 = Math.min(1, x + w), y1 = Math.min(1, y + h);
+  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+}
+
 const STATUS_TONE: Record<VisualComment["status"], string> = {
   open: "border-[var(--accent)]", working: "border-[var(--accent)]", applied: "border-[var(--ok-line)]", failed: "border-[var(--danger-line)]",
 };
+const UNDONE_TONE = "border-dashed border-[var(--line-strong)]";
+
+/** What sending a comment on each part does, said under the box before it is sent. */
+const TARGET_HINT: Record<Target, string> = {
+  picture: "Only the marked area of the picture is redrawn.",
+  headline: "Rewrites this text in your voice. The heading is shared by this piece's post image, quote card and carousel cover.",
+  body: "Rewrites this text in your voice.",
+  cta: "Rewrites this text in your voice.",
+  logo: "Changes the design of all three visuals of this piece: post image, quote card and carousel.",
+  background: "Changes the design of all three visuals of this piece: post image, quote card and carousel.",
+};
+
+/**
+ * What became of a comment, in the words the pin and the side panel both use.
+ * `undone`: a picture change that is no longer in the picture (Ctrl+Z, or an
+ * earlier version put back); the comment was applied, but its result is gone.
+ */
+export function commentState(c: VisualComment, undone = false): { label: string; text: string } {
+  if (c.status === "working") return { label: "working", text: "Working on it" };
+  if (undone) return { label: "undone", text: "Undone. The picture is back to a version without this change." };
+  if (c.status === "applied") return { label: "done", text: c.result ?? "Done." };
+  if (c.status === "failed") return { label: "didn't go through", text: c.result ?? "That didn't go through." };
+  return { label: "waiting", text: "Waiting" };
+}
 
 /** The parts present in a frame, in a fixed order. */
 function partsIn(frame: HTMLElement): Target[] {
@@ -162,21 +272,28 @@ type Rect = { left: number; top: number; width: number; height: number };
  * they hold at any zoom and in the full-size export. Positions on screen are
  * measured in event handlers and an animation frame, never during render.
  */
-export function CommentSurface({ enabled, comments, frameOf, onSend, onDismiss, children }: {
+export function CommentSurface({ enabled, comments, numbers, isUndone, frameOf, onSend, onRetry, onDismiss, children }: {
   enabled: boolean;
-  /** Earlier comments on this visual. */
+  /** Earlier comments on this visual, oldest first. */
   comments: VisualComment[];
+  /** The number each comment carries: its place among the PIECE's comments, the same as in the side panel. */
+  numbers?: Record<string, number>;
+  /** A picture change that has since been undone (the picture in use isn't the one it made). */
+  isUndone?: (c: VisualComment) => boolean;
   /** Which frame an element is in (a carousel has several); defaults to the nearest frame. */
   frameOf?: (el: Element) => HTMLElement | null;
-  onSend: (draft: { target: Target; box: Box; note: string }) => Promise<boolean>;
+  onSend: (draft: { target: Target; box: Box; note: string; area?: Box | null }) => Promise<boolean>;
+  /** Run a comment that didn't go through again. */
+  onRetry?: (c: VisualComment) => Promise<void>;
   onDismiss: (id: string) => void;
   children: ReactNode;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const start = useRef<{ x: number; y: number; frame: HTMLElement } | null>(null);
   const [live, setLive] = useState<Rect | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
   // `at` is where the panel opens on screen: under the box, or over it when the screen ends first.
-  const [draft, setDraft] = useState<(Omit<Draft, "frame"> & { rect: Rect; at: { left: number; top?: number; bottom?: number } }) | null>(null);
+  const [draft, setDraft] = useState<(Omit<Draft, "frame"> & { rect: Rect; at: { left: number; top?: number; bottom?: number }; area: Box | null }) | null>(null);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [openPin, setOpenPin] = useState<string | null>(null);
@@ -279,14 +396,28 @@ export function CommentSurface({ enabled, comments, frameOf, onSend, onDismiss, 
     const at = window.innerHeight - bx.bottom >= PANEL_H + M || bx.top < PANEL_H + M
       ? { left, top: Math.min(bx.bottom + 8, window.innerHeight - PANEL_H - M) }
       : { left, bottom: window.innerHeight - bx.top + 8 };
-    setDraft({ box, target, offered: partsIn(s0.frame), rect, at });
+    setDraft({ box, target, offered: partsIn(s0.frame), rect, at, area: pictureArea(s0.frame, box) });
     setNote("");
+  };
+
+  const undone = (c: VisualComment) => !!isUndone?.(c);
+  // Pins are numbered and placed in the order given; one that would cover another moves aside (lib/visual/pins).
+  const spots = placePins(comments.flatMap((c) => (pins[c.id] ? [{ id: c.id, left: pins[c.id].left, top: pins[c.id].top }] : [])));
+  const retry = async (c: VisualComment) => {
+    if (!onRetry) return;
+    setRetrying(c.id);
+    try {
+      await onRetry(c);
+    } finally {
+      setRetrying(null);
+    }
   };
 
   const send = async () => {
     if (!draft || !note.trim()) return;
     setSending(true);
-    const ok = await onSend({ target: draft.target, box: draft.box, note: note.trim() });
+    const area = draft.target === "picture" ? draft.area : null;
+    const ok = await onSend({ target: draft.target, box: draft.box, note: note.trim(), area });
     setSending(false);
     if (ok) { setDraft(null); setNote(""); }
   };
@@ -302,31 +433,49 @@ export function CommentSurface({ enabled, comments, frameOf, onSend, onDismiss, 
           onPointerUp={up}
           aria-label="Drag a box on the visual to comment on that part"
         >
-          {comments.map((c, n) => pins[c.id] && (
-            <div key={c.id} className={`absolute border-2 rounded-xs ${STATUS_TONE[c.status]}`} style={pins[c.id]}>
-              <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => setOpenPin(openPin === c.id ? null : c.id)}
-                className="absolute -top-3 -left-3 w-6 h-6 rounded-full bg-ink text-on-ink text-xs font-medium flex items-center justify-center"
-                aria-label={`Comment ${n + 1}: ${c.note}`}
-              >
-                {n + 1}
-              </button>
-              {openPin === c.id && (
-                <div onPointerDown={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-2 w-64 z-30 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-3 text-left cursor-default">
-                  <p className="text-xs text-ink-faint">{TARGET_LABEL[c.target]}</p>
-                  <p className="text-sm mt-0.5">{c.note}</p>
-                  <p className="text-xs mt-2 text-ink-muted">
-                    {c.status === "working" ? <span className="inline-flex items-center gap-1.5"><AgentDots /> Working on it</span> : c.result ?? (c.status === "open" ? "Waiting" : "")}
-                  </p>
-                  {c.status !== "working" && (
-                    <button type="button" onClick={() => { setOpenPin(null); onDismiss(c.id); }} className={`${btnClass("ghost", "sm")} mt-2`}>Clear this comment</button>
-                  )}
-                </div>
-              )}
-            </div>
+          {/* The boxes first, then the pins over all of them, so a pin is never under another comment's box. */}
+          {comments.map((c) => pins[c.id] && (
+            <div key={c.id} className={`absolute border-2 rounded-xs pointer-events-none ${undone(c) ? UNDONE_TONE : STATUS_TONE[c.status]}`} style={pins[c.id]} />
           ))}
+          {comments.map((c, n) => {
+            const at = spots[c.id];
+            if (!at) return null;
+            const no = numbers?.[c.id] ?? n + 1;
+            const state = commentState(c, undone(c));
+            return (
+              <div key={c.id} className={`absolute ${openPin === c.id ? "z-30" : "z-20"}`} style={at}>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => setOpenPin(openPin === c.id ? null : c.id)}
+                  className={`w-6 h-6 rounded-full text-xs font-medium flex items-center justify-center ring-2 ring-paper ${undone(c) ? "bg-paper text-ink-muted border border-line-strong" : "bg-ink text-on-ink"}`}
+                  aria-label={`Comment ${no}, ${state.label}: ${c.note}`}
+                  aria-expanded={openPin === c.id}
+                >
+                  {no}
+                </button>
+                {openPin === c.id && (
+                  <div onPointerDown={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-2 w-64 bg-paper border border-hairline rounded-md shadow-[var(--shadow-lg)] p-3 text-left cursor-default">
+                    <p className="text-xs text-ink-faint">{no} · {TARGET_LABEL[c.target]} · {state.label}</p>
+                    <p className="text-sm mt-0.5">{c.note}</p>
+                    <p className="text-xs mt-2 text-ink-muted whitespace-pre-line">
+                      {c.status === "working" ? <span className="inline-flex items-center gap-1.5"><AgentDots /> Working on it</span> : state.text}
+                    </p>
+                    {c.status !== "working" && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {c.status === "failed" && onRetry && (
+                          <button type="button" disabled={retrying === c.id} onClick={() => void retry(c)} className={btnClass("secondary", "sm")}>
+                            {retrying === c.id ? <><AgentDots /> Trying again…</> : "Try again"}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => { setOpenPin(null); onDismiss(c.id); }} className={btnClass("ghost", "sm")}>Clear this comment</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {live && <div className="absolute border-2 border-dashed border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]" style={live} />}
           {draft && (
             <>
@@ -342,7 +491,7 @@ export function CommentSurface({ enabled, comments, frameOf, onSend, onDismiss, 
                 <div className="flex items-center gap-1.5">
                   <MessageSquare size={14} aria-hidden="true" />
                   <p className="text-xs font-medium flex-1">Change this part</p>
-                  <IconButton label="Cancel comment" onClick={() => setDraft(null)}><X size={14} /></IconButton>
+                  <BoardIconButton label="Cancel comment" onClick={() => setDraft(null)}><X size={14} aria-hidden="true" /></BoardIconButton>
                 </div>
                 <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="What the comment is about">
                   {draft.offered.map((t) => (
@@ -370,7 +519,7 @@ export function CommentSurface({ enabled, comments, frameOf, onSend, onDismiss, 
                   aria-label="What to change"
                 />
                 <p className="text-xs text-ink-faint">
-                  {draft.target === "picture" ? "Only the marked area of the picture is redrawn." : draft.target === "logo" || draft.target === "background" ? "Changes this visual's design settings." : "Rewrites this text in your voice."}
+                  {TARGET_HINT[draft.target]}
                 </p>
                 <button type="button" onClick={send} disabled={sending || !note.trim()} className={btnClass("primary", "sm")}>
                   {sending ? <><AgentDots /> Sending…</> : "Send"}

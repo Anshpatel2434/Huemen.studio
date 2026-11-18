@@ -11,13 +11,18 @@ generated from that stored context. Built for The Brand Professor.
 
 ## Stack
 Next.js 16 (App Router) · TypeScript · Tailwind 4 · Postgres 18 with Row-Level
-Security · provider-agnostic AI layer (Claude; a stand-in writer for local work) ·
-S3-compatible storage (AWS S3, Supabase Storage or R2) · email through Resend.
-There is no job queue yet: every generation runs in the request.
+Security · provider-agnostic AI layer (Claude or Groq for text and vision, RunPod
+or OpenAI for pictures; a stand-in for local work) · S3-compatible storage (AWS S3,
+Supabase Storage or R2) · email through Resend. Batches and pictures run in a
+Postgres job queue (see Background jobs).
 
 ## Local setup
 
 Prerequisites: Node 24+, Docker (for local Postgres). Postgres client optional.
+
+To run it with the same real models and settings as the 2026-11-18 test run
+(Groq for text and vision, RunPod for pictures), follow
+[docs/run-like-ours.md](docs/run-like-ours.md).
 
 ```bash
 # 1. install
@@ -62,6 +67,28 @@ lists every variable with notes. Key ones: `DATABASE_URL` (RLS runtime role),
 `AUTH_DRIVER`, `MAIL_PROVIDER`, `STORAGE_DRIVER`, `AI_TEXT_PROVIDER`, and the
 per-minute AI limits. Invalid or unsafe combinations stop the server at start
 with a plain message.
+
+`AI_VISION_MODEL` names the model that looks at pictures (reading a person's
+reference designs, below), on the same provider as text: on Groq a vision
+model such as `qwen/qwen3.8-27b`; on Anthropic, left unset, the strong model.
+It is not a start-up check: until it is set on Groq, the design reading shows
+"Drafting isn't switched on" and the failure is logged.
+
+## Reading reference designs (vision)
+On the onboarding Look screen and in Brand core › Visual a person adds up to
+three designs that look like them: an upload, or a pasted Pinterest pin
+(pinterest.com, pin.it) or image link (fetched behind the SSRF guard, the
+pin's og:image taken, stored exactly like an upload). After each add or
+removal the page calls `readLookAction`, which reads all current designs in
+one vision call (task `look_read`, editable in Settings › Prompts) and shows
+"What your designs say": mood, type, layout, photo style, motifs, colour, each
+design's one-line summary and its measured colours (use one as Background or
+Accent), then "With your voice": where the look agrees and clashes with the
+voice and the direction that fits both. Exact colours are measured from the
+pixels (`src/lib/visual/look-read.ts`), never asked of the model. The reading
+is stored on `visual_identities.core.look` and reaches every generation
+through the one context builder (context v10), so the picture brief starts
+from it. A failure is shown with Try again; Read again re-reads on demand.
 
 ## Deploying
 Hosting is always in the client's own accounts. A step-by-step test deploy on

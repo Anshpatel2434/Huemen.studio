@@ -6,6 +6,7 @@ import { isPlatformAdmin, type Role } from "@/lib/auth/types";
 import { listAssignments, listCaps, listCoaches, listWorkspaces, rolesFor } from "@/lib/data/admin";
 import { loadUsage } from "@/lib/data/insights";
 import { signQuestionnaireToken } from "@/lib/invite/token";
+import { inviteLink, workspaceBaseUrl } from "@/lib/invite/link";
 import { signLink } from "@/lib/auth/tokens";
 import { listMembers } from "@/lib/data/auth";
 import { getEnv } from "@/lib/env";
@@ -33,7 +34,8 @@ function CapField({ name, label, value }: { name: string; label: string; value: 
   return (
     <label className="block min-w-0">
       <span className="block text-xs text-ink-muted mb-1 truncate">{label}</span>
-      <input name={name} type="number" min={0} step={1} inputMode="numeric" defaultValue={value ?? ""} placeholder="none" className="field num" aria-label={label} />
+      {/* A plain field with the number keypad, not the browser's spinner. The action checks the value. */}
+      <input name={name} type="text" inputMode="numeric" autoComplete="off" defaultValue={value ?? ""} placeholder="none" className="field num" aria-label={label} />
     </label>
   );
 }
@@ -188,7 +190,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                             </div>
                             {m.status === "invited" && (
                               <div className="min-w-0">
-                                <CopyField value={`${appUrl}/invite/${signLink("invite", m.id, "invited")}`} />
+                                <CopyField value={inviteLink(appUrl, w.domain, signLink("invite", m.id, "invited"))} />
                                 <p className="text-xs text-ink-faint mt-1">{emailsSent ? `Emailed to ${m.email}. If it hasn't arrived, copy the link and send it yourself; it's valid 7 days.` : `Invite link, valid 7 days. Send it to ${m.email}; opening it lets them accept and join.`}</p>
                               </div>
                             )}
@@ -202,7 +204,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                 {!home && (
                   <div>
                     <p className="text-xs text-ink-muted mb-1">Questionnaire link</p>
-                    <CopyField value={`${appUrl}/q/${signQuestionnaireToken(w.id)}`} />
+                    <CopyField value={`${workspaceBaseUrl(appUrl, w.domain)}/q/${signQuestionnaireToken(w.id)}`} />
                     <p className="text-xs text-ink-faint mt-1">Valid 30 days. Anyone with it can add answers and sample posts to this workspace, so send it only to the client.</p>
                   </div>
                 )}

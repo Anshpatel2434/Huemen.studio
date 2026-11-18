@@ -365,9 +365,16 @@ export function deriveSelfCheck(pack: VoicePack): string[] {
  * their strongest guardrail, their strongest mechanical habit, and the facts
  * rule, which is always rule 3 (templates/VOICE.md).
  */
+const OLD_FACTS_RULE = "Never invent a fact, name, number or credential. Use a [placeholder].";
+
 export function deriveHardRules(pack: VoicePack): string[] {
-  const facts = "Never invent a fact, name, number or credential. Use a [placeholder].";
-  const own = pack.hardRules.filter((r) => r.trim());
+  // The same order as the draft contract (lib/ai/prompt): say it without the
+  // missing fact first; a placeholder is the last resort, never the habit.
+  const facts = "Never invent a fact, name, number, client, event or credential. If it is not in the brand context, write the sentence without it; a [placeholder] is the last resort.";
+  // Packs saved before this wording hold the old default ("... Use a
+  // [placeholder]."), which told the model to reach for a placeholder first.
+  // That sentence was ours, not theirs, so it reads as the current one.
+  const own = pack.hardRules.filter((r) => r.trim()).map((r) => (r.trim() === OLD_FACTS_RULE ? facts : r));
   if (own.length) return own.some((r) => /invent/i.test(r)) ? own.slice(0, 3) : [...own.slice(0, 2), facts];
   const out: string[] = [];
   const g = pack.guardrails.find((x) => x.id === "self-label") ?? pack.guardrails[0];

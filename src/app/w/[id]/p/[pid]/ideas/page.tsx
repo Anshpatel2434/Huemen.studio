@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 
+export const metadata = { title: "Ideas" };
+
 /**
  * Moved in build step 3: this belongs to the whole workspace now, not to one
  * piece. Kept as a redirect so old links and bookmarks still land.

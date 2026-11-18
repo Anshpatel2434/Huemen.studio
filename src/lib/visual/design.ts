@@ -8,6 +8,7 @@
  * a row written before this existed, or a value an older build doesn't know,
  * draws the original design rather than breaking the canvas.
  */
+import { formatUsesCarousel } from "@/lib/content/formats";
 
 export const POST_LAYOUTS = [
   { key: "statement", label: "Statement", about: "One line, room to breathe, a mark and the name." },
@@ -72,6 +73,43 @@ export const DEFAULT_DESIGN: Design = {
 };
 
 export const ARTBOARDS: readonly ArtboardKind[] = ["post", "quote", "carousel"];
+
+/**
+ * The artboards a piece of this format has: a carousel only for formats that
+ * are carousels (lib/content/formats formatUsesCarousel), the same rule the
+ * board uses for the carousel surface, so the Layouts list and "Show me
+ * options" never offer a carousel the piece doesn't have.
+ */
+export function artboardsFor(format: string): ArtboardKind[] {
+  return ARTBOARDS.filter((k) => k !== "carousel" || formatUsesCarousel(format));
+}
+
+/** Type size as a percentage of the template's own (the slider's values; Tweaks.scale is this / 100). */
+export const SCALE = { min: 80, max: 140, step: 5 } as const;
+
+/** A percentage on the slider: whole steps, inside the range. */
+export function clampScale(pct: number): number {
+  if (!Number.isFinite(pct)) return 100;
+  return Math.min(SCALE.max, Math.max(SCALE.min, Math.round(pct / SCALE.step) * SCALE.step));
+}
+
+/** The value at a point along the track (0 is the left end, 1 the right). */
+export function scaleAt(fraction: number): number {
+  return clampScale(SCALE.min + Math.min(1, Math.max(0, fraction)) * (SCALE.max - SCALE.min));
+}
+
+/** The slider's keys (WAI-ARIA slider pattern), or null for a key it doesn't use. */
+export function scaleForKey(pct: number, key: string): number | null {
+  switch (key) {
+    case "ArrowRight": case "ArrowUp": return clampScale(pct + SCALE.step);
+    case "ArrowLeft": case "ArrowDown": return clampScale(pct - SCALE.step);
+    case "PageUp": return clampScale(pct + SCALE.step * 2);
+    case "PageDown": return clampScale(pct - SCALE.step * 2);
+    case "Home": return SCALE.min;
+    case "End": return SCALE.max;
+    default: return null;
+  }
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parsePictures(raw: unknown): Partial<Record<ArtboardKind, PictureRef>> {

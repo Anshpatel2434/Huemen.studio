@@ -17,6 +17,8 @@
  */
 import { measurePiece, words } from "./measure";
 import { ANTI_AI_PHRASES, platformRule } from "./platforms";
+import { findPlaceholders } from "@/lib/content/formats";
+import { CLAIM_MESSAGE, unsupportedClaims } from "./facts";
 import type { PunctuationRates, VoiceIndex } from "./types";
 
 export type IssueSeverity = "error" | "warning" | "note";
@@ -35,6 +37,15 @@ export interface VoiceIssue {
    * score.
    */
   weight?: number;
+  /**
+   * A finding the piece cannot be "On brand" with, whatever else is right: a
+   * word they never use, a stock phrase, a mark that is not theirs, a
+   * placeholder, a hard platform limit, a length far outside their own. One
+   * of these caps the score just under the on-brand line, so the band and
+   * the findings can never disagree (2026-11-17: 92 "On brand" beside a
+   * placeholder and double the usual length).
+   */
+  mustFix?: boolean;
 }
 
 /**
@@ -81,7 +92,18 @@ export interface CheckOptions {
   corpusUses?: Record<string, number>;
   /** Their own public writing, to catch a draft that copies it word for word. */
   corpusTexts?: string[];
+  /** Hashtags per piece in their own writing (mechanics.hashtags). 0 with a real corpus means they don't use them. */
+  hashtagsPerPiece?: number | null;
+  /**
+   * Everything a draft may draw facts from: the brand context, their own samples,
+   * the piece's topic. When given, a number, quote, event or named method the
+   * text states and this does not contain is a must-fix finding (lib/voice/facts).
+   */
+  grounding?: string;
 }
+
+/** The highest score a piece with a must-fix finding can have: one under "On brand". */
+export const MUST_FIX_CAP = 84;
 
 /** Eight words in a row matching their writing is a copy, not a rhythm. */
 const COPY_RUN = 8;
@@ -201,10 +223,42 @@ function plural(name: string, n: number): string {
   return name.endsWith("h") || name.endsWith("s") ? `${name}es` : `${name}s`;
 }
 
-function findPhrase(haystack: string, needle: string): string | undefined {
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * The phrase with a little of the line around it, for the finding to quote.
+ * Cut at word boundaries, with an ellipsis where text was left out: a snippet
+ * that stops mid-word ("...transformative ecosy") reads as a typo in their copy.
+ */
+export function findPhrase(haystack: string, needle: string): string | undefined {
   const i = haystack.toLowerCase().indexOf(needle.toLowerCase());
   if (i < 0) return undefined;
-  return haystack.slice(Math.max(0, i - 30), i + needle.length + 30).trim();
+  const PAD = 30;
+  const stop = i + needle.length;
+  let start = Math.max(0, i - PAD);
+  let end = Math.min(haystack.length, stop + PAD);
+  // Pull each edge in to the nearest space, never into the phrase itself.
+  if (start > 0 && !/\s/.test(haystack[start - 1])) {
+    const sp = haystack.slice(start, i).search(/\s/);
+    start = sp >= 0 ? start + sp + 1 : i;
+  }
+  if (end < haystack.length && !/\s/.test(haystack[end])) {
+    const sp = haystack.slice(0, end).search(/\s\S*$/);
+    end = sp >= stop ? sp : stop;
+  }
+  // A phrase that starts or stops inside a word ("revolution" in "revolutionary") keeps the whole word.
+  while (start > 0 && WORD_CHAR.test(haystack[start - 1]) && WORD_CHAR.test(haystack[start])) start--;
+  while (end < haystack.length && WORD_CHAR.test(haystack[end]) && WORD_CHAR.test(haystack[end - 1])) end++;
+  const body = haystack.slice(start, end).replace(/\s+/g, " ").trim();
+  return `${start > 0 ? "…" : ""}${body}${end < haystack.length ? "…" : ""}`;
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** How many times a word or phrase appears, whole words only where it is one. */
+function countOf(text: string, needle: string): number {
+  const edge = (c: string) => (WORD_CHAR.test(c) ? "\\b" : "");
+  return (text.match(new RegExp(`${edge(needle[0])}${escapeRe(needle)}${edge(needle[needle.length - 1])}`, "gi")) ?? []).length;
 }
 
 export function checkDraft(
@@ -228,14 +282,31 @@ export function checkDraft(
   for (const w of index.neverWords) {
     const needle = w.trim();
     if (!needle) continue;
-    if (new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) {
+    const times = (text.match(new RegExp(`\\b${escapeRe(needle)}\\b`, "gi")) ?? []).length;
+    if (times) {
       issues.push({
         code: "never_word",
         severity: "error",
-        message: `"${needle}" is on your never-list.`,
+        mustFix: true,
+        weight: times,
+        message: `"${needle}" is on your never-list.${times > 1 ? ` It is in this draft ${times} times.` : ""}`,
         excerpt: findPhrase(text, needle),
       });
     }
+  }
+
+  // 1b. A fact the draft did not have. Found by code, every time: nothing a
+  // model says about the piece can outvote a "[placeholder]" still in it.
+  const placeholders = findPlaceholders(text);
+  if (placeholders.length) {
+    issues.push({
+      code: "placeholder",
+      severity: "error",
+      mustFix: true,
+      weight: placeholders.length,
+      message: placeholders.length === 1 ? "A placeholder is still in the copy." : `${placeholders.length} placeholders are still in the copy.`,
+      excerpt: findPhrase(text, placeholders[0]),
+    });
   }
 
   // 2. The universal watch-list — unless this person has PROVEN the habit.
@@ -253,6 +324,8 @@ export function checkDraft(
       issues.push({
         code: "watch_phrase",
         severity: "warning",
+        mustFix: true,
+        weight: Math.max(1, countOf(text, phrase)),
         message:
           pieces > 0
             ? `You have used "${phrase}" ${used} ${used === 1 ? "time" : "times"} in ${pieces} ${pieces === 1 ? "piece" : "pieces"}.`
@@ -274,6 +347,9 @@ export function checkDraft(
         // Breaking a habit once is a slip; breaking it repeatedly is a
         // different voice, and `weight` makes the score say so.
         weight: used,
+        // Exclamation marks and emoji change how a piece sounds at a glance;
+        // one stray semicolon does not, so that stays a plain warning.
+        mustFix: key === "exclamation" || key === "emoji",
         message: `You don't use the ${plural(name, used)}. This draft has ${used}.`,
       });
     } else if (rule.allowed && rule.perPostMax != null && used > rule.perPostMax) {
@@ -291,11 +367,38 @@ export function checkDraft(
     const [lo, hi] = range;
     if (m.wordCount < lo * 0.6)
       issues.push({ code: "too_short", severity: "note", message: `${m.wordCount} words. Yours usually run ${lo}–${hi}.` });
+    // Well past their longest is a different piece, not a slip: it has to be cut.
     if (m.wordCount > hi * 1.4)
-      issues.push({ code: "too_long", severity: "note", message: `${m.wordCount} words. Yours usually run ${lo}–${hi}.` });
+      issues.push({ code: "too_long", severity: "warning", mustFix: true, message: `${m.wordCount} words. Yours usually run ${lo}–${hi}.` });
   }
 
-  issues.push(...platformIssues(text, m, opts.channel));
+  const platform = platformIssues(text, m, opts.channel);
+  for (const p of platform) if (p.code === "platform_limit") p.mustFix = true;
+  issues.push(...platform);
+
+  // 3b. Facts the brand context does not back up (FACTS_RULE, enforced here).
+  // A must-fix on the brand check; drafting is never blocked by it.
+  if (opts.grounding != null) {
+    for (const claim of unsupportedClaims(text, opts.grounding)) {
+      issues.push({ code: "unsupported_claim", severity: "warning", mustFix: true, message: CLAIM_MESSAGE[claim.kind], excerpt: claim.excerpt });
+    }
+  }
+
+  // 4b. Hashtags, when their own writing has none. Needs a real corpus to say
+  // so; a platform that takes none already said it above.
+  if (
+    m.hashtags.length > 0 && opts.hashtagsPerPiece === 0 && (opts.corpusPieces ?? 0) >= 3 &&
+    !platform.some((p) => p.code === "platform_hashtags")
+  ) {
+    issues.push({
+      code: "hashtags_unused",
+      severity: "warning",
+      mustFix: true,
+      weight: m.hashtags.length,
+      message: `You don't use hashtags. This draft has ${m.hashtags.length}.`,
+      excerpt: m.hashtags.slice(0, 4).join(" "),
+    });
+  }
 
   // 5. Sentence rhythm. Their distribution, not a general readability score:
   // the average, and how many very short and very long sentences they use.
@@ -370,9 +473,19 @@ export function checkDraft(
   // A repeated break costs more than a single one, up to three times the base,
   // so a draft that breaks one habit three times can reach "off brand" where
   // before every finding cost the same and nothing realistic ever did.
-  const score = Math.max(
+  // The hard rules (a never-word, a stock phrase, a mark or hashtag that is
+  // not theirs, a placeholder) are counted one by one and cost up to five
+  // times the base: eight exclamation marks and a stock phrase is off brand,
+  // not "drifting".
+  const raw = Math.max(
     0,
-    issues.reduce((s, i) => s - COST[i.severity] * Math.min(3, Math.max(1, i.weight ?? 1)), 100),
+    issues.reduce((s, i) => s - COST[i.severity] * Math.min(HARD_RULES.has(i.code) ? 5 : 3, Math.max(1, i.weight ?? 1)), 100),
   );
+  // And the band follows the findings: with something that has to be fixed
+  // on the list, the piece is not on brand yet, whatever the arithmetic says.
+  const score = issues.some((i) => i.mustFix) ? Math.min(raw, MUST_FIX_CAP) : raw;
   return { score, band: bandFor(score), issues };
 }
+
+/** The findings counted occurrence by occurrence (see the score above). */
+const HARD_RULES = new Set(["never_word", "watch_phrase", "punctuation_unused", "hashtags_unused", "placeholder"]);

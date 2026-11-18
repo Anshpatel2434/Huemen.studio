@@ -28,12 +28,22 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { ProviderError } from "../errors";
-import type { StreamingTextProvider, StructuredResult, TextCallOptions, TextGenRequest, TextGenResult, TextStreamEvent } from "../types";
+import type { StreamingTextProvider, StructuredResult, TextCallOptions, TextGenRequest, TextGenResult, TextImage, TextStreamEvent } from "../types";
 import type { ZodType } from "zod";
 import type { AssembledPrompt } from "../prompt";
 
 /** Short-form social copy; generous enough that thinking never truncates it. */
 const MAX_TOKENS = 16000;
+
+/**
+ * Temperature (audit M1), sent only when no thinking depth is configured. With
+ * `effort` set the model may think, and a thinking request does not take a
+ * custom temperature, so the parameter is left out and the model default applies.
+ * Not verified against a live model here (no model calls in this change).
+ */
+function temperatureParam(opts: TextCallOptions): { temperature?: number } {
+  return opts.temperature !== undefined && !opts.effort ? { temperature: opts.temperature } : {};
+}
 
 const Variants = z.object({ variants: z.array(z.string()) });
 
@@ -57,8 +67,16 @@ function toProviderError(err: unknown): ProviderError {
     return new ProviderError("timeout", "The model did not answer in time.");
   if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError)
     return new ProviderError("auth", "The Anthropic credentials were rejected. Check ANTHROPIC_API_KEY.");
-  if (err instanceof Anthropic.RateLimitError)
-    return new ProviderError("rate_limit", "The model is rate limited right now. Try again in a minute.");
+  if (err instanceof Anthropic.RateLimitError) {
+    const h = err.headers as unknown as { get?: (k: string) => string | null } | Record<string, string> | undefined;
+    const retryAfter = typeof h?.get === "function" ? h.get("retry-after") : ((h as Record<string, string> | undefined)?.["retry-after"] ?? null);
+    const seconds = Number(retryAfter);
+    // Anthropic's limits are per minute; the wait it states is kept for the queue and the message.
+    return new ProviderError("rate_limit", "The model is rate limited right now.", false, {
+      window: "minute",
+      ...(Number.isFinite(seconds) && seconds > 0 ? { retryAfterSeconds: Math.ceil(seconds) } : {}),
+    });
+  }
   if (err instanceof Anthropic.BadRequestError)
     return new ProviderError("bad_request", `The model rejected the request: ${err.message}`);
   if (err instanceof Anthropic.InternalServerError)
@@ -82,22 +100,25 @@ export function anthropicTextProvider(
 
     /**
      * A draft written live. Plain text, not structured output: half a JSON
-     * string can't be shown on a canvas. Same request shape otherwise (cache
-     * breakpoint, fallbacks, effort), and the same refusal and truncation
-     * checks, made on the final message once the stream ends.
+     * string can't be shown on a canvas. Same request shape as a task except
+     * that no server-side fallback is used (see the call below), and the same
+     * refusal and truncation checks, made on the final message once the
+     * stream ends.
      */
     async *stream(req, model, opts = {}): AsyncIterable<TextStreamEvent> {
       if (!client.beta.messages.stream) throw new ProviderError("unknown", "This client cannot stream.");
       try {
+        // No server-side fallback on a stream (audit H3, 2026-11-18). A fallback
+        // re-runs the request on another model inside the same call, so the
+        // deltas would show the discarded model's words while the saved text is
+        // the kept one. A refusal here is an error the person can see and retry.
         const s = client.beta.messages.stream({
           model,
           max_tokens: MAX_TOKENS,
-          ...(config.fallbacks === "default"
-            ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
-            : {}),
           system: [{ type: "text", text: req.prompt.system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: req.prompt.user }],
           ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+          ...temperatureParam(opts),
         });
         for await (const event of s) {
           if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
@@ -115,9 +136,9 @@ export function anthropicTextProvider(
           model: msg.model,
           tokensIn: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
           tokensOut: u.output_tokens ?? 0,
-          // After a mid-stream fallback the deltas hold both models' text; the
-          // final message holds only what was kept.
-          text: msg.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(""),
+          // Without a fallback the final message is exactly the streamed text;
+          // the facade checks the two match before anything is saved.
+          text:msg.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(""),
         };
       } catch (err) {
         throw toProviderError(err);
@@ -146,18 +167,34 @@ export function anthropicTextProvider(
       schema: ZodType<T>,
       opts: TextCallOptions = {},
     ): Promise<StructuredResult<T>> {
-      const { data, served, tokensIn, tokensOut } = await call(req.prompt, model, schema, opts);
+      const { data, served, tokensIn, tokensOut } = await call(req.prompt, model, schema, opts, req.images);
       return { data, model: served, tokensIn, tokensOut };
     },
   };
   return provider;
 
   /**
+   * The user turn: plain text, or with pictures, each picture as a base64
+   * image block followed by the text (Claude reads images before the question
+   * best). The pictures are the caller's downscaled copies.
+   */
+  function userContent(prompt: AssembledPrompt, images: TextImage[] = []) {
+    if (!images.length) return prompt.user;
+    return [
+      ...images.map((img) => ({
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: img.mime, data: Buffer.from(img.data).toString("base64") },
+      })),
+      { type: "text" as const, text: prompt.user },
+    ];
+  }
+
+  /**
    * One request shape for every call, so caching, fallbacks, effort and the
    * refusal / truncation / parse checks can never differ between a draft and
    * a task.
    */
-  async function call<T>(prompt: AssembledPrompt, model: string, schema: ZodType<T>, opts: TextCallOptions) {
+  async function call<T>(prompt: AssembledPrompt, model: string, schema: ZodType<T>, opts: TextCallOptions, images: TextImage[] = []) {
       let res;
       try {
         res = await client.beta.messages.parse({
@@ -167,11 +204,12 @@ export function anthropicTextProvider(
             ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
             : {}),
           system: [{ type: "text", text: prompt.system, cache_control: { type: "ephemeral" } }],
-          messages: [{ role: "user", content: prompt.user }],
+          messages: [{ role: "user", content: userContent(prompt, images) }],
           output_config: {
             format: betaZodOutputFormat(schema),
             ...(opts.effort ? { effort: opts.effort } : {}),
           },
+          ...temperatureParam(opts),
         });
       } catch (err) {
         throw toProviderError(err);

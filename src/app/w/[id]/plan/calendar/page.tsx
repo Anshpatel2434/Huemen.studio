@@ -7,7 +7,7 @@ import { DocPage } from "@/components/doc-page";
 import { btnClass } from "@/components/btn";
 import { deleteCalendarEntryAction, startFromSlotAction } from "../actions";
 import { CALENDAR_CHANNELS, CALENDAR_DAYS } from "@/lib/content/calendar-plan";
-import { AddSlotButton, GenerateCalendarButton } from "./calendar-tools";
+import { AddSlotButton, GenerateCalendarButton, MoveSlotButton } from "./calendar-tools";
 import { latestJob } from "@/lib/jobs";
 import { JobStatus } from "@/components/job-status";
 
@@ -62,7 +62,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
         </div>
       }
     >
-      <p className="text-sm text-ink-muted">Press + on a day to add a slot, or plan the next {CALENDAR_DAYS} days from your pillars. A slot starts a piece with its topic filled in.</p>
+      <p className="text-sm text-ink-muted">Press + on today or a coming day to add a slot, or plan the next {CALENDAR_DAYS} days from your pillars. A slot starts a piece with its topic filled in, and Move puts it on another day.</p>
       {job && <div className="mt-4"><JobStatus key={job.id} tenantId={id} initial={job} /></div>}
 
       <div className="mt-6 bg-paper border border-hairline rounded-md overflow-hidden">
@@ -73,7 +73,10 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
           {cells.map((c, i) => (
             <div key={c.key} className={`group/day relative min-h-[112px] p-2 border-hairline ${i % 7 ? "border-l" : ""} ${i >= 7 ? "border-t" : ""} ${c.inMonth ? "" : "bg-panel"}`}>
               <p className={`text-xs tabular-nums mb-1.5 ${c.key === today ? "inline-flex w-6 h-6 rounded-full bg-accent text-on-ink items-center justify-center font-medium" : c.inMonth ? "text-ink-muted" : "text-ink-faint"}`}>{c.d.getDate()}</p>
-              <AddSlotButton tenantId={id} date={c.key} label={c.d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} pillars={pillars.map((p) => ({ id: p.id, name: p.name }))} />
+              {/* A day that has gone can't be planned for: no "+" there. */}
+              {c.key >= today && (
+                <AddSlotButton tenantId={id} date={c.key} label={c.d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} pillars={pillars.map((p) => ({ id: p.id, name: p.name }))} />
+              )}
               <div className="flex flex-col gap-1">
                 {(byDay.get(c.key) ?? []).map((e) => (
                   <div key={e.id} className="group relative rounded-sm pl-2 pr-5 py-1 text-xs leading-tight bg-panel border-l-[3px]" style={{ borderLeftColor: shade(e.pillarId) }}>
@@ -92,7 +95,9 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
                         </button>
                       </form>
                     )}
-                    {(e.hookAngle || e.cta) && <p className="text-ink-faint truncate" title={[e.hookAngle, e.cta && `Close with: ${e.cta}`].filter(Boolean).join(". ")}>{e.hookAngle ?? `Close with: ${e.cta}`}</p>}
+                    {(e.hookAngle || e.cta) && <p className="text-ink-faint truncate">{e.hookAngle ?? `Close with: ${e.cta}`}</p>}
+                    {/* To another day, in the app's own calendar: the slot keeps everything else. */}
+                    <p className="mt-1"><MoveSlotButton tenantId={id} id={e.id} date={e.date} topic={e.topic ?? "This slot"} /></p>
                     <form action={deleteCalendarEntryAction} className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                       <input type="hidden" name="tenantId" value={id} />
                       <input type="hidden" name="id" value={e.id} />

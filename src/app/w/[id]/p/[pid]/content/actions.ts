@@ -5,9 +5,13 @@ import { actionProjectScope } from "@/lib/auth/workspace";
 import { getSession } from "@/lib/auth";
 import { learnFromApproval } from "@/lib/data/learning";
 import { getProject, unlockStage } from "@/lib/data/projects";
-import { deleteContent, generateContent, regenerateWithSteer, updateContent, applyVariant, patchContent, listContent, rewritePartOf, stampContentItem } from "@/lib/data/content";
+import {
+  deleteContent, generateContent, regenerateWithSteer, updateContent, ContentConflictError, ContentNotFoundError, applyVariant, patchContent,
+  listContent, rewritePartOf, stampContentItem, keepCurrentVersion, recordRewrite,
+} from "@/lib/data/content";
 import { judgeText, rewriteTextStamped, scoreContentItem, scoreProject } from "@/lib/data/check";
-import type { JudgeResult } from "@/lib/ai/tasks";
+import type { LineFinding } from "@/lib/ai/tasks";
+import { applyFinding, blockedRewriteMessage, UnsupportedRewriteError } from "@/lib/voice/judge";
 import { loadPackForWorkspace } from "@/lib/data/voice-pack";
 import { recordEdit } from "@/lib/data/training";
 import { coWrite, ownDraft } from "@/lib/data/create";
@@ -66,7 +70,8 @@ async function learnFromEdit(scope: ProjectScope, itemId: string, save: () => Pr
 /** Generate 2 variants from the brief; returns the new content_item id. */
 export async function draftAction(tenantId: string, projectId: string, input: { format: string; topic: string; pillarId: string | null }) {
   const scope = await actionProjectScope(tenantId, projectId);
-  const id = await generateContent(scope, input);
+  // The angle is read here, from the piece as it was set up at Ideate, not sent by the browser.
+  const id = await generateContent(scope, { ...input, angle: await angleOf(scope) });
   await unlockStage(scope, "content").catch(() => undefined); // only moves on from Pillars
   await settle(scope, tenantId, projectId);
   return id;
@@ -78,16 +83,25 @@ export async function steerAction(tenantId: string, projectId: string, itemId: s
   try {
     await regenerateWithSteer(scope, itemId, steer);
   } catch (e) {
-    return { error: userMessage(e) };
+    // A steer that adds a claim the brand context does not back is not saved; the message says what it adds.
+    if (e instanceof UnsupportedRewriteError) return { error: e.message };
+    return { error: e instanceof ContentNotFoundError ? e.message : userMessage(e) };
   }
   await settle(scope, tenantId, projectId);
   return {};
 }
 
-export async function applyVariantAction(tenantId: string, projectId: string, itemId: string, generationId: string) {
+export async function applyVariantAction(tenantId: string, projectId: string, itemId: string, generationId: string): Promise<{ error?: string }> {
   const scope = await actionProjectScope(tenantId, projectId);
-  await applyVariant(scope, itemId, generationId);
+  try {
+    await applyVariant(scope, itemId, generationId);
+  } catch (e) {
+    // A version or piece that isn't here (deleted in another tab, a bad id) is said plainly, not thrown.
+    if (e instanceof ContentNotFoundError) return { error: "That version isn't here any more. Reload to see what is." };
+    throw e;
+  }
   await settle(scope, tenantId, projectId);
+  return {};
 }
 
 export async function saveContentAction(
@@ -95,9 +109,15 @@ export async function saveContentAction(
   projectId: string,
   itemId: string,
   patch: { hook: string; body: string; cta: string; pillarId: string | null; status: "draft" | "edited" | "approved" },
-) {
+  base?: { hook: string; body: string; cta: string } | null,
+): Promise<{ learned: boolean; why: string; remeasured: boolean } | { conflict: string } | null> {
   const scope = await actionProjectScope(tenantId, projectId);
-  await learnFromEdit(scope, itemId, () => updateContent(scope, itemId, patch));
+  try {
+    await learnFromEdit(scope, itemId, () => updateContent(scope, itemId, patch, base));
+  } catch (e) {
+    if (e instanceof ContentConflictError) return { conflict: e.message };
+    throw e;
+  }
   // Approval is where the voice learns: the owner's own words teach it, the
   // model's words don't (lib/voice/learn). Best effort, like edit learning.
   let learned: { learned: boolean; why: string; remeasured: boolean } | null = null;
@@ -118,11 +138,29 @@ export async function patchContentAction(
   projectId: string,
   itemId: string,
   patch: { hook?: string; body?: string; cta?: string; pillarId?: string | null },
-  opts: { learn?: boolean } = {},
-) {
+  opts: {
+    learn?: boolean;
+    base?: { hook?: string; body?: string; cta?: string } | null;
+    /** The patch is a model rewrite the person asked for, in these words: the history says so. */
+    rewrite?: string;
+  } = {},
+): Promise<{ conflict: string } | void> {
   const scope = await actionProjectScope(tenantId, projectId);
-  if (opts.learn === false) await patchContent(scope, itemId, patch);
-  else await learnFromEdit(scope, itemId, () => patchContent(scope, itemId, patch));
+  const rewrite = typeof opts.rewrite === "string" ? opts.rewrite.trim().slice(0, 120) : "";
+  try {
+    if (rewrite) {
+      // Whatever was typed since the last version is kept before the rewrite
+      // replaces it, and the rewrite is listed as one, not as "Edited by you".
+      await keepCurrentVersion(scope, itemId);
+      await patchContent(scope, itemId, patch, opts.base);
+      await recordRewrite(scope, itemId, rewrite, null);
+    } else if (opts.learn === false) await patchContent(scope, itemId, patch, opts.base);
+    else await learnFromEdit(scope, itemId, () => patchContent(scope, itemId, patch, opts.base));
+  } catch (e) {
+    if (!(e instanceof ContentConflictError)) throw e;
+    await settle(scope, tenantId, projectId);
+    return { conflict: e.message };
+  }
   await settle(scope, tenantId, projectId);
 }
 
@@ -147,6 +185,8 @@ export async function askRewriteAction(
     const text = await rewritePartOf(scope, itemId, { part: ask.part.slice(0, 40), text: ask.text.slice(0, 4000), instruction });
     return text ? { ok: true, text } : { ok: false, error: "That piece is gone." };
   } catch (e) {
+    // The canvas commits only an ok rewrite, so a blocked one leaves the piece as it was.
+    if (e instanceof UnsupportedRewriteError) return { ok: false, error: e.message };
     return { ok: false, error: userMessage(e) };
   }
 }
@@ -166,6 +206,11 @@ async function pillarOf(scope: ProjectScope): Promise<string | null> {
   return (await getProject(scope, scope.projectId))?.pillarId ?? null;
 }
 
+/** The angle picked at Ideate: binding on every draft of this piece (lib/ai/prompt). */
+async function angleOf(scope: ProjectScope): Promise<string | null> {
+  return (await getProject(scope, scope.projectId))?.angle ?? null;
+}
+
 async function attempt(fn: () => Promise<string>): Promise<Outcome> {
   try {
     return { ok: true, id: await fn() };
@@ -178,7 +223,8 @@ async function attempt(fn: () => Promise<string>): Promise<Outcome> {
 export async function ghostwriteAction(tenantId: string, projectId: string, input: { format: string; topic: string }): Promise<Outcome> {
   const scope = await actionProjectScope(tenantId, projectId);
   const r = await attempt(async () => {
-    const id = await generateContent(scope, { ...input, pillarId: await pillarOf(scope) });
+    const project = await getProject(scope, scope.projectId);
+    const id = await generateContent(scope, { ...input, pillarId: project?.pillarId ?? null, angle: project?.angle ?? null });
     await unlockStage(scope, "content").catch(() => undefined);
     return id;
   });
@@ -211,33 +257,44 @@ const draftOf = (i: { hook: string | null; body: string | null; cta: string | nu
 /** Line findings with a fix in their voice, for one piece. A model call. */
 export async function judgeContentItemAction(
   tenantId: string, projectId: string, itemId: string,
-): Promise<{ ok: true; findings: JudgeResult["findings"] } | { ok: false; error: string }> {
+): Promise<{ ok: true; findings: LineFinding[] } | { ok: false; error: string }> {
   const scope = await actionProjectScope(tenantId, projectId);
   const item = (await listContent(scope)).find((i) => i.id === itemId);
   if (!item) return { ok: false, error: "That piece is gone." };
   try {
-    return { ok: true, findings: await judgeText(scope, draftOf(item), formatByKey(item.format).platform) };
+    // Logged against the piece it reads (generation_logs.content_item_id).
+    return { ok: true, findings: await judgeText(scope, draftOf(item), formatByKey(item.format).platform, itemId, item.topic) };
   } catch (e) {
     return { ok: false, error: userMessage(e) };
   }
 }
 
+export type AppliedFix = { ok: true; field: "hook" | "body" | "cta"; before: string; after: string } | { ok: false };
+
 /**
- * Apply one suggested fix where the line stands. The person chose it, but the
- * words are the model's, so it is not counted as an edit to learn from.
+ * Apply one suggested fix where the line stands (or cut the line, when that
+ * is the suggestion). The person chose it, but the words are the model's, so
+ * it is not counted as an edit to learn from. Returns the field as it was
+ * and as it is now, so the canvas can put it on its undo history.
  */
-export async function applyFixAction(tenantId: string, projectId: string, itemId: string, line: string, fix: string): Promise<boolean> {
+export async function applyFixAction(
+  tenantId: string, projectId: string, itemId: string, finding: { line: string; fix: string; remove: boolean },
+): Promise<AppliedFix> {
   const scope = await actionProjectScope(tenantId, projectId);
   const item = (await listContent(scope)).find((i) => i.id === itemId);
-  if (!item) return false;
-  const patch: { hook?: string; body?: string; cta?: string } = {};
-  for (const k of ["hook", "body", "cta"] as const) {
-    if (!patch.hook && !patch.body && !patch.cta && item[k]?.includes(line)) patch[k] = item[k]!.replace(line, fix);
+  if (!item) return { ok: false };
+  const f = { line: String(finding.line ?? ""), fix: String(finding.fix ?? "").slice(0, 4000), remove: finding.remove === true };
+  for (const field of ["hook", "body", "cta"] as const) {
+    const after = applyFinding(item[field], f);
+    // A hook can't be cut to nothing: that finding is for the person to handle.
+    if (after === null || (field === "hook" && !after.trim())) continue;
+    await keepCurrentVersion(scope, itemId);
+    await patchContent(scope, itemId, { [field]: after });
+    await recordRewrite(scope, itemId, f.remove ? "a line cut" : "a line fix", null);
+    await settle(scope, tenantId, projectId);
+    return { ok: true, field, before: item[field], after };
   }
-  if (!Object.keys(patch).length) return false;
-  await patchContent(scope, itemId, patch);
-  await settle(scope, tenantId, projectId);
-  return true;
+  return { ok: false };
 }
 
 /** Off brand: the whole piece rewritten in their voice, in place. */
@@ -249,11 +306,22 @@ export async function rewriteContentItemAction(
   if (!item) return { ok: false, error: "That piece is gone." };
   try {
     // Hook and body only: the call to action is a separate field and stays theirs.
-    const { text, template } = await rewriteTextStamped(scope, draftOf({ ...item, cta: null }), formatByKey(item.format).platform, itemId);
-    const lines = text.split("\n");
+    // The piece's brief goes with it: its topic and angle are binding on a rewrite too (M4).
+    const { text, template, model, unsupported } = await rewriteTextStamped(
+      scope, draftOf({ ...item, cta: null }), formatByKey(item.format).platform, itemId,
+      { topic: item.topic, angle: await angleOf(scope) },
+    );
+    // A rewrite that adds a claim the brand context does not back is not saved: the piece keeps its text (C2).
+    if (unsupported.length) return { ok: false, error: blockedRewriteMessage(unsupported) };
+    const lines = text.trim().split("\n");
     const hook = (lines.shift() ?? "").trim();
+    if (!hook) return { ok: false, error: "The rewrite came back empty. Nothing was changed." };
+    // What is there now (typed edits included) stays in History; the rewrite
+    // is then listed as a rewrite, with the model that wrote it.
+    await keepCurrentVersion(scope, itemId);
     await patchContent(scope, itemId, { hook, body: lines.join("\n").trim(), cta: item.cta });
     await stampContentItem(scope, itemId, { templateId: template.id, version: template.version });
+    await recordRewrite(scope, itemId, "in my voice", model);
     await settle(scope, tenantId, projectId);
     return { ok: true };
   } catch (e) {

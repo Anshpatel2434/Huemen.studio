@@ -19,6 +19,10 @@ import { tryGeneratePillars } from "@/lib/data/pipeline";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { parseIntake, mergeIntake } from "@/lib/intake/parse";
 import { applyAnswers, buildQuestions, MIN_SEEDS } from "@/lib/brief/questions";
+import { addReferenceFromLink, assertRoomForReference, readLook } from "@/lib/data/look";
+import { AiConfigError, ProviderError, RateLimitError, UsageCapError, userMessage } from "@/lib/ai/errors";
+import { reportError } from "@/lib/observability/report";
+import type { LookReading } from "@/lib/visual/core";
 
 async function ctx(fd: FormData) {
   const t = String(fd.get("tenantId"));
@@ -50,6 +54,8 @@ export async function uploadAssetAction(fd: FormData): Promise<void> {
   // A file sent ahead to storage (lib/upload-client) arrives as its key; a
   // plain form still posts the file itself, which only works under 1 MB.
   const key = fd.get("key");
+  // At most three reference designs, checked here as well as in the UI (a fourth is refused with a message).
+  if (kind === "reference_image") await assertRoomForReference(scope);
   if (key) {
     const bytes = await takeIncoming(scope.tenantId, key, "asset");
     if (!bytes) throw new AssetError("That upload didn't arrive or has expired. Choose the file again.");
@@ -81,6 +87,44 @@ export async function deleteAssetAction(tenantId: string, assetId: string): Prom
   const scope = await actionScope(tenantId);
   await deleteAsset(scope, assetId);
   revalidatePath(`/w/${tenantId}`, "layout");
+}
+
+/**
+ * Read the reference designs (look_read, vision): called by the page AFTER a
+ * design is added or removed, never inside the upload, so the upload answers
+ * at once and the card shows "Reading your designs..." meanwhile. A failure
+ * comes back as a plain message (rate limits say per minute or per day) with
+ * the stored reading untouched, so the page can offer Try again.
+ */
+export async function readLookAction(tenantId: string): Promise<{ ok: true; look: LookReading | null } | { ok: false; error: string }> {
+  const scope = await actionScope(tenantId);
+  try {
+    const look = await readLook(scope);
+    revalidatePath(`/w/${tenantId}`, "layout");
+    return { ok: true, look };
+  } catch (e) {
+    // A model failure is already a generation_logs row; anything else (a
+    // picture that won't decode, the database) is reported so "logged" is true.
+    const expected = [ProviderError, AiConfigError, RateLimitError, UsageCapError].some((k) => e instanceof k);
+    if (!expected) await reportError(e, { tenantId, source: "action", route: "readLookAction" }).catch(() => {});
+    return { ok: false, error: userMessage(e) };
+  }
+}
+
+/**
+ * Add a reference design from a link: a Pinterest pin or a picture's address
+ * (lib/data/look). Stored like an upload; the page then asks for a reading.
+ */
+export async function addReferenceLinkAction(tenantId: string, url: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const scope = await actionScope(tenantId);
+  try {
+    const { id } = await addReferenceFromLink(scope, String(url ?? "").slice(0, 2000));
+    revalidatePath(`/w/${tenantId}`, "layout");
+    return { ok: true, id };
+  } catch (e) {
+    if (e instanceof AssetError) return { ok: false, error: e.message };
+    return { ok: false, error: "We couldn't add that link. Save the image and upload it instead." };
+  }
 }
 
 /** Intake: labelled notes → brief fields (only non-empty values overwrite). */

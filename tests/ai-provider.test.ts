@@ -80,6 +80,14 @@ describe("prompt assembly (INV-2)", () => {
     expect(again.system).toBe(prompt.system);
   });
 
+  it("splits a draft that came back as one paragraph, so the first piece is never 'no piece yet'", () => {
+    const one = splitDraft("Most founders describe what they do. They never say who it is for. That is why reps spend ten minutes correcting prospects. CTA: Book a thirty minute call.");
+    expect(one.hook).toBe("Most founders describe what they do.");
+    expect(one.body).toBe("They never say who it is for. That is why reps spend ten minutes correcting prospects.");
+    expect(one.cta).toBe("Book a thirty minute call.");
+    expect(splitDraft("Just one line, no ask")).toEqual({ hook: "Just one line, no ask", body: "", cta: "" });
+  });
+
   it("asks for the shape the draft parser reads", () => {
     expect(prompt.user).toContain('starting with "CTA: "');
     expect(prompt.user).toContain("Write 2 distinct versions");

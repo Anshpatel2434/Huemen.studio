@@ -12,8 +12,9 @@ import { listOffers } from "@/lib/data/planning";
 import { Meter, Alert } from "@/components/ui";
 import { HueStrip } from "@/components/composites";
 import { btnClass } from "@/components/btn";
-import { BriefToc } from "./toc";
+import { BriefToc } from "../toc";
 import { MIN_SEEDS } from "@/lib/brief/questions";
+import { asSentence } from "../sentence";
 
 /** Step 1's "what's next" card: brief → questions → generate pillars. */
 function StepCard({ base, completeness, degraded, answered, pillars }: { base: string; completeness: number; degraded: boolean; answered: number; pillars: number }) {
@@ -118,7 +119,7 @@ export default async function BriefPage({ params, searchParams }: PageProps<"/w/
             <h2 className="text-2xl">What they do</h2>
             {f.niche || f.positioning ? (
               <div className="mt-3 text-base leading-[1.7] text-ink/90 space-y-3">
-                {f.niche && <p><span className="font-semibold">{f.niche}.</span></p>}
+                {f.niche && <p><span className="font-semibold">{asSentence(f.niche)}</span></p>}
                 {f.positioning && <p>{f.positioning}</p>}
               </div>
             ) : <div className="mt-3"><Empty href={edit}>Add a niche and positioning statement →</Empty></div>}

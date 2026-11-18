@@ -24,6 +24,8 @@ import { withTenantSession } from "@/db/session";
 import { runTask } from "@/lib/ai";
 import { designChange } from "@/lib/ai/tasks";
 import { userMessage } from "@/lib/ai/errors";
+import { UnsupportedRewriteError } from "@/lib/voice/judge";
+import { refusedClaimsNote } from "@/lib/visual/refusal";
 import { loadBrandContext } from "@/lib/context/context-loader";
 import { formatByKey } from "@/lib/content/formats";
 import { cleanBox, type Box } from "@/lib/visual/region";
@@ -49,6 +51,12 @@ export interface VisualComment {
   status: "open" | "working" | "applied" | "failed";
   result: string | null;
   jobId: string | null;
+  /**
+   * The picture version a picture comment made. The board compares it with
+   * the picture in use: when that picture is no longer this version or one
+   * made from it (an undo, an earlier version put back), the pin says so.
+   */
+  resultPictureId: string | null;
   createdAt: string;
 }
 
@@ -62,12 +70,12 @@ export class CommentError extends Error {
 type Row = {
   id: string; visual_id: string; content_item_id: string; target: CommentTarget;
   box_x: number; box_y: number; box_w: number; box_h: number;
-  note: string; status: VisualComment["status"]; result: string | null; job_id: string | null; created_at: Date;
+  note: string; status: VisualComment["status"]; result: string | null; job_id: string | null; result_picture_id: string | null; created_at: Date;
 };
 const view = (r: Row): VisualComment => ({
   id: r.id, visualId: r.visual_id, contentItemId: r.content_item_id, target: r.target,
   box: { x: r.box_x, y: r.box_y, w: r.box_w, h: r.box_h }, note: r.note, status: r.status,
-  result: r.result, jobId: r.job_id, createdAt: new Date(r.created_at).toISOString(),
+  result: r.result, jobId: r.job_id, resultPictureId: r.result_picture_id ?? null, createdAt: new Date(r.created_at).toISOString(),
 });
 
 /** The comments on a project's visuals, newest last. */
@@ -208,20 +216,43 @@ export async function applyTemplateComment(scope: ProjectScope, comment: VisualC
       await finishComment(scope, comment.id, { status: changed ? "applied" : "failed", result: patch.note.slice(0, 300) || (changed ? "Done." : "Nothing to change there.") });
     }
   } catch (e) {
-    await finishComment(scope, comment.id, { status: "failed", result: e instanceof CommentError ? e.message : userMessage(e) }).catch(() => undefined);
+    // A rewrite refused for adding claims says which claims (lib/visual/refusal).
+    const result = e instanceof CommentError ? e.message : e instanceof UnsupportedRewriteError ? refusedClaimsNote(e.claims) : userMessage(e);
+    await finishComment(scope, comment.id, { status: "failed", result }).catch(() => undefined);
   }
   return (await getComment(scope, comment.id)) ?? comment;
 }
 
 /** The queue's half of a picture comment: redraw the box, record the outcome. Throws so the queue can retry. */
-export async function applyPictureComment(scope: ProjectScope, commentId: string): Promise<string> {
+/**
+ * `area` is the box in the PICTURE's own coordinates, measured by the board
+ * through the visual's layout and the picture's object-cover crop. The stored
+ * box is in the visual frame's coordinates (it places the pin), and the two
+ * differ whenever the picture is cropped or fills only part of the frame
+ * (2026-11-17 test: redraws landed about 8% too high on a 4:5 post).
+ */
+export async function applyPictureComment(scope: ProjectScope, commentId: string, area?: Partial<Box> | null): Promise<string> {
   const comment = await getComment(scope, commentId);
   if (!comment) throw new CommentError("That comment isn't there any more.");
   const v = await visualOf(scope, comment.visualId);
   if (!v) throw new CommentError("That visual isn't in this project any more.");
-  const id = await redrawArea(scope, comment.contentItemId, v.artboard, comment.box, comment.note);
+  const id = await redrawArea(scope, comment.contentItemId, v.artboard, cleanBox(area) ?? comment.box, comment.note);
   await finishComment(scope, comment.id, { status: "applied", result: "Redrew the marked area.", pictureId: id });
   return id;
+}
+
+/**
+ * The comment behind "Try again": it must be this project's and must have
+ * failed. A comment that went through is never run twice (a text comment
+ * would rewrite the rewrite), and one still working is left to finish.
+ */
+export async function failedComment(scope: ProjectScope, id: string): Promise<VisualComment & { artboard: ArtboardKind }> {
+  const comment = await getComment(scope, id);
+  if (!comment) throw new CommentError("That comment isn't there any more.");
+  if (comment.status !== "failed") throw new CommentError(comment.status === "working" ? "That comment is still being worked on." : "That comment already went through.");
+  const v = await visualOf(scope, comment.visualId);
+  if (!v) throw new CommentError("That visual isn't in this project any more.");
+  return { ...comment, artboard: v.artboard };
 }
 
 export { ARTBOARDS };

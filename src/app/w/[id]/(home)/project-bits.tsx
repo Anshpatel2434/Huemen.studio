@@ -21,10 +21,11 @@ export function BandPill({ p }: { p: Project }) {
   if (!p.contentStatus) return null;
   const b = p.voiceBand ?? "unchecked";
   return (
-    <span className={`label-mono inline-flex items-center gap-1.5 h-5 px-2 rounded-full shrink-0 ${BAND_TONE[b]}`} title={p.voiceScore != null ? `${p.voiceScore}/100 against your voice` : "Not checked yet"}>
+    // What the number means is read out with it, not left to a hover tooltip.
+    <span className={`label-mono inline-flex items-center gap-1.5 h-5 px-2 rounded-full shrink-0 ${BAND_TONE[b]}`}>
       <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
-      {p.voiceScore != null ? p.voiceScore : "–"}
-      <span className="sr-only"> {BAND_LABEL[b]}</span>
+      {p.voiceScore != null ? p.voiceScore : <span aria-hidden="true">–</span>}
+      <span className="sr-only">{p.voiceScore != null ? ` out of 100 against your voice: ${BAND_LABEL[b]}` : "Voice not checked yet"}</span>
     </span>
   );
 }
