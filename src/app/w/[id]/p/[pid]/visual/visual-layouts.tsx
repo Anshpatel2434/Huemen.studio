@@ -299,14 +299,18 @@ function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRe
       </Frame>
     );
   }
+  // A cut-out never sits under the words (2026-11-18): in the two banners that
+  // put the picture behind them, it stands in a column at the left instead.
+  const cutColumn = cut && picture && <div className="w-[24%] shrink-0 self-stretch relative overflow-hidden" data-cutout-column=""><PictureFill url={picture.url} cutout /></div>;
   if (layout === "framed") {
     // A hairline frame around a centred line, the sign-off centred under it; a picture sits behind, shaded evenly.
     const c = over ? o : p;
     return (
       <Frame w={w} h={h} bg={over ? "#000" : p.bg} fg={over ? WHITE : p.fg} frameRef={frameRef}>
-        {picture && <PictureFill url={picture.url} cutout={cut} />}
+        {picture && !cut && <PictureFill url={picture.url} />}
         {over && <Shade t={t} even />}
-        <div className="absolute flex flex-col items-center" data-banner="framed" style={{ inset: "6% 3%", padding: "2% 6%", gap: "1cqw", border: `${p.bold ? 3 : 1.5}px solid ${over ? WHITE : p.showMarks ? p.accent : p.fg}` }}>
+        {cut && picture && <div className="absolute inset-y-[6%] left-[2%] w-[22%]" data-cutout-column=""><PictureFill url={picture.url} cutout /></div>}
+        <div className="absolute flex flex-col items-center" data-banner="framed" style={{ inset: cut ? "6% 3% 6% 26%" : "6% 3%", padding: "2% 6%", gap: "1cqw", border: `${p.bold ? 3 : 1.5}px solid ${over ? WHITE : p.showMarks ? p.accent : p.fg}` }}>
           {headline(1.05, { align: "center", color: c.words, over })}
           {sign(over ? WHITE : p.bold ? p.sign : p.fg, over, { fontSize: fz(0.52, null) })}
         </div>
@@ -334,9 +338,10 @@ function Banner({ layout, w, h, s, t, fonts, brand, logo, eyebrow, text, frameRe
   // statement (the original): an accent bar, the line, the sign-off; a picture fills the frame behind them.
   return (
     <Frame w={w} h={h} bg={over ? "#000" : p.bg} fg={over ? WHITE : p.fg} frameRef={frameRef}>
-      {picture && <PictureFill url={picture.url} cutout={cut} />}
+      {picture && !cut && <PictureFill url={picture.url} />}
       {over && <Shade t={t} />}
-      <div className="absolute inset-0 flex items-center" data-banner="statement" style={{ gap: "3cqw", padding: "3% 5%" }}>
+      <div className="absolute inset-0 flex items-center" data-banner="statement" style={{ gap: "3cqw", padding: cut ? "3% 5% 3% 0" : "3% 5%" }}>
+        {cutColumn}
         {!over && p.showMarks && <span className="shrink-0 self-stretch rounded-full" style={{ width: "0.7%", background: p.accent }} />}
         {headline(1.2, { color: over ? WHITE : p.words, over })}
         {sign(over ? WHITE : p.sign, over)}
@@ -490,8 +495,8 @@ export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, pi
 
   if (layout === "centered") {
     return frame(
-      <div className={`${behind ? (cut ? CUT_TEXT : "absolute inset-0") : "h-full"} flex flex-col justify-center gap-4 p-[11%]`} style={al}>
-        {mark(p.bold ? 4.4 : 3.6, "leading-[0.6]")}
+      <div className={`${behind ? (cut ? CUT_TEXT : "absolute inset-0") : "h-full"} flex flex-col justify-center gap-4 ${behind && cut ? "px-[11%] py-[6%]" : "p-[11%]"}`} style={al}>
+        {mark(behind && cut ? (p.bold ? 2.6 : 2.2) : p.bold ? 4.4 : 3.6, "leading-[0.6]")}
         {words(1.2)}
         <span className="h-[2px] w-[12%] shrink-0" style={{ background: p.showMarks ? p.accent : p.fg }} />
         {sign(false)}
@@ -514,10 +519,11 @@ export function QuoteCard({ layout, s, t, fonts, brand, logo, text, frameRef, pi
       </div>,
     );
   }
-  // classic (the original)
+  // classic (the original). Under a cut-out the words have half the frame, so
+  // the mark and the margins are smaller there and the words keep their size.
   return frame(
-    <div className={`${behind ? (cut ? CUT_TEXT : "absolute inset-0") : "h-full"} ${over ? "justify-end" : "justify-center"} flex flex-col p-[10%]`} style={al}>
-      {mark(3, "leading-none")}
+    <div className={`${behind ? (cut ? CUT_TEXT : "absolute inset-0") : "h-full"} ${over ? "justify-end" : "justify-center"} flex flex-col ${behind && cut ? "px-[10%] py-[6%]" : "p-[10%]"}`} style={al}>
+      {mark(behind && cut ? 1.8 : 3, "leading-none")}
       {words(1.25, true, fonts.accent, over ? "end" : "center")}
       <div className="mt-4 shrink-0 max-w-full flex">{sign()}</div>
     </div>,

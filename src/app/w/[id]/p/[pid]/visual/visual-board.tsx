@@ -34,7 +34,7 @@ import {
 } from "./picture-actions";
 import { retryJobAction } from "../../../jobs/actions";
 import { CommentSurface, PictureMenu, TARGET_LABEL, WorkingOverlay, commentState, commentWhat, useJobWatch, type DraftOps, type DraftPin, type Watched } from "./visual-comments-ui";
-import { BoardIconButton, BrandFonts, ExportSizes, HeadingCheck, PictureVersions, ScaleSlider, lineage, sameHeading, useFitStates, useFontRenders, type Version } from "./visual-panels";
+import { BoardIconButton, BrandFonts, ExportSizes, HeadingCheck, PictureVersions, WordsNote, ScaleSlider, lineage, sameHeading, useFitStates, useFontRenders, type Version } from "./visual-panels";
 import { PictureSurface, ResizeModal, ToolLine, type Picked, type PictureTool } from "./picture-tools-ui";
 import { areaOnFrame, draftSummary, isPicturePin, strokesBox, summaryLine } from "./picture-tools-maths";
 import { ERASE_NOTE, MAX_PINS_PER_SEND, MAX_STROKES, type CutoutStatus, type PicturePin, type ResizeInput, type Stroke } from "@/lib/visual/picture-tools";
@@ -89,7 +89,7 @@ type BoardProps = {
  * Visual step (Relume's design + style guide, worked like a design tool):
  *
  *   - Every artboard's text is editable (double-click). The headline and quote
- *     also have "Rewrite with AI" (its own button); carousel frames are askable
+ *     also have "Rewrite the words" (its own button); carousel frames are askable
  *     with a click. Edits write back to the post's copy, so Content and Export
  *     stay in step.
  *   - Each artboard kind has several layouts. "Show me options" lays them out
@@ -121,7 +121,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
     const ref = i.design?.pictures?.[k];
     const info = ref ? pictures.get(ref.id) : undefined;
     return ref && info
-      ? { id: ref.id, url: info.url, mode: ref.mode, parentId: info.parentId, heading: info.heading, cutout: !!(ref.cutout ?? info.cutout), width: info.width ?? 0, height: info.height ?? 0 }
+      ? { id: ref.id, url: info.url, mode: ref.mode, parentId: info.parentId, heading: info.heading, cutout: !!(ref.cutout ?? info.cutout), width: info.width ?? 0, height: info.height ?? 0, textLeft: !!info.textLeft }
       : null;
   };
   /** The heading is drawn into this visual's picture, and the piece's heading no longer reads that. */
@@ -987,9 +987,10 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
                 // While a tool is in use, a pin's field may reach past its visual's edge.
                 const spill = !wire && tool !== null;
                 // Under a visual whose picture has the heading drawn into it: stale (the heading changed since), or to be read by the person.
-                const headingNote = (k: ArtboardKind) => !wire && pic(k)?.mode === "with_text" && (
+                // Or, under live text, a picture that may still show words the check couldn't remove.
+                const headingNote = (k: ArtboardKind) => !wire && (pic(k)?.mode === "with_text" ? (
                   <HeadingCheck stale={stale(i, k)} busy={!!working(i, k)} onRedraw={() => void drawPicture(i, k, "with_text")} onLiveText={() => void drawPicture(i, k, "live_text")} />
-                );
+                ) : pic(k)?.textLeft && !pic(k)?.cutout && !working(i, k) ? <WordsNote /> : null);
                 const look = () => lookCheck({
                   palette, fonts, scheme: s, tweaks: d.tweaks, headline: i.hook,
                   fontRendering,
@@ -1243,7 +1244,7 @@ function OptionsModal({ item, kind, onKind, design, slides, ctaIndex, scheme, fo
 const REWRITE_CHIPS = ["Shorter", "Punchier", "More contrarian", "Warmer", "As a question"];
 
 /**
- * "Rewrite with AI" for the words on the visuals: its own button and box, so a
+ * "Rewrite the words" for the words on the visuals: its own button and box, so a
  * double-click on the words only ever edits them in place. Enter, or Ctrl/⌘+Enter,
  * sends. A failed rewrite keeps the box open with its words.
  */
@@ -1269,10 +1270,10 @@ function RewriteWords({ label, onRewrite }: { label: string; onRewrite: (instruc
   return (
     <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
       <button type="button" aria-expanded={open} disabled={busy} onClick={() => setOpen((o) => !o)} className={btnClass("secondary", "sm")}>
-        {busy ? <><AgentDots /> Rewriting…</> : <><Sparkles size={14} aria-hidden="true" /> Rewrite with AI</>}
+        {busy ? <><AgentDots /> Rewriting…</> : <><Sparkles size={14} aria-hidden="true" /> Rewrite the words</>}
       </button>
       {open && (
-        <div role="dialog" aria-label={`Rewrite the ${label} with AI`} className="absolute left-0 top-11 z-20 w-80 bg-paper border border-hairline rounded-md shadow-[var(--shadow-overlay)] p-2.5 flex flex-col gap-2">
+        <div role="dialog" aria-label={`Rewrite the ${label}`} className="absolute left-0 top-11 z-20 w-80 bg-paper border border-hairline rounded-md shadow-[var(--shadow-overlay)] p-2.5 flex flex-col gap-2">
           <input
             autoFocus
             value={text}

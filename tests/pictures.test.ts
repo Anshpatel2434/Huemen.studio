@@ -10,7 +10,7 @@
  *   - another workspace can't draw on, redraw or comment on A's visuals (INV-1)
  */
 import "dotenv/config";
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi, onTestFinished } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import sharp from "sharp";
@@ -20,13 +20,13 @@ import { generateContent, listContent, patchContent } from "@/lib/data/content";
 import { deleteVisuals, generateVisuals, listVisuals } from "@/lib/data/pipeline";
 import {
   colourLines, cutOutPicture, cutOutRefusal, CUTOUT_LOCKED, designOf, drawPicture, pictureInstructions, pictureLinks, pictureVersions, previousPicture, redrawArea,
-  resizeKind, resizePicture, selectPictureVersion, shapeFor,
+  EXTEND_TRIES, resizeKind, resizePicture, selectPictureVersion, shapeFor,
 } from "@/lib/data/pictures";
 import { addComment, addPictureComments, applyTemplateComment, failedComment, getComment, setCommentsJob } from "@/lib/data/visual-comments";
 import { mockImageProvider } from "@/lib/ai/providers/mock";
 import { tenantKey } from "@/lib/storage";
 import { approveAgain, revertCopy } from "@/lib/data/visual-copy";
-import { cleanBox, keepOutside, regionMask, strokeMask } from "@/lib/visual/region";
+import { changeInside, cleanBox, keepOutside, regionMask, seamFeather, SEAM_MAX, SEAM_MIN, strokeMask } from "@/lib/visual/region";
 import { openaiImageProvider } from "@/lib/ai/providers/openai-image";
 import { selectImageProvider } from "@/lib/ai";
 import { ProviderError } from "@/lib/ai/errors";
@@ -68,6 +68,33 @@ describe("the area guarantee", () => {
     const at = (x: number, y: number) => [...out.data.subarray((y * 100 + x) * 4, (y * 100 + x) * 4 + 3)];
     for (const [x, y] of [[0, 0], [99, 99], [19, 30], [61, 30], [40, 19], [40, 51], [5, 90]]) expect(at(x, y)).toEqual([10, 20, 30]);
     expect(at(40, 35)).toEqual([250, 0, 0]);
+  });
+
+  it("blends a big area's edge wider (scaled to the area), and still keeps every pixel outside it", async () => {
+    expect(seamFeather(100, 100)).toBe(SEAM_MIN);
+    expect(seamFeather(800, 600)).toBe(30);
+    expect(seamFeather(4000, 4000)).toBe(SEAM_MAX);
+    const original = await solid(1000, 1000, [10, 20, 30]);
+    const edited = await solid(1000, 1000, [250, 0, 0]);
+    const box = { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }; // 600 px: a 30 px blend
+    const out = await pixels(await keepOutside(original, edited, box));
+    const red = (x: number, y: number) => out.data[(y * 1000 + x) * 4];
+    for (const [x, y] of [[199, 500], [500, 199], [800, 500], [500, 800], [0, 0], [999, 999]]) expect(red(x, y)).toBe(10);
+    // 15 px in: about half way, where a fixed 12 px edge would already be fully the edit.
+    expect(red(214, 500)).toBeGreaterThan(80);
+    expect(red(214, 500)).toBeLessThan(180);
+    expect(red(240, 500)).toBe(250);
+    // How much a brushed area changed: none for the same picture, plenty for a new colour, nothing counted outside the brush.
+    const brush = await strokeMask([{ w: 0.06, pts: [[0.3, 0.8], [0.6, 0.8]] }], 1000, 1000);
+    expect(await changeInside(original, original, brush)).toBe(0);
+    expect(await changeInside(original, edited, brush)).toBeGreaterThan(0.3);
+    expect(await changeInside(original, await keepOutside(original, edited, { x: 0, y: 0, w: 0.2, h: 0.2 }), brush)).toBe(0);
+    // The fade only rises going inwards.
+    let last = 0;
+    for (let x = 200; x < 240; x++) {
+      expect(red(x, 500)).toBeGreaterThanOrEqual(last);
+      last = red(x, 500);
+    }
   });
 
   it("refuses a box too small to mean anything, and clamps one that spills out", () => {
@@ -524,9 +551,34 @@ const threePins = () => [
 const SUBJECT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#b0c4de"/><rect x="100" y="125" width="200" height="250" fill="#8b0000"/></svg>';
 const subjectPng = async () => new Uint8Array(await sharp(Buffer.from(SUBJECT_SVG)).png().toBuffer());
 
+type Edit = typeof mockImageProvider.edit;
+/**
+ * The stand-in's erase fills from the colour around the brush; on a smooth
+ * stand-in picture that is too little change to count as removed
+ * (ERASE_MIN_CHANGE). These tests stand for a model that did remove
+ * something, so the brushed pixels come back plainly changed.
+ */
+const visibleErase = (edit: Edit): Edit => async (req, model) => {
+  const out = await edit(req, model);
+  if (req.intent !== "erase") return out;
+  const img = await pixels(out.bytes);
+  const src = await pixels(req.source);
+  const m = await pixels(req.mask);
+  for (let i = 0; i < img.width * img.height; i++) {
+    if (m.data[i * 4 + 3] >= 128) continue;
+    // Half the range away from what was there, whatever the colour.
+    for (let c = 0; c < 3; c++) img.data[i * 4 + c] = src.data[i * 4 + c] ^ 0x80;
+  }
+  const png = await sharp(img.data, { raw: { width: img.width, height: img.height, channels: 4 } }).png().toBuffer();
+  return { ...out, bytes: new Uint8Array(png) };
+};
+
 describe("picture tools: several pins, one Send", () => {
   it("a 3-pin Send is ONE job that applies the pins in order, each from the one before, and keeps each pin's area on its row", { timeout: 60_000 }, async () => {
     if (!dbReachable) return;
+    const real = visibleErase(mockImageProvider.edit.bind(mockImageProvider));
+    const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(real);
+    onTestFinished(() => spy.mockRestore());
     const v = await visual(A);
     const start = (await designOf(A, itemA))!.pictures.post!.id;
     const jobsBefore = await jobsOf(A);
@@ -571,10 +623,29 @@ describe("picture tools: several pins, one Send", () => {
     expect(inside).toBeGreaterThan(0);
   });
 
+  it("an erase that comes back with nothing removed is tried once more, then refused plainly", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const before = (await designOf(A, itemA))!.pictures.post!.id;
+    let calls = 0;
+    // The model hands the picture back as it was.
+    const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(async (req, model) => {
+      calls++;
+      return { bytes: req.source, mime: "image/png", model };
+    });
+    try {
+      await expect(redrawArea(A, itemA, "post", { box: PIN_BOX, note: "", kind: "erase", strokes: ERASE_STROKES }))
+        .rejects.toThrow("The erase came back with nothing removed, so it wasn't kept. Try brushing a little wider.");
+      expect(calls).toBe(2);
+      expect((await designOf(A, itemA))!.pictures.post!.id).toBe(before);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("a slice that fails part way carries on from where it stopped: done pins are never redone", { timeout: 90_000 }, async () => {
     if (!dbReachable) return;
     const v = await visual(A);
-    const real = mockImageProvider.edit.bind(mockImageProvider);
+    const real = visibleErase(mockImageProvider.edit.bind(mockImageProvider));
     let calls = 0;
     // The service is down for the second pin (both of the facade's own tries), then back.
     const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(async (req, model) => {
@@ -755,7 +826,7 @@ describe("picture tools: Resize", () => {
     expect(await previousPicture(A, itemA, "post")).toBe(true);
   });
 
-  it("an answer that moved the picture is tried once more, then refused plainly", { timeout: 60_000 }, async () => {
+  it("an answer that moved the picture is tried three times in all, then refused plainly", { timeout: 60_000 }, async () => {
     if (!dbReachable) return;
     const before = (await designOf(A, itemA))!.pictures.post!.id;
     let calls = 0;
@@ -769,8 +840,32 @@ describe("picture tools: Resize", () => {
     try {
       const wide = { ratio: 1, place: { x: (1 - 1024 / 1536) / 2, y: 0, w: 1024 / 1536, h: 1 } };
       await expect(resizePicture(A, itemA, "post", wide)).rejects.toThrow("The picture came back shifted, so it was not kept. Try again.");
-      expect(calls).toBe(2);
+      expect(EXTEND_TRIES).toBe(3);
+      expect(calls).toBe(EXTEND_TRIES);
       expect((await designOf(A, itemA))!.pictures.post!.id).toBe(before);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("two shifted answers and a good third one: the third is kept", { timeout: 60_000 }, async () => {
+    if (!dbReachable) return;
+    const before = (await designOf(A, itemA))!.pictures.post!.id;
+    const real = mockImageProvider.edit.bind(mockImageProvider);
+    let calls = 0;
+    const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(async (req, model) => {
+      calls++;
+      if (calls === 3) return real(req, model);
+      const { width, height } = await sharp(Buffer.from(req.source)).metadata();
+      const slid = await sharp(Buffer.from(req.source)).extend({ left: Math.round(width! / 4), background: "#7f7f7f" }).extract({ left: 0, top: 0, width: width!, height: height! }).png().toBuffer();
+      return { bytes: new Uint8Array(slid), mime: "image/png", model, width, height };
+    });
+    try {
+      const wide = { ratio: 1, place: { x: (1 - 1024 / 1536) / 2, y: 0, w: 1024 / 1536, h: 1 } };
+      const id = await resizePicture(A, itemA, "post", wide);
+      expect(calls).toBe(3);
+      expect(id).not.toBe(before);
+      expect((await designOf(A, itemA))!.pictures.post!.id).toBe(id);
     } finally {
       spy.mockRestore();
     }

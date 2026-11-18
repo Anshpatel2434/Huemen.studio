@@ -69,23 +69,69 @@ export async function regionMask(box: Box, width: number, height: number, pad = 
 }
 
 /**
- * The edited picture inside the box (soft edge of `feather` px), the original
- * everywhere else. Both are brought to the original's size first, so a model
- * that returns a different size can't shift anything.
+ * PNG mask at the picture's size, transparent (editable) inside any of the
+ * boxes and opaque elsewhere: the area an Erase of found words may change
+ * (lib/visual/picture-words). `except` is a part that must never change
+ * (a resized picture's original place), opaque even where a box covers it.
  */
-export async function keepOutside(original: Uint8Array, edited: Uint8Array, box: Box, feather = 12): Promise<Uint8Array> {
+export async function boxesMask(boxes: Box[], width: number, height: number, except?: PixelRect | null): Promise<Uint8Array> {
+  const raw = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) raw[i * 4 + 3] = 255;
+  for (const b of boxes) {
+    const r = boxPixels(b, width, height, 0);
+    for (let y = r.top; y < r.top + r.height; y++) {
+      for (let x = r.left; x < r.left + r.width; x++) {
+        if (except && x >= except.left && x < except.left + except.width && y >= except.top && y < except.top + except.height) continue;
+        raw[(y * width + x) * 4 + 3] = 0;
+      }
+    }
+  }
+  return new Uint8Array(await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer());
+}
+
+/** Whether a mask (as boxesMask makes) leaves anything editable. */
+export async function maskHasArea(mask: Uint8Array): Promise<boolean> {
+  const { data, info } = await sharp(Buffer.from(mask)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < info.width * info.height; i++) if (data[i * 4 + 3] < 128) return true;
+  return false;
+}
+
+/** The blend at a comment area's edge, as a share of the area's shorter side, and its bounds in px. */
+export const SEAM_SHARE = 0.05;
+export const SEAM_MIN = 12;
+export const SEAM_MAX = 72;
+
+/**
+ * How wide the blend at a box's edge is, in px: SEAM_SHARE of its shorter
+ * side, kept between SEAM_MIN and SEAM_MAX. A fixed 12 px left a visible step
+ * where a thin thing (a chain) crossed the edge of a big area (2026-11-18).
+ */
+export function seamFeather(widthPx: number, heightPx: number): number {
+  return Math.max(SEAM_MIN, Math.min(SEAM_MAX, Math.round(SEAM_SHARE * Math.min(widthPx, heightPx))));
+}
+
+/**
+ * The edited picture inside the box (soft edge of `feather` px, by default
+ * scaled to the box: seamFeather), the original everywhere else. Both are
+ * brought to the original's size first, so a model that returns a different
+ * size can't shift anything. Every pixel outside the box is the original's.
+ */
+export async function keepOutside(original: Uint8Array, edited: Uint8Array, box: Box, feather?: number): Promise<Uint8Array> {
   const base = sharp(Buffer.from(original)).ensureAlpha();
   const { width, height } = await base.metadata();
   if (!width || !height) throw new Error("The original picture couldn't be read.");
   const orig = await base.raw().toBuffer();
   const next = await sharp(Buffer.from(edited)).resize(width, height, { fit: "fill" }).ensureAlpha().raw().toBuffer();
   const r = boxPixels(box, width, height, 0);
+  const soft = feather ?? seamFeather(r.width, r.height);
   const out = Buffer.from(orig);
   for (let y = r.top; y < r.top + r.height; y++) {
     for (let x = r.left; x < r.left + r.width; x++) {
-      // Distance to the box edge sets how much of the edit shows: full inside, fading at the rim.
+      // Distance to the box edge sets how much of the edit shows: full inside,
+      // fading at the rim on an S-curve (no visible line where the fade starts).
       const d = Math.min(x - r.left, r.left + r.width - 1 - x, y - r.top, r.top + r.height - 1 - y);
-      const a = feather > 0 ? Math.min(1, (d + 1) / feather) : 1;
+      const t = soft > 0 ? Math.min(1, (d + 1) / soft) : 1;
+      const a = t * t * (3 - 2 * t);
       const i = (y * width + x) * 4;
       for (let c = 0; c < 4; c++) out[i + c] = Math.round(orig[i + c] * (1 - a) + next[i + c] * a);
     }
@@ -265,6 +311,29 @@ export async function keepInsideMask(original: Uint8Array, edited: Uint8Array, m
   return new Uint8Array(await sharp(out, { raw: { width, height, channels: 4 } }).png().toBuffer());
 }
 
+/**
+ * How much the brushed area changed between two pictures of the same size:
+ * the mean colour difference over the pixels where `mask` is transparent,
+ * from 0 (the same) to 1. An erase that comes back near 0 removed nothing.
+ */
+export async function changeInside(before: Uint8Array, after: Uint8Array, mask: Uint8Array): Promise<number> {
+  const a = sharp(Buffer.from(before)).removeAlpha();
+  const { width, height } = await a.metadata();
+  if (!width || !height) return 0;
+  const A = await a.raw().toBuffer();
+  const B = await sharp(Buffer.from(after)).resize(width, height, { fit: "fill" }).removeAlpha().raw().toBuffer();
+  const m = await sharp(Buffer.from(mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
+  let n = 0;
+  let sum = 0;
+  for (let i = 0; i < width * height; i++) {
+    if (m[i * 4 + 3] >= 128) continue;
+    n++;
+    const p = i * 3;
+    sum += (Math.abs(A[p] - B[p]) + Math.abs(A[p + 1] - B[p + 1]) + Math.abs(A[p + 2] - B[p + 2])) / 765;
+  }
+  return n ? sum / n : 0;
+}
+
 // ---- a bigger frame (Resize) -----------------------------------------------------------
 
 export interface PixelRect { left: number; top: number; width: number; height: number }
@@ -348,6 +417,54 @@ export async function keepOriginal(extended: Uint8Array, source: Uint8Array, pla
     }
   }
   return new Uint8Array(await sharp(out, { raw: { width, height, channels: 3 } }).png().toBuffer());
+}
+
+/** How many lines either side of a join seamOf looks at. */
+const SEAM_REACH = 6;
+
+/**
+ * How sharp the join is between the original and the drawn area after
+ * keepOriginal: along each side of the original that borders new area, the
+ * colour step across the join (2 x SEAM_REACH + 1 lines, lightly blurred) less what the
+ * picture changes over as many lines nearby, as a share of full contrast. 0
+ * is a join that does not show. A model that draws the new area without
+ * matching the edge (live 2026-11-18: a wall a shade darker, a table edge at
+ * another height) leaves a straight line here, about 0.15-0.3; a picture's
+ * own texture measures near 0.
+ */
+export async function seamOf(png: Uint8Array, placePx: PixelRect): Promise<number> {
+  const { data, info } = await sharp(Buffer.from(png)).removeAlpha().blur(1).raw().toBuffer({ resolveWithObject: true });
+  const W = info.width;
+  const H = info.height;
+  const part = visiblePart(placePx, { width: W, height: H });
+  if (!part) return 0;
+  const px = (x: number, y: number, c: number) => data[(y * W + x) * 3 + c];
+  /** The mean step between line i-1 and line i, across the side's length (vertical lines when `cols`). */
+  const step = (cols: boolean, i: number, from: number, to: number) => {
+    let s = 0;
+    for (let j = from; j < to; j++) {
+      for (let c = 0; c < 3; c++) s += cols ? Math.abs(px(i, j, c) - px(i - 1, j, c)) : Math.abs(px(j, i, c) - px(j, i - 1, c));
+    }
+    return s / Math.max(1, to - from) / 765;
+  };
+  const side = (cols: boolean, edge: number, from: number, to: number, limit: number) => {
+    const at = (i: number) => (i >= 1 && i < limit ? step(cols, i, from, to) : 0);
+    // A few lines either side: the model's own copy of the original can sit a pixel or few off its place.
+    let across = 0;
+    for (let k = -SEAM_REACH; k <= SEAM_REACH; k++) across += at(edge + k);
+    const near: number[] = [];
+    for (let k = SEAM_REACH + 8; k <= SEAM_REACH + 18; k++) near.push(at(edge - k), at(edge + k));
+    near.sort((a, b) => a - b);
+    return Math.max(0, across - (2 * SEAM_REACH + 1) * near[near.length >> 1]);
+  };
+  const right = part.left + part.width;
+  const bottom = part.top + part.height;
+  let worst = 0;
+  if (part.left > 0) worst = Math.max(worst, side(true, part.left, part.top, bottom, W));
+  if (right < W) worst = Math.max(worst, side(true, right, part.top, bottom, W));
+  if (part.top > 0) worst = Math.max(worst, side(false, part.top, part.left, right, H));
+  if (bottom < H) worst = Math.max(worst, side(false, bottom, part.left, right, H));
+  return worst;
 }
 
 /**

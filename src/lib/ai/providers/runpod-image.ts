@@ -27,10 +27,13 @@
  *   area     the close-up above. With hand-drawn `marks`, they are shown on
  *            the close-up and the model is told to follow them and the note,
  *            then remove them.
- *   erase    the close-up of the brushed area's box, with more of its
- *            surroundings (the fill is copied from them). Two ways to show
- *            what goes, behind ERASE_VARIANT: the brushed area painted flat
- *            magenta ("tint"), or left as it is and described ("clean").
+ *   erase    on its own endpoint (AI_IMAGE_ERASE_MODEL; the edit endpoint
+ *            when none is named): the close-up of the brushed area's box, with
+ *            more of its surroundings (the fill is copied from them). Three ways to show
+ *            what goes, behind ERASE_VARIANT: the brushed area cleared and
+ *            roughly filled from around it first, the model asked only to
+ *            make the patch blend ("fill", the default); painted flat
+ *            magenta ("tint"); or left as it is and described ("clean").
  *   extend   no close-up: the whole canvas (the picture on a flat green
  *            matte) goes to the extend model (AI_IMAGE_EXTEND_MODEL), which
  *            fills the green.
@@ -50,8 +53,10 @@ export interface RunpodImageConfig {
   editModel: string;
   /** The endpoint that fills a bigger frame (AI_IMAGE_EXTEND_MODEL). Left out, the edit endpoint does it. */
   extendModel?: string;
-  /** How Erase shows the model what goes. Left out: ERASE_VARIANT. */
-  eraseVariant?: "tint" | "clean";
+  /** The endpoint that erases (AI_IMAGE_ERASE_MODEL). Left out, the edit endpoint does it. */
+  eraseModel?: string;
+  /** How Erase shows the model what goes (AI_IMAGE_ERASE_VARIANT). Left out: ERASE_VARIANT. */
+  eraseVariant?: EraseVariant;
   baseUrl?: string;
 }
 
@@ -59,17 +64,79 @@ export interface RunpodImageConfig {
  * How Erase shows the model what to remove. "tint": the brushed area is
  * painted flat magenta on the close-up and the instruction names the paint.
  * "clean": the close-up is sent as it is and the instruction says "the object
- * in the middle". Live trial 2026-11-18 on qwen-image-edit: "tint" came back
- * with the magenta paint still on and the coins under it untouched, so "clean"
- * is the default; "tint" stays for a model that follows paint.
+ * in the middle". "fill": the brushed pixels are cleared and filled from the
+ * colours around them (fillBrushed) before the model sees the close-up, so
+ * what goes is already gone and the model only makes the patch blend.
+ * Live trials 2026-11-18 on qwen-image-edit: "tint" came back with the
+ * magenta paint still on and the coins under it untouched; "clean" removed
+ * coins but twice handed a thin rod back untouched; "fill" lost the rod but
+ * drew a pale blob in its place. Erase therefore runs on its own endpoint
+ * (AI_IMAGE_ERASE_MODEL, default google-nano-banana-2-edit, which follows
+ * paint), with "tint" (AI_IMAGE_ERASE_VARIANT) as the default here.
  */
-export const ERASE_VARIANT: "tint" | "clean" = "clean";
+export type EraseVariant = "fill" | "tint" | "clean";
+export const ERASE_VARIANT: EraseVariant = "tint";
 
 const FILL = "fill it with the surrounding background/surface, continuing its texture, light and colours. Add nothing new. No text.";
-export const ERASE_PROMPTS = {
+export const ERASE_PROMPTS: Record<EraseVariant, string> = {
+  fill: "The blurry patch in the middle of this image was cleared and roughly filled in. Repaint only that patch so it continues the surrounding background/surface naturally, with its texture, light and colours, as if nothing had ever been there. Add nothing new: no objects, no text. Keep everything else exactly as it is.",
   tint: `Remove everything under the magenta paint and the paint itself; ${FILL}`,
   clean: `Remove the object in the middle of this image; ${FILL}`,
-} as const;
+};
+
+/**
+ * Erasing the words a picture should not have (ImageEditRequest `erase:
+ * "words"`): the close-up goes as it is, nothing painted on it, and only
+ * writing is to go. Live 2026-11-19 with "tint": a box a vision model put on
+ * a shadow by mistake came back as a flat pale patch, and a box a little off
+ * the word left half of it. Told to remove writing, the model leaves a box
+ * with none in it alone.
+ */
+export const ERASE_WORDS_PROMPT =
+  "Remove all writing from this image: every letter, word, number and logo, printed, engraved or reflected, filling where it was with the surface around it, continuing its texture, colour, light and reflections. Change nothing else: keep every object, edge, band of colour, shadow and highlight exactly as it is. Add nothing new.";
+
+/**
+ * The brushed pixels (mask transparent) cleared and filled from the colours
+ * around them: a normalised blur of the unbrushed picture, so each brushed
+ * pixel takes the colours nearest it, wide enough to reach the middle of the
+ * stroke. Unbrushed pixels are untouched. RGB PNG at the picture's size.
+ */
+export async function fillBrushed(source: Buffer, mask: Uint8Array, width: number, height: number): Promise<Buffer> {
+  const img = await sharp(source).removeAlpha().raw().toBuffer();
+  const m = await sharp(Buffer.from(mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
+  const keep = Buffer.alloc(width * height);
+  const pre = Buffer.alloc(width * height * 3);
+  let x0 = width, y0 = height, x1 = -1, y1 = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (m[i * 4 + 3] >= 128) {
+        keep[i] = 255;
+        pre[i * 3] = img[i * 3];
+        pre[i * 3 + 1] = img[i * 3 + 1];
+        pre[i * 3 + 2] = img[i * 3 + 2];
+      } else {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return sharp(img, { raw: { width, height, channels: 3 } }).png().toBuffer();
+  // Wide enough that the middle of the brushed area still gets weight from its rim.
+  const sigma = Math.max(4, Math.min(80, 0.6 * Math.min(x1 - x0 + 1, y1 - y0 + 1)));
+  const colour = await sharp(pre, { raw: { width, height, channels: 3 } }).blur(sigma).raw().toBuffer();
+  // extractChannel: sharp hands a one-channel picture back as three unless told which one is wanted.
+  const weight = await sharp(keep, { raw: { width, height, channels: 1 } }).blur(sigma).extractChannel(0).raw().toBuffer();
+  const out = Buffer.from(img);
+  for (let i = 0; i < width * height; i++) {
+    if (keep[i]) continue;
+    const w = weight[i] / 255;
+    for (let c = 0; c < 3; c++) out[i * 3 + c] = w > 0.02 ? Math.min(255, Math.round(colour[i * 3 + c] / w)) : 128;
+  }
+  return sharp(out, { raw: { width, height, channels: 3 } }).png().toBuffer();
+}
 export const EXTEND_PROMPT = "Fill the solid green area so it continues the scene naturally. Do not change, move or resize anything that is not green. No text, letters or logos.";
 
 /** The paint over a brushed area ("tint"): flat magenta, mostly opaque. */
@@ -84,8 +151,12 @@ export const RUNPOD_SIZES: Record<ImageShape, { width: number; height: number }>
   landscape: { width: 1344, height: 768 },
 };
 
-/** How much of the surroundings goes with the marked area, as a share of its size. */
-const CONTEXT = 0.18;
+/**
+ * How much of the surroundings goes with the marked area, as a share of its
+ * size. 0.25 (was 0.18): more of what crosses the area's edge is in view, so
+ * the model carries it through in line with the original (2026-11-18 seam).
+ */
+const CONTEXT = 0.25;
 /** Erase fills from the surroundings, so it is shown more of them. */
 const ERASE_CONTEXT = 0.4;
 /** The close-up is enlarged so its longer side is about this, for the model to work at. */
@@ -149,9 +220,13 @@ export async function markedBox(mask: Uint8Array): Promise<(PixelBox & { imageWi
 }
 
 /** The marked area plus a little of its surroundings, kept inside the picture. */
-export function closeUp(box: PixelBox, imageWidth: number, imageHeight: number, context = CONTEXT): PixelBox {
-  const mx = Math.round(box.width * context);
-  const my = Math.round(box.height * context);
+export function closeUp(box: PixelBox, imageWidth: number, imageHeight: number, context = CONTEXT, fromLonger = false): PixelBox {
+  // fromLonger (Erase): both margins from the area's longer side, so a thin
+  // brush stroke still comes with enough of what is around it to fill from
+  // (a narrow strip over a rod came back with the rod kept, 2026-11-18).
+  const longer = Math.max(box.width, box.height);
+  const mx = Math.round((fromLonger ? longer : box.width) * context);
+  const my = Math.round((fromLonger ? longer : box.height) * context);
   const left = Math.max(0, box.left - mx);
   const top = Math.max(0, box.top - my);
   const right = Math.min(imageWidth, box.left + box.width + mx);
@@ -294,11 +369,13 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
         return asPng(sharp(answer).resize(width, height, { fit: "fill" }), model);
       }
 
-      const model = config.editModel;
+      const model = intent === "erase" ? config.eraseModel || config.editModel : config.editModel;
       const marked = await markedBox(req.mask);
       if (intent === "erase" && !marked) throw new ProviderError("bad_request", "Nothing was brushed over to erase.");
       // Nothing marked (or an unreadable mask): the whole picture is the area.
-      const area = marked ? closeUp(marked, width, height, intent === "erase" ? ERASE_CONTEXT : CONTEXT) : { left: 0, top: 0, width, height };
+      const area = !marked ? { left: 0, top: 0, width, height }
+        : intent === "erase" ? closeUp(marked, width, height, ERASE_CONTEXT, true)
+        : closeUp(marked, width, height, CONTEXT);
 
       // What the model is shown: the picture, with the drawn marks on it (Markup)
       // or the brushed area painted over (Erase, "tint"). The answer is pasted
@@ -309,6 +386,10 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
         if (intent === "area" && req.marks) {
           const marks = await sharp(Buffer.from(req.marks)).resize(width, height, { fit: "fill" }).ensureAlpha().png().toBuffer();
           shown = await sharp(source).composite([{ input: marks }]).png().toBuffer();
+        } else if (intent === "erase" && req.erase === "words") {
+          // Shown as it is: the instruction names what goes (ERASE_WORDS_PROMPT).
+        } else if (intent === "erase" && eraseVariant === "fill") {
+          shown = (await fillBrushed(source, req.mask, width, height)) as typeof shown;
         } else if (intent === "erase" && eraseVariant === "tint") {
           const m = await sharp(Buffer.from(req.mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
           const paint = Buffer.alloc(width * height * 4);
@@ -332,7 +413,7 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
       const crop = await sharp(shown).extract(area).resize(workW, workH, { fit: "fill" }).png().toBuffer();
 
       const prompt = intent === "erase"
-        ? ERASE_PROMPTS[eraseVariant]
+        ? req.erase === "words" ? ERASE_WORDS_PROMPT : ERASE_PROMPTS[eraseVariant]
         : req.marks ? markupPrompt(req.prompt) : closeUpPrompt(req.prompt, !!marked);
       const answer = await download(await run(model, inputFor(model, prompt, inline(crop)), "Changing the picture"));
 

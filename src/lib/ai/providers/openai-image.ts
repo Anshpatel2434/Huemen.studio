@@ -30,6 +30,8 @@ export const SIZES: Record<ImageShape, { size: string; width: number; height: nu
 
 /** The words for each kind of change (ImageEditRequest `intent`); the mask says where. */
 export const ERASE_PROMPT = "Remove everything in the masked area and fill it with the surrounding background or surface, continuing its texture, light and colours. Add nothing new. Change nothing outside the masked area. No text, letters or logos.";
+/** An erase of the words in the masked area only (ImageEditRequest `erase: "words"`). */
+export const ERASE_WORDS_PROMPT = "Remove all writing in the masked area: every letter, word, number and logo, filling where it was with the surface around it, continuing its texture, light and colours. Change nothing else, and nothing outside the masked area. Add nothing new.";
 export const EXTEND_PROMPT = "The solid green area is empty canvas. Fill it so the scene continues naturally from the picture beside it. Do not change, move or resize anything that is not green. No text, letters or logos.";
 export const MARKS_PROMPT = "The bright magenta hand-drawn marks on this picture are instructions, not part of it: they show where to change it. Follow the marks and the request below, then remove the marks completely.";
 
@@ -98,7 +100,7 @@ export function openaiImageProvider(config: OpenAiImageConfig, fetchImpl: FetchL
       // says where, the words say what (ImageEditRequest `intent`).
       let source = req.source;
       let prompt = req.prompt;
-      if (intent === "erase") prompt = ERASE_PROMPT;
+      if (intent === "erase") prompt = req.erase === "words" ? ERASE_WORDS_PROMPT : ERASE_PROMPT;
       else if (intent === "extend") prompt = EXTEND_PROMPT;
       else if (req.marks) {
         // Markup: the drawn marks are shown on the picture itself.

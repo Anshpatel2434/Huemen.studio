@@ -131,7 +131,10 @@ describe("runpod image provider", () => {
     expect(Math.abs(centre!.width - 160)).toBeLessThanOrEqual(4);
     expect(await markedBox(new Uint8Array([1, 2, 3]))).toBeNull();
     // The close-up takes a little of the surroundings and never leaves the picture.
-    expect(closeUp({ left: 0, top: 0, width: 100, height: 100 }, 800, 800)).toEqual({ left: 0, top: 0, width: 118, height: 118 });
-    expect(closeUp({ left: 700, top: 700, width: 100, height: 100 }, 800, 800)).toEqual({ left: 682, top: 682, width: 118, height: 118 });
+    expect(closeUp({ left: 0, top: 0, width: 100, height: 100 }, 800, 800)).toEqual({ left: 0, top: 0, width: 125, height: 125 });
+    expect(closeUp({ left: 700, top: 700, width: 100, height: 100 }, 800, 800)).toEqual({ left: 675, top: 675, width: 125, height: 125 });
+    // Erase: a thin stroke takes both margins from its longer side, so it comes with room either side to fill from.
+    expect(closeUp({ left: 400, top: 300, width: 40, height: 200 }, 800, 800, 0.4)).toEqual({ left: 384, top: 220, width: 72, height: 360 });
+    expect(closeUp({ left: 400, top: 300, width: 40, height: 200 }, 800, 800, 0.4, true)).toEqual({ left: 320, top: 220, width: 200, height: 360 });
   });
 });

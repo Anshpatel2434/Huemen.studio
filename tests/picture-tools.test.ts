@@ -17,18 +17,18 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import {
-  cleanStrokes, driftOf, keepInsideMask, keepOriginal, placeOnCanvas, regionMask, strokeMask, strokesBox, strokesOverlay, visiblePart,
+  cleanStrokes, driftOf, keepInsideMask, keepOriginal, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay, visiblePart,
 } from "@/lib/visual/region";
 import {
   clearSubject, coversFrame, CUTOUT_COVERAGE, MAX_STROKES, MAX_STROKE_POINTS, MIN_EXTEND_COVER, STROKE_WIDTH, type Stroke,
 } from "@/lib/visual/picture-tools";
-import { ERASE_PROMPTS, ERASE_VARIANT, EXTEND_PROMPT, markupPrompt, runpodImageProvider, type FetchLike } from "@/lib/ai/providers/runpod-image";
+import { ERASE_PROMPTS, ERASE_VARIANT, ERASE_WORDS_PROMPT, EXTEND_PROMPT, fillBrushed, markupPrompt, runpodImageProvider, type FetchLike } from "@/lib/ai/providers/runpod-image";
 import { openaiImageProvider } from "@/lib/ai/providers/openai-image";
 import { mockCutoutProvider, mockImageProvider } from "@/lib/ai/providers/mock";
 import { CUTOUT_NO_MODEL, CUTOUT_OFF, cutoutStatus, selectCutoutProvider } from "@/lib/ai/cutout";
 import { applyMatte, cutoutInput } from "@/lib/ai/providers/cutout-onnx";
 import { AiConfigError } from "@/lib/ai/errors";
-import { canvasFor, DRIFT_LIMIT, EXTEND_MATTE, MARKS_COLOUR, planResize, PictureError } from "@/lib/data/pictures";
+import { canvasFor, DRIFT_LIMIT, EXTEND_MATTE, MARKS_COLOUR, planResize, PictureError, SEAM_LIMIT } from "@/lib/data/pictures";
 import { parseDesign } from "@/lib/visual/design";
 import { parseEnv } from "@/lib/env";
 import type { BrandContext } from "@/lib/context/context-builder";
@@ -229,6 +229,19 @@ describe("Resize's geometry", () => {
     expect(await driftOf(slid, source, place)).toBeGreaterThan(DRIFT_LIMIT);
   });
 
+  it("the join check passes a new area that carries on from the picture's edge, and catches one with a line at the join", async () => {
+    const place = { left: 120, top: 0, width: 160, height: 200 }; // on a 400 x 200 canvas
+    // A smooth scene: the picture is a part of it, the model drew the rest of the same scene.
+    const scene = new Uint8Array(await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><defs><linearGradient id="g"><stop offset="0" stop-color="#d8c8b0"/><stop offset="1" stop-color="#8a7a66"/></linearGradient></defs><rect width="400" height="200" fill="url(#g)"/><rect y="120" width="400" height="80" fill="#efe9df"/></svg>')).png().toBuffer());
+    const source = new Uint8Array(await sharp(Buffer.from(scene)).extract(place).png().toBuffer());
+    expect(await seamOf(await keepOriginal(scene, source, place), place)).toBeLessThan(SEAM_LIMIT);
+    // The model drew the right side a shade darker, its table edge higher: a line down the join.
+    const off = new Uint8Array(await sharp(Buffer.from(scene)).composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="200"><rect width="120" height="200" fill="#6f6252"/><rect y="90" width="120" height="110" fill="#f6f1ea"/></svg>'), left: 280, top: 0 }]).png().toBuffer());
+    expect(await seamOf(await keepOriginal(off, source, place), place)).toBeGreaterThan(SEAM_LIMIT);
+    // A picture's own edges inside it are not a join: only the sides that border new area are looked at.
+    expect(await seamOf(scene, { left: 0, top: 0, width: 400, height: 200 })).toBe(0);
+  });
+
   it("plans a crop in the picture's own pixels and an extension on a canvas of about a megapixel in multiples of 16", () => {
     // A 4:5 picture to a square, filling the width: the top and bottom go.
     const crop = planResize({ ratio: 1, place: { x: 0, y: -0.125, w: 1, h: 0 } }, 1024, 1280);
@@ -295,8 +308,12 @@ const RUNPOD = { apiKey: "rk", timeoutMs: 5000, editModel: "qwen-image-edit", ex
 
 describe("Runpod: one request per kind of change", () => {
   it("erase (tint): the close-up shows the brushed area painted magenta, and the instruction names the paint", async () => {
-    // "clean" is the default since the live trial (tint left the paint in); tint is still built for other models.
-    expect(ERASE_VARIANT).toBe("clean");
+    // "tint" is the default again since the live trials moved Erase to its own endpoint (a model that follows paint).
+    expect(ERASE_VARIANT).toBe("tint");
+    const BASE = { DATABASE_URL: "postgres://x", DATABASE_ADMIN_URL: "postgres://x", DATABASE_APP_PASSWORD: "x", AUTH_SECRET: "0123456789abcdef0123" };
+    expect(parseEnv(BASE).AI_IMAGE_ERASE_VARIANT).toBe("tint");
+    expect(parseEnv(BASE).AI_IMAGE_ERASE_MODEL).toBe("google-nano-banana-2-edit");
+    expect(parseEnv({ ...BASE, AI_IMAGE_ERASE_MODEL: "", AI_IMAGE_ERASE_VARIANT: "" }).AI_IMAGE_ERASE_MODEL).toBe("google-nano-banana-2-edit");
     const source = await solid(512, 512, "#113355");
     const mask = await strokeMask(BRUSH, 512, 512);
     const { f, calls } = fakeRunpod(await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#777777" } }).png().toBuffer());
@@ -320,6 +337,41 @@ describe("Runpod: one request per kind of change", () => {
     expect(out.model).toBe("qwen-image-edit");
   });
 
+  it("erase runs on the erase endpoint when one is named, and on the edit endpoint when not", async () => {
+    const source = await solid(512, 512, "#113355");
+    const mask = await strokeMask(BRUSH, 512, 512);
+    const answer = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#777777" } }).png().toBuffer();
+    const one = fakeRunpod(answer);
+    const out = await runpodImageProvider({ ...RUNPOD, eraseModel: "google-nano-banana-2-edit" }, one.f).edit({ context: ctx, prompt: "x", source, mask, intent: "erase" }, "m");
+    expect(one.calls[0].url).toBe("https://api.runpod.ai/v2/google-nano-banana-2-edit/runsync");
+    expect(one.calls[0].input).toMatchObject({ images: [expect.any(String)] });
+    expect(out.model).toBe("google-nano-banana-2-edit");
+    const two = fakeRunpod(answer);
+    await runpodImageProvider(RUNPOD, two.f).edit({ context: ctx, prompt: "x", source, mask, intent: "erase" }, "m");
+    expect(two.calls[0].url).toBe("https://api.runpod.ai/v2/qwen-image-edit/runsync");
+  });
+
+  it("erase (fill): what was brushed is already gone from the close-up, filled from around it, and the model is asked only to blend the patch", async () => {
+    // A blue picture with a white rod where the brush goes.
+    const rod = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#113355"/><rect x="246" y="150" width="20" height="200" fill="#ffffff"/></svg>');
+    const source = new Uint8Array(await sharp(rod).png().toBuffer());
+    const brush: Stroke[] = [{ w: 0.08, pts: [[0.5, 0.28], [0.5, 0.7]] }];
+    const mask = await strokeMask(brush, 512, 512);
+    const { f, calls } = fakeRunpod(await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#777777" } }).png().toBuffer());
+    await runpodImageProvider({ ...RUNPOD, eraseVariant: "fill" }, f).edit({ context: ctx, prompt: "x", source, mask, intent: "erase" }, "m");
+    expect(calls[0].input!.prompt).toBe(ERASE_PROMPTS.fill);
+    const shown = await sent(calls[0].input);
+    // The middle of the close-up was the rod: now it is the blue around it, near enough.
+    const [r, g, b] = shown.at(shown.width >> 1, shown.height >> 1);
+    expect(Math.abs(r - 0x11)).toBeLessThan(24);
+    expect(Math.abs(g - 0x33)).toBeLessThan(24);
+    expect(Math.abs(b - 0x55)).toBeLessThan(24);
+    // The fill leaves every unbrushed pixel as it was.
+    const filled = await pixels(new Uint8Array(await fillBrushed(Buffer.from(source), mask, 512, 512)));
+    expect(filled.at(10, 10).slice(0, 3)).toEqual([0x11, 0x33, 0x55]);
+    expect(filled.at(256, 160).slice(0, 3)).not.toEqual([255, 255, 255]);
+  });
+
   it("erase (clean): the close-up is sent as it is, and the instruction says the object in the middle", async () => {
     const source = await solid(512, 512, "#113355");
     const { f, calls } = fakeRunpod(await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#777777" } }).png().toBuffer());
@@ -330,6 +382,20 @@ describe("Runpod: one request per kind of change", () => {
     expect(shown.at(shown.width >> 1, shown.height >> 1).slice(0, 3)).toEqual([0x11, 0x33, 0x55]);
     // Nothing brushed is nothing to erase.
     await expect(runpodImageProvider(RUNPOD, f).edit({ context: ctx, prompt: "x", source, mask: await strokeMask([], 512, 512), intent: "erase" }, "m")).rejects.toMatchObject({ kind: "bad_request" });
+  });
+
+  it("erase of words (a picture that must have none): the close-up goes unpainted and only writing is to go, whatever the variant", async () => {
+    const source = await solid(512, 512, "#113355");
+    const { f, calls } = fakeRunpod(await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#777777" } }).png().toBuffer());
+    await runpodImageProvider({ ...RUNPOD, eraseModel: "google-nano-banana-2-edit", eraseVariant: "tint" }, f)
+      .edit({ context: ctx, prompt: "x", source, mask: await strokeMask(BRUSH, 512, 512), intent: "erase", erase: "words" }, "m");
+    expect(calls[0].url).toBe("https://api.runpod.ai/v2/google-nano-banana-2-edit/runsync");
+    expect(calls[0].input!.prompt).toBe(ERASE_WORDS_PROMPT);
+    expect(String(calls[0].input!.prompt)).toMatch(/^Remove all writing from this image/);
+    expect(String(calls[0].input!.prompt)).toMatch(/Change nothing else/);
+    // No magenta: what is under the box is shown as it is.
+    const shown = await sent(calls[0].input);
+    expect(shown.at(shown.width >> 1, shown.height >> 1).slice(0, 3)).toEqual([0x11, 0x33, 0x55]);
   });
 
   it("markup: the marks are on the close-up, the instruction says to follow them and the note and then remove them", async () => {

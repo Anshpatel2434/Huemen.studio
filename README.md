@@ -131,14 +131,24 @@ whole flow works locally.
     marks on the close-up and told to follow them, then remove them. Only the
     padded box around the marks can change (`keepOutside`).
   - *Erase.* Brush over something: only brushed pixels can change, byte for
-    byte (`keepInsideMask`). Two prompt variants live behind `ERASE_VARIANT` in
-    the RunPod provider (magenta tint, the default, or a clean close-up).
+    byte (`keepInsideMask`). It runs on its own endpoint (`AI_IMAGE_ERASE_MODEL`,
+    default `google-nano-banana-2-edit`, about $0.09) with `AI_IMAGE_ERASE_VARIANT`
+    (`tint`, the default: the brushed part painted magenta; `clean`; `fill`).
+    Live 2026-11-18: qwen-image-edit kept a thin rod twice, Nano Banana removed it
+    cleanly. An erase that comes back with nothing removed (`changeInside` under
+    `ERASE_MIN_CHANGE`) is tried once more, then refused plainly.
+  - *Comment areas* blend into the picture over an S-curve edge scaled to the
+    area (`seamFeather`, 5% of its shorter side, 12-72 px); the close-up sent
+    to the model carries 25% of the surroundings, so thin things crossing the
+    edge line up.
   - *Resize.* A new shape. Where the picture still covers the frame it is a
     crop: done in the request, free, nothing logged. Otherwise the picture is
     set on a flat green matte at about 1 megapixel, the extend model
     (`AI_IMAGE_EXTEND_MODEL`, default `google-nano-banana-2-edit`, about $0.09 a resize; live trial 2026-11-18: the only RunPod edit model that kept the picture in place, drift 0.017 against qwen-image-edit-2511 0.108, Kontext 0.139, Seedream 0.215) fills the green,
-    a drift check retries once and then refuses, and the original is pasted
-    back over its place (`keepOriginal`). Refused under 40% cover ("Draw a new
+    the original is pasted back over its place (`keepOriginal`), and the answer
+    is checked for drift, matte left and a visible join (`seamOf`, live: a
+    joined edge 0.29 against 0.004 for a clean one); up to `EXTEND_TRIES` (3)
+    tries, then a plain refusal. Refused under 40% cover ("Draw a new
     picture in this shape instead") and on pictures with the heading drawn in.
   - *Remove background.* An open model inside the app (ISNet general-use on
     `onnxruntime-node`, CPU, no cost per use): `AI_CUTOUT_PROVIDER=onnx` and

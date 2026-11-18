@@ -87,6 +87,13 @@ export interface ImageEditRequest {
   shape?: ImageShape;
   intent?: ImageEditIntent;
   marks?: Uint8Array;
+  /**
+   * An erase of the WORDS in the masked area, not of everything there
+   * (lib/data/pictures keepWordsOut): the model is told to remove writing
+   * only, so a box where a vision model saw words that aren't there comes
+   * back as it was instead of being painted over.
+   */
+  erase?: "words";
 }
 
 export interface ImageGenResult {
