@@ -129,7 +129,7 @@ export function AppShell({ nav, section, tabs, actions, children }: {
               <Crumbs nav={nav} section={section} tabs={tabs} />
               <span className="flex-1" />
               {actions}
-              <ThemeToggle />
+              <ThemeToggle tip="corner" />
             </div>
             {tabs && tabs.length > 0 && (
               <SectionTabs tabs={tabs} path={path} label={section ?? "Section"} />

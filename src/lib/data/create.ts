@@ -17,7 +17,7 @@ import { withTenantSession } from "@/db/session";
 import { linkGeneration, runTask, runTaskStamped } from "@/lib/ai";
 import { coWriteOutline, topicProposals } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
-import { formatByKey } from "@/lib/content/formats";
+import { findPlaceholders, formatByKey } from "@/lib/content/formats";
 import { angleLine } from "@/lib/content/angles";
 import { isUuid } from "@/lib/content/ids";
 import { clip } from "@/lib/voice/derive";
@@ -97,6 +97,9 @@ const TOPICS_TTL_MS = 7 * 24 * 3600 * 1000;
 export const topicsStale = (generatedAt: string | null, newestPillarAt: string | null): boolean =>
   !!generatedAt && !!newestPillarAt && new Date(newestPillarAt).getTime() > new Date(generatedAt).getTime();
 
+/** A suggestion a person can act on: it has a title, and no "[placeholder]" (the drafting contract's marker) in it. */
+const usableTopic = (t: TopicSuggestion): boolean => !!t.title.trim() && findPlaceholders(`${t.title} ${t.why}`).length === 0;
+
 export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boolean } = {}): Promise<TopicSuggestion[]> {
   const pack = await loadPackForWorkspace(scope);
   if (!pack) return [];
@@ -113,7 +116,7 @@ export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boole
       )
     ).rows.map((r) => r.t),
   );
-  const unwritten = (list: TopicSuggestion[]) => list.filter((t) => !written.some((w) => sameTopic(w, t.title)));
+  const unwritten = (list: TopicSuggestion[]) => list.filter((t) => usableTopic(t) && !written.some((w) => sameTopic(w, t.title)));
 
   if (!opts.force && fresh && pack.topicSuggestions.length) {
     const newest = await withTenantSession(scope, async (c) =>
@@ -133,6 +136,10 @@ export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boole
       (await c.query<{ name: string }>(`SELECT name FROM projects ORDER BY created_at DESC LIMIT 20`)).rows.map((r) => r.name),
     ),
   ]);
+  // Topics come from pillars. With none there is nothing to suggest, and the
+  // model, asked anyway, answered with "[placeholder]" cards on a new
+  // workspace's home (2026-11-19 QA) and spent a generation on every visit.
+  if (!pillars.length) return [];
   const taskInput = [
     // Names only: what each pillar means is in the context block (INV-2).
     ...pillars.map((p) => `Pillar: ${p.name}`),
@@ -144,7 +151,7 @@ export async function proposeTopics(scope: WorkspaceScope, opts: { force?: boole
     context: await loadBrandContext(scope),
     taskInput: taskInput || "No pillars yet.",
   });
-  const clean = topics.slice(0, 3).map((t) => ({ title: t.title.trim(), why: t.why.trim(), pillar: t.pillar.trim() }));
+  const clean = topics.slice(0, 3).map((t) => ({ title: t.title.trim(), why: t.why.trim(), pillar: t.pillar.trim() })).filter(usableTopic);
   await withTenantSession(scope, (c) =>
     c.query(`UPDATE voice_packs SET topic_suggestions = $1, topics_generated_at = now() WHERE id = $2`, [JSON.stringify(clean), pack.id]),
   );

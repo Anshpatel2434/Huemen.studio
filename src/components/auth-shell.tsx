@@ -18,7 +18,7 @@ export function AuthShell({ children, showcase = false, width = 340 }: { childre
       <section className="flex-1 relative flex flex-col overflow-x-clip">
         <header className="h-14 flex items-center justify-between px-4">
           <Link href="/" aria-label="Huemen.studio home"><LogoMark size={26} /></Link>
-          <ThemeToggle />
+          <ThemeToggle tip="corner" />
         </header>
         <div className="flex-1 flex items-center justify-center px-5 pb-16">
           <div className="relative w-full" style={{ maxWidth: width }}>

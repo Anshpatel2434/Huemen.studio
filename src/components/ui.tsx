@@ -227,7 +227,8 @@ export function Modal({ open, onClose, title, label, bare = false, children, foo
     // React has already focused an autoFocus field; only fall back to the panel.
     if (panel && !panel.contains(document.activeElement)) panel.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") return closeRef.current();
+      // An Escape something inside has already used (a list closing itself) is not ours.
+      if (e.key === "Escape") return e.defaultPrevented ? undefined : closeRef.current();
       if (e.key !== "Tab" || !panel) return;
       const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)];
       if (!items.length) return;

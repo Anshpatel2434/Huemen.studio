@@ -586,6 +586,15 @@
   .hu-iconbtn[data-tip][data-tip-below]::before { bottom: auto; top: calc(100% + 8px); transform: translate(-50%, -2px); }
   .hu-iconbtn[data-tip]:hover::before { opacity: 1; transform: translate(-50%, 0); transition-delay: 350ms; }
   .hu-iconbtn[data-tip]:focus-visible::before { opacity: 1; transform: translate(-50%, 0); }
+  /* A button at the right or left edge of the window: the name lines up with that
+     edge of the button. Centred, it stuck out past the window and gave the whole
+     page a sideways scrollbar (2026-11-19 QA: the light/dark switch, 20px). */
+  .hu-iconbtn[data-tip][data-tip-end]::before { left: auto; right: 0; transform: translate(0, 2px); }
+  .hu-iconbtn[data-tip][data-tip-start]::before { left: 0; transform: translate(0, 2px); }
+  .hu-iconbtn[data-tip][data-tip-end][data-tip-below]::before,
+  .hu-iconbtn[data-tip][data-tip-start][data-tip-below]::before { transform: translate(0, -2px); }
+  .hu-iconbtn[data-tip][data-tip-end]:hover::before, .hu-iconbtn[data-tip][data-tip-end]:focus-visible::before,
+  .hu-iconbtn[data-tip][data-tip-start]:hover::before, .hu-iconbtn[data-tip][data-tip-start]:focus-visible::before { transform: translate(0, 0); }
   @media (hover: none) { .hu-iconbtn[data-tip]:hover::before { opacity: 0; } }
   .hu-iconbtn:hover { background: var(--hover); color: var(--ink); }
   .hu-iconbtn[aria-pressed="true"] { background: var(--active); color: var(--ink); }

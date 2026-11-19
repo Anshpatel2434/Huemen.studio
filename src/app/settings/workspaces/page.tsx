@@ -244,7 +244,7 @@ export default async function WorkspacesAdminPage({ searchParams }: PageProps<"/
                     <CapField name="imageHard" label="Images, stop at" value={caps.get(w.id)?.imageHard} />
                     <SubmitButton variant="secondary" size="sm" pendingLabel="…">Save caps</SubmitButton>
                   </div>
-                  <p className="text-xs text-ink-faint mt-2">Warn turns the usage meter amber. Stop refuses further generations until the month resets. Empty means no limit; 0 switches it off. Visuals are drawn from templates today, so image caps apply only once an image model is connected.</p>
+                  <p className="text-xs text-ink-faint mt-2">Warn turns the usage meter amber. Stop refuses further generations until the month resets. Empty means no limit; 0 switches it off. Every picture drawn or edited counts as one image.</p>
                 </GuardedForm>
               </div>
             </section>

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { LocalTime } from "@/components/local-time";
 import { getSession } from "@/lib/auth";
 import { isPlatformAdmin } from "@/lib/auth/types";
 import { listAuditLog } from "@/lib/data/admin";
@@ -49,7 +50,7 @@ export default async function AuditPage() {
         <ul className="mt-8 rounded-md border border-hairline divide-y divide-[var(--hairline)] bg-paper">
           {rows.map((r, i) => (
             <li key={i} className="px-4 py-3 grid gap-1 md:grid-cols-[11rem_1fr] min-w-0">
-              <time dateTime={r.at} className="text-xs text-ink-faint tabular-nums">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</time>
+              <LocalTime iso={r.at} className="text-xs text-ink-faint tabular-nums" />
               <div className="min-w-0">
                 <p className="text-sm">
                   {ACTIONS[r.action] ?? r.action}

@@ -53,7 +53,7 @@ export function SectionChrome({
           <span className="text-sm font-semibold truncate">{section}</span>
           <span className="flex-1" />
           {actions}
-          <ThemeToggle />
+          <ThemeToggle tip="corner" />
         </div>
         {tabs && tabs.length > 0 && <SectionTabs tabs={tabs} />}
       </header>

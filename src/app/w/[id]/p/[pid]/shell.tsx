@@ -164,7 +164,7 @@ function Shell({ children, workspace, project, user, brief, layers, members, que
           <RailBtn on={leftShown && leftTab === "add"} onClick={() => pick("add")} label="Add"><Plus size={20} /></RailBtn>
           <RailBtn on={leftShown && leftTab === "agent"} onClick={() => pick("agent")} label="Agent"><WandSparkles size={19} /></RailBtn>
           <span className="flex-1 max-sm:hidden" />
-          <ThemeToggle className="!w-11 !h-11 !rounded-xl !bg-paper border border-hairline hover:border-line-strong" />
+          <ThemeToggle tip="start" className="!w-11 !h-11 !rounded-xl !bg-paper border border-hairline hover:border-line-strong" />
           <Link href="/settings" className="w-11 h-11 rounded-xl bg-paper border border-hairline flex items-center justify-center text-ink hover:border-line-strong transition-colors" aria-label="Settings"><Settings size={18} aria-hidden="true" /></Link>
         </nav>
         {leftTab && (

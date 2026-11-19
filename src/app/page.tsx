@@ -44,7 +44,7 @@ export default async function Home() {
             <span className="text-base font-medium tracking-tight">Huemen<span className="text-ink-faint">.studio</span></span>
           </Link>
           <div className="flex items-center gap-1.5">
-            <ThemeToggle />
+            <ThemeToggle tip="below" />
             <Link href="/login" className={btnClass("secondary", "sm")}>Sign in</Link>
           </div>
         </div>

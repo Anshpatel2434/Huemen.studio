@@ -76,7 +76,12 @@ export function Select({
     else if (e.key === "Home") setActive(0);
     else if (e.key === "End") setActive(last);
     else if (e.key === "Enter" || e.key === " ") pick(active);
-    else if (e.key === "Escape" || e.key === "Tab") { setOpen(false); if (e.key === "Escape") button.current?.focus(); return; }
+    else if (e.key === "Escape" || e.key === "Tab") {
+      setOpen(false);
+      // Escape closes this list only. Marked handled, so a dialog around it stays open (2026-11-19 QA: it closed the whole prompt editor).
+      if (e.key === "Escape") { e.preventDefault(); button.current?.focus(); }
+      return;
+    }
     else if (e.key.length === 1) {
       const k = e.key.toLowerCase();
       const from = options.findIndex((o, i) => i > active && o.label.toLowerCase().startsWith(k));

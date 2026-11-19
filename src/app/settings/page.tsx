@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { getEnv } from "@/lib/env";
 import { withTenantSession } from "@/db/session";
 import { signOutAction } from "@/app/dashboard/actions";
 import { btnClass } from "@/components/btn";
@@ -39,7 +40,7 @@ export default async function AccountPage() {
       <section className="mt-4 bg-paper border border-hairline rounded-md p-6">
         <div className="bg-panel rounded-md px-4 py-3 text-sm grid grid-cols-1 sm:grid-cols-2 gap-2">
           <span className="font-medium">You joined by invite.</span>
-          <span className="text-ink-muted">You sign in with a one-time link sent to this email. To change it, ask your admin.</span>
+          <span className="text-ink-muted">{getEnv().AUTH_PASSWORD_SIGNIN ? "You sign in with this email and your password. To change either, ask your admin." : "You sign in with a one-time link sent to this email. To change it, ask your admin."}</span>
         </div>
         <label className="block mt-5">
           <span className="text-sm text-ink-muted mb-1.5 block">Email</span>

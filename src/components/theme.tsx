@@ -64,7 +64,8 @@ export function useTheme(): Ctx {
 }
 
 /** Icon button for tight chrome (editor rail, sign-in corner): flips light ⇄ dark. */
-export function ThemeToggle({ className = "" }: { className?: string }) {
+/** `tip` is where its name shows: "corner" for the top right of a page (below, kept inside the window), "below" under a top bar, "start" on a left rail. */
+export function ThemeToggle({ className = "", tip = "above" }: { className?: string; tip?: "above" | "below" | "corner" | "start" }) {
   const { resolved, setTheme } = useTheme();
   const next: Theme = resolved === "dark" ? "light" : "dark";
   const Icon = resolved === "dark" ? Sun : Moon;
@@ -74,6 +75,9 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       onClick={() => setTheme(next)}
       aria-label={`Switch to ${next} view`}
       data-tip={`Switch to ${next} view`}
+      data-tip-below={tip === "below" || tip === "corner" ? "" : undefined}
+      data-tip-end={tip === "corner" ? "" : undefined}
+      data-tip-start={tip === "start" ? "" : undefined}
       className={`hu-iconbtn ${className}`}
     >
       <Icon size={17} aria-hidden="true" />
