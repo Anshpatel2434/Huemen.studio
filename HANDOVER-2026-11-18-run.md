@@ -93,3 +93,11 @@ Audit: D:\huemen-recordings\2026-11-19\picture-issues.md. Result table (all 41 r
 - Live (built-in browser + scripted Chrome): 1 qwen-image-edit call (~$0.02): one click "Add a small green potted plant on the table here" now gave a whole potted plant inside the area, kept, Undo offered; tab B showed the change 6 s in and then the new picture. State left: post/quote/carousel back on their cut-outs, background Scheme; added post versions 24 (area change) and 25 (its cut-out) and comment 17 (carousel frame 3).
 - Checks: tsc clean; vitest 1344/1344 (91 files); eslint 0 errors (17 older warnings).
 - Owner still to do: (1) one working RUNPOD_API_KEY in .env and the host settings, remove the Windows user variable, run `npm run check:keys`; (2) a paid Groq plan or AI_TEXT_PROVIDER=anthropic before clients, optionally AI_VISION_API_KEY; (3) review, commit and push.
+
+## 2026-11-19: first client deploy on Vercel + Supabase
+
+Live at https://huemen-studio.vercel.app. Everything about it (where it runs,
+the two stopgaps, what was checked, what is still to do) is in
+`docs/deploy-first-client.md`. Branch `deploy-vercel`, local only. Today's
+unfinished work (costs in dollars, agent checks, Zoom to fit) is parked on the
+local branch `wip-2026-11-19` and is not in this deploy.
