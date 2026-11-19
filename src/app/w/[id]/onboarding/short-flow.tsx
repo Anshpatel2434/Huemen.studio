@@ -411,9 +411,13 @@ export function WritingScreen({ tenantId, sources, writeFor, pieces, words, save
   const startedNotes = notes.some((n) => wordsIn(n) > 0);
   const pending = hasFiles || longEnough > 0;
   const toggle = (k: string) => {
+    // One channel always stays picked: with none, the paste box and the upload
+    // went away and nothing said why (2026-11-19 QA).
+    if (picked.length === 1 && picked[0] === k) return;
     const next = picked.includes(k) ? picked.filter((x) => x !== k) : [...picked, k];
     setPicked(next);
     if (!picked.includes(k)) setActive(k);
+    else if (active === k) setActive(next[0]);
   };
 
   /** Everything added on this screen, read and measured: pastes, files, then the spoken answers. */
