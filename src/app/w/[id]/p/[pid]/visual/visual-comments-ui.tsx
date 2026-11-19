@@ -58,6 +58,8 @@ export type DraftPin = {
   target: Target;
   box: Box;
   area: Box | null;
+  /** A one-click pin (no dragged box): the server may widen its area when the change does not fit. */
+  auto?: boolean;
   strokes?: Stroke[];
   note: string;
   /** Which frame of the visual the box is on (a carousel has several). */
@@ -659,10 +661,11 @@ export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draf
     let box = frac(s0.frame, s0, { x: e.clientX, y: e.clientY });
     const r = s0.frame.getBoundingClientRect();
     let target: Target;
+    const clicked = box.w < 0.03 || box.h < 0.03;
     // A click, not a drag: a box around the point. On the picture it is a room-sized
     // one (PI-18: a 16% x 12% box made the model draw a plant cut off at its edge);
     // on the words, a small one that only says where the pin goes.
-    if (box.w < 0.03 || box.h < 0.03) {
+    if (clicked) {
       target = partAt(s0.frame, s0.x, s0.y);
       box = clickBox((s0.x - r.left) / r.width, (s0.y - r.top) / r.height, target === "picture");
     } else {
@@ -671,7 +674,7 @@ export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draf
     if (target === "picture" && pictureLock) return onRefuse?.(pictureLock);
     const frame = Math.max(0, framesOf().indexOf(s0.frame));
     const offered = partsIn(s0.frame).filter((t) => t !== "picture" || !pictureLock);
-    onDraft.add({ kind: "comment", target, box, area: pictureArea(s0.frame, box), note: "", frame, offered });
+    onDraft.add({ kind: "comment", target, box, area: pictureArea(s0.frame, box), ...(clicked && target === "picture" ? { auto: true } : {}), note: "", frame, offered });
   };
 
   const undone = (c: VisualComment) => !!isUndone?.(c);

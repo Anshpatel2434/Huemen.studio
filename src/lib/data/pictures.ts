@@ -40,7 +40,7 @@ import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import {
-  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
+  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, growBox, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
   visiblePart, type Box, type PixelRect,
 } from "@/lib/visual/region";
 import { boxesWithin, wordGroups } from "@/lib/visual/picture-words";
@@ -464,7 +464,12 @@ export interface AreaEdit {
   note: string;
   kind?: PinKind;
   strokes?: Stroke[];
+  /** The box came from one click, not a drag: it may be widened once when the change does not fit inside it. */
+  auto?: boolean;
 }
+
+/** How much wider and taller a one-click area gets for its second try. */
+export const AUTO_AREA_GROW = 1.7;
 
 /** The padding around drawn marks (a share of the picture's shorter side): what the marks point at may reach past them. */
 export const MARKUP_PAD = 0.08;
@@ -688,9 +693,10 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
   } else {
     // Markup: the area is the padded box around the marks; with nothing drawn, the box that came with it.
     const marked = kind === "markup" && strokes.length > 0;
-    const box = (marked ? strokesBox(strokes, MARKUP_PAD, width / height) : null) ?? cleanBox(edit.box);
-    if (!box) throw new PictureError("Mark a bigger area to change.");
-    const mask = await regionMask(box, width, height);
+    const first = (marked ? strokesBox(strokes, MARKUP_PAD, width / height) : null) ?? cleanBox(edit.box);
+    if (!first) throw new PictureError("Mark a bigger area to change.");
+    let box: Box = first;
+    let mask = await regionMask(box, width, height);
     const prompt = [
       `Change only the marked area: ${edit.note.replace(/\s+/g, " ").trim().slice(0, 500)}`,
       "Keep everything else exactly as it is: the same subject, style, light and colours.",
@@ -721,7 +727,18 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
     let cut = await cutAtEdge(bytes, answer.bytes, box);
     if (cut > EDGE_CUT_LIMIT) {
       logger.info("picture_area_rejected", { tenantId: scope.tenantId, model: answer.model, cut: Number(cut.toFixed(3)), attempt: 0 });
-      const inside = prompt.replace(/^(Change only the marked area: [^\n]*)/, "$1 Draw it whole and small enough to sit well inside the middle, with nothing touching the edges.");
+      // A one-click pin has no edge the person chose (2026-11-19 QA: a click on a large
+      // block, "make this orange", was refused twice and still used 2 pictures). Its
+      // second try works on a wider area around the same point, so the whole thing fits.
+      // A dragged box is theirs: it is never widened, and the model is asked to stay inside.
+      const widen = !!edit.auto && !marked && (box.w < 1 || box.h < 1);
+      if (widen) {
+        box = growBox(box, AUTO_AREA_GROW);
+        mask = await regionMask(box, width, height);
+      }
+      const inside = widen
+        ? prompt
+        : prompt.replace(/^(Change only the marked area: [^\n]*)/, "$1 Draw it whole and small enough to sit well inside the middle, with nothing touching the edges.");
       answer = await ask(inside, false);
       merged = await keepOutside(bytes, answer.bytes, box);
       cut = await cutAtEdge(bytes, answer.bytes, box);

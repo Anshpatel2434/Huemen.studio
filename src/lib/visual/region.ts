@@ -47,6 +47,18 @@ export function cleanBox(b: Partial<Box> | null | undefined): Box | null {
   return { x, y, w, h };
 }
 
+/**
+ * The same box made `factor` times as wide and as tall around its own centre,
+ * moved back inside the picture where it would stick out, and never larger
+ * than the picture.
+ */
+export function growBox(box: Box, factor: number): Box {
+  const w = Math.min(1, box.w * factor), h = Math.min(1, box.h * factor);
+  const x = Math.min(1 - w, Math.max(0, box.x + box.w / 2 - w / 2));
+  const y = Math.min(1 - h, Math.max(0, box.y + box.h / 2 - h / 2));
+  return { x, y, w, h };
+}
+
 /** The box in pixels, grown by `pad` of the picture's shorter side and kept inside it. */
 export function boxPixels(box: Box, width: number, height: number, pad = 0): { left: number; top: number; width: number; height: number } {
   const p = Math.round(Math.min(width, height) * pad);

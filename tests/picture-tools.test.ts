@@ -657,3 +657,23 @@ describe("marksLeft", () => {
     expect(await marksLeft(grey, grey, box)).toBe(0);
   });
 });
+
+describe("growBox (one-click pins)", () => {
+  it("grows around the box's own centre", async () => {
+    const { growBox } = await import("@/lib/visual/region");
+    const g = growBox({ x: 0.4, y: 0.4, w: 0.2, h: 0.1 }, 2);
+    expect(g.w).toBeCloseTo(0.4);
+    expect(g.h).toBeCloseTo(0.2);
+    expect(g.x + g.w / 2).toBeCloseTo(0.5);
+    expect(g.y + g.h / 2).toBeCloseTo(0.45);
+  });
+  it("stays inside the picture and never exceeds it", async () => {
+    const { growBox } = await import("@/lib/visual/region");
+    const corner = growBox({ x: 0.8, y: 0, w: 0.2, h: 0.2 }, 1.7);
+    expect(corner.x + corner.w).toBeLessThanOrEqual(1 + 1e-9);
+    expect(corner.y).toBeGreaterThanOrEqual(0);
+    expect(corner.w).toBeCloseTo(0.34);
+    const whole = growBox({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 1.7);
+    expect(whole).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+  });
+});

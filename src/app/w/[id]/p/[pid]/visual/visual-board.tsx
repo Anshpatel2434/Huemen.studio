@@ -631,7 +631,7 @@ function Board({ tenantId, projectId, brandName, logo, items, palette, fonts, fo
         const i = items.find((x) => x.id === pins[0].itemId);
         if (!i) continue;
         const k = pins[0].artboard;
-        const payload: PicturePin[] = pins.map((d) => ({ kind: d.kind, box: d.box, area: d.area, ...(d.strokes?.length ? { strokes: d.strokes } : {}), note: d.kind === "erase" ? ERASE_NOTE : d.note.trim(), frame: d.frame }));
+        const payload: PicturePin[] = pins.map((d) => ({ kind: d.kind, box: d.box, area: d.area && d.auto && d.kind === "comment" ? { ...d.area, auto: true } : d.area, ...(d.strokes?.length ? { strokes: d.strokes } : {}), note: d.kind === "erase" ? ERASE_NOTE : d.note.trim(), frame: d.frame }));
         let r: Awaited<ReturnType<typeof sendPictureCommentsAction>>;
         try {
           r = await sendPictureCommentsAction(tenantId, projectId, { visualId, pins: payload });

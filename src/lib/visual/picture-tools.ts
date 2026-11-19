@@ -31,8 +31,12 @@ export interface PicturePin {
   kind: PinKind;
   /** Where the pin shows, on the visual's frame. */
   box: Box;
-  /** The same place on the picture itself; null when it could not be worked out (the server then uses `box`). */
-  area: Box | null;
+  /**
+   * The same place on the picture itself; null when it could not be worked out (the server then uses `box`).
+   * `auto` marks a one-click pin: the box was made by the app around the point, not drawn by the person,
+   * so the server may widen it when the change does not fit (a dragged box is never widened).
+   */
+  area: (Box & { auto?: boolean }) | null;
   /** Markup: the drawn marks. Erase: the brushed area. Absent for a comment. */
   strokes?: Stroke[];
   /** What to change. Erase needs none (the server writes its own). */

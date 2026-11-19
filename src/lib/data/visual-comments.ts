@@ -69,6 +69,8 @@ export interface VisualComment {
    * work it out, and for text and design comments.
    */
   area: Box | null;
+  /** The area came from one click, not a dragged box (lib/visual/picture-tools PicturePin.area.auto): it may be widened when the change does not fit. */
+  areaAuto: boolean;
   /** Markup: the drawn marks. Erase: the brushed area. Fractions of the picture. Null for a plain comment. */
   strokes: Stroke[] | null;
   /**
@@ -101,6 +103,7 @@ const view = (r: Row): VisualComment => {
     result: r.result, jobId: r.job_id, resultPictureId: r.result_picture_id ?? null, createdAt: new Date(r.created_at).toISOString(),
     kind: (PIN_KINDS as readonly string[]).includes(String(r.kind)) ? (r.kind as PinKind) : "comment",
     area: cleanBox(r.area as Partial<Box> | null),
+    areaAuto: (r.area as { auto?: unknown } | null)?.auto === true,
     strokes: strokes.length ? strokes : null,
     frame: Number.isInteger(r.frame) && (r.frame as number) >= 0 ? (r.frame as number) : null,
   };
@@ -207,6 +210,8 @@ interface CleanPin {
   kind: PinKind;
   box: Box;
   area: Box | null;
+  /** A one-click comment pin: its area may be widened by the redraw. */
+  areaAuto: boolean;
   strokes: Stroke[] | null;
   note: string;
   frame: number | null;
@@ -218,7 +223,7 @@ interface CleanPin {
  * here). Strokes are capped and clamped (cleanStrokes); a markup's or an
  * erase's area is the box around its strokes when the board sent none.
  */
-function cleanPin(input: { kind?: unknown; box?: Partial<Box> | null; area?: Partial<Box> | null; strokes?: unknown; note?: unknown; frame?: unknown }): CleanPin {
+function cleanPin(input: { kind?: unknown; box?: Partial<Box> | null; area?: (Partial<Box> & { auto?: unknown }) | null; strokes?: unknown; note?: unknown; frame?: unknown }): CleanPin {
   const kind = (PIN_KINDS as readonly unknown[]).includes(input.kind) ? (input.kind as PinKind) : input.kind == null ? "comment" : null;
   if (!kind) throw new CommentError("That isn't a change a picture can take.");
   const strokes = kind === "comment" ? [] : cleanStrokes(input.strokes);
@@ -231,7 +236,8 @@ function cleanPin(input: { kind?: unknown; box?: Partial<Box> | null; area?: Par
   // The pin shows where the board says; a drawn pin with no usable box shows around its strokes.
   const box = cleanBox(input.box) ?? around;
   if (!box) throw new CommentError("Mark a bigger area to comment on.");
-  return { kind, box, area: cleanBox(input.area) ?? around, strokes: strokes.length ? strokes : null, note, frame: cleanFrame(input.frame) };
+  const area = cleanBox(input.area) ?? around;
+  return { kind, box, area, areaAuto: kind === "comment" && !!area && input.area?.auto === true, strokes: strokes.length ? strokes : null, note, frame: cleanFrame(input.frame) };
 }
 
 const INSERT_COMMENT = `INSERT INTO visual_comments (tenant_id, content_item_id, visual_id, target, box_x, box_y, box_w, box_h, note, created_by, kind, area, strokes, status, frame)
@@ -239,7 +245,7 @@ const INSERT_COMMENT = `INSERT INTO visual_comments (tenant_id, content_item_id,
 
 const insertArgs = (scope: ProjectScope, v: { id: string; contentItemId: string }, target: CommentTarget, pin: CleanPin, status: VisualComment["status"]) => [
   scope.tenantId, v.contentItemId, v.id, target, pin.box.x, pin.box.y, pin.box.w, pin.box.h, pin.note, scope.userId,
-  pin.kind, pin.area ? JSON.stringify(pin.area) : null, pin.strokes ? JSON.stringify(pin.strokes) : null, status, pin.frame,
+  pin.kind, pin.area ? JSON.stringify(pin.areaAuto ? { ...pin.area, auto: true } : pin.area) : null, pin.strokes ? JSON.stringify(pin.strokes) : null, status, pin.frame,
 ];
 
 /**
@@ -434,6 +440,7 @@ export async function applyPictureComment(scope: ProjectScope, commentId: string
     note: comment.note,
     kind: comment.kind,
     strokes: comment.strokes ?? undefined,
+    auto: comment.areaAuto && !!comment.area,
   }, run);
   await finishComment(scope, comment.id, { status: "applied", result: APPLIED[comment.kind], pictureId: id });
   return id;
