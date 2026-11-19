@@ -487,10 +487,12 @@ const ERASE_FEATHER = 12;
 export const ERASE_MIN_CHANGE = 0.03;
 /**
  * More of what was brushed still there than this (lib/visual/region keptInside,
- * 0-1) and the model kept it. Measured 2026-11-19: a skirting line the model
- * took for part of the room came back at 0.977; an erased block at 0.000.
+ * 0-1) and the model kept it. Measured 2026-11-19 with the app's brush (0.06): a
+ * skirting line the model kept, 0.843 on the live site (0.977 with a thinner brush);
+ * the same line removed, 0.529 (the wall and floor still meet across the brush);
+ * an erased block, 0.000.
  */
-export const ERASE_KEPT_MAX = 0.85;
+export const ERASE_KEPT_MAX = 0.7;
 /**
  * A brushed area this narrow across (lib/visual/region brushedSpan, a share of the
  * picture's shorter side) or narrower is a line: when the model keeps it, it is filled

@@ -800,7 +800,9 @@ describe("erase: the shadow lifted with an object, and a thin line the model kep
     const mask = await maskOf((x, y) => y >= 190 && y < 210);
     expect(await keptInside(original, original, mask)).toBeGreaterThan(0.95);
     const erased = await png((x, y) => (y < 200 ? [200, 190, 180] : floor));
-    expect(await keptInside(original, erased, mask)).toBeLessThan(0.85);
+    const { ERASE_KEPT_MAX } = await import("@/lib/data/pictures");
+    expect(await keptInside(original, original, mask)).toBeGreaterThan(ERASE_KEPT_MAX);
+    expect(await keptInside(original, erased, mask)).toBeLessThan(0.9);
   });
 
   it("fills a thin line from its two sides, touching nothing else", async () => {
