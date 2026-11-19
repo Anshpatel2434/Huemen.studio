@@ -3,6 +3,11 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // No floating dev badge over the UI (keeps local screenshots clean).
   devIndicators: false,
+  // Vercel: functions are capped at 250 MB. onnxruntime-node (294 MB, every
+  // platform) and the cut-out model are only for AI_CUTOUT_PROVIDER=onnx on a
+  // normal Node host, so they are left out of the Vercel bundle, where Remove
+  // background is off (it shows disabled with its reason).
+  ...(process.env.VERCEL ? { outputFileTracingExcludes: { "*": ["node_modules/onnxruntime-node/**", "models/**", ".storage/**"] } } : {}),
   // Dev only: lets several local browser sessions run side by side on
   // <name>.localhost hosts (each keeps its own sign-in cookie).
   allowedDevOrigins: ["*.localhost"],
