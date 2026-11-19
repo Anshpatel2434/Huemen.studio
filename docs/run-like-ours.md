@@ -50,4 +50,31 @@ run after pulling `main`:
   work carries on in a plainer voice; both calls are in generation_logs. For
   clients, use a paid Groq plan or set `AI_TEXT_PROVIDER=anthropic`.
 
+- A separate Groq key for the looks (optional): `AI_VISION_API_KEY`. The words
+  check after every picture (~3,800 tokens a look) and the design reading then
+  have their own allowance instead of waiting behind drafts. When a look still
+  can't run, the picture is kept and the board says "Words not checked" with a
+  Check for words button; it is never passed off as checked.
+- Paid pictures per workspace per day: `AI_IMAGE_DAILY_CAP` (default 60; 0 = no
+  daily limit), under the monthly cap. Each picture action also has its own
+  budget of paid calls (lib/visual/picture-tools `PICTURE_BUDGET`), said on the
+  board before Send or Apply ("Uses 1 to 3 pictures").
+
+## Which key is in use (Runpod and the other provider keys)
+Next reads `.env` but never over a variable that is already set, so a key set
+outside `.env` (a Windows user environment variable, the host's settings) wins
+silently. On 2026-11-19 the `.env` RUNPOD_API_KEY was refused by Runpod (403)
+and this PC only worked on a different key from a Windows user variable.
+- At every server start the log says, per key, where it came from ("from .env"
+  or "from the process environment"), warns when a `.env` line is overridden
+  by a different value, and says whether Runpod accepts the key in use (one
+  free, read-only call). Values are never printed. (src/instrumentation.ts,
+  lib/key-source.ts)
+- `npm run check:keys` says the same on demand, and also whether Runpod
+  accepts the key written in `.env`.
+- The fix is the owner's: put ONE working Runpod key in `.env` (and the same in
+  the host's settings), then remove the Windows user variable
+  `RUNPOD_API_KEY` (System Properties, Environment Variables), restart the
+  terminal and the server, and run `npm run check:keys`.
+
 What changed in this round, and how it was checked: `HANDOVER-2026-11-18-run.md`.

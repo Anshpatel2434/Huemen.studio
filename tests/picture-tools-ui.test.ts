@@ -241,7 +241,8 @@ describe("what the strip says before Send", () => {
   it("counts changes and pictures; Send is ready only when every change that needs words has them", () => {
     const all = [d("comment", "picture", "a cup here"), d("comment", "headline", "shorter"), d("erase", "picture", ""), d("markup", "picture", "")];
     expect(draftSummary(all)).toEqual({ changes: 4, pictures: 3, missing: 1, ready: false });
-    expect(summaryLine(all)).toBe("4 changes · uses 3 pictures · 1 needs a comment");
+    // The fewest and the most it can use, retries included (PI-30).
+    expect(summaryLine(all)).toBe("4 changes · uses 3 to 8 pictures · 1 needs a comment");
     const ok = [d("comment", "headline", "shorter")];
     expect(draftSummary(ok).ready).toBe(true);
     expect(summaryLine(ok)).toBe("1 change");

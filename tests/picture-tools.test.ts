@@ -299,7 +299,12 @@ function fakeRunpod(answer: Buffer) {
   const calls: { url: string; input: Record<string, unknown> | null }[] = [];
   const f: FetchLike = async (url, init) => {
     calls.push({ url, input: init?.body ? (JSON.parse(String(init.body)) as { input: Record<string, unknown> }).input : null });
-    return url.endsWith("/runsync") ? json({ status: "COMPLETED", output: { result: "https://image.runpod.ai/x/out.png" } }) : new Response(new Uint8Array(answer));
+    if (url.endsWith("/runsync")) return json({ status: "COMPLETED", output: { result: "https://image.runpod.ai/x/out.png" } });
+    // The answer comes back in the shape it was asked in, as the models do (an answer in another shape is cropped or refused: PI-24).
+    const asked = calls.findLast((c) => c.input?.image)?.input?.image;
+    if (!asked) return new Response(new Uint8Array(answer));
+    const m = await sharp(Buffer.from(String(asked).split(",")[1], "base64")).metadata();
+    return new Response(new Uint8Array(await sharp(answer).resize(m.width!, m.height!, { fit: "fill" }).png().toBuffer()));
   };
   return { f, calls };
 }

@@ -8,6 +8,19 @@
  */
 import type { Instrumentation } from "next";
 
+/**
+ * Once per server start: where each provider key came from (the .env files or
+ * the process environment, which wins), a warning when a .env line is
+ * overridden by a different value, and whether Runpod accepts the key in use
+ * (lib/key-source, PI-41). Never a key's value. Not awaited: the server is
+ * ready without it.
+ */
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.NODE_ENV === "test") return;
+  const [{ reportKeySources }, { logger }] = await Promise.all([import("@/lib/key-source"), import("@/lib/observability/log")]);
+  void reportKeySources((level, line) => logger[level](line)).catch(() => undefined);
+}
+
 /** Next's own control flow (redirect, notFound, dynamic bail-outs), not failures. */
 const CONTROL_FLOW = /^(NEXT_REDIRECT|NEXT_HTTP_ERROR_FALLBACK|NEXT_NOT_FOUND|DYNAMIC_SERVER_USAGE|BAILOUT_TO_CLIENT_SIDE_RENDERING|HANGING_PROMISE_REJECTION)/;
 

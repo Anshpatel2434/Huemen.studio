@@ -283,6 +283,33 @@ export function markupPrompt(prompt: string): string {
   ].filter(Boolean).join("\n\n").slice(0, 4000);
 }
 
+/**
+ * How far an answer's shape may be from the shape asked for and still be used.
+ * Within ASPECT_SAME it is resized as it is (rounding to model sizes); within
+ * ASPECT_CROP its middle is cut to the asked shape and then resized, so things
+ * in it keep their proportions; past that it is refused rather than squashed
+ * (PI-24: an answer stretched into the marked area came out distorted).
+ */
+export const ASPECT_SAME = 0.03;
+export const ASPECT_CROP = 0.25;
+
+/** The relative difference between two shapes (width over height), symmetric: 0 is the same shape. */
+export function aspectGap(a: { width: number; height: number }, b: { width: number; height: number }): number {
+  const ra = a.width / a.height, rb = b.width / b.height;
+  return Math.abs(Math.log(ra / rb));
+}
+
+/** The answer brought to `width` x `height` without distortion: resized, centre-cropped then resized, or refused. */
+export async function toShape(answer: Buffer, width: number, height: number): Promise<ReturnType<typeof sharp>> {
+  const meta = await sharp(answer).metadata().catch(() => null);
+  if (!meta?.width || !meta.height) throw new ProviderError("unparseable", "The picture came back unreadable.");
+  const gap = aspectGap(meta, { width, height });
+  if (gap > ASPECT_CROP) throw new ProviderError("unparseable", "The picture came back in another shape, so it wasn't used. Try again.");
+  if (gap <= ASPECT_SAME) return sharp(answer).resize(width, height, { fit: "fill" });
+  // Cut the middle to the asked shape first: cover crops, it never stretches.
+  return sharp(answer).resize(width, height, { fit: "cover", position: "centre" });
+}
+
 export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchLike = fetch): ImageProvider {
   const base = (config.baseUrl ?? RUNPOD_BASE).replace(/\/+$/, "");
   const auth = { Authorization: `Bearer ${config.apiKey}` };
@@ -299,16 +326,34 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
     return res;
   };
 
+  /**
+   * A job given up on is cancelled at Runpod (PI-39): left running it can still
+   * finish and be billed while the app has moved on. Best effort: a cancel that
+   * fails changes nothing for the caller.
+   */
+  const cancel = async (model: string, id: string) => {
+    await fetchImpl(`${base}/${model}/cancel/${id}`, { method: "POST", headers: auth, signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
+  };
+
   /** Run one job to the end: runsync answers when done, or hands back an id to wait on. */
   const run = async (model: string, input: Record<string, unknown>, what: string): Promise<string> => {
     const deadline = Date.now() + config.timeoutMs;
     const first = await send(`${base}/${model}/runsync`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ input }) }, what, deadline);
     let job = (await first.json().catch(() => null)) as JobReply | null;
     while (job && (job.status === "IN_QUEUE" || job.status === "IN_PROGRESS") && job.id) {
-      if (Date.now() > deadline) throw new ProviderError("timeout", `${what} timed out.`, true);
+      const id = job.id;
+      if (Date.now() > deadline) {
+        await cancel(model, id);
+        throw new ProviderError("timeout", `${what} timed out.`, true);
+      }
       await new Promise((r) => setTimeout(r, 2000));
-      const next = await send(`${base}/${model}/status/${job.id}`, { headers: auth }, what, deadline);
-      job = (await next.json().catch(() => null)) as JobReply | null;
+      try {
+        const next = await send(`${base}/${model}/status/${id}`, { headers: auth }, what, deadline);
+        job = (await next.json().catch(() => null)) as JobReply | null;
+      } catch (e) {
+        if (e instanceof ProviderError && e.kind === "timeout") await cancel(model, id);
+        throw e;
+      }
     }
     if (!job || job.status !== "COMPLETED") {
       const why = typeof job?.error === "string" ? job.error.slice(0, 200) : "no reason given";
@@ -366,7 +411,7 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
         const model = config.extendModel || config.editModel;
         const canvas = await sharp(source).png().toBuffer();
         const answer = await download(await run(model, inputFor(model, EXTEND_PROMPT, inline(canvas)), "Extending the picture"));
-        return asPng(sharp(answer).resize(width, height, { fit: "fill" }), model);
+        return asPng(await toShape(answer, width, height), model);
       }
 
       const model = intent === "erase" ? config.eraseModel || config.editModel : config.editModel;
@@ -418,12 +463,9 @@ export function runpodImageProvider(config: RunpodImageConfig, fetchImpl: FetchL
       const answer = await download(await run(model, inputFor(model, prompt, inline(crop)), "Changing the picture"));
 
       // Back to the close-up's own size and into its place in the full picture.
-      let patch: Buffer;
-      try {
-        patch = await sharp(answer).resize(area.width, area.height, { fit: "fill" }).png().toBuffer();
-      } catch {
-        throw new ProviderError("unparseable", "The picture came back unreadable.");
-      }
+      // An answer in another shape is cropped to the close-up's shape, never
+      // stretched into it (PI-24); one far off is refused (toShape).
+      const patch = await (await toShape(answer, area.width, area.height)).png().toBuffer();
       return asPng(sharp(source).composite([{ input: patch, left: area.left, top: area.top }]), model);
     },
   };

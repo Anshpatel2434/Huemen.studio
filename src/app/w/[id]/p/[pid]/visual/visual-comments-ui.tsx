@@ -20,7 +20,8 @@
  *
  * Huemen components only: no browser dialogs, selects or prompts.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ImagePlus, X } from "lucide-react";
 import { AgentDots, Menu, MenuItem, MenuSeparator } from "@/components/ui";
 import { BoardIconButton } from "./visual-panels";
@@ -29,7 +30,7 @@ import type { JobView } from "@/lib/jobs/types";
 import type { ArtboardKind, PictureMode } from "@/lib/visual/design";
 import type { VisualComment } from "@/lib/data/visual-comments";
 import type { Box } from "@/lib/visual/region-types";
-import type { PinKind, Stroke } from "@/lib/visual/picture-tools";
+import { PICTURE_BUDGET, usesPictures, type PinKind, type Stroke } from "@/lib/visual/picture-tools";
 import { placePins } from "@/lib/visual/pins";
 import { boxIn, pictureRectIn, pointIn, rectOfBox, type Point, type Rect } from "./picture-tools-maths";
 
@@ -67,6 +68,8 @@ export type DraftPin = {
   pic?: Box;
   /** The picture's shape, width over height (a stroke's width is a share of its shorter side). */
   aspect?: number;
+  /** Why it didn't go through when it was sent; it stays pinned with this (PI-32). */
+  error?: string;
 };
 /** A draft as a surface makes it; the board adds whose it is. */
 export type NewDraft = Omit<DraftPin, "id" | "itemId" | "artboard" | "visualId">;
@@ -87,13 +90,31 @@ export type Watched = {
   /** What to say when it is done (else "Picture ready"). */ done?: string;
   /** Set while the job waits after a failed try: why it failed and when it tries again. */
   retrying?: { error: string; at: string; attempt: number; of: number } | null;
+  /** Started in another tab (or by someone else): this board shows it, its undo is theirs (PI-27). */
+  foreign?: boolean;
 };
 
-/** Polls each watched job; calls onDone once per job when it stops (succeeded, failed or dead). */
-export function useJobWatch(tenantId: string, initial: Watched[], onDone: (w: Watched, job: JobView) => void) {
+/** Why a job stopped being watched without finishing (PI-28). */
+export type Lost = "signed_out" | "gone" | "slow";
+/** After this long a job is still watched, but the board says so and offers Stop. */
+export const WATCH_SLOW_MS = 10 * 60 * 1000;
+
+/**
+ * Polls each watched job; calls onDone once per job when it stops (succeeded,
+ * failed or dead). A reply that can never turn into an answer is not polled
+ * for ever (PI-28): signed out (401) or the job gone (404) stops the watch
+ * and calls onLost; a job still going after WATCH_SLOW_MS calls onLost once
+ * with "slow" and is still watched.
+ */
+export function useJobWatch(tenantId: string, initial: Watched[], onDone: (w: Watched, job: JobView) => void, onLost?: (w: Watched, why: Lost) => void) {
   const [watching, setWatching] = useState<Watched[]>(initial);
   const done = useRef(onDone);
   useEffect(() => { done.current = onDone; }, [onDone]);
+  const lost = useRef(onLost);
+  useEffect(() => { lost.current = onLost; }, [onLost]);
+  /** When each job was first watched here, and the slow ones already said. */
+  const since = useRef(new Map<string, number>());
+  const slowSaid = useRef(new Set<string>());
   const current = useRef(watching);
   useEffect(() => { current.current = watching; }, [watching]);
   // Polling restarts only when the set of jobs changes, not when a card's retry note does.
@@ -106,9 +127,22 @@ export function useJobWatch(tenantId: string, initial: Watched[], onDone: (w: Wa
       for (const id of ids) {
         try {
           const res = await fetch(`/w/${tenantId}/jobs/${id}`, { cache: "no-store" });
-          if (!res.ok || stop) continue;
+          if (stop) continue;
+          if (res.status === 401 || res.status === 404) {
+            const w = current.current.find((x) => x.jobId === id);
+            setWatching((all) => all.filter((x) => x.jobId !== id));
+            if (w) lost.current?.(w, res.status === 401 ? "signed_out" : "gone");
+            continue;
+          }
+          if (!res.ok) continue;
           const job = (await res.json()) as JobView;
           if (job.status === "queued" || job.status === "running") {
+            if (!since.current.has(id)) since.current.set(id, Date.now());
+            if (Date.now() - since.current.get(id)! > WATCH_SLOW_MS && !slowSaid.current.has(id)) {
+              slowSaid.current.add(id);
+              const w = current.current.find((x) => x.jobId === id);
+              if (w) lost.current?.(w, "slow");
+            }
             // A try failed and the job waits for the next: say so on the card,
             // rather than "Drawing" through the wait.
             const retrying = job.status === "queued" && job.attempts > 0 && job.error
@@ -130,7 +164,8 @@ export function useJobWatch(tenantId: string, initial: Watched[], onDone: (w: Wa
     return () => { stop = true; clearInterval(t); };
   }, [tenantId, jobIds]);
   const watch = useCallback((w: Watched) => setWatching((all) => [...all.filter((x) => x.jobId !== w.jobId), w]), []);
-  return { watching, watch };
+  const unwatch = useCallback((jobId: string) => setWatching((all) => all.filter((x) => x.jobId !== jobId)), []);
+  return { watching, watch, unwatch };
 }
 
 /** Seconds until an ISO time, never below 0. */
@@ -165,8 +200,26 @@ export function WorkingOverlay({ label, retrying }: { label: string; retrying?: 
 
 // ---- the picture menu ---------------------------------------------------------------
 
-/** The picture menu's width (18rem), in the canvas's own unzoomed pixels. */
+/** The picture menu's width (18rem) on screen, at most the screen less its gutters. */
 const MENU_W = 288;
+/** Space kept between the menu and the screen's edges. */
+const MENU_GUTTER = 8;
+
+/**
+ * Where the menu goes on screen: under the button, its right edge on the
+ * button's right edge when there is room, else its left edge on the button's
+ * left edge, and never past either side of the screen (PI-09: at 375 px it ran
+ * off the right edge). Above the button when there is no room below. Pure.
+ */
+export function menuPlace(button: { left: number; right: number; top: number; bottom: number }, screen: { width: number; height: number }, menuHeight: number): { left: number; top: number; width: number } {
+  const width = Math.min(MENU_W, screen.width - 2 * MENU_GUTTER);
+  let left = button.right - width;
+  if (left < MENU_GUTTER) left = button.left;
+  left = Math.max(MENU_GUTTER, Math.min(left, screen.width - width - MENU_GUTTER));
+  const below = button.bottom + 6;
+  const top = below + menuHeight > screen.height - MENU_GUTTER && button.top - 6 - menuHeight >= MENU_GUTTER ? button.top - 6 - menuHeight : below;
+  return { left, top, width };
+}
 
 export function PictureMenu({ has, mode, hasPrevious, busy, cutout = null, onDraw, onPrevious, onRemove }: {
   has: boolean; mode: PictureMode | null; hasPrevious: boolean; busy: boolean;
@@ -174,38 +227,57 @@ export function PictureMenu({ has, mode, hasPrevious, busy, cutout = null, onDra
   cutout?: { url: string; name: string } | null;
   onDraw: (mode: PictureMode) => void; onPrevious: () => void; onRemove: () => void;
 }) {
-  // Closed, or open towards the side that has room: the menu hangs from the
-  // button's right edge unless that would run it off the canvas's left edge
-  // (a visual at the left of the canvas), where it hangs from the left edge.
-  const [open, setOpen] = useState<false | "left" | "right">(false);
+  // The menu is drawn at screen size, in a layer of its own over the page
+  // (not inside the zoomed canvas), placed by menuPlace so all of it is on
+  // screen at any width and any zoom.
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const place = useCallback(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos(menuPlace(r, { width: window.innerWidth, height: window.innerHeight }, menu.current?.offsetHeight ?? 0));
+  }, []);
+  // Measured once it is on the page (its height decides above or below), and again when the screen changes.
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open, place]);
   useEffect(() => {
     if (!open) return;
-    const close = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const close = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node) && !menu.current?.contains(e.target as Node)) setOpen(false); };
+    // Escape closes the menu and nothing else: the tool in use stays (PI-05).
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } };
+    // The canvas moving under it (a scroll or a pinch) would leave it hanging away from its button.
+    const away = () => setOpen(false);
     document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", esc); };
+    document.addEventListener("keydown", esc, true);
+    document.addEventListener("wheel", away, { passive: true });
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", esc, true); document.removeEventListener("wheel", away); };
   }, [open]);
   const pick = (fn: () => void) => () => { setOpen(false); fn(); };
   const toggle = () => {
     if (open) return setOpen(false);
-    const el = ref.current;
-    if (!el) return setOpen("left");
-    const r = el.getBoundingClientRect();
-    // The canvas zooms its content, so the menu's width on screen is 18rem times that zoom.
-    const zoom = r.width / (el.offsetWidth || r.width) || 1;
-    const edge = el.closest("[data-canvas-bg]")?.closest(".canvas-dots")?.getBoundingClientRect().left ?? 0;
-    setOpen(r.right - MENU_W * zoom < edge + 8 ? "right" : "left");
+    setPos(null);
+    setOpen(true);
   };
   return (
     <div ref={ref} className="relative" onPointerDown={(e) => e.stopPropagation()}>
       {/* aria-expanded reaches the button here (the shared IconButton dropped it). */}
-      <BoardIconButton label={has ? "Picture" : "Add a picture"} onClick={toggle} disabled={busy} expanded={!!open}>
+      <BoardIconButton label={has ? "Picture" : "Add a picture"} onClick={toggle} disabled={busy} expanded={open}>
         <ImagePlus size={14} aria-hidden="true" />
       </BoardIconButton>
-      {open && (
-        <div className={`absolute ${open === "right" ? "left-0" : "right-0"} top-9 z-30`} style={{ width: MENU_W }}>
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menu}
+          className="fixed"
+          // Hidden for the one frame before it is placed, so it never shows in the wrong spot.
+          style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, width: pos?.width ?? MENU_W, visibility: pos ? "visible" : "hidden", zIndex: "var(--z-popover)" }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <Menu label="Picture">
             {!has ? (
               <>
@@ -229,8 +301,11 @@ export function PictureMenu({ has, mode, hasPrevious, busy, cutout = null, onDra
                 <MenuItem danger onClick={pick(onRemove)}>Take the picture off</MenuItem>
               </>
             )}
+            {/* What a new picture costs, said before it is drawn (PI-30). */}
+            <p className="px-3 pt-1 pb-2 text-xs text-ink-faint leading-snug">A new picture: {usesPictures(PICTURE_BUDGET.draw).toLowerCase()} (the extra ones only if it has to clean up stray words).</p>
           </Menu>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -280,15 +355,22 @@ const STATUS_TONE: Record<VisualComment["status"], string> = {
 };
 const UNDONE_TONE = "border-dashed border-[var(--line-strong)]";
 
-/** What sending a comment on each part does, said in the field before it is sent. */
-const TARGET_HINT: Record<Target, string> = {
-  picture: "Only this area of the picture is redrawn. Uses 1 picture.",
-  headline: "Rewrites the heading in your voice, on all three visuals of this piece.",
-  body: "Rewrites this text in your voice.",
-  cta: "Rewrites this text in your voice.",
-  logo: "Changes the design of all three visuals of this piece.",
-  background: "Changes the design of all three visuals of this piece.",
-};
+/**
+ * What sending a comment on each part does, said in the field before it is
+ * sent: exactly what changes (PI-13: a comment on one slide's words rewrote
+ * the whole post while this said "this text"), and what a picture change can
+ * cost (PI-30). `slide`: the comment is on a carousel slide.
+ */
+export function targetHint(t: Target, slide: boolean): string {
+  switch (t) {
+    case "picture": return `Only this area of the picture is redrawn; drag a bigger box for a bigger change. ${usesPictures(PICTURE_BUDGET.comment)}.`;
+    case "headline": return slide ? "Rewrites the heading in your voice. It is the post's opening line, so the post image and quote card change too." : "Rewrites the heading in your voice, on all three visuals of this piece.";
+    case "body": return slide ? "Rewrites the words on this slide only, in your voice. The post's body changes with them." : "Rewrites the post's body in your voice. Every slide that shows it changes too.";
+    case "cta": return slide ? "Rewrites the call to action on this slide, in your voice. It is the post's call to action too." : "Rewrites the call to action in your voice.";
+    case "logo":
+    case "background": return slide ? "Changes the design of all three visuals of this piece, every slide included." : "Changes the design of all three visuals of this piece.";
+  }
+}
 
 /**
  * What became of a comment, in the words the pin and the side panel both use.
@@ -328,6 +410,14 @@ function partAt(frame: HTMLElement, x: number, y: number): Target {
   return "background";
 }
 
+/** The box a click on a visual makes, centred on the point (fractions of the frame), kept on the frame. Pure. */
+export function clickBox(px: number, py: number, picture: boolean): Box {
+  const w = picture ? 0.3 : 0.16, h = picture ? 0.24 : 0.12;
+  const x = Math.max(0, Math.min(1 - w, px - w / 2));
+  const y = Math.max(0, Math.min(1 - h, py - h / 2));
+  return { x, y, w, h };
+}
+
 /** The field's width on screen, whatever the canvas zoom. */
 const FIELD_W = 252;
 
@@ -342,10 +432,12 @@ const FIELD_W = 252;
  * over it when the box is low on the visual. `rect` is the box, in the
  * surface's own (unzoomed) pixels.
  */
-export function DraftField({ rect, flip, label, chips, note, onNote, placeholder, hint, onEnter, onEscape, onRemove, removeLabel }: {
+export function DraftField({ rect, flip, label, chips, note, onNote, placeholder, hint, error, onEnter, onEscape, onRemove, removeLabel }: {
   rect: Rect; flip: boolean; label: string;
   chips?: { label: string; value: Target; items: Target[]; onChange: (t: Target) => void };
   note: string; onNote: (v: string) => void; placeholder: string; hint?: string;
+  /** Why the last Send of this change didn't go through. */
+  error?: string;
   onEnter: () => void; onEscape: () => void; onRemove: () => void; removeLabel: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -400,6 +492,7 @@ export function DraftField({ rect, flip, label, chips, note, onNote, placeholder
         />
         <BoardIconButton label={removeLabel} onClick={onRemove}><X size={14} aria-hidden="true" /></BoardIconButton>
       </div>
+      {error && <p role="alert" className="text-xs text-danger leading-snug">Not sent: {error}</p>}
       {hint && <p className="text-xs text-ink-faint leading-snug">{hint}</p>}
     </div>
   );
@@ -412,6 +505,7 @@ export function DraftDot({ no, at, note, open, onOpen }: { no: number; at: { lef
   return (
     <button
       type="button"
+      data-pin=""
       onPointerDown={(e) => e.stopPropagation()}
       onClick={onOpen}
       aria-expanded={!!open}
@@ -434,8 +528,10 @@ export function DraftDot({ no, at, note, open, onOpen }: { no: number; at: { lef
  * any zoom and in the full-size export. Positions on screen are measured in
  * event handlers and an animation frame, never during render.
  */
-export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draftNumbers, openDraft, onDraft, pictureLock, onRefuse, onRetry, onDismiss, children }: {
+export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draftNumbers, openDraft, onDraft, pictureLock, onRefuse, onRetry, onDismiss, slides = false, children }: {
   mode: "off" | "show" | "on";
+  /** The visual is a carousel: a comment is on one slide, and its hint says so. */
+  slides?: boolean;
   /** Earlier comments on this visual, oldest first. */
   comments: VisualComment[];
   /** The number each comment carries: its place among the PIECE's comments, the same as in the side panel. */
@@ -502,8 +598,9 @@ export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draf
         const out: Record<string, Rect> = {};
         const frames = [...el.querySelectorAll<HTMLElement>("[data-part='background']")];
         for (const c of comments) {
+          // On the frame it was put on (PI-12); an older comment, with none stored, on the first frame with its part.
           const part = el.querySelector(`[data-part='${c.target}']`);
-          const frame = part?.closest<HTMLElement>("[data-part='background']") ?? frames[0];
+          const frame = (c.frame !== null ? frames[c.frame] : undefined) ?? part?.closest<HTMLElement>("[data-part='background']") ?? frames[0];
           const rect = frame ? rectIn(frame, c.box) : null;
           if (rect) out[c.id] = rect;
         }
@@ -561,13 +658,16 @@ export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draf
     if (!s0) return;
     let box = frac(s0.frame, s0, { x: e.clientX, y: e.clientY });
     const r = s0.frame.getBoundingClientRect();
-    // A click, not a drag: a small box around the point.
+    let target: Target;
+    // A click, not a drag: a box around the point. On the picture it is a room-sized
+    // one (PI-18: a 16% x 12% box made the model draw a plant cut off at its edge);
+    // on the words, a small one that only says where the pin goes.
     if (box.w < 0.03 || box.h < 0.03) {
-      const x = Math.max(0, (s0.x - r.left) / r.width - 0.08);
-      const y = Math.max(0, (s0.y - r.top) / r.height - 0.06);
-      box = { x, y, w: Math.min(0.16, 1 - x), h: Math.min(0.12, 1 - y) };
+      target = partAt(s0.frame, s0.x, s0.y);
+      box = clickBox((s0.x - r.left) / r.width, (s0.y - r.top) / r.height, target === "picture");
+    } else {
+      target = partAt(s0.frame, r.left + (box.x + box.w / 2) * r.width, r.top + (box.y + box.h / 2) * r.height);
     }
-    const target = partAt(s0.frame, r.left + (box.x + box.w / 2) * r.width, r.top + (box.y + box.h / 2) * r.height);
     if (target === "picture" && pictureLock) return onRefuse?.(pictureLock);
     const frame = Math.max(0, framesOf().indexOf(s0.frame));
     const offered = partsIn(s0.frame).filter((t) => t !== "picture" || !pictureLock);
@@ -617,7 +717,7 @@ export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draf
             const no = numbers?.[c.id] ?? n + 1;
             const state = commentState(c, undone(c));
             return (
-              <div key={c.id} className={`absolute ${openPin === c.id ? "z-30" : "z-20"}`} style={at}>
+              <div key={c.id} data-pin="" className={`absolute ${openPin === c.id ? "z-30" : "z-20"}`} style={at}>
                 <button
                   type="button"
                   tabIndex={on ? 0 : -1}
@@ -672,7 +772,8 @@ export function CommentSurface({ mode, comments, numbers, isUndone, drafts, draf
               note={opened.note}
               onNote={(v) => onDraft.update(opened.id, { note: v })}
               placeholder="Add a comment..."
-              hint={TARGET_HINT[opened.target]}
+              hint={targetHint(opened.target, slides)}
+              error={opened.error}
               onEnter={() => { if (opened.note.trim()) onDraft.open(null); }}
               onEscape={() => (opened.note.trim() ? onDraft.open(null) : onDraft.remove(opened.id))}
               onRemove={() => onDraft.remove(opened.id)}

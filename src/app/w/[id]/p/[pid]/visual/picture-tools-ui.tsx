@@ -27,7 +27,7 @@ import { X } from "lucide-react";
 import { AgentDots, Modal } from "@/components/ui";
 import { btnClass } from "@/components/btn";
 import type { Box } from "@/lib/visual/region-types";
-import { BRUSH_WIDTH, PEN_WIDTH, type ResizeInput, type Stroke } from "@/lib/visual/picture-tools";
+import { BRUSH_WIDTH, PEN_WIDTH, PICTURE_BUDGET, usesPictures, type ResizeInput, type Stroke } from "@/lib/visual/picture-tools";
 import { placePins } from "@/lib/visual/pins";
 import { RangeSlider } from "./visual-panels";
 import { DraftDot, DraftField, pictureOnScreen, picturePoint, type DraftOps, type DraftPin } from "./visual-comments-ui";
@@ -195,13 +195,23 @@ export function PictureSurface({ tool, pictureKey, lock, drafts, numbers, openDr
   // there and then, and handled exactly as the overlay would: it never falls
   // through to the visual (which would open the piece instead).
   const clickTool = !!pictureKey && (tool === "cutout" || tool === "resize");
+  // What is in use NOW, for a pick that lands later (PI-08): a click made
+  // before the picture decoded must not start a cut-out after the person has
+  // left the tool or the picture has changed.
+  const now = useRef({ tool, pictureKey });
+  useEffect(() => { now.current = { tool, pictureKey }; }, [tool, pictureKey]);
   const pick = () => {
     if (lock) return onRefuse(lock);
     const g = measurePicture(wrap.current);
     if (g) return onPick({ natural: g.natural, slot: g.slot });
-    // The picture is on the page but not decoded yet: pick as soon as it is.
+    // The picture is on the page but not decoded yet: pick as soon as it is, if the same tool is still on the same picture.
+    const at = { tool, pictureKey };
     const img = wrap.current?.querySelector<HTMLImageElement>("img[data-part='picture']");
-    void img?.decode().then(() => { const later = measurePicture(wrap.current); if (later) onPick({ natural: later.natural, slot: later.slot }); }, () => undefined);
+    void img?.decode().then(() => {
+      if (now.current.tool !== at.tool || now.current.pictureKey !== at.pictureKey) return;
+      const later = measurePicture(wrap.current);
+      if (later) onPick({ natural: later.natural, slot: later.slot });
+    }, () => undefined);
   };
   /** On the shown picture, or on its <img> before it has a size: either way the tool's. */
   const onPicture = (e: React.MouseEvent) =>
@@ -307,7 +317,8 @@ export function PictureSurface({ tool, pictureKey, lock, drafts, numbers, openDr
                 note={opened.note}
                 onNote={(v) => onDraft.update(opened.id, { note: v })}
                 placeholder="Say what to change here..."
-                hint="Only the marked part is redrawn, and the marks are not kept. Uses 1 picture."
+                hint={`Only the marked part is redrawn, and the marks are not kept. ${usesPictures(PICTURE_BUDGET.markup)}.`}
+                error={opened.error}
                 onEnter={() => { if (opened.note.trim()) onDraft.open(null); }}
                 onEscape={() => onDraft.open(null)}
                 onRemove={() => onDraft.remove(opened.id)}
@@ -356,7 +367,7 @@ const round4 = (v: number) => Math.round(v * 10000) / 10000;
 const OUTCOME: Record<ResizeOutcome, string> = {
   same: "The picture already has this shape. Move it, zoom it or pick another shape.",
   crop: "Crop. Free, done at once.",
-  extend: "The uncovered part is drawn to match. Uses 1 picture.",
+  extend: `The uncovered part is drawn to match. ${usesPictures(PICTURE_BUDGET.extend)}: a try that moves the picture or leaves a join is not kept, and the next one is used.`,
   too_little: "Too little of the picture is left. Draw a new picture in this shape instead.",
 };
 
@@ -422,7 +433,7 @@ export function ResizeModal({ url, natural, fit, onClose, onApply }: {
         <>
           <button type="button" onClick={onClose} className={btnClass("ghost", "sm")}>Cancel</button>
           <button type="button" onClick={() => void apply()} disabled={busy || outcome === "same" || outcome === "too_little"} className={btnClass("primary", "sm")}>
-            {busy ? <><AgentDots /> Applying…</> : outcome === "extend" ? "Apply, uses 1 picture" : "Apply"}
+            {busy ? <><AgentDots /> Applying…</> : outcome === "extend" ? `Apply, ${usesPictures(PICTURE_BUDGET.extend).toLowerCase()}` : "Apply"}
           </button>
         </>
       }

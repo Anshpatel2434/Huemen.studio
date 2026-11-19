@@ -26,6 +26,8 @@ export const WORD_BOX_MAX_AREA = 0.45;
 
 /** What the board says under a visual whose picture may still show words. */
 export const WORDS_NOTICE = "This picture may show some words. Use Erase to remove them.";
+/** ...and under one whose words check could not run (PI-20): not the same as "no words". */
+export const WORDS_UNCHECKED = "Words not checked: the check couldn't run when this picture was made. Look for stray words before you post, or check now.";
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
@@ -39,9 +41,12 @@ type Raw = { x?: unknown; y?: unknown; w?: unknown; h?: unknown };
  *   - else pixels of the copy it looked at.
  * Boxes that can't be read, that start outside the picture, or that cover
  * most of it are dropped. `aspect` is the picture's width over its height
- * (for the minimum pad).
+ * (for the minimum pad). `place` is where the picture sits in the copy the
+ * model saw, as shares of the copy (the words check sends it centred in a
+ * square of 1000, lib/visual/look-read forWordsCheck, so pixels and
+ * thousandths are the same numbers there: PI-22).
  */
-export function wordBoxes(raw: unknown, sent: { width: number; height: number }, aspect = 1): Box[] {
+export function wordBoxes(raw: unknown, sent: { width: number; height: number }, aspect = 1, place: Box = { x: 0, y: 0, w: 1, h: 1 }): Box[] {
   if (!Array.isArray(raw)) return [];
   const nums = raw
     .map((b: Raw) => [b?.x, b?.y, b?.w, b?.h].map(Number))
@@ -55,8 +60,10 @@ export function wordBoxes(raw: unknown, sent: { width: number; height: number },
   const minX = WORD_PAD_MIN * (shape >= 1 ? 1 / shape : 1);
   const minY = WORD_PAD_MIN * (shape >= 1 ? 1 : shape);
   const out: Box[] = [];
+  const pw = place.w > 0 ? place.w : 1, ph = place.h > 0 ? place.h : 1;
   for (const [x, y, w, h] of nums) {
-    const bx = x / sx, by = y / sy, bw = w / sx, bh = h / sy;
+    // As shares of the copy, then of the picture inside it (`place`: the copy may have bands around the picture).
+    const bx = (x / sx - place.x) / pw, by = (y / sy - place.y) / ph, bw = w / sx / pw, bh = h / sy / ph;
     // Starts off the picture (live, a box at y = 1000), or is most of it: not a word to erase.
     if (bx < -0.01 || by < -0.01 || bx >= 0.99 || by >= 0.99 || bw * bh > WORD_BOX_MAX_AREA) continue;
     const px = Math.max(minX, bw * WORD_PAD);

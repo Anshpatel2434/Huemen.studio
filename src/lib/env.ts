@@ -66,6 +66,11 @@ const schema = z.object({
   // start-up refusal when missing: only the design reading needs it, and it
   // fails visibly (and is logged) with a config message until it is set.
   AI_VISION_MODEL: z.preprocess(blankIsUnset, z.string().optional()),
+  // Groq only: a key of its own for the model that looks at pictures (the
+  // words check after a picture is drawn, design reading). Each Groq key has
+  // its own per-minute and daily allowance, so the looks no longer wait behind
+  // drafts and briefs (PI-40). Unset: GROQ_API_KEY is used, as before.
+  AI_VISION_API_KEY: z.preprocess(blankIsUnset, z.string().optional()),
   // Thinking depth per route. Left unset, nothing is sent: some models reject
   // the parameter, so it is opt-in per deployment rather than assumed.
   AI_TEXT_EFFORT_STRONG: z.preprocess(blankIsUnset, z.enum(EFFORT).optional()),
@@ -79,6 +84,11 @@ const schema = z.object({
   // workspace, per minute. 0 turns one off. The monthly cap is separate.
   AI_RATE_PER_USER_MINUTE: z.preprocess(blankIsUnset, z.coerce.number().int().min(0).default(20)),
   AI_RATE_PER_WORKSPACE_MINUTE: z.preprocess(blankIsUnset, z.coerce.number().int().min(0).default(60)),
+  // Paid pictures one workspace may use in one day (every image model call
+  // counts, kept or refused; Remove background is free and does not). A
+  // backstop under the monthly cap so a run of retries can't spend a month in
+  // an afternoon (PI-30). 0 turns it off.
+  AI_IMAGE_DAILY_CAP: z.preprocess(blankIsUnset, z.coerce.number().int().min(0).default(60)),
   // Pictures (ChatGPT Image through OpenAI's Images API). The model name is
   // config, e.g. the current GPT Image model; the app never guesses one.
   AI_IMAGE_MODEL: z.preprocess(blankIsUnset, z.string().optional()),

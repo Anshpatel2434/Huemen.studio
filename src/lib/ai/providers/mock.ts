@@ -322,10 +322,26 @@ export const mockImageProvider: ImageProvider = {
     const tint = paletteOf(req.context.serialized)[seedOf(req.prompt) % 3].replace("#", "");
     const full = tint.length === 3 ? tint.split("").map((c) => c + c).join("") : tint;
     const [tr, tg, tb] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+    // Like a model told to keep the close-up's outer edge as it is, the stand-in
+    // changes the middle of the marked area and leaves a rim of it alone, so the
+    // change never runs into the area's edge (lib/visual/region cutAtEdge).
+    let mx0 = width, my0 = height, mx1 = -1, my1 = -1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (mask[(y * width + x) * 4 + 3] >= 128) continue;
+        if (x < mx0) mx0 = x;
+        if (x > mx1) mx1 = x;
+        if (y < my0) my0 = y;
+        if (y > my1) my1 = y;
+      }
+    }
+    const rimX = Math.round((mx1 - mx0 + 1) * 0.2), rimY = Math.round((my1 - my0 + 1) * 0.2);
+    const whole = mx0 === 0 && my0 === 0 && mx1 === width - 1 && my1 === height - 1;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const i = (y * width + x) * 4;
         if (mask[i + 3] >= 128) continue;
+        if (!whole && (x < mx0 + rimX || x > mx1 - rimX || y < my0 + rimY || y > my1 - rimY)) continue;
         const stripe = ((x + y) >> 4) % 2 === 0 ? 0.65 : 0.45;
         raw[i] = Math.round(raw[i] * (1 - stripe) + tr * stripe);
         raw[i + 1] = Math.round(raw[i + 1] * (1 - stripe) + tg * stripe);

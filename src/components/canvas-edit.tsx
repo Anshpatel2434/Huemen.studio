@@ -62,9 +62,16 @@ export function CanvasHistory({ children }: { children: ReactNode }) {
         to.current = [...to.current, step];
         toast(`${redo ? "Redo" : "Undo"}: ${step.label}`);
       } catch (e) {
-        // A step from before the piece changed elsewhere (a rewrite, another
-        // tab) is dropped, not retried: replaying it would mix two versions.
-        toast(staleMessage(e) ?? "Couldn't do that. Try again.", "danger");
+        // A step that can't run NOW but can later (a picture being changed:
+        // its versions wait) stays where it was, with the reason.
+        if (e instanceof Error && (e as Error & { keep?: boolean }).keep) {
+          from.current = [...from.current, step];
+          toast(e.message, "neutral");
+        } else {
+          // A step from before the piece changed elsewhere (a rewrite, another
+          // tab) is dropped, not retried: replaying it would mix two versions.
+          toast(staleMessage(e) ?? "Couldn't do that. Try again.", "danger");
+        }
       }
       busy.current = false;
     };

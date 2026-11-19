@@ -428,6 +428,38 @@ const P = (t: Target, rest = "") => `/w/${t.tenantId}/p/${t.projectId}${rest}`;
     fresh: freshPicture,
     ok: (o, c) => { returns(isOk)(o); expect(c).toContain("jobs"); },
   });
+  // 2026-11-19 picture fixes. Clear done (several comments, kept in the table) and its Undo.
+  on(f, pictures, "dismissCommentsAction", (fn, t) => fn(t.tenantId, t.projectId, [t.commentId]), {
+    fresh: async (fx) => {
+      const v = await freshVisual(fx);
+      return { ...v, commentId: await newComment(fx.A, v.itemId, v.visualId, fx.scopeA.userId!) };
+    },
+    ok: (o, c) => { returns((v) => Array.isArray(v) && v.length === 1)(o); expect(c).toContain("visual_comments"); },
+  });
+  on(f, pictures, "restoreCommentsAction", (fn, t) => fn(t.tenantId, t.projectId, [t.commentId]), {
+    fresh: async (fx) => {
+      const v = await freshVisual(fx);
+      const commentId = await newComment(fx.A, v.itemId, v.visualId, fx.scopeA.userId!);
+      await one("UPDATE visual_comments SET dismissed_at = now() WHERE id=$1 RETURNING id", [commentId]);
+      return { ...v, commentId };
+    },
+    ok: (o, c) => { returns((v) => Array.isArray(v) && v.length === 1)(o); expect(c).toContain("visual_comments"); },
+  });
+  // The picture work running in a project, for a second tab: read only, A's jobs to A alone.
+  on(f, pictures, "pictureJobsAction", (fn, t) => fn(t.tenantId, t.projectId), {
+    fresh: async (fx) => {
+      const v = await freshVisual(fx);
+      await one("INSERT INTO jobs (tenant_id, kind, payload, label, created_by) VALUES ($1, 'picture_generate', $2, 'Drawing a picture', $3) RETURNING id",
+        [fx.A, JSON.stringify({ projectId: fx.PA, contentItemId: v.itemId, artboard: "post", mode: "live_text" }), fx.scopeA.userId]);
+      return v;
+    },
+    ok: returns((v) => Array.isArray(v) && v.length >= 1),
+  });
+  // "Check for words" on one picture: one look, the answer recorded on A's picture only.
+  on(f, pictures, "checkWordsAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, "post"), {
+    fresh: freshPicture,
+    ok: (o, c) => { returns(isOk)(o); expect(c).toContain("image_assets"); },
+  });
   // Undo of a copy edit made on the visual board.
   on(f, pictures, "revertCopyAction", (fn, t) => fn(t.tenantId, t.projectId, t.itemId, { hook: "Reverted on the visual board" }, null, null), {
     fresh: freshVisual,

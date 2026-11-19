@@ -10,7 +10,7 @@ import { LockedStep } from "@/components/locked-step";
 import { VisualBoard } from "./visual-board";
 import { pictureVersions } from "@/lib/data/pictures";
 import { listComments } from "@/lib/data/visual-comments";
-import { activeJobsFor } from "@/lib/jobs";
+import { watchedPictureJobs } from "@/lib/data/picture-jobs";
 import { cutoutStatus } from "@/lib/ai/cutout";
 import type { ArtboardKind } from "@/lib/visual/design";
 import { schemeIndex } from "@/lib/visual/schemes";
@@ -34,7 +34,7 @@ export default async function VisualPage({ params, searchParams }: PageProps<"/w
   }
   const [items, f, visuals, ws, pack, logo, comments, jobs, fontFiles] = await Promise.all([
     listContent(scope), loadFoundation(scope), listVisuals(scope), getWorkspace(scope), loadPackForWorkspace(scope), logoUrl(scope),
-    listComments(scope), activeJobsFor(scope, ["picture_generate", "picture_edit", "picture_resize", "picture_cutout"], pid), brandFontUploads(scope),
+    listComments(scope), watchedPictureJobs(scope), brandFontUploads(scope),
   ]);
   // The sign-off on a visual is the PERSON (their voice pack's name), else the
   // workspace; never the piece's own title, which is what a project is now.
@@ -56,34 +56,8 @@ export default async function VisualPage({ params, searchParams }: PageProps<"/w
   // Every version of every picture, not only the ones in use: the board lists
   // them so an earlier picture can be put back after a reload.
   const versions = await pictureVersions(scope);
-  // Work still running when the page loads keeps its "drawing" overlay.
-  const visualById = new Map(visuals.map((v) => [v.id, v]));
-  const watching = jobs.flatMap((j) => {
-    // Jobs started on a visual by name: a new picture, a resize, a background removal.
-    const direct: Record<string, { label: string; done?: string }> = {
-      picture_generate: { label: "Drawing a picture" },
-      picture_resize: { label: "Resizing the picture", done: "Picture resized. The new part was drawn to match." },
-      picture_cutout: { label: "Removing the background", done: "Background removed. The picture now sits on your background colour." },
-    };
-    const d = direct[j.kind];
-    if (d) {
-      return typeof j.payload.contentItemId === "string" && typeof j.payload.artboard === "string"
-        ? [{ jobId: j.id, contentItemId: j.payload.contentItemId, artboard: j.payload.artboard, ...d }]
-        : [];
-    }
-    // Picture changes: one comment (as before the picture tools), or several sent together.
-    const ids = Array.isArray(j.payload.commentIds) ? j.payload.commentIds.map(String) : j.payload.commentId ? [String(j.payload.commentId)] : [];
-    const c = comments.find((x) => ids.includes(x.id));
-    const v = c && visualById.get(c.visualId);
-    const n = ids.length;
-    return c && v
-      ? [{
-          jobId: j.id, contentItemId: c.contentItemId, artboard: ARTBOARD_OF[v.kind] ?? "post",
-          label: n > 1 ? `Changing the picture (${n} changes)` : "Changing the picture",
-          done: n > 1 ? `Picture changed: ${n} changes. Only the marked areas were redrawn.` : "Picture changed. Only the marked area was redrawn.",
-        }]
-      : [];
-  });
+  // Work still running when the page loads keeps its "drawing" overlay (lib/data/picture-jobs).
+  const watching = jobs;
   // Whether Remove background can run on this server; the tool shows disabled with the reason when it can't.
   const cutout = cutoutStatus();
 

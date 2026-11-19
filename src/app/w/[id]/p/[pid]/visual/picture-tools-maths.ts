@@ -13,7 +13,7 @@
  *   drafts                 what the strip says before Send
  */
 import type { Box } from "@/lib/visual/region-types";
-import { MAX_STROKE_POINTS, MIN_EXTEND_COVER, RESIZE_RATIO, coversFrame, type PinKind, type Stroke } from "@/lib/visual/picture-tools";
+import { MAX_STROKE_POINTS, MIN_EXTEND_COVER, PICTURE_BUDGET, RESIZE_RATIO, coversFrame, type PinKind, type Stroke } from "@/lib/visual/picture-tools";
 
 export type Rect = { left: number; top: number; width: number; height: number };
 export type Point = [number, number];
@@ -361,13 +361,21 @@ export function draftSummary(drafts: DraftLike[]): { changes: number; pictures: 
   return { changes: drafts.length, pictures, missing, ready: drafts.length > 0 && missing === 0 };
 }
 
-/** The strip's count, e.g. "3 changes · uses 2 pictures". Empty when nothing is waiting. */
+/** The most paid pictures one change can use (lib/visual/picture-tools PICTURE_BUDGET); words and design changes use none. */
+export const mostPictures = (d: DraftLike) => (!isPicturePin(d) ? 0 : d.kind === "erase" ? PICTURE_BUDGET.erase : d.kind === "markup" ? PICTURE_BUDGET.markup : PICTURE_BUDGET.comment);
+
+/**
+ * The strip's count, e.g. "3 changes · uses 2 to 6 pictures": the fewest and
+ * the most it can use, retries included (PI-30: it said "1 picture" and a
+ * change could use three). Empty when nothing is waiting.
+ */
 export function summaryLine(drafts: DraftLike[]): string {
   const s = draftSummary(drafts);
   if (!s.changes) return "";
+  const most = drafts.reduce((n, d) => n + mostPictures(d), 0);
   return [
     `${s.changes} change${s.changes === 1 ? "" : "s"}`,
-    s.pictures ? `uses ${s.pictures} picture${s.pictures === 1 ? "" : "s"}` : "",
+    s.pictures ? (most > s.pictures ? `uses ${s.pictures} to ${most} pictures` : `uses ${s.pictures} picture${s.pictures === 1 ? "" : "s"}`) : "",
     s.missing ? `${s.missing} need${s.missing === 1 ? "s" : ""} a comment` : "",
   ].filter(Boolean).join(" · ");
 }

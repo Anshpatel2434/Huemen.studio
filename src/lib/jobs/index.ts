@@ -27,7 +27,7 @@
 import "server-only";
 import { after } from "next/server";
 import { withTenantSession, type SessionScope } from "@/db/session";
-import { AiConfigError, ProviderError, RateLimitError, UsageCapError, userMessage } from "@/lib/ai/errors";
+import { AiConfigError, PictureBudgetError, ProviderError, RateLimitError, UsageCapError, userMessage } from "@/lib/ai/errors";
 import { JOB_HANDLERS, JOB_ON_STOP, type JobKind } from "./handlers";
 import { JobStop, type JobRecord, type JobView } from "./types";
 
@@ -39,6 +39,12 @@ const ADMIN: SessionScope = { tenantId: null, userId: null, isPlatformAdmin: tru
 
 /** How long a worker holds a job before another may take it back. */
 const LEASE_SECONDS = 330;
+/**
+ * A worker renews its lease this often while a slice runs (PI-29): one model
+ * call may wait 180 s and a picture job can make several, so a slow job used
+ * to pass its 330 s lease and be claimed and run (and paid) a second time.
+ */
+const HEARTBEAT_MS = 30_000;
 /** A worker stops taking new work after this long (the function limit is 300s on Vercel). */
 const DEFAULT_BUDGET_MS = 240_000;
 
@@ -168,7 +174,7 @@ export function backoffSeconds(attempt: number): number {
 
 /** Whether a later attempt could succeed, and when to make it. */
 export function classify(err: unknown, attempt: number): { retry: boolean; afterSeconds: number } {
-  if (err instanceof JobStop || err instanceof UsageCapError || err instanceof AiConfigError) return { retry: false, afterSeconds: 0 };
+  if (err instanceof JobStop || err instanceof UsageCapError || err instanceof AiConfigError || err instanceof PictureBudgetError) return { retry: false, afterSeconds: 0 };
   if (err instanceof RateLimitError) return { retry: true, afterSeconds: Math.max(5, err.retryAfterSeconds) };
   if (err instanceof ProviderError) {
     // A provider's rate limit: a per-minute one is waited out (when it says how
@@ -214,6 +220,13 @@ async function runOne(job: JobRecord, deadline: number): Promise<void> {
       c.query("UPDATE jobs SET progress = $2, locked_until = now() + make_interval(secs => $3) WHERE id = $1", [job.id, JSON.stringify(p), LEASE_SECONDS]),
     );
   };
+  // The lease is renewed while the slice runs, so a slow job is never taken back from a live worker.
+  const heartbeat = setInterval(() => {
+    void withTenantSession(ADMIN, (c) =>
+      c.query("UPDATE jobs SET locked_until = now() + make_interval(secs => $2) WHERE id = $1 AND status = 'running'", [job.id, LEASE_SECONDS]),
+    ).catch(() => undefined);
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.();
   try {
     if (!handler) throw new JobStop(`Nothing runs jobs of kind "${job.kind}".`);
     scope = await actorScope(job);
@@ -239,7 +252,8 @@ async function runOne(job: JobRecord, deadline: number): Promise<void> {
     }
   } catch (err) {
     const { retry, afterSeconds } = classify(err, attempt);
-    const message = err instanceof JobStop ? err.message : userMessage(err);
+    // A picture job's failure is said as a picture's, not as "Drafting" (PI-31).
+    const message = err instanceof JobStop ? err.message : userMessage(err, job.kind.startsWith("picture_") ? "picture" : "writing");
     const final = !retry || attempt >= job.max_attempts;
     await withTenantSession(ADMIN, (c) =>
       c.query(
@@ -253,6 +267,8 @@ async function runOne(job: JobRecord, deadline: number): Promise<void> {
     // A job that has stopped for good tells whatever was waiting on it (a comment's pin, say).
     const onStop = JOB_ON_STOP[job.kind as JobKind];
     if (final && onStop && scope) await onStop(scope, job.payload ?? {}, message).catch(() => undefined);
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
