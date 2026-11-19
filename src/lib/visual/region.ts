@@ -687,3 +687,148 @@ export async function marksLeft(original: Uint8Array, edited: Uint8Array, box: B
   };
   return Math.max(0, (await share(edited)) - (await share(original)));
 }
+
+// ---- erase: what the model also cleared, and what it kept -------------------------------
+
+/** Brighter than the original by this much (0-255 luminance), and a pixel outside the brush counts as a shadow the erase lifted. */
+export const SHADOW_LIFT = 7;
+/** How far past the brush a lifted shadow is followed, as a share of the picture's shorter side. */
+export const SHADOW_REACH = 0.3;
+/** A lifted area bigger than this many times the brushed area is the model re-lighting the scene, not a shadow: not taken. */
+export const SHADOW_MAX_GROWTH = 1.5;
+
+const lumaOf = (px: Buffer, i: number, ch: number) => 0.299 * px[i * ch] + 0.587 * px[i * ch + 1] + 0.114 * px[i * ch + 2];
+
+/**
+ * The erase mask grown into the shadow the erased thing cast (2026-11-19: the
+ * model removed a block and its shadow, but only the brushed part of its answer
+ * was kept, so the shadow beyond the brush stayed, cut off in a hard line).
+ * A pixel outside the brush is taken from the model's answer only where that
+ * answer is clearly brighter there (the shadow lifted), reached from the brush
+ * through such pixels, within SHADOW_REACH of it. Everything else outside the
+ * brush is still the original's. Null when nothing was lifted, or when the
+ * lifted area is so big it is a change of light, not a shadow.
+ * Same convention as strokeMask: transparent = take the edit.
+ */
+export async function shadowGrownMask(original: Uint8Array, edited: Uint8Array, mask: Uint8Array): Promise<Uint8Array | null> {
+  const base = sharp(Buffer.from(original)).removeAlpha();
+  const { width, height } = await base.metadata();
+  if (!width || !height) return null;
+  const A = await base.raw().toBuffer();
+  const B = await sharp(Buffer.from(edited)).resize(width, height, { fit: "fill" }).removeAlpha().raw().toBuffer();
+  const m = await sharp(Buffer.from(mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
+  const n = width * height;
+  const take = new Uint8Array(n);
+  const dist = new Int32Array(n).fill(-1);
+  const queue = new Int32Array(n);
+  let head = 0, tail = 0, brushedCount = 0;
+  for (let i = 0; i < n; i++) {
+    if (m[i * 4 + 3] < 128) { take[i] = 1; brushedCount++; dist[i] = 0; queue[tail++] = i; }
+  }
+  if (!brushedCount) return null;
+  const reach = Math.round(SHADOW_REACH * Math.min(width, height));
+  const lifted = (i: number) => lumaOf(B, i, 3) - lumaOf(A, i, 3) > SHADOW_LIFT;
+  let grown = 0;
+  while (head < tail) {
+    const p = queue[head++];
+    const d = dist[p];
+    if (d >= reach) continue;
+    const x = p % width, y = (p - x) / width;
+    const step = (q: number) => {
+      if (dist[q] !== -1) return;
+      dist[q] = d + 1;
+      if (!lifted(q)) return;
+      take[q] = 1;
+      grown++;
+      queue[tail++] = q;
+    };
+    if (x > 0) step(p - 1);
+    if (x < width - 1) step(p + 1);
+    if (y > 0) step(p - width);
+    if (y < height - 1) step(p + width);
+  }
+  if (!grown || grown > brushedCount * SHADOW_MAX_GROWTH) return null;
+  // Widened a few pixels past where the lift fades, so the hand-back to the original has no step.
+  const pad = Math.max(2, Math.round(Math.min(width, height) * 0.012));
+  const wide = await sharp(Buffer.from(take.map((v) => v * 255)), { raw: { width, height, channels: 1 } }).blur(pad).extractChannel(0).raw().toBuffer();
+  for (let i = 0; i < n; i++) if (wide[i] > 20) take[i] = 1;
+  const raw = Buffer.alloc(n * 4);
+  for (let i = 0; i < n; i++) raw[i * 4 + 3] = take[i] ? 0 : 255;
+  return new Uint8Array(await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer());
+}
+
+/**
+ * How much of what was brushed is still there after an edit: the correlation
+ * of brightness inside the brushed area between the two pictures, from about
+ * 0 (what was there is gone) to 1 (handed back as it was). 2026-11-19: the
+ * erase model kept a skirting line it took for part of the room; the line came
+ * back with a correlation near 1, the erased block near 0.
+ */
+export async function keptInside(before: Uint8Array, after: Uint8Array, mask: Uint8Array): Promise<number> {
+  const base = sharp(Buffer.from(before)).removeAlpha();
+  const { width, height } = await base.metadata();
+  if (!width || !height) return 0;
+  const A = await base.raw().toBuffer();
+  const B = await sharp(Buffer.from(after)).resize(width, height, { fit: "fill" }).removeAlpha().raw().toBuffer();
+  const m = await sharp(Buffer.from(mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
+  let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+  for (let i = 0; i < width * height; i++) {
+    if (m[i * 4 + 3] >= 128) continue;
+    const a = lumaOf(A, i, 3), b = lumaOf(B, i, 3);
+    n++; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b;
+  }
+  if (n < 16) return 0;
+  const va = saa / n - (sa / n) ** 2, vb = sbb / n - (sb / n) ** 2;
+  // A flat brushed area (nothing to keep) has no structure to correlate.
+  if (va < 25) return 0;
+  if (vb < 1e-6) return 0;
+  return Math.max(0, (sab / n - (sa / n) * (sb / n)) / Math.sqrt(va * vb));
+}
+
+/**
+ * A thin brushed stroke filled from the two sides of it, with no model: each
+ * brushed pixel takes the colours of the nearest unbrushed pixels across the
+ * stroke (up and down, or left and right, whichever span is shorter), mixed by
+ * how near each side is, then softened a little. A line where a wall meets the
+ * floor goes from wall to floor across where it was. For when the erase model
+ * hands a thin stroke back untouched (2026-11-19: it kept a skirting line it
+ * took for part of the room). Only the brushed pixels change.
+ */
+export async function fillThin(source: Uint8Array, mask: Uint8Array): Promise<Uint8Array> {
+  const base = sharp(Buffer.from(source)).removeAlpha();
+  const { width, height } = await base.metadata();
+  if (!width || !height) throw new Error("The picture couldn't be read.");
+  const A = await base.raw().toBuffer();
+  const m = await sharp(Buffer.from(mask)).resize(width, height, { fit: "fill", kernel: "nearest" }).ensureAlpha().raw().toBuffer();
+  const on = (x: number, y: number) => m[(y * width + x) * 4 + 3] < 128;
+  const out = Buffer.from(A);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!on(x, y)) continue;
+      let u = y, d = y, l = x, r = x;
+      while (u >= 0 && on(x, u)) u--;
+      while (d < height && on(x, d)) d++;
+      while (l >= 0 && on(l, y)) l--;
+      while (r < width && on(r, y)) r++;
+      const vSpan = (u >= 0 && d < height) ? d - u : Infinity;
+      const hSpan = (l >= 0 && r < width) ? r - l : Infinity;
+      let p: number, q: number, t: number;
+      if (vSpan <= hSpan && vSpan !== Infinity) { p = u * width + x; q = d * width + x; t = (y - u) / vSpan; }
+      else if (hSpan !== Infinity) { p = y * width + l; q = y * width + r; t = (x - l) / hSpan; }
+      else {
+        // At the picture's edge on both axes: the one side there is.
+        const side = u >= 0 ? u * width + x : d < height ? d * width + x : l >= 0 ? y * width + l : y * width + r;
+        p = q = side; t = 0;
+      }
+      const i = (y * width + x) * 3;
+      for (let c = 0; c < 3; c++) out[i + c] = Math.round(A[p * 3 + c] * (1 - t) + A[q * 3 + c] * t);
+    }
+  }
+  // Softened inside the stroke only, so the hand-off between the two sides has no steps.
+  const soft = await sharp(out, { raw: { width, height, channels: 3 } }).blur(3).raw().toBuffer();
+  for (let i = 0; i < width * height; i++) {
+    if (m[i * 4 + 3] >= 128) continue;
+    out[i * 3] = soft[i * 3]; out[i * 3 + 1] = soft[i * 3 + 1]; out[i * 3 + 2] = soft[i * 3 + 2];
+  }
+  return new Uint8Array(await sharp(out, { raw: { width, height, channels: 3 } }).png().toBuffer());
+}

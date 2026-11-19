@@ -40,7 +40,7 @@ import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import {
-  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, growBox, objectBoxAt, unionBox, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
+  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, fillThin, growBox, keptInside, objectBoxAt, shadowGrownMask, unionBox, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
   visiblePart, type Box, type PixelRect,
 } from "@/lib/visual/region";
 import { boxesWithin, wordGroups } from "@/lib/visual/picture-words";
@@ -485,6 +485,14 @@ const ERASE_FEATHER = 12;
  * change 0.13.
  */
 export const ERASE_MIN_CHANGE = 0.03;
+/**
+ * More of what was brushed still there than this (lib/visual/region keptInside,
+ * 0-1) and the model kept it. Measured 2026-11-19: a skirting line the model
+ * took for part of the room came back at 0.977; an erased block at 0.000.
+ */
+export const ERASE_KEPT_MAX = 0.85;
+/** A brush this thin (a share of the picture's shorter side) or thinner is a line: when the model keeps it, it is filled from its two sides instead. */
+export const ERASE_THIN_STROKE = 0.05;
 
 export const CUTOUT_LOCKED = "This picture has its background removed. Go back to the version before to change it.";
 
@@ -532,6 +540,8 @@ async function eraseArea(
     context: BrandContext; bytes: Uint8Array; mask: Uint8Array; shape: ImageShape; contentItemId: string; feather: number; area: Box | null; minChange?: number;
     /** Only the words in the mask go (ImageEditRequest `erase`), not everything there. */
     words?: boolean;
+    /** The brush is a thin line (ERASE_THIN_STROKE): kept by the model, it is filled from its sides (lib/visual/region fillThin). */
+    thin?: boolean;
   },
 ): Promise<{ bytes: Uint8Array; model: string }> {
   const minChange = a.minChange ?? ERASE_MIN_CHANGE;
@@ -539,15 +549,30 @@ async function eraseArea(
     context: a.context, prompt: ERASE_PROMPT, source: a.bytes, mask: a.mask, shape: a.shape, contentItemId: a.contentItemId, intent: "erase",
     ...(a.words ? { erase: "words" as const } : {}),
   });
+  // The model's answer, kept inside the brush and, for a plain erase, in the shadow
+  // it lifted along with what was erased (lib/visual/region shadowGrownMask): only
+  // the brush was kept before, so a shadow past it stayed, cut off in a hard line.
+  const keep = async (answer: Uint8Array) => {
+    const grown = a.words ? null : await shadowGrownMask(a.bytes, answer, a.mask).catch(() => null);
+    return keepInsideMask(a.bytes, answer, grown ?? a.mask, a.feather);
+  };
+  // What the model handed back unchanged: little change, or the brushed part still there.
+  const keptBack = async (merged: Uint8Array) =>
+    minChange > 0 && ((await changeInside(a.bytes, merged, a.mask)) < minChange || (await keptInside(a.bytes, merged, a.mask)) > ERASE_KEPT_MAX);
   let out = await call();
-  let merged = await keepInsideMask(a.bytes, out.bytes, a.mask, a.feather);
+  let merged = await keep(out.bytes);
+  // A thin line the model kept (a skirting it took for part of the room, 2026-11-19):
+  // filled from its two sides, no second paid try that would keep it again.
+  if (a.thin && (await keptBack(merged))) {
+    return { bytes: await keepInsideMask(a.bytes, await fillThin(a.bytes, a.mask), a.mask, Math.min(a.feather, 2)), model: "fill" };
+  }
   // A model that hands the brushed part back as it was removed nothing (live,
   // a rod on a pan, 2026-11-18): one more go, then a plain refusal, never a
   // new version that looks like the old one.
-  if (minChange > 0 && (await changeInside(a.bytes, merged, a.mask)) < minChange) {
+  if (await keptBack(merged)) {
     out = await call();
-    merged = await keepInsideMask(a.bytes, out.bytes, a.mask, a.feather);
-    if ((await changeInside(a.bytes, merged, a.mask)) < minChange) {
+    merged = await keep(out.bytes);
+    if (await keptBack(merged)) {
       throw new PictureError("The erase came back with nothing removed, so it wasn't kept. Try brushing a little wider.");
     }
   }
@@ -685,7 +710,7 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
     const mask = await strokeMask(strokes, width, height);
     const thinnest = Math.min(...strokes.map((s) => s.w)) * Math.min(width, height);
     const feather = Math.max(1, Math.min(ERASE_FEATHER, Math.round(thinnest / 4)));
-    const erased = await eraseArea(scope, { context, bytes, mask, shape, contentItemId, feather, area: strokesBox(strokes, 0, width / height) });
+    const erased = await eraseArea(scope, { context, bytes, mask, shape, contentItemId, feather, area: strokesBox(strokes, 0, width / height), thin: Math.max(...strokes.map((s) => s.w)) <= ERASE_THIN_STROKE });
     // Erasing words is what the board's notice asks for: looked at again (never
     // changed outside the brush), so the notice goes only when they are gone.
     const words = live ? await keepWordsOut(scope, { context, bytes: erased.bytes, model: erased.model, shape, contentItemId, why: "a picture after an erase", fix: false }) : null;

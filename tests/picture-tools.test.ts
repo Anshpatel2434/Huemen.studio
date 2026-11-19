@@ -743,3 +743,74 @@ describe("pieceTaskLines: a bio", () => {
     expect(pieceTaskLines("whatsapp_message", "Notes are ready", null, null).join("\n")).not.toMatch(/Third person/);
   });
 });
+
+describe("erase: the shadow lifted with an object, and a thin line the model kept", () => {
+  const W = 400, H = 400;
+  const png = async (paint: (x: number, y: number) => [number, number, number]) => {
+    const sharp = (await import("sharp")).default;
+    const raw = Buffer.alloc(W * H * 3);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const [r, g, b] = paint(x, y); const i = (y * W + x) * 3; raw[i] = r; raw[i + 1] = g; raw[i + 2] = b; }
+    return new Uint8Array(await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer());
+  };
+  const maskOf = async (inBrush: (x: number, y: number) => boolean) => {
+    const sharp = (await import("sharp")).default;
+    const raw = Buffer.alloc(W * H * 4);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) raw[(y * W + x) * 4 + 3] = inBrush(x, y) ? 0 : 255;
+    return new Uint8Array(await sharp(raw, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer());
+  };
+  const at = async (img: Uint8Array, x: number, y: number) => {
+    const sharp = (await import("sharp")).default;
+    const { data } = await sharp(Buffer.from(img)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const i = (y * W + x) * 3;
+    return [data[i], data[i + 1], data[i + 2]];
+  };
+  const floor: [number, number, number] = [230, 222, 205];
+  const shade: [number, number, number] = [150, 144, 132];
+  // A block at 150-250 with its shadow falling left to x 90, past a brush that covers only the block.
+  const inBlock = (x: number, y: number) => x >= 150 && x < 250 && y >= 150 && y < 250;
+  const inShadow = (x: number, y: number) => x >= 90 && x < 150 && y >= 170 && y < 250;
+
+  it("takes the shadow the model lifted, and nothing else outside the brush", async () => {
+    const { keepInsideMask, shadowGrownMask } = await import("@/lib/visual/region");
+    const original = await png((x, y) => (inBlock(x, y) ? [40, 60, 140] : inShadow(x, y) ? shade : floor));
+    // The model's answer: block and shadow gone, and one unrelated change far away (must stay the original's).
+    const answer = await png((x, y) => (x > 350 && y > 350 ? [0, 0, 0] : floor));
+    const mask = await maskOf((x, y) => x >= 145 && x < 255 && y >= 145 && y < 255);
+    const grown = await shadowGrownMask(original, answer, mask);
+    expect(grown).not.toBeNull();
+    const merged = await keepInsideMask(original, answer, grown!, 6);
+    const shadowNow = await at(merged, 110, 210);
+    expect(shadowNow[0]).toBeGreaterThan(215);
+    expect(await at(merged, 380, 380)).toEqual(floor);
+    expect(await at(merged, 30, 30)).toEqual(floor);
+  });
+
+  it("does not grow when the model changed the light of the whole scene", async () => {
+    const { shadowGrownMask } = await import("@/lib/visual/region");
+    const original = await png(() => [120, 120, 120]);
+    const answer = await png(() => [200, 200, 200]);
+    const mask = await maskOf((x, y) => x >= 180 && x < 220 && y >= 180 && y < 220);
+    expect(await shadowGrownMask(original, answer, mask)).toBeNull();
+  });
+
+  it("tells a kept line from an erased one", async () => {
+    const { keptInside } = await import("@/lib/visual/region");
+    const wallFloor = (x: number, y: number): [number, number, number] => (y < 196 ? [200, 190, 180] : y < 204 ? [20, 20, 20] : floor);
+    const original = await png((x, y) => wallFloor(x, y));
+    const mask = await maskOf((x, y) => y >= 190 && y < 210);
+    expect(await keptInside(original, original, mask)).toBeGreaterThan(0.95);
+    const erased = await png((x, y) => (y < 200 ? [200, 190, 180] : floor));
+    expect(await keptInside(original, erased, mask)).toBeLessThan(0.85);
+  });
+
+  it("fills a thin line from its two sides, touching nothing else", async () => {
+    const { fillThin } = await import("@/lib/visual/region");
+    const original = await png((x, y) => (y < 196 ? [200, 190, 180] : y < 204 ? [20, 20, 20] : floor));
+    const mask = await maskOf((x, y) => y >= 192 && y < 208);
+    const filled = await fillThin(original, mask);
+    const mid = await at(filled, 200, 200);
+    expect(mid[0]).toBeGreaterThan(150);
+    expect(await at(filled, 200, 100)).toEqual([200, 190, 180]);
+    expect(await at(filled, 200, 300)).toEqual(floor);
+  });
+});
