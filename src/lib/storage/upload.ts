@@ -81,6 +81,12 @@ export async function uploadTarget(tenantId: string, purpose: UploadPurpose, nam
   const relay = `/api/storage/${encodeURI(key)}?put=${signPut(key, size)}`;
   const mime = /^[\w.+-]+\/[\w.+-]+$/.test(type) ? type : "application/octet-stream";
   const driver = storage();
+  // With no bucket to send to directly, a file goes through the app, and the host
+  // caps that at RELAY_MAX_BYTES. Said here, before anything is sent (2026-11-19 QA:
+  // a 4.6 MB image was sent, refused with 413, and the page blamed the connection).
+  if (!driver.presignPut && driver.name !== "local" && size > RELAY_MAX_BYTES) {
+    throw new UploadError(`That file is ${(size / (1024 * 1024)).toFixed(1)} MB. Files up to ${RELAY_MAX_BYTES / (1024 * 1024)} MB can be added here for now; make it smaller and try again.`);
+  }
   const direct = driver.presignPut ? await driver.presignPut(key, size, mime, TTL_SECONDS) : null;
   return {
     key,

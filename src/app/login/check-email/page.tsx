@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { MailCheck, ArrowUpRight } from "lucide-react";
 import { safeNext } from "@/lib/auth/tokens";
 import { getEnv } from "@/lib/env";
@@ -15,6 +16,10 @@ export default async function CheckEmailPage({ searchParams }: PageProps<"/login
   const sp = await searchParams;
   const email = typeof sp.email === "string" ? sp.email : "";
   const next = safeNext(sp.next);
+  // Nothing was sent when this host cannot send email: back to sign in, never "check your inbox".
+  if (getEnv().AUTH_DRIVER !== "dev" && getEnv().MAIL_PROVIDER === "log") {
+    redirect(`/login?${new URLSearchParams({ ...(email ? { email } : {}), ...(next !== "/dashboard" ? { next } : {}) })}`);
+  }
   const devToken = getEnv().AUTH_DRIVER === "dev" && typeof sp.dev === "string" ? sp.dev : null;
   const devHref = devToken ? `/auth/verify?${new URLSearchParams({ token: devToken, ...(next !== "/dashboard" ? { next } : {}) })}` : null;
 

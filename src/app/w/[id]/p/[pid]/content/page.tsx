@@ -89,6 +89,8 @@ export default async function ContentPage({ params, searchParams }: PageProps<"/
           items={items}
           pillars={pillars.map((p) => ({ id: p.id, name: p.name }))}
           selectedId={typeof sp.item === "string" ? sp.item : null}
+          projectFormat={project.format}
+          projectPillarId={project.pillarId}
           degraded={ctx.degraded}
           dontWords={ctx.guardrails.dontWords}
           // Which prompt template wrote a piece is for the people who edit

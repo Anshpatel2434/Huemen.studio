@@ -4,6 +4,8 @@ import { safeNext } from "@/lib/auth/tokens";
 import { SubmitButton } from "@/components/ui";
 import { AuthFoot, AuthIcon, AuthShell, AuthTitle } from "@/components/auth-shell";
 import { signInWithEmail } from "@/app/login/actions";
+import { getEnv } from "@/lib/env";
+import { btnClass } from "@/components/btn";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Link expired" };
@@ -20,6 +22,19 @@ export default async function LinkExpiredPage({ searchParams }: PageProps<"/auth
   const why = WHY[typeof sp.reason === "string" ? sp.reason : "invalid"] ?? WHY.invalid;
   const email = typeof sp.email === "string" ? sp.email : "";
   const next = safeNext(sp.next);
+  // No way to send email on this host (password sign-in, docs/deploy-first-client.md):
+  // a form that promises a new link would leave the person waiting for nothing.
+  const env = getEnv();
+  const canMail = env.AUTH_DRIVER === "dev" || env.MAIL_PROVIDER !== "log";
+  if (!canMail) {
+    return (
+      <AuthShell>
+        <AuthIcon><LinkIcon size={19} /></AuthIcon>
+        <AuthTitle sub="Sign in with your email and password. If the link was an invite, ask the person who invited you for a new one.">{why.title}</AuthTitle>
+        <Link href={`/login?${new URLSearchParams({ ...(email ? { email } : {}), ...(next !== "/dashboard" ? { next } : {}) })}`} className={`mt-6 w-full ${btnClass("primary")}`}>Go to sign in</Link>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell>

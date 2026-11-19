@@ -31,6 +31,8 @@ export async function sendToStorage(tenantId: string, purpose: UploadPurpose, fi
   if ((!sent || !sent.ok) && target.relayUrl && target.relayUrl !== target.url) {
     sent = await put(target.relayUrl).catch(() => null);
   }
+  // Too large for the host is not a connection problem: say so, so nobody retries for nothing.
+  if (sent && sent.status === 413) throw new UploadFailed("That file is too large to add here. Make it smaller and try again.");
   if (!sent || !sent.ok) throw new UploadFailed("The file didn't reach storage. Check your connection and try again.");
   return target.key;
 }

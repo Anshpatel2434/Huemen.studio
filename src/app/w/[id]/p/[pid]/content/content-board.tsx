@@ -27,6 +27,9 @@ type BoardProps = {
   selectedId: string | null; degraded: boolean; dontWords: string[];
   /** Show which prompt template wrote a piece: for admins, who edit templates. */
   showTemplate?: boolean;
+  /** The project's own format and pillar: what "+ Draft" opens on (2026-11-19 QA: it opened on LinkedIn post with no pillar in every project). */
+  projectFormat?: string | null;
+  projectPillarId?: string | null;
 };
 type Patch = { hook?: string; body?: string; cta?: string; pillarId?: string | null };
 /** The words of a patch, for the stale check (a pillar move has none). */
@@ -43,7 +46,7 @@ export function ContentBoard(props: BoardProps) {
   return <Board {...props} />;
 }
 
-function Board({ tenantId, projectId, brandName, items: serverItems, pillars, selectedId, degraded, dontWords, showTemplate = false }: BoardProps) {
+function Board({ tenantId, projectId, brandName, items: serverItems, pillars, selectedId, degraded, dontWords, showTemplate = false, projectFormat, projectPillarId }: BoardProps) {
   const router = useRouter();
   const toast = useToast();
   const history = useCanvasHistory();
@@ -230,7 +233,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
       )}
 
       {selected && <Inspector key={`${selected.id}:${selected.history.length}:${selected.hook}:${selected.body.length}:${selected.cta}`} tenantId={tenantId} projectId={projectId} item={selected} pillars={pillars} dontWords={dontWords} showTemplate={showTemplate} onClose={() => select(null)} onDelete={() => remove(selected)} />}
-      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} />}
+      {drafting && <DraftModal open onClose={() => setDrafting(false)} tenantId={tenantId} projectId={projectId} pillars={pillars} defaultFormat={projectFormat ?? undefined} defaultPillar={projectPillarId && pillars.some((p) => p.id === projectPillarId) ? projectPillarId : null} />}
       <ConfirmModal
         open={toDelete !== null}
         title="Delete this piece?"

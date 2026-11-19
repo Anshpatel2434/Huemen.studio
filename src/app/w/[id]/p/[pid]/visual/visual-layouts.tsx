@@ -228,9 +228,15 @@ function DrawnIn({ w, h, picture, t, brand, logo, frameRef }: {
     <Frame w={w} h={h} bg="#000" fg="#fff" frameRef={frameRef}>
       <PictureFill url={picture.url} />
       {t.logo !== "hidden" && (
-        <div className="absolute right-[6%] bottom-[5%] max-w-[88%] flex">
-          <Signoff brand={brand} logo={logo} size={t.logo} style={{ color: WHITE, fontFamily: MONO, fontSize: fz(0.6, null), textShadow: "0 1px 6px rgba(0,0,0,.35)" }} />
-        </div>
+        <>
+          {/* The sign-off's own backing: a short shade along the bottom edge, so the white
+              name reads on any picture (2026-11-19 QA: white on a cream floor could barely
+              be read). The picture's drawn heading is higher up and is not covered. */}
+          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[15%] pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,.55) 0%, rgba(0,0,0,.28) 45%, rgba(0,0,0,0) 100%)" }} />
+          <div className="absolute right-[6%] bottom-[5%] max-w-[88%] flex">
+            <Signoff brand={brand} logo={logo} size={t.logo} style={{ color: WHITE, fontFamily: MONO, fontSize: fz(0.6, null), textShadow: "0 1px 6px rgba(0,0,0,.55)" }} />
+          </div>
+        </>
       )}
     </Frame>
   );
