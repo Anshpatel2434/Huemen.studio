@@ -7,7 +7,7 @@ import { safeNext } from "@/lib/auth/tokens";
 import { getEnv } from "@/lib/env";
 import { SubmitButton, Avatar } from "@/components/ui";
 import { AuthFoot, AuthNotice, AuthShell, AuthTitle } from "@/components/auth-shell";
-import { signInAs, signInWithEmail } from "./actions";
+import { signInAs, signInWithEmail, signInWithPassword } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Sign in" };
@@ -19,6 +19,8 @@ const ERRORS: Record<string, string> = {
   pending: "You've been invited but haven't accepted yet. Open the invite link in your email to join, then sign in here.",
   mailfail: "We couldn't send your sign-in email just now. Try again in a minute.",
   toomany: "We've sent several sign-in links to that address already. Use the newest one, or try again in 15 minutes.",
+  wrong: "That email and password don't match. Check both and try again.",
+  toomanypw: "Too many tries for that address. Wait 15 minutes, then try again.",
   signin: "Sign in to continue. You'll go straight back to where you were.",
 };
 
@@ -31,7 +33,12 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const next = safeNext(sp.next);
   if (await getSession()) redirect(next);
 
-  const isDev = getEnv().AUTH_DRIVER === "dev";
+  const env = getEnv();
+  const isDev = env.AUTH_DRIVER === "dev";
+  // AUTH_PASSWORD_SIGNIN adds a password form. With no way to send email, the
+  // link form would promise an email that never comes, so it is left out.
+  const byPassword = env.AUTH_PASSWORD_SIGNIN;
+  const byLink = isDev || env.MAIL_PROVIDER !== "log";
   const users = isDev
     ? (
         await withTenantSession({ tenantId: null, userId: null, isPlatformAdmin: true }, (c) =>
@@ -53,19 +60,40 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
       {error && <AuthNotice>{error}</AuthNotice>}
 
-      <form action={signInWithEmail} className="mt-6 flex flex-col gap-3">
-        {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
-        <label className="block">
-          <span className="block text-xs text-ink-muted mb-1.5">Email address</span>
-          <input name="email" type="email" required autoComplete="email" defaultValue={email} placeholder="Enter your email address…" className="field" autoFocus={!!error} />
-        </label>
-        <SubmitButton variant="primary" pendingLabel="Sending your link…" className="w-full">Continue with email</SubmitButton>
-      </form>
+      {byPassword && (
+        <form action={signInWithPassword} className="mt-6 flex flex-col gap-3">
+          {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
+          <label className="block">
+            <span className="block text-xs text-ink-muted mb-1.5">Email address</span>
+            <input name="email" type="email" required autoComplete="username" defaultValue={email} placeholder="Enter your email address…" className="field" autoFocus={!!error && !email} />
+          </label>
+          <label className="block">
+            <span className="block text-xs text-ink-muted mb-1.5">Password</span>
+            <input name="password" type="password" required autoComplete="current-password" placeholder="Enter your password…" className="field" autoFocus={!!error && !!email} />
+          </label>
+          <SubmitButton variant="primary" pendingLabel="Signing you in…" className="w-full">Sign in</SubmitButton>
+        </form>
+      )}
+
+      {byPassword && byLink && (
+        <div className="mt-6 flex items-center gap-3 text-xs text-ink-faint"><span className="flex-1 h-px bg-hairline" /> or get a link by email <span className="flex-1 h-px bg-hairline" /></div>
+      )}
+
+      {byLink && (
+        <form action={signInWithEmail} className="mt-6 flex flex-col gap-3">
+          {next !== "/dashboard" && <input type="hidden" name="next" value={next} />}
+          <label className="block">
+            <span className="block text-xs text-ink-muted mb-1.5">Email address</span>
+            <input name="email" type="email" required autoComplete="email" defaultValue={email} placeholder="Enter your email address…" className="field" autoFocus={!!error && !byPassword} />
+          </label>
+          <SubmitButton variant={byPassword ? "secondary" : "primary"} pendingLabel="Sending your link…" className="w-full">Continue with email</SubmitButton>
+        </form>
+      )}
 
       <AuthFoot>
-        We&apos;ll email you a one-time sign-in link, so there&apos;s no password to remember.
-        <br />
-        Access is by invite. Got an invite? <span className="text-ink-muted">Open the link in that email.</span>
+        {byLink && !byPassword && <>We&apos;ll email you a one-time sign-in link, so there&apos;s no password to remember.<br /></>}
+        Access is by invite. Got an invite? <span className="text-ink-muted">Open your invite link.</span>
+        {byPassword && !byLink && <><br />Forgot your password? Ask your coach or admin for a new one.</>}
       </AuthFoot>
 
       {isDev && users.length > 0 && (

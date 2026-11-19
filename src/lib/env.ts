@@ -36,6 +36,11 @@ const schema = z.object({
   // anyone) unless this says so: only for a throwaway test deploy behind the
   // host's own access protection (Vercel Deployment Protection).
   AUTH_ALLOW_DEV_SIGNIN: z.preprocess(blankIsUnset, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
+  // Sign-in with a password (migration 0028), for a host with no email service
+  // yet: set when an invite is accepted, or by scripts/set-password.ts. Still
+  // invite-only. With MAIL_PROVIDER=log the email-link form is hidden, and an
+  // admin copies an invite link from the admin console and sends it by hand.
+  AUTH_PASSWORD_SIGNIN: z.preprocess(blankIsUnset, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
 
   // Outbound email (sign-in links, invites). "log" writes them to the server log.
   MAIL_PROVIDER: z.preprocess(blankIsUnset, z.enum(["log", "resend"]).default("log")),
@@ -44,7 +49,7 @@ const schema = z.object({
   MAIL_FROM: z.preprocess(blankIsUnset, z.string().optional()),
 
   // Storage
-  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  STORAGE_DRIVER: z.enum(["local", "s3", "pg"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().default("./.storage"),
   STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   STORAGE_S3_BUCKET: z.string().optional(),
@@ -208,8 +213,8 @@ export function configProblems(env: Env, phase?: string): string[] {
       out.push("AUTH_SECRET is the example value or shorter than 32 characters; it signs every session. Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
     }
   }
-  if (env.AUTH_DRIVER === "email" && env.MAIL_PROVIDER === "log") {
-    out.push("AUTH_DRIVER=email sends sign-in links by email: set MAIL_PROVIDER=resend (MAIL_PROVIDER=log only writes them to the server log).");
+  if (env.AUTH_DRIVER === "email" && env.MAIL_PROVIDER === "log" && !env.AUTH_PASSWORD_SIGNIN) {
+    out.push("AUTH_DRIVER=email sends sign-in links by email: set MAIL_PROVIDER=resend (MAIL_PROVIDER=log only writes them to the server log), or AUTH_PASSWORD_SIGNIN=true to sign in with passwords until email is set up.");
   }
   if (env.STORAGE_DRIVER === "s3") {
     const missing = (["STORAGE_S3_BUCKET", "STORAGE_S3_REGION", "STORAGE_S3_ACCESS_KEY_ID", "STORAGE_S3_SECRET_ACCESS_KEY"] as const).filter((k) => !env[k]);

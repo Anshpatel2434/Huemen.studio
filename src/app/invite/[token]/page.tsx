@@ -4,6 +4,8 @@ import { MailWarning, UserCheck, ArrowRight } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { verifyLink } from "@/lib/auth/tokens";
 import { getAccount } from "@/lib/data/auth";
+import { PASSWORD_MIN } from "@/lib/auth/password";
+import { getEnv } from "@/lib/env";
 import { SubmitButton } from "@/components/ui";
 import { AuthFoot, AuthIcon, AuthNotice, AuthShell, AuthTitle } from "@/components/auth-shell";
 import { acceptInviteAction } from "./actions";
@@ -22,7 +24,7 @@ const ROLE: Record<string, { label: string; can: string }> = {
  * Accept an invite (the only way in: no public sign-up, brief §02). Shows
  * who invited you, to which workspace and as what, then one button to join.
  */
-export default async function InvitePage({ params }: PageProps<"/invite/[token]">) {
+export default async function InvitePage({ params, searchParams }: PageProps<"/invite/[token]">) {
   const { token } = await params;
   const check = verifyLink("invite", decodeURIComponent(token));
   const a = check.ok ? await getAccount(check.subject) : null;
@@ -67,6 +69,9 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
   }
 
   const role = ROLE[a.role] ?? { label: a.role, can: "" };
+  const byPassword = getEnv().AUTH_PASSWORD_SIGNIN;
+  const pw = (await searchParams).pw;
+  const pwError = pw === "short" ? `That password is too short. Use at least ${PASSWORD_MIN} characters.` : pw === "bad" ? "Choose a different password: that one is too easy to guess or too long." : undefined;
   return (
     <AuthShell showcase width={360}>
       <p className="text-center label-mono text-ink-faint">You&apos;re invited</p>
@@ -87,12 +92,22 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         <AuthNotice>You&apos;re signed in as {session.email}. Accepting signs you in as {a.email} instead.</AuthNotice>
       )}
 
-      <form action={acceptInviteAction} className="mt-6">
+      {pwError && <AuthNotice>{pwError}</AuthNotice>}
+
+      <form action={acceptInviteAction} className="mt-6 flex flex-col gap-3">
         <input type="hidden" name="token" value={decodeURIComponent(token)} />
+        {byPassword && (
+          <label className="block">
+            <span className="block text-xs text-ink-muted mb-1.5">Choose a password</span>
+            <input name="password" type="password" required minLength={PASSWORD_MIN} autoComplete="new-password" placeholder={`At least ${PASSWORD_MIN} characters…`} className="field" autoFocus={!!pwError} />
+          </label>
+        )}
         <SubmitButton variant="primary" pendingLabel="Joining…" className="w-full">Accept invite &amp; join</SubmitButton>
       </form>
       <AuthFoot>
-        No password needed: next time, sign in with a one-time link sent to {a.email}.
+        {byPassword
+          ? <>Next time, sign in with {a.email} and this password.</>
+          : <>No password needed: next time, sign in with a one-time link sent to {a.email}.</>}
         <br />Not expecting this? You can ignore it and nothing happens.
       </AuthFoot>
     </AuthShell>

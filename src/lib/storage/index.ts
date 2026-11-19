@@ -13,6 +13,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getEnv } from "@/lib/env";
 import { localDriver } from "./local";
 import { s3Driver } from "./s3";
+import { pgDriver } from "./pg";
 import type { StorageDriver } from "./types";
 
 /** Build a tenant-prefixed storage key. Never store an object without one. */
@@ -78,6 +79,9 @@ export function storage(): StorageDriver {
         },
         appSignedUrl,
       );
+      break;
+    case "pg":
+      _driver = pgDriver(appSignedUrl);
       break;
   }
   return _driver!;

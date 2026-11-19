@@ -80,3 +80,14 @@ export async function listMembers(tenantIds: string[]): Promise<AccountRow[]> {
   );
   return r.rows.map(row);
 }
+
+/** The stored password hash of an account (migration 0028); null when it has none. Never sent to a page. */
+export async function passwordHashOf(id: string): Promise<string | null> {
+  const r = await withTenantSession(ADMIN, (c) => c.query<{ password_hash: string | null }>("SELECT password_hash FROM users WHERE id = $1", [id]));
+  return r.rows[0]?.password_hash ?? null;
+}
+
+/** Set an account's password hash, and end its other sessions: a changed password signs everyone else out. */
+export async function setPasswordHash(id: string, hash: string): Promise<void> {
+  await withTenantSession(ADMIN, (c) => c.query("UPDATE users SET password_hash = $2, session_version = session_version + 1 WHERE id = $1", [id, hash]));
+}

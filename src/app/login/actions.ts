@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { startSession } from "@/lib/auth";
 import { safeNext, signLink } from "@/lib/auth/tokens";
-import { findAccountByEmail, getAccount, markSignedIn } from "@/lib/data/auth";
+import { verifyPassword } from "@/lib/auth/password";
+import { findAccountByEmail, getAccount, markSignedIn, passwordHashOf } from "@/lib/data/auth";
 import { getEnv } from "@/lib/env";
 import { sendAuthMail } from "@/lib/mail";
 import { takeHit } from "@/lib/ratelimit";
@@ -68,4 +69,40 @@ export async function signInWithEmail(formData: FormData): Promise<void> {
   // The dev driver has no mailbox, so the page shows the link as a "dev inbox".
   const dev: Record<string, string> = getEnv().AUTH_DRIVER === "dev" ? { dev: token } : {};
   redirect(`/login/check-email?${q({ email: a.email, ...dev })}`);
+}
+
+/**
+ * Password sign-in (AUTH_PASSWORD_SIGNIN, migration 0028): for a host with no
+ * email service yet. Still invite-only. An unknown address, an account with no
+ * password and a wrong password all get the same answer after the same work,
+ * so the form can't be used to find out who has an account.
+ */
+export async function signInWithPassword(formData: FormData): Promise<void> {
+  if (!getEnv().AUTH_PASSWORD_SIGNIN) throw new Error("password sign-in disabled");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const next = safeNext(formData.get("next"));
+  const q = (extra: Record<string, string>) => new URLSearchParams({ ...extra, ...(next !== "/dashboard" ? { next } : {}) }).toString();
+  if (!EMAIL.test(email)) redirect(`/login?${q({ e: "invalid", email })}`);
+
+  const a = await findAccountByEmail(email);
+  // Eight tries per account per quarter hour, counted before the check.
+  let allowed = true;
+  if (a) {
+    try {
+      await takeHit({ tenantId: a.tenantId, userId: a.id }, "signin-password", { perUser: 8, windowSeconds: 15 * 60 });
+    } catch {
+      allowed = false;
+    }
+  }
+  if (!allowed) redirect(`/login?${q({ e: "toomanypw", email })}`);
+
+  const ok = await verifyPassword(password, a ? await passwordHashOf(a.id) : null);
+  if (!a || !ok) redirect(`/login?${q({ e: "wrong", email })}`);
+  if (a.status === "disabled" || a.tenantStatus !== "active") redirect(`/auth/disabled?${q({ email })}`);
+  if (a.status === "invited") redirect(`/login?${q({ e: "pending", email })}`);
+
+  await startSession({ userId: a.id, tenantId: a.tenantId, role: a.role, email: a.email });
+  await markSignedIn(a.id);
+  redirect(next);
 }
