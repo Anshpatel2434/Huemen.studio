@@ -814,3 +814,16 @@ describe("erase: the shadow lifted with an object, and a thin line the model kep
     expect(await at(filled, 200, 300)).toEqual(floor);
   });
 });
+
+describe("brushedSpan (a line versus an object)", () => {
+  it("one pass of the app's brush is narrow; a scribble over an object is not", async () => {
+    const { brushedSpan, strokeMask } = await import("@/lib/visual/region");
+    const { BRUSH_WIDTH } = await import("@/lib/visual/picture-tools");
+    const line = await strokeMask([{ w: BRUSH_WIDTH, pts: [[0.7, 0.25], [0.99, 0.32]] }] as never, 1024, 1280);
+    expect(await brushedSpan(line)).toBeLessThanOrEqual(0.1);
+    const pts: number[][] = [];
+    for (let i = 0; i < 10; i++) pts.push([i % 2 ? 0.88 : 0.16, 0.36 + i * 0.035]);
+    const scribble = await strokeMask([{ w: BRUSH_WIDTH, pts }] as never, 1024, 1280);
+    expect(await brushedSpan(scribble)).toBeGreaterThan(0.1);
+  });
+});

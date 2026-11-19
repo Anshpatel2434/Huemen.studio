@@ -832,3 +832,29 @@ export async function fillThin(source: Uint8Array, mask: Uint8Array): Promise<Ui
   }
   return new Uint8Array(await sharp(out, { raw: { width, height, channels: 3 } }).png().toBuffer());
 }
+
+/**
+ * How narrow the brushed area is across its own direction: the width of the band
+ * it would be, from the spread of its pixels across its main axis (second moments),
+ * as a share of the picture's shorter side. One pass of the brush along a line,
+ * straight or slanted, measures about the brush's width (BRUSH_WIDTH 0.06); a
+ * scribble over an object measures about the object's size, with or without gaps
+ * between the passes. Erase fills a narrow area the model kept from its sides
+ * (fillThin); a wide one it never does (a side fill across an object would smear).
+ */
+export async function brushedSpan(mask: Uint8Array): Promise<number> {
+  const m = await sharp(Buffer.from(mask)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height } = m.info;
+  let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      if (m.data[(y * width + x) * 4 + 3] >= 128) continue;
+      n++; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+    }
+  }
+  if (n < 4) return 0;
+  const vx = sxx / n - (sx / n) ** 2, vy = syy / n - (sy / n) ** 2, cxy = sxy / n - (sx / n) * (sy / n);
+  // The smaller spread of the two principal axes; a uniform band of width w has a spread of w / sqrt(12) across it.
+  const minor = (vx + vy) / 2 - Math.sqrt(((vx - vy) / 2) ** 2 + cxy * cxy);
+  return (Math.sqrt(Math.max(0, minor)) * Math.sqrt(12)) / Math.min(width, height);
+}

@@ -40,7 +40,7 @@ import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import {
-  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, fillThin, growBox, keptInside, objectBoxAt, shadowGrownMask, unionBox, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
+  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, brushedSpan, fillThin, growBox, keptInside, objectBoxAt, shadowGrownMask, unionBox, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
   visiblePart, type Box, type PixelRect,
 } from "@/lib/visual/region";
 import { boxesWithin, wordGroups } from "@/lib/visual/picture-words";
@@ -491,8 +491,13 @@ export const ERASE_MIN_CHANGE = 0.03;
  * took for part of the room came back at 0.977; an erased block at 0.000.
  */
 export const ERASE_KEPT_MAX = 0.85;
-/** A brush this thin (a share of the picture's shorter side) or thinner is a line: when the model keeps it, it is filled from its two sides instead. */
-export const ERASE_THIN_STROKE = 0.05;
+/**
+ * A brushed area this narrow across (lib/visual/region brushedSpan, a share of the
+ * picture's shorter side) or narrower is a line: when the model keeps it, it is filled
+ * from its two sides instead. One pass of the app's brush (BRUSH_WIDTH 0.06) measures
+ * about 0.06 to 0.08; a scribble over an object, several times that.
+ */
+export const ERASE_THIN_SPAN = 0.1;
 
 export const CUTOUT_LOCKED = "This picture has its background removed. Go back to the version before to change it.";
 
@@ -710,7 +715,7 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
     const mask = await strokeMask(strokes, width, height);
     const thinnest = Math.min(...strokes.map((s) => s.w)) * Math.min(width, height);
     const feather = Math.max(1, Math.min(ERASE_FEATHER, Math.round(thinnest / 4)));
-    const erased = await eraseArea(scope, { context, bytes, mask, shape, contentItemId, feather, area: strokesBox(strokes, 0, width / height), thin: Math.max(...strokes.map((s) => s.w)) <= ERASE_THIN_STROKE });
+    const erased = await eraseArea(scope, { context, bytes, mask, shape, contentItemId, feather, area: strokesBox(strokes, 0, width / height), thin: (await brushedSpan(mask)) <= ERASE_THIN_SPAN });
     // Erasing words is what the board's notice asks for: looked at again (never
     // changed outside the brush), so the notice goes only when they are gone.
     const words = live ? await keepWordsOut(scope, { context, bytes: erased.bytes, model: erased.model, shape, contentItemId, why: "a picture after an erase", fix: false }) : null;
