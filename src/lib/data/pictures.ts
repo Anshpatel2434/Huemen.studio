@@ -40,7 +40,7 @@ import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import {
-  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, growBox, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
+  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, growBox, objectBoxAt, unionBox, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
   visiblePart, type Box, type PixelRect,
 } from "@/lib/visual/region";
 import { boxesWithin, wordGroups } from "@/lib/visual/picture-words";
@@ -696,6 +696,12 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
     const first = (marked ? strokesBox(strokes, MARKUP_PAD, width / height) : null) ?? cleanBox(edit.box);
     if (!first) throw new PictureError("Mark a bigger area to change.");
     let box: Box = first;
+    // A one-click pin: the area is sized to the thing that was clicked (its patch of colour
+    // around the point), so a change to all of it fits. A dragged box stays exactly as drawn.
+    if (edit.auto && !marked) {
+      const thing = await objectBoxAt(bytes, { x: first.x + first.w / 2, y: first.y + first.h / 2 }).catch(() => null);
+      if (thing) box = unionBox(first, thing);
+    }
     let mask = await regionMask(box, width, height);
     const prompt = [
       `Change only the marked area: ${edit.note.replace(/\s+/g, " ").trim().slice(0, 500)}`,

@@ -47,6 +47,106 @@ export function cleanBox(b: Partial<Box> | null | undefined): Box | null {
   return { x, y, w, h };
 }
 
+/** The side, in pixels, of the small copy objectBoxAt looks at. */
+const OBJECT_SIDE = 160;
+/** A pixel belongs to the clicked thing when it is this close in colour to the clicked point... */
+const OBJECT_NEAR_SEED = 62;
+/** ...and this close to the neighbour it was reached from (so a soft shade is followed, a hard edge is not). */
+const OBJECT_NEAR_NEIGHBOUR = 26;
+/** A colour this saturated (0..1) has a hue worth following; below it, it is a grey. */
+const OBJECT_MIN_SAT = 0.22;
+/** Hues within this many degrees are the same colour. */
+const OBJECT_HUE_NEAR = 22;
+
+/**
+ * The box around the thing at a point: the connected patch of similar colour
+ * around it, on a small copy of the picture, with a margin. For a one-click
+ * comment pin (2026-11-19 QA): the click's default box covered a third of a
+ * block that was 86% of the picture wide, so "make this orange" could only be
+ * cut off at the box's edge. Null when the point is on something too small or
+ * too mixed to follow (a texture, a thin line) or on the background (a patch
+ * over most of the picture): the caller keeps its own box then. Pure pixels,
+ * no model.
+ */
+export async function objectBoxAt(bytes: Uint8Array, at: { x: number; y: number }): Promise<Box | null> {
+  const S = OBJECT_SIDE;
+  const px = await sharp(Buffer.from(bytes)).removeAlpha().resize(S, S, { fit: "fill" }).raw().toBuffer();
+  const cx = Math.min(S - 1, Math.max(0, Math.round(clamp01(at.x) * (S - 1))));
+  const cy = Math.min(S - 1, Math.max(0, Math.round(clamp01(at.y) * (S - 1))));
+  // The clicked colour: the average of the 3 x 3 around the point.
+  const seed = [0, 0, 0];
+  let n = 0;
+  for (let y = Math.max(0, cy - 1); y <= Math.min(S - 1, cy + 1); y++) {
+    for (let x = Math.max(0, cx - 1); x <= Math.min(S - 1, cx + 1); x++) {
+      const i = (y * S + x) * 3;
+      seed[0] += px[i]; seed[1] += px[i + 1]; seed[2] += px[i + 2];
+      n++;
+    }
+  }
+  seed[0] /= n; seed[1] /= n; seed[2] /= n;
+  const far = (i: number, r: number, g: number, b: number) => Math.hypot(px[i] - r, px[i + 1] - g, px[i + 2] - b);
+  // A coloured thing is also followed by its hue: the lit top and the shaded
+  // side of one solid are far apart in brightness but the same colour, and a
+  // change to "this block" covers both (the QA picture: a navy block whose
+  // side faces the brightness rule alone left out). Greys have no hue to go by.
+  const hueOf = (r: number, g: number, b: number): { hue: number; sat: number } => {
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    if (max === 0 || d === 0) return { hue: 0, sat: 0 };
+    const hue = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return { hue: hue * 60, sat: d / max };
+  };
+  const seedHue = hueOf(seed[0], seed[1], seed[2]);
+  const coloured = seedHue.sat >= OBJECT_MIN_SAT && Math.max(seed[0], seed[1], seed[2]) >= 40;
+  const sameHue = (j: number): boolean => {
+    if (!coloured) return false;
+    const h = hueOf(px[j], px[j + 1], px[j + 2]);
+    if (h.sat < OBJECT_MIN_SAT) return false;
+    const d = Math.abs(h.hue - seedHue.hue);
+    return Math.min(d, 360 - d) <= OBJECT_HUE_NEAR;
+  };
+  const seen = new Uint8Array(S * S);
+  const queue = new Int32Array(S * S);
+  let head = 0, tail = 0;
+  queue[tail++] = cy * S + cx;
+  seen[cy * S + cx] = 1;
+  let x0 = cx, x1 = cx, y0 = cy, y1 = cy, count = 0;
+  while (head < tail) {
+    const p = queue[head++];
+    const x = p % S, y = (p - x) / S, i = p * 3;
+    count++;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    const visit = (q: number) => {
+      if (seen[q]) return;
+      const j = q * 3;
+      const likeSeed = far(j, seed[0], seed[1], seed[2]) <= OBJECT_NEAR_SEED && far(j, r, g, b) <= OBJECT_NEAR_NEIGHBOUR;
+      if (!likeSeed && !sameHue(j)) return;
+      seen[q] = 1;
+      queue[tail++] = q;
+    };
+    if (x > 0) visit(p - 1);
+    if (x < S - 1) visit(p + 1);
+    if (y > 0) visit(p - S);
+    if (y < S - 1) visit(p + S);
+  }
+  const w = (x1 - x0 + 1) / S, h = (y1 - y0 + 1) / S;
+  // Too small to be a thing, or most of the picture (the ground behind everything).
+  if (count < S * S * 0.004 || w * h > 0.6 || count > S * S * 0.5) return null;
+  const padX = Math.max(0.03, w * 0.14), padY = Math.max(0.03, h * 0.14);
+  const left = Math.max(0, x0 / S - padX), top = Math.max(0, y0 / S - padY);
+  const right = Math.min(1, (x1 + 1) / S + padX), bottom = Math.min(1, (y1 + 1) / S + padY);
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
+/** The smallest box that holds both. */
+export function unionBox(a: Box, b: Box): Box {
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+
 /**
  * The same box made `factor` times as wide and as tall around its own centre,
  * moved back inside the picture where it would stick out, and never larger

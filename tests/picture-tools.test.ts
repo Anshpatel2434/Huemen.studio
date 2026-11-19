@@ -677,3 +677,38 @@ describe("growBox (one-click pins)", () => {
     expect(whole).toEqual({ x: 0, y: 0, w: 1, h: 1 });
   });
 });
+
+describe("objectBoxAt (one-click pins are sized to the thing clicked)", () => {
+  const picture = async () => {
+    const sharp = (await import("sharp")).default;
+    // A cream ground with one wide blue block (two shades, like a lit solid) and a small red dot.
+    const block = await sharp({ create: { width: 700, height: 150, channels: 3, background: "#2f5fd0" } }).png().toBuffer();
+    const side = await sharp({ create: { width: 700, height: 120, channels: 3, background: "#27489c" } }).png().toBuffer();
+    const dot = await sharp({ create: { width: 30, height: 30, channels: 3, background: "#d02f2f" } }).png().toBuffer();
+    return new Uint8Array(await sharp({ create: { width: 1000, height: 1000, channels: 3, background: "#f3ead8" } })
+      .composite([{ input: block, left: 150, top: 400 }, { input: side, left: 150, top: 550 }, { input: dot, left: 60, top: 60 }])
+      .png().toBuffer());
+  };
+  it("finds the clicked face of the block, far wider than a click box", async () => {
+    const { objectBoxAt } = await import("@/lib/visual/region");
+    const box = await objectBoxAt(await picture(), { x: 0.5, y: 0.47 });
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeLessThan(0.15);
+    expect(box!.x + box!.w).toBeGreaterThan(0.85);
+    expect(box!.y).toBeLessThan(0.4);
+    expect(box!.y + box!.h).toBeGreaterThan(0.55);
+    expect(box!.w).toBeLessThanOrEqual(1);
+  });
+  it("gives nothing for the ground behind everything", async () => {
+    const { objectBoxAt } = await import("@/lib/visual/region");
+    expect(await objectBoxAt(await picture(), { x: 0.5, y: 0.1 })).toBeNull();
+  });
+  it("gives nothing for a speck", async () => {
+    const { objectBoxAt } = await import("@/lib/visual/region");
+    expect(await objectBoxAt(await picture(), { x: 0.075, y: 0.075 })).toBeNull();
+  });
+  it("unionBox holds both boxes", async () => {
+    const { unionBox } = await import("@/lib/visual/region");
+    expect(unionBox({ x: 0.35, y: 0.35, w: 0.3, h: 0.24 }, { x: 0.1, y: 0.4, w: 0.8, h: 0.3 })).toEqual({ x: 0.1, y: 0.35, w: 0.8, h: expect.closeTo(0.35, 5) });
+  });
+});
