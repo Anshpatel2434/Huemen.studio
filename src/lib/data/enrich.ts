@@ -74,6 +74,16 @@ export function groundedIn(value: string, material: string): boolean {
   return v.length > 0 && normalForMatch(material).includes(v);
 }
 
+/**
+ * The basis the stored pre-fill is compared with, worked out the one way it is
+ * stored (stories, proofs and strategy answers included). Pages ask this, never
+ * basisFrom with fewer parts: Getting started did, so its value never matched
+ * the stored one and every visit asked for the pre-fill again (2026-11-19).
+ */
+export async function suggestionsBasis(scope: WorkspaceScope, pack: VoicePack): Promise<string> {
+  return (await basisOf(scope, pack)).basis;
+}
+
 // ---- pre-fill ---------------------------------------------------------------------
 
 export async function suggestAnswers(scope: WorkspaceScope, pack: VoicePack, opts: { force?: boolean } = {}) {

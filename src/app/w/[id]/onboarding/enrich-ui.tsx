@@ -108,10 +108,16 @@ export function Suggestions({ tenantId, needed, at }: { tenantId: string; needed
   const ran = useRef(false);
 
   const run = (force: boolean) => start(async () => {
-    const r = await suggestionsAction(tenantId, force);
-    if (!r.ok) setError(r.error);
-    else setError(null);
-    router.refresh();
+    // A request that never arrives (offline, a dropped connection) is said here
+    // in the strip. Left to throw, it replaced the whole screen with an error.
+    try {
+      const r = await suggestionsAction(tenantId, force);
+      if (!r.ok) setError(r.error);
+      else setError(null);
+      router.refresh();
+    } catch {
+      setError("We couldn't read your writing just now. Everything you've saved is still here; try again in a moment.");
+    }
   });
 
   useEffect(() => {

@@ -186,6 +186,20 @@ export function Canvas({
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); w.__huCanvasReady = 0; };
   }, [fit]);
 
+  // Escape closes the Zoom menu, like every other menu (2026-11-19: it only
+  // closed when an option was picked). Marked handled, so the same press does
+  // not also drop the tool in use (PI-05: one thing per press).
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setMenu(false);
+    };
+    window.addEventListener("keydown", close, true);
+    return () => window.removeEventListener("keydown", close, true);
+  }, [menu]);
+
   // Two fingers on a phone or tablet zoom the canvas about their middle (PI-17);
   // one finger still pans or draws as before. Tracked in the capture phase, so
   // the comment and drawing surfaces never see the second finger.

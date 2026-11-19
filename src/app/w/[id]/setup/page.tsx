@@ -5,7 +5,7 @@ import { workspaceScope } from "@/lib/auth/workspace";
 import { loadPackForWorkspace, listSamples } from "@/lib/data/voice-pack";
 import { loadBriefAnswers, loadFoundation } from "@/lib/data/foundation";
 import { listPillars } from "@/lib/data/planning";
-import { basisFrom } from "@/lib/data/enrich";
+import { suggestionsBasis } from "@/lib/data/enrich";
 import { gettingStarted, GUIDE_TABS, isGuideTab, type GuideTab } from "@/lib/data/getting-started";
 import { benchmarkPicks, confirmCards, estimateDials } from "@/lib/voice/derive";
 import { prefill } from "@/lib/voice/lifecycle";
@@ -117,7 +117,7 @@ export default async function SetupPage({ params, searchParams }: PageProps<"/w/
       };
       const ids = t === "voice" ? ["A2", "A3", "C1", "C2"] : t === "rules" ? ["D1", "D2", "D7", "E1"] : [];
       const parts: ConfirmPart[] = t === "voice" ? ["cards", "suggestions", "dials", "words", "questions"] : t === "rules" ? ["questions", "influences", "languages"] : ["benchmarks"];
-      const needed = p.corpusStats.pieces + (brief.audience ? 1 : 0) > 0 && sugg?.basis !== basisFrom(p.corpusStats.pieces, brief);
+      const needed = p.corpusStats.pieces + (brief.audience ? 1 : 0) > 0 && sugg?.basis !== (await suggestionsBasis(scope, p));
       const confirm = (
         <ConfirmStep
           tenantId={id}
