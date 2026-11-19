@@ -65,7 +65,10 @@ export async function inviteUserAction(formData: FormData) {
     const invited = await inviteUser(session, tenantId, email, role);
     if (invited?.existing) {
       note = invited.status === "invited"
-        ? `${email} was already invited to ${invited.workspace}; the invite was sent again.`
+        ? getEnv().MAIL_PROVIDER === "log"
+          // No email service on this host: nothing was sent, the link below is the invite.
+          ? `${email} is already invited to ${invited.workspace}. Copy their invite link below and send it to them.`
+          : `${email} was already invited to ${invited.workspace}; the invite was sent again.`
         : invited.status === "active"
           ? `${email} is already in ${invited.workspace}.`
           : `${email} is in ${invited.workspace} with access off. Turn their access on below instead.`;
