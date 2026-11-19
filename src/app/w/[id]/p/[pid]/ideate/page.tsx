@@ -5,7 +5,7 @@ import { Lightbulb, ArrowRight, Check } from "lucide-react";
 import { projectScope } from "@/lib/auth/workspace";
 import { listIdeas, listPillars } from "@/lib/data/planning";
 import { loadBrandContext } from "@/lib/context/context-loader";
-import { FORMATS } from "@/lib/content/formats";
+import { FORMATS, formatIsUtility } from "@/lib/content/formats";
 import { ANGLES } from "@/lib/content/angles";
 import { DocPage } from "@/components/doc-page";
 import { EmptyState, SubmitButton } from "@/components/ui";
@@ -57,6 +57,7 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
             type="radio"
             name="format"
             value={f.key}
+            data-utility={formatIsUtility(f.key) ? "" : undefined}
             defaultChecked={(project.format ?? "linkedin_post") === f.key}
             className="sr-only"
           />
@@ -136,7 +137,9 @@ export default async function IdeatePage({ params }: PageProps<"/w/[id]/p/[pid]/
 
         <section className="border-t border-hairline pt-6">
           <p className="label-mono text-ink-faint mb-3">03 · The angle</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {/* A bio, a reply or a message follows its topic: the angles go away while one of those is picked (components.css, #ideate-form). */}
+          <p data-angle-note className="text-sm text-ink-muted">This format follows its topic, so there&apos;s no angle to pick. Say what it&apos;s for below.</p>
+          <div data-angle-picker className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {ANGLES.map((a) => (
               <label
                 key={a}

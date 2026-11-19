@@ -17,8 +17,7 @@ import { withTenantSession } from "@/db/session";
 import { linkGeneration, runTask, runTaskStamped } from "@/lib/ai";
 import { coWriteOutline, topicProposals } from "@/lib/ai/tasks";
 import { loadBrandContext } from "@/lib/context/context-loader";
-import { findPlaceholders, formatByKey } from "@/lib/content/formats";
-import { angleLine } from "@/lib/content/angles";
+import { findPlaceholders, formatByKey, pieceTaskLines } from "@/lib/content/formats";
 import { isUuid } from "@/lib/content/ids";
 import { clip } from "@/lib/voice/derive";
 import { unlockStage, type ProjectScope, type WorkspaceScope } from "./projects";
@@ -244,7 +243,7 @@ export async function coWrite(
   const { data: outline, template, logId } = await runTaskStamped(scope, coWriteOutline, {
     context: await loadBrandContext(scope, "en", fmt.platform, fmt.reply ? "reply" : "write"),
     // The pillar by name only (what it means is in the context block, INV-2); the angle with what it asks for.
-    taskInput: [`Format: ${fmt.label}`, `Topic: ${topicLine(input.topic)}`, pillar ? `Pillar: ${pillar}` : "", angleLine(input.angle)].filter(Boolean).join("\n"),
+    taskInput: pieceTaskLines(fmt.key, topicLine(input.topic), pillar, input.angle).join("\n"),
   });
   const id = await createContentItem(scope, {
     format: input.format,

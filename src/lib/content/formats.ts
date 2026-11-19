@@ -1,3 +1,4 @@
+import { angleLine } from "./angles";
 /**
  * Content Studio formats (brief §4.2) + helpers shared by server and client.
  * Pure — safe to import from client components.
@@ -42,6 +43,40 @@ export const FORMATS: FormatDef[] = [
 ];
 
 export const formatByKey = (k: string): FormatDef => FORMATS.find((f) => f.key === k) ?? FORMATS[0];
+
+/**
+ * A format that does one job its topic states: a bio, a reply, a message. It is
+ * not a post with a point of view, so a post angle ("The mistake most people
+ * make") does not apply to it and its pillar is background, never the subject.
+ * The one place this is decided: Ideate (which hides the angles) and every
+ * task that writes or rewrites a piece ask it.
+ */
+export const formatIsUtility = (formatKey: string | null | undefined): boolean => {
+  const f = FORMATS.find((x) => x.key === formatKey);
+  return !!f && (!!f.reply || f.key === "bio");
+};
+
+/**
+ * What THIS piece is, as task-input lines: the format, the topic, the pillar by
+ * name (what it means is in the brand context, INV-2) and the angle with what
+ * it asks of the draft. For a utility format the topic is the whole job: no
+ * angle, and the pillar is named as background only (2026-11-19 QA: with an
+ * angle picked, a conference bio came back as an opinion post about rebrands
+ * and a WhatsApp note to a client as a lecture on the pillar).
+ */
+export function pieceTaskLines(formatKey: string, topic: string | null | undefined, pillar: string | null | undefined, angle: string | null | undefined): string[] {
+  const fmt = formatByKey(formatKey);
+  const t = (topic ?? "").trim();
+  if (formatIsUtility(fmt.key)) {
+    return [
+      `Format: ${fmt.label}`,
+      t ? `Topic: ${t}` : "",
+      `This is a ${fmt.label}, not a post. Write exactly what the topic asks for, as that kind of text, in their voice. No hook, no opinion piece, no lesson drawn from it, nothing argued.`,
+      pillar ? `Pillar (background only: it is not the subject, and nothing is argued from it): ${pillar}` : "",
+    ].filter(Boolean);
+  }
+  return [`Format: ${fmt.label}`, t ? `Topic: ${t}` : "", pillar ? `Pillar: ${pillar}` : "", angleLine(angle)].filter(Boolean);
+}
 
 /**
  * Whether a piece of this format gets carousel frames (the visual set's

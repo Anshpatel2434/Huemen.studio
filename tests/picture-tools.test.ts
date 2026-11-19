@@ -712,3 +712,24 @@ describe("objectBoxAt (one-click pins are sized to the thing clicked)", () => {
     expect(unionBox({ x: 0.35, y: 0.35, w: 0.3, h: 0.24 }, { x: 0.1, y: 0.4, w: 0.8, h: 0.3 })).toEqual({ x: 0.1, y: 0.35, w: 0.8, h: expect.closeTo(0.35, 5) });
   });
 });
+
+describe("pieceTaskLines (a utility format follows its topic)", () => {
+  it("keeps the angle and the pillar for a post", async () => {
+    const { pieceTaskLines } = await import("@/lib/content/formats");
+    const lines = pieceTaskLines("linkedin_post", "Why the sentence comes first", "Sentence First", "The mistake most people make");
+    expect(lines).toContain("Pillar: Sentence First");
+    expect(lines.some((l) => l.startsWith("Angle: The mistake most people make"))).toBe(true);
+  });
+  it("drops the angle and makes the pillar background for a bio, a reply or a message", async () => {
+    const { pieceTaskLines, formatIsUtility } = await import("@/lib/content/formats");
+    for (const key of ["bio", "whatsapp_message", "slack_message", "linkedin_comment"]) {
+      expect(formatIsUtility(key)).toBe(true);
+      const lines = pieceTaskLines(key, "Short bio for a conference programme", "Sentence First", "The mistake most people make");
+      expect(lines.some((l) => l.startsWith("Angle:"))).toBe(false);
+      expect(lines.some((l) => l.includes("not a post"))).toBe(true);
+      expect(lines.some((l) => l.startsWith("Pillar (background only"))).toBe(true);
+      expect(lines).toContain("Topic: Short bio for a conference programme");
+    }
+    for (const key of ["linkedin_post", "ig_carousel", "hook_set", "newsletter_section", "x_post"]) expect(formatIsUtility(key)).toBe(false);
+  });
+});

@@ -16,8 +16,7 @@ import { rewritePart } from "@/lib/ai/tasks";
 import { splitStreamed, STREAM_SEPARATOR } from "@/lib/ai/prompt";
 import { logger } from "@/lib/observability/log";
 import { resolveTemplate } from "@/lib/ai/templates";
-import { findPlaceholders, findViolations, formatByKey, splitDraft } from "@/lib/content/formats";
-import { angleLine } from "@/lib/content/angles";
+import { findPlaceholders, findViolations, formatByKey, pieceTaskLines, splitDraft } from "@/lib/content/formats";
 import { isUuid, uuidOrNull } from "@/lib/content/ids";
 import { recordOpener } from "./voice-pack";
 import { groundingFor } from "./check";
@@ -139,8 +138,8 @@ async function pillarName(scope: ProjectScope, pillarId: string | null | undefin
  * means is in the brand context, INV-2) and the angle carries what it asks of
  * the draft, because the contract (lib/ai/prompt) calls both binding.
  */
-function draftTask(fmtLabel: string, topic: string, pillar: string | null, angle: string | null | undefined): string {
-  return [`Format: ${fmtLabel}`, `Topic: ${topic}`, pillar ? `Pillar: ${pillar}` : "", angleLine(angle)].filter(Boolean).join("\n");
+function draftTask(formatKey: string, topic: string, pillar: string | null, angle: string | null | undefined): string {
+  return pieceTaskLines(formatKey, topic, pillar, angle).join("\n");
 }
 
 /** Everything a draft needs before the model is called: the one context (INV-2), the template, the task. */
@@ -166,7 +165,7 @@ async function prepareDraft(scope: ProjectScope, input: DraftInput) {
       templateKey: template.key,
       systemTemplate: template.body,
       context,
-      taskInput: draftTask(fmt.label, topic, pillar, angle),
+      taskInput: draftTask(fmt.key, topic, pillar, angle),
       variants: Math.min(3, Math.max(2, input.variants ?? 2)),
       route: (fmt.key === "hook_set" ? "cheap" : "strong") as "cheap" | "strong",
     },
@@ -308,10 +307,7 @@ export async function rewritePartOf(
     context,
     contentItemId: itemId,
     taskInput: [
-      `Format: ${fmt.label}`,
-      topic ? `Topic: ${topic}` : "",
-      pillar ? `Pillar: ${pillar}` : "",
-      angleLine(angle),
+      ...pieceTaskLines(fmt.key, topic, pillar, angle),
       `Part kind: ${ask.part}`,
       `Instruction: ${ask.instruction.replace(/\n+/g, " ")}`,
       "",
@@ -344,7 +340,7 @@ export async function regenerateWithSteer(scope: ProjectScope, itemId: string, s
     // The same brief as the first draft (topic, pillar, angle: still binding),
     // then the steer and the whole previous version, call to action included.
     taskInput: [
-      draftTask(fmt.label, topicLine(item.topic), pillar, angle),
+      draftTask(fmt.key, topicLine(item.topic), pillar, angle),
       `Steer: ${ask}`,
       "Apply the steer to the previous version. Keep what the steer does not ask to change, and keep its facts: a steer is never a reason to add a number, a client or an event.",
       "",
