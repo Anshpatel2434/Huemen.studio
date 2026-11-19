@@ -539,7 +539,7 @@
   /* ---- Icon button: looks compact, targets 44 (§02) ---------------------------- */
   /* Ideate: a bio, a reply or a message follows its topic, so the angle choices
      give way to one line while one of those formats is picked. */
-  #ideate-form:has(input[name="format"][data-utility]:checked) [data-angle-picker] { display: none; }
+  #ideate-form:has(input[name="format"][data-utility]:checked) [data-angle-picker] { display: none !important; } /* over the grid utility on the element */
   #ideate-form:not(:has(input[name="format"][data-utility]:checked)) [data-angle-note] { display: none; }
 
   .hu-iconbtn {
