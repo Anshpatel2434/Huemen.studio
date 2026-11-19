@@ -11,7 +11,7 @@
 import "@/lib/agent-ui/no-devtools";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { ArrowUp, Check } from "lucide-react";
 import { Renderer, type ActionEvent } from "@openuidev/react-lang";
 import { AgentDots, btnClass } from "@/components/ui";
@@ -31,6 +31,38 @@ type Msg =
 const FALLBACK = "I couldn't lay that answer out. Ask it another way and I'll try again.";
 
 /**
+ * The conversation is kept in this tab, per project, so a reload or a visit to
+ * another page gives it back (2026-11-19 QA: it was gone after a reload). Tab
+ * storage, not the account: it goes when the tab closes, and never reaches
+ * another device or person. The opening line is not kept; it says how the brief
+ * stands now. An answer cut off by the reload is kept as far as it got.
+ */
+const KEEP = 40;
+const chatKey = (projectId: string) => `huemen:agent-chat:${projectId}`;
+const isMsg = (m: unknown): m is Msg => {
+  const r = (m ?? {}) as { role?: unknown; text?: unknown; ui?: unknown };
+  return (r.role === "me" || r.role === "agent") ? typeof r.text === "string" : r.role === "answer" && typeof r.ui === "string";
+};
+const subscribeNever = () => () => {};
+function readChatRaw(projectId: string): string | null {
+  try { return sessionStorage.getItem(chatKey(projectId)); } catch { return null; }
+}
+function parseChat(raw: string | null): Msg[] {
+  try {
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.filter(isMsg).slice(-KEEP).map((m) => (m.role === "answer" ? { ...m, streaming: false } : m)) : [];
+  } catch {
+    return [];
+  }
+}
+function saveChat(projectId: string, list: Msg[]) {
+  try {
+    if (list.length) sessionStorage.setItem(chatKey(projectId), JSON.stringify(list.slice(-KEEP)));
+    else sessionStorage.removeItem(chatKey(projectId));
+  } catch { /* a private window or a full store: the conversation just isn't kept */ }
+}
+
+/**
  * The piece an edit is about: the one in the URL (Content opens ?item=<id>),
  * else the one last opened in this project (the Content board keeps it, since
  * a click on the canvas closes the editor and drops the URL param).
@@ -48,20 +80,33 @@ function openPieceId(projectId: string): string | null {
 
 export function AgentPanel({ workspaceId, projectId, degraded, completeness }: { workspaceId: string; projectId: string; degraded: boolean; completeness: number }) {
   const router = useRouter();
-  const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: "agent",
-      text: degraded
-        ? `This brief is ${completeness}% complete. I can draft, but it will read generic until the brief is filled in. Ask me what's missing.`
-        : "Brief loaded. Ask what to write next, plan your week, or get hooks. I can also draft a post, add a pillar or capture an idea.",
-    },
-  ]);
+  const greeting: Msg = {
+    role: "agent",
+    text: degraded
+      ? `This brief is ${completeness}% complete. I can draft, but it will read generic until the brief is filled in. Ask me what's missing.`
+      : "Brief loaded. Ask what to write next, plan your week, or get hooks. I can also draft a post, add a pillar or capture an idea.",
+  };
+  // The kept conversation, read once the page is live (the server has no tab storage:
+  // it renders the opening line alone). Until something new is said, the view is the
+  // kept one; from then on it is this tab's own, saved as it changes.
+  const keptRaw = useSyncExternalStore(subscribeNever, () => readChatRaw(projectId), () => null);
+  const [own, setOwn] = useState<Msg[] | null>(null);
+  const msgs: Msg[] = own ?? [greeting, ...parseChat(keptRaw)];
+  const setMsgs = (next: Msg[] | ((m: Msg[]) => Msg[])) =>
+    setOwn((prev) => {
+      const base = prev ?? [greeting, ...parseChat(readChatRaw(projectId))];
+      return typeof next === "function" ? next(base) : next;
+    });
   const [draft, setDraft] = useState("");
   const [pending, start] = useTransition();
   const [streaming, setStreaming] = useState(false);
   const busy = pending || streaming;
+  useEffect(() => { if (own && !busy) saveChat(projectId, own.slice(1)); }, [own, busy, projectId]);
+  const startOver = () => { setOwn([greeting]); saveChat(projectId, []); setDraft(""); };
   const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
+  // Scrolls to the newest line when one is added or an answer grows (the count and the last line's length say so).
+  const lastLen = (() => { const m = msgs.at(-1); return m ? (m.role === "answer" ? m.ui.length : m.text.length) : 0; })();
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length, lastLen, busy]);
 
   const base = `/w/${workspaceId}/p/${projectId}`;
   const asked = () => msgs.filter((m): m is Extract<Msg, { role: "me" }> => m.role === "me").map((m) => m.text);
@@ -223,7 +268,10 @@ export function AgentPanel({ workspaceId, projectId, degraded, completeness }: {
             <button onClick={send} disabled={!draft.trim() || busy} className="hu-iconbtn !bg-ink !text-on-ink hover:opacity-90 disabled:!bg-active disabled:!text-ink-faint" aria-label="Send"><ArrowUp size={17} aria-hidden="true" /></button>
           </div>
         </div>
-        <p className="text-xs text-ink-faint text-center mt-1.5">Powered by this project&apos;s brief</p>
+        <p className="text-xs text-ink-faint text-center mt-1.5">
+          Powered by this project&apos;s brief
+          {msgs.length > 1 && !busy && <> · <button type="button" onClick={startOver} className="underline underline-offset-2 hover:text-ink">Start over</button></>}
+        </p>
       </div>
     </div>
   );

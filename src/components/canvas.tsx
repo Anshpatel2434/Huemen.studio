@@ -10,7 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, PanelRight } from "lucide-react";
 import { usePanels, useRightToggle } from "@/components/project-panels";
 import { PENDING_KEY_MAX_MS, type PendingKey } from "@/lib/ui/pending-key";
-import { fitAll, fitOpen } from "./canvas-fit";
+import { fitAll, fitOpen, FIT_BOTTOM } from "./canvas-fit";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
@@ -102,7 +102,11 @@ export function Canvas({
     if (!w || !s) return;
     touched.current = false;
     fitMode.current = mode;
-    const box = { w: w.clientWidth, h: w.clientHeight };
+    // The tool strip wraps to two or three rows on a phone: what it covers beyond the
+    // bottom strip the maths allows for is taken off the fitted area, so nothing fitted
+    // ends up under it (2026-11-19 QA: "Check for words" sat half under it at 390 px).
+    const stripCover = strip.current ? strip.current.offsetHeight + 16 : 0;
+    const box = { w: w.clientWidth, h: w.clientHeight - Math.max(0, stripCover - FIT_BOTTOM) };
     const size = { w: s.scrollWidth, h: s.scrollHeight };
     let view;
     if (mode === "all") view = fitAll(box, size);
@@ -116,7 +120,11 @@ export function Canvas({
         // Where the first artboard sits on the stage, whatever wraps it.
         let x = 0, y = 0;
         for (let el: HTMLElement | null = first; el && el !== s; el = el.offsetParent as HTMLElement | null) { x += el.offsetLeft; y += el.offsetTop; }
-        board = { x, y, w: first.offsetWidth, h: first.offsetHeight };
+        // A note or a button under the artboard in its own column (the words check, the
+        // heading check) belongs to it: the fit keeps it in view too.
+        const column = first.parentElement;
+        const h = column && column !== s && column.firstElementChild === first ? Math.max(first.offsetHeight, column.offsetHeight) : first.offsetHeight;
+        board = { x, y, w: first.offsetWidth, h };
       }
       view = fitOpen(box, size, board);
     }
