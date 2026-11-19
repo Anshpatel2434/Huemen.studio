@@ -10,6 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, PanelRight } from "lucide-react";
 import { usePanels, useRightToggle } from "@/components/project-panels";
 import { PENDING_KEY_MAX_MS, type PendingKey } from "@/lib/ui/pending-key";
+import { fitAll, fitOpen } from "./canvas-fit";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
@@ -82,46 +83,45 @@ export function Canvas({
   const rightToggle = useRightToggle();
   const panels = usePanels();
 
+  // Which fit the view is on, so a panel docking refits the same way.
+  const fitMode = useRef<"open" | "all">("open");
+
   /**
    * Fit to the canvas a person can see. The wrapper IS that area: panels are
    * docked beside it (components/project-panels), never over it. Controls sit
-   * in strips along its top (12px inset + 44px) and bottom, so fitted content
-   * starts below the one and ends above the other.
-   *
-   *   - Everything, when everything stays readable (half size or more).
-   *   - Otherwise the first artboard at a readable size, from the left edge,
-   *     with the rest a pan away: a wall of thumbnails helps nobody.
-   *   - On a phone, the first artboard, centred.
+   * in strips along its top and bottom, so fitted content sits between them.
+   * The maths is components/canvas-fit (pure, tested):
+   *   - "open": the view a board opens on (the first artboard when the whole
+   *     stage would be under half size, or on a phone).
+   *   - "all": Zoom to fit (menu, Shift+1): the whole stage, whatever its size,
+   *     never under 20%. 2026-11-19: it used the opening rule, so on the pillar
+   *     map (opened at 100% on its readable frame) it changed nothing.
    */
-  const fit = useCallback(() => {
+  const fit = useCallback((mode: "open" | "all" = "open") => {
     const w = wrap.current, s = stage.current;
     if (!w || !s) return;
     touched.current = false;
-    const top = 72, bottom = 72;
-    const phone = w.clientWidth < 640;
-    const gutter = phone ? 24 : 80;
-    const room = { w: w.clientWidth - gutter, h: w.clientHeight - top - bottom };
-    const all = Math.min(1, room.w / s.scrollWidth, room.h / s.scrollHeight);
-    // A board can mark the piece to open on (data-canvas-focus: the one a link
-    // such as ?item=<id> names, or the one being worked on): its first
-    // artboard is the one fitted, so the view lands on that piece.
-    const first = s.querySelector<HTMLElement>("[data-canvas-focus] [data-artboard]") ?? s.querySelector<HTMLElement>("[data-artboard]");
-    if (first && (phone || all < 0.5)) {
-      // Where the first artboard sits on the stage, whatever wraps it.
-      let x = 0, y = 0;
-      for (let el: HTMLElement | null = first; el && el !== s; el = el.offsetParent as HTMLElement | null) { x += el.offsetLeft; y += el.offsetTop; }
-      // Keep the row above it (its piece's label and actions) in view too.
-      const lead = Math.min(y, 76);
-      const z = Math.min(1, room.w / first.offsetWidth, room.h / (first.offsetHeight + lead));
-      const zz = Math.max(0.35, Math.round(z * 100) / 100);
-      const left = phone ? Math.max(12, (w.clientWidth - first.offsetWidth * zz) / 2) : gutter / 2;
-      setZoom(zz);
-      setPan({ x: left - x * zz, y: top - (y - lead) * zz });
-      return;
+    fitMode.current = mode;
+    const box = { w: w.clientWidth, h: w.clientHeight };
+    const size = { w: s.scrollWidth, h: s.scrollHeight };
+    let view;
+    if (mode === "all") view = fitAll(box, size);
+    else {
+      // A board can mark the piece to open on (data-canvas-focus: the one a link
+      // such as ?item=<id> names, or the one being worked on): its first
+      // artboard is the one fitted, so the view lands on that piece.
+      const first = s.querySelector<HTMLElement>("[data-canvas-focus] [data-artboard]") ?? s.querySelector<HTMLElement>("[data-artboard]");
+      let board = null;
+      if (first) {
+        // Where the first artboard sits on the stage, whatever wraps it.
+        let x = 0, y = 0;
+        for (let el: HTMLElement | null = first; el && el !== s; el = el.offsetParent as HTMLElement | null) { x += el.offsetLeft; y += el.offsetTop; }
+        board = { x, y, w: first.offsetWidth, h: first.offsetHeight };
+      }
+      view = fitOpen(box, size, board);
     }
-    const zz = Math.max(0.2, Math.round(all * 100) / 100);
-    setZoom(zz);
-    setPan({ x: Math.max(gutter / 2, (w.clientWidth - s.scrollWidth * zz) / 2), y: top });
+    setZoom(view.zoom);
+    setPan(view.pan);
   }, []);
 
   useLayoutEffect(() => {
@@ -140,7 +140,7 @@ export function Canvas({
     const ro = new ResizeObserver(() => {
       if (w.clientWidth === width && w.clientHeight === height) return;
       width = w.clientWidth; height = w.clientHeight;
-      if (!touched.current) fit();
+      if (!touched.current) fit(fitMode.current);
     });
     ro.observe(w);
     return () => ro.disconnect();
@@ -172,7 +172,8 @@ export function Canvas({
       if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !onAPin(e.target)) letter(e.key);
       // Escape leaves the tool, unless it is closing a menu or a dialog first (PI-05): one thing per press.
       if (e.key === "Escape" && tools?.active && !e.defaultPrevented && !somethingOpen()) tools.onChange(null);
-      if (e.shiftKey && e.key === "!") fit();
+      // Shift+1 (e.code, so it works whatever the layout puts on that key).
+      if (e.shiftKey && (e.key === "!" || e.code === "Digit1") && !e.repeat) { e.preventDefault(); fit("all"); }
     };
     const up = (e: KeyboardEvent) => { if (e.code === "Space") setSpace(false); };
     window.addEventListener("keydown", down);
@@ -369,7 +370,7 @@ export function Canvas({
               </button>
               {menu && (
                 <div role="menu" aria-label="Zoom" className="hu-menu absolute bottom-14 left-1/2 -translate-x-1/2 !min-w-44 pop">
-                  <button type="button" role="menuitem" onClick={() => { fit(); setMenu(false); }} className="hu-menu__item"><span className="flex-1">Zoom to fit</span> <span className="text-ink-faint font-mono text-xs">⇧1</span></button>
+                  <button type="button" role="menuitem" onClick={() => { fit("all"); setMenu(false); }} className="hu-menu__item"><span className="flex-1">Zoom to fit</span> <span className="text-ink-faint font-mono text-xs">⇧1</span></button>
                   {ZOOMS.map((z) => (
                     <button key={z} type="button" role="menuitemradio" aria-checked={Math.round(zoom * 100) === z} onClick={() => zoomTo(z)} className="hu-menu__item font-mono tabular-nums">{z}%</button>
                   ))}

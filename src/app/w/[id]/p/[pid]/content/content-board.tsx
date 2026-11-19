@@ -19,6 +19,14 @@ import { askRewriteAction, deleteContentAction, saveContentAction, steerAction, 
 import { Select } from "@/components/select";
 import { guardedLeave, hasUnsavedChanges, unsavedKey, useUnsavedChanges } from "@/components/unsaved-guard";
 
+/**
+ * The drag data type that carries a piece's id from its label to a pillar lane.
+ * The id travels with the drag itself, so a lane accepts it even when the board
+ * re-rendered mid-drag: the press that starts a drag also selects the piece and
+ * changes the address (2026-11-19 QA: dragover was never accepted, so no drop).
+ */
+const PIECE_TYPE = "application/x-huemen-piece";
+
 const WIDTH: Record<Device, number> = { desktop: 520, tablet: 440, mobile: 360 };
 const STATUS_TONE = { draft: "neutral", edited: "dark", approved: "ok" } as const;
 
@@ -173,9 +181,9 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
               <section
                 key={g.key}
                 data-canvas-bg="1"
-                onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (over !== g.key) setOver(g.key); } }}
+                onDragOver={(e) => { if (dragId || e.dataTransfer.types.includes(PIECE_TYPE)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (over !== g.key) setOver(g.key); } }}
                 onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === g.key ? null : o)); }}
-                onDrop={(e) => { e.preventDefault(); if (dragId) moveTo(dragId, g.pillarId); setDragId(null); setOver(null); }}
+                onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData(PIECE_TYPE) || dragId; if (id) moveTo(id, g.pillarId); setDragId(null); setOver(null); }}
                 className={`rounded-md -m-3 p-3 transition-colors ${dragId && over === g.key ? "bg-accent-soft ring-2 ring-ink/60" : ""}`}
               >
                 <p className="label-mono text-ink-faint mb-4 truncate" style={{ maxWidth: WIDTH[device] }}>{g.name} · {g.items.length}</p>
@@ -195,7 +203,7 @@ function Board({ tenantId, projectId, brandName, items: serverItems, pillars, se
                       onSelect={() => select(i.id)}
                       onEdit={() => select(i.id)}
                       dimmed={dragId === i.id}
-                      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", i.hook); setDragId(i.id); }}
+                      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", i.hook); e.dataTransfer.setData(PIECE_TYPE, i.id); setDragId(i.id); }}
                       onDragEnd={() => { setDragId(null); setOver(null); }}
                       actions={
                         <>

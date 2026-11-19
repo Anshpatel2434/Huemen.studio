@@ -733,3 +733,13 @@ describe("pieceTaskLines (a utility format follows its topic)", () => {
     for (const key of ["linkedin_post", "ig_carousel", "hook_set", "newsletter_section", "x_post"]) expect(formatIsUtility(key)).toBe(false);
   });
 });
+
+describe("pieceTaskLines: a bio", () => {
+  it("says what a bio is and rules out a post's opening and close", async () => {
+    const { pieceTaskLines } = await import("@/lib/content/formats");
+    const lines = pieceTaskLines("bio", "Short bio for a conference programme", "Sentence First", null).join("\n");
+    expect(lines).toMatch(/Third person when it is for a programme/);
+    expect(lines).toMatch(/no slogan/);
+    expect(pieceTaskLines("whatsapp_message", "Notes are ready", null, null).join("\n")).not.toMatch(/Third person/);
+  });
+});

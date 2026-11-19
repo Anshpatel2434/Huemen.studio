@@ -73,6 +73,10 @@ export function pieceTaskLines(formatKey: string, topic: string | null | undefin
       t ? `Topic: ${t}` : "",
       `This is a ${fmt.label}, not a post. Write exactly what the topic asks for, as that kind of text, in their voice. No hook, no opinion piece, no lesson drawn from it, nothing argued.`,
       pillar ? `Pillar (background only: it is not the subject, and nothing is argued from it): ${pillar}` : "",
+      // 2026-11-19 QA: a conference programme bio still opened on a claim about rebrands and ended on a slogan.
+      fmt.key === "bio"
+        ? "A bio says who they are, what they do and for whom, and what they are known for, from the brand context only. Third person when it is for a programme, a website or an introduction; first person only when the topic asks for it. Plain statements: no opening claim about the field, no question, no slogan or call to action at the end."
+        : "",
     ].filter(Boolean);
   }
   return [`Format: ${fmt.label}`, t ? `Topic: ${t}` : "", pillar ? `Pillar: ${pillar}` : "", angleLine(angle)].filter(Boolean);

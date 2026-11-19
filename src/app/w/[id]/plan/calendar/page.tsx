@@ -56,9 +56,12 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
       action={
         <div className="flex flex-wrap items-center gap-2">
           <GenerateCalendarButton tenantId={id} pillarCount={pillars.length} busy={planning} />
-          <Link href={`?m=${prev}`} className="hu-iconbtn border border-line" aria-label="Previous month"><ChevronLeft size={15} /></Link>
-          <Link href="?" className={btnClass("ghost", "sm")}>Today</Link>
-          <Link href={`?m=${next}`} className="hu-iconbtn border border-line" aria-label="Next month"><ChevronRight size={15} /></Link>
+          {/* The month controls wrap as one group: on a phone the next-month arrow sat alone on its own line (2026-11-19 QA). */}
+          <span className="flex items-center gap-2 shrink-0">
+            <Link href={`?m=${prev}`} className="hu-iconbtn border border-line" aria-label="Previous month"><ChevronLeft size={15} /></Link>
+            <Link href="?" className={btnClass("ghost", "sm")}>Today</Link>
+            <Link href={`?m=${next}`} className="hu-iconbtn border border-line" aria-label="Next month"><ChevronRight size={15} /></Link>
+          </span>
         </div>
       }
     >
