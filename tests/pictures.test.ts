@@ -647,10 +647,12 @@ describe("picture tools: several pins, one Send", () => {
     const v = await visual(A);
     const real = visibleErase(mockImageProvider.edit.bind(mockImageProvider));
     let calls = 0;
-    // The service is down for the second pin (both of the facade's own tries), then back.
+    // The service is down for the second pin, then back. A paid picture call is not
+    // tried again by the facade (PI-39), so that is one call; nothing came back for
+    // the pin, so the queue's own retry applies (PI-30: no retry once a picture has).
     const spy = vi.spyOn(mockImageProvider, "edit").mockImplementation(async (req, model) => {
       calls++;
-      if (calls === 2 || calls === 3) throw new ProviderError("server", "The image service is down.", true);
+      if (calls === 2) throw new ProviderError("server", "The image service is down.", true);
       return real(req, model);
     });
     try {
@@ -706,7 +708,8 @@ describe("picture tools: several pins, one Send", () => {
       expect((await settle(A, jobId))?.status).toBe("failed");
       const pins = await Promise.all(ids.map((id) => getComment(A, id)));
       expect(pins.map((p) => p!.status)).toEqual(["applied", "failed", "failed"]);
-      expect(pins[1]!.result).toMatch(/couldn't sign in/);
+      // Worded as the picture service's refusal, not "Drafting" (PI-31).
+      expect(pins[1]!.result).toMatch(/picture service refused the key/);
       expect(pins[2]!.result).toBe(pins[1]!.result);
       expect(pins[0]!.result).toBe("Redrew the marked area.");
     } finally {

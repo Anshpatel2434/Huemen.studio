@@ -5,7 +5,7 @@
  *
  *   sidebar   account and workspace switcher, search, the studio (Home,
  *             Create, Check, Brand core, Plan), the workspace (Library,
- *             Archived, Usage), AI this month, Starred, appearance, access
+ *             Archived, Usage), Used this month, Starred, appearance, access
  *   top bar   breadcrumbs, the section's own actions, the theme toggle, and
  *             the section's tabs underneath
  *
@@ -299,17 +299,17 @@ function Sidebar({ nav }: { nav: ShellNav }) {
         <NavItem href={`${home}/usage`} icon={BarChart3} label="Usage" on={path === `${home}/usage`} />
       </nav>
 
-      {/* AI this month */}
+      {/* Used this month (never "AI" in the product, PI-37) */}
       <Link href={`${home}/usage`} className="mt-3 shrink-0 flex items-center gap-2 border border-hairline rounded-md px-3 py-3 hover:border-line transition-colors">
         <span className="flex-1 min-w-0">
-          <span className="block text-sm font-medium">AI this month</span>
+          <span className="block text-sm font-medium">Used this month</span>
           <span className="block text-xs text-ink-faint mt-0.5">
             <span className="num">{usage.used}</span> generation{usage.used === 1 ? "" : "s"}{usage.cap ? <> of <span className="num">{usage.cap}</span></> : " · no cap set"}
             {usage.cap && usage.used >= usage.cap ? <span className="block text-danger font-medium mt-0.5">Monthly cap reached</span>
               : usage.soft && usage.used >= usage.soft ? <span className="block text-warn font-medium mt-0.5">Near the monthly cap</span> : null}
           </span>
           {usage.cap ? (
-            <span className="block h-1.5 rounded-full bg-active mt-2 overflow-hidden" role="progressbar" aria-label="AI used this month" aria-valuemin={0} aria-valuemax={usage.cap} aria-valuenow={usage.used}>
+            <span className="block h-1.5 rounded-full bg-active mt-2 overflow-hidden" role="progressbar" aria-label="Generations used this month" aria-valuemin={0} aria-valuemax={usage.cap} aria-valuenow={usage.used}>
               <span className={`block h-full rounded-full ${usage.used >= usage.cap ? "bg-danger" : usage.soft && usage.used >= usage.soft ? "bg-warn" : "bg-accent"}`} style={{ width: `${Math.min(100, (usage.used / usage.cap) * 100)}%` }} />
             </span>
           ) : null}

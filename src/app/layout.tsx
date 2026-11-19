@@ -10,6 +10,7 @@ import { FieldErrors } from "@/components/field-errors";
 import { UnsavedGuardRoot } from "@/components/unsaved-guard";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 import { CANVAS_COOKIE, parseCanvasBg } from "@/lib/canvas-bg";
+import { PENDING_KEY_SCRIPT } from "@/lib/ui/pending-key";
 
 /*
  * The design system's documented fallbacks (§03), in place of the licensed GT
@@ -39,6 +40,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   for (const f of PRELOAD) preload(`/fonts/${f}.woff2`, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
   return (
     <html lang="en" data-theme={theme} data-canvas={canvas} className="h-full" suppressHydrationWarning>
+      <head>
+        {/* A canvas tool key pressed before the page has started up is kept for the canvas to play
+            (lib/ui/pending-key, PI-01). Plain and inline, so it runs as the HTML is read: next/script's
+            beforeInteractive waits for Next's own runtime, by which time the key was gone. The root
+            layout is never re-rendered by a client navigation, so this is never made on the client. */}
+        <script id="hu-pending-key" dangerouslySetInnerHTML={{ __html: PENDING_KEY_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider initial={theme}>
           <PageTransition level="section">{children}</PageTransition>

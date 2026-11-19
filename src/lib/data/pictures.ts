@@ -29,8 +29,9 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
+import type { PoolClient } from "pg";
 import { withTenantSession } from "@/db/session";
-import { cutoutImage, editImage, generateImage, runTask } from "@/lib/ai";
+import { cutoutImage, editImage, generateImage, PictureSpend, runTask, withPictureBudget } from "@/lib/ai";
 import { cutoutStatus } from "@/lib/ai/cutout";
 import { imageBrief } from "@/lib/ai/tasks";
 import type { ImageShape } from "@/lib/ai/types";
@@ -39,14 +40,14 @@ import { cutAtSentence } from "@/lib/context/cut";
 import { formatByKey } from "@/lib/content/formats";
 import { appSignedUrl, storage, tenantKey } from "@/lib/storage";
 import {
-  boxesMask, changeInside, cleanBox, cleanStrokes, driftOf, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
+  boxesMask, changeInside, cleanBox, cleanStrokes, cutAtEdge, driftOf, EDGE_CUT_LIMIT, keepInsideMask, marksLeft, maskHasArea, keepOriginal, keepOutside, placeOnCanvas, regionMask, seamOf, strokeMask, strokesBox, strokesOverlay,
   visiblePart, type Box, type PixelRect,
 } from "@/lib/visual/region";
 import { boxesWithin, wordGroups } from "@/lib/visual/picture-words";
 import type { BrandContext } from "@/lib/context/context-builder";
 import { lookForWords } from "./picture-words";
 import {
-  clearSubject, coversFrame, MIN_EXTEND_COVER, RESIZE_RATIO, type PictureOp, type PinKind, type ResizeInput, type Stroke,
+  clearSubject, coversFrame, MIN_EXTEND_COVER, PICTURE_BUDGET, RESIZE_RATIO, type PictureOp, type PinKind, type ResizeInput, type Stroke,
 } from "@/lib/visual/picture-tools";
 import { parseDesign, type ArtboardKind, type Design, type PictureMode } from "@/lib/visual/design";
 import { schemeIndex, schemesFrom, type Scheme } from "@/lib/visual/schemes";
@@ -116,6 +117,19 @@ export async function designOf(scope: ProjectScope, contentItemId: string): Prom
   return row ? parseDesign(row.params) : null;
 }
 
+/**
+ * What a picture change came to, for the job that ran it (lib/jobs):
+ *   attached  false when the visual was pointed at another picture while the
+ *             change was being made (a version chosen, Back, Take off, undo):
+ *             the result is kept as a version and the person's choice stays
+ *             on the visual (PI-26).
+ *   spend     the paid pictures it used, its retries included (PI-30).
+ */
+export interface PictureRun {
+  attached?: boolean;
+  spend?: PictureSpend;
+}
+
 /** Point one visual at a picture (or at none). The rest of the design is untouched. */
 async function attach(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, ref: { id: string; mode: PictureMode; cutout?: boolean } | null): Promise<void> {
   const design = await designOf(scope, contentItemId);
@@ -136,7 +150,7 @@ interface PictureRow {
   id: string;
   storage_key: string;
   prompt: string | null;
-  params: { artboard?: ArtboardKind; mode?: PictureMode; shape?: ImageShape; heading?: string | null; avoid?: string; op?: PictureOp; cutout?: boolean; textLeft?: boolean } | null;
+  params: { artboard?: ArtboardKind; mode?: PictureMode; shape?: ImageShape; heading?: string | null; avoid?: string; op?: PictureOp; cutout?: boolean; textLeft?: boolean; wordsUnchecked?: boolean } | null;
   parent_id: string | null;
   width: number | null;
   height: number | null;
@@ -154,46 +168,84 @@ async function pictureRow(scope: ProjectScope, id: string): Promise<PictureRow |
   ).rows[0] ?? null;
 }
 
-/** Store picture bytes and record the row. Model output is kept as drawn (its provenance data included). */
-async function savePicture(
-  scope: ProjectScope,
-  piece: Piece,
-  bytes: Uint8Array,
-  meta: {
-    artboard: ArtboardKind; mode: PictureMode; shape: ImageShape; prompt: string; model: string; avoid?: string; heading: string | null; parentId: string | null;
-    /** How this version came to be (lib/visual/picture-tools PictureOp), for the versions strip. */
-    op: PictureOp;
-    /** The background has been removed: the file is a PNG with alpha. */
-    cutout?: boolean;
-    /** A picture that must have no words may still show some (keepWordsOut): the board says so. */
-    textLeft?: boolean;
-  },
-): Promise<string> {
+/** What a new picture version records about itself. */
+interface PictureMeta {
+  artboard: ArtboardKind; mode: PictureMode; shape: ImageShape; prompt: string; model: string; avoid?: string; heading: string | null; parentId: string | null;
+  /** How this version came to be (lib/visual/picture-tools PictureOp), for the versions strip. */
+  op: PictureOp;
+  /** The background has been removed: the file is a PNG with alpha. */
+  cutout?: boolean;
+  /** A picture that must have no words may still show some (keepWordsOut): the board says so. */
+  textLeft?: boolean;
+  /** The words check could not run (not set up, busy, out of allowance): the board says "Words not checked" (PI-20). */
+  wordsUnchecked?: boolean;
+}
+
+/**
+ * Point the visual at `ref` inside an open transaction, but only while it
+ * still shows `expect` (the picture the change started from; null for none):
+ * the visual rows are locked first, so a version chosen at the same moment
+ * either lands before (and this does not attach) or after. Returns whether it
+ * attached. One current picture per visual: when it attaches, every other
+ * version of this visual stops being current.
+ */
+async function pointAt(
+  c: PoolClient, scope: ProjectScope, contentItemId: string, artboard: ArtboardKind,
+  ref: { id: string; mode: PictureMode; cutout?: boolean }, expect: string | null,
+): Promise<boolean> {
+  const rows = (
+    await c.query<{ params: unknown }>(
+      "SELECT params FROM image_assets WHERE content_item_id=$1 AND project_id=$2 AND kind <> 'picture' ORDER BY created_at FOR UPDATE",
+      [contentItemId, scope.projectId],
+    )
+  ).rows;
+  if (!rows.length) throw new PictureError("Make the visuals first; a picture goes on one of them.");
+  const design = parseDesign(rows[0].params);
+  if ((design.pictures[artboard]?.id ?? null) !== expect) return false;
+  await c.query(
+    "UPDATE image_assets SET is_current = (id = $4) WHERE content_item_id=$1 AND project_id=$2 AND kind='picture' AND params->>'artboard'=$3 AND (is_current OR id = $4)",
+    [contentItemId, scope.projectId, artboard, ref.id],
+  );
+  const pictures = { ...design.pictures, [artboard]: { id: ref.id, mode: ref.mode, ...(ref.cutout ? { cutout: true } : {}) } };
+  await c.query(
+    "UPDATE image_assets SET params = params || $1::jsonb WHERE content_item_id=$2 AND project_id=$3 AND kind <> 'picture'",
+    [JSON.stringify({ pictures }), contentItemId, scope.projectId],
+  );
+  return true;
+}
+
+/**
+ * Store picture bytes, record the row, and make it the visual's picture, in
+ * one transaction, if the visual still shows `expect` (compare-and-set,
+ * PI-26). Otherwise the new version is kept (not current) and the visual
+ * stays on what the person chose meanwhile. Model output is kept as drawn
+ * (its provenance data included).
+ */
+async function commitPicture(
+  scope: ProjectScope, piece: Piece, bytes: Uint8Array, meta: PictureMeta, expect: string | null,
+): Promise<{ id: string; attached: boolean }> {
   const info = await sharp(Buffer.from(bytes)).metadata().catch(() => null);
   if (!info?.width || !info.height || info.format !== "png") throw new PictureError("The picture came back unreadable. Try again.");
   const key = tenantKey(scope.tenantId!, "pictures", `${randomUUID()}.png`);
   await storage().put(key, bytes, "image/png");
   return withTenantSession(scope, async (c) => {
-    // One current picture per visual: a brand-new draw (no parent) retires the
-    // earlier ones too, not only the version an edit was made from (2026-11-17).
-    await c.query(
-      "UPDATE image_assets SET is_current=false WHERE content_item_id=$1 AND project_id=$2 AND kind='picture' AND is_current AND params->>'artboard'=$3",
-      [piece.id, scope.projectId, meta.artboard],
-    );
-    return (
+    const id = (
       await c.query<{ id: string }>(
         `INSERT INTO image_assets (tenant_id, project_id, content_item_id, kind, prompt, model, params, aspect_ratio, storage_key, width, height, status, created_by, parent_id, is_current)
-         VALUES ($1,$2,$3,'picture',$4,$5,$6,$7,$8,$9,$10,'ready',$11,$12,true) RETURNING id`,
+         VALUES ($1,$2,$3,'picture',$4,$5,$6,$7,$8,$9,$10,'ready',$11,$12,false) RETURNING id`,
         [
           scope.tenantId, scope.projectId, piece.id, meta.prompt, meta.model,
           JSON.stringify({
             artboard: meta.artboard, mode: meta.mode, shape: meta.shape, heading: meta.heading, avoid: meta.avoid ?? "",
-            op: meta.op, ...(meta.cutout ? { cutout: true } : {}), ...(meta.textLeft ? { textLeft: true } : {}),
+            op: meta.op, ...(meta.cutout ? { cutout: true } : {}), ...(meta.textLeft ? { textLeft: true } : {}), ...(meta.wordsUnchecked ? { wordsUnchecked: true } : {}),
           }),
           `${info.width}:${info.height}`, key, info.width, info.height, scope.userId, meta.parentId,
         ],
       )
     ).rows[0].id;
+    const attached = await pointAt(c, scope, piece.id, meta.artboard, { id, mode: meta.mode, cutout: meta.cutout }, expect);
+    if (!attached) logger.info("picture_kept_as_version", { tenantId: scope.tenantId, contentItemId: piece.id, artboard: meta.artboard, id, op: meta.op });
+    return { id, attached };
   });
 }
 
@@ -227,26 +279,83 @@ export function colourLines(palette: string[], scheme: Scheme | null): string[] 
   ].filter(Boolean);
 }
 
+/** A picture lock runs out this long after its last renewal: a crashed worker's lock frees itself. */
+const LOCK_TTL_S = 120;
+/** The worker renews its lock this often while it works. */
+const LOCK_RENEW_MS = 30_000;
+/** A change waits at most this long for the one before it on the same visual (a job's lease is 330 s). */
+const LOCK_WAIT_MS = 360_000;
+const isId = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
 /**
  * One picture change per visual at a time. A draw or an area redraw reads the
  * visual's CURRENT picture, works on it for as long as the image model takes,
  * and then makes its result the current one. Two of them side by side (two
  * comments sent quickly, two workers) would both start from the same version
- * and the second to finish would drop the first one's change. So each takes a
- * Postgres advisory lock named for the piece and the visual, held for the
- * whole change: the second waits, then starts from the first one's result.
- * The lock is the transaction's, so it is let go even if the work throws.
+ * and the second to finish would drop the first one's change. So each holds a
+ * lock named for the piece and the visual while it works: the second waits,
+ * then starts from the first one's result.
+ *
+ * The lock is a row in picture_locks (RLS, its own workspace) with a holder
+ * and an expiry renewed every LOCK_RENEW_MS, never an open transaction: an
+ * advisory lock held across a 30 to 300 s model call kept a pooled
+ * connection idle in a transaction for all of it (PI-38). Let go in finally;
+ * a worker that dies loses it after LOCK_TTL_S.
  */
 async function oneAtATime<T>(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, work: () => Promise<T>): Promise<T> {
-  return withTenantSession(scope, async (c) => {
-    await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`picture:${scope.tenantId}:${contentItemId}:${artboard}`]);
-    return work();
-  });
+  if (!isId(contentItemId)) throw new PictureError("That piece isn't in this project any more.");
+  const holder = randomUUID();
+  const started = Date.now();
+  for (;;) {
+    let got = false;
+    try {
+      got = await withTenantSession(scope, async (c) =>
+        ((
+          await c.query(
+            `INSERT INTO picture_locks (tenant_id, content_item_id, artboard, holder, locked_until)
+             VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))
+             ON CONFLICT (content_item_id, artboard) DO UPDATE SET holder = EXCLUDED.holder, locked_until = EXCLUDED.locked_until, created_at = now()
+               WHERE picture_locks.locked_until < now()
+             RETURNING holder`,
+            [scope.tenantId, contentItemId, artboard, holder, LOCK_TTL_S],
+          )
+        ).rowCount ?? 0) > 0,
+      );
+    } catch (e) {
+      // The piece is not this workspace's (the lock's link to it is checked, 0022).
+      if ((e as { code?: string }).code === "23503") throw new PictureError("That piece isn't in this project any more.");
+      throw e;
+    }
+    if (got) break;
+    if (Date.now() - started > LOCK_WAIT_MS) throw new PictureError("This picture is still being changed. Try again in a moment.");
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  const renew = setInterval(() => {
+    void withTenantSession(scope, (c) =>
+      c.query("UPDATE picture_locks SET locked_until = now() + make_interval(secs => $4) WHERE content_item_id=$1 AND artboard=$2 AND holder=$3", [contentItemId, artboard, holder, LOCK_TTL_S]),
+    ).catch(() => undefined);
+  }, LOCK_RENEW_MS);
+  renew.unref?.();
+  try {
+    return await work();
+  } finally {
+    clearInterval(renew);
+    await withTenantSession(scope, (c) => c.query("DELETE FROM picture_locks WHERE content_item_id=$1 AND artboard=$2 AND holder=$3", [contentItemId, artboard, holder])).catch(() => undefined);
+  }
+}
+
+/** A picture action under its budget of paid pictures (PI-30), reporting what it used and whether it attached. */
+async function budgeted(max: number, run: PictureRun | undefined, work: () => Promise<{ id: string; attached: boolean }>): Promise<string> {
+  const spend = run?.spend ?? new PictureSpend(max);
+  if (run) run.spend = spend;
+  const out = await withPictureBudget(max, work, spend);
+  if (run) run.attached = out.attached;
+  return out.id;
 }
 
 /** Draw a new picture for one visual and make it that visual's picture. Returns its id. */
-export async function drawPicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, mode: PictureMode): Promise<string> {
-  return oneAtATime(scope, contentItemId, artboard, () => drawPictureNow(scope, contentItemId, artboard, mode));
+export async function drawPicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, mode: PictureMode, run?: PictureRun): Promise<string> {
+  return oneAtATime(scope, contentItemId, artboard, () => budgeted(PICTURE_BUDGET.draw, run, () => drawPictureNow(scope, contentItemId, artboard, mode)));
 }
 
 /** One line of at most `max` characters, for a line of the picture brief. */
@@ -275,9 +384,12 @@ async function schemeOfPiece(scope: ProjectScope, contentItemId: string, palette
   return schemesFrom(palette)[at] ?? null;
 }
 
-async function drawPictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, mode: PictureMode): Promise<string> {
+async function drawPictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, mode: PictureMode): Promise<{ id: string; attached: boolean }> {
   const piece = await pieceOf(scope, contentItemId);
-  if (!(await designOf(scope, contentItemId))) throw new PictureError("Make the visuals first; a picture goes on one of them.");
+  const design = await designOf(scope, contentItemId);
+  if (!design) throw new PictureError("Make the visuals first; a picture goes on one of them.");
+  // What the visual shows as this starts: the new picture goes on only if that is still so (PI-26).
+  const from = design.pictures[artboard]?.id ?? null;
   const fmt = formatByKey(piece.format);
   const shape = shapeFor(artboard, piece.format);
   const context = await loadBrandContext(scope, "en", fmt.platform, "write");
@@ -309,15 +421,13 @@ async function drawPictureNow(scope: ProjectScope, contentItemId: string, artboa
   // With the heading drawn in, text is wanted: only stray words are ruled out, by the instructions above.
   const avoid = [brief.avoid.trim(), mode === "with_text" ? ALWAYS_AVOID.replace(", text, letters", "") : ALWAYS_AVOID].filter(Boolean).join(", ");
   const draw = () => generateImage(scope, { context, prompt, negativePrompt: avoid, shape, contentItemId });
-  let out: { bytes: Uint8Array; model: string; textLeft?: boolean } = await draw();
+  let out: { bytes: Uint8Array; model: string; textLeft?: boolean; unchecked?: boolean } = await draw();
   // Under live text the picture must have no words of its own: looked for, erased, or drawn again once.
   if (mode === "live_text") out = await keepWordsOut(scope, { context, bytes: out.bytes, model: out.model, shape, contentItemId, why: "a new picture", redraw: draw });
-  const id = await savePicture(scope, piece, out.bytes, {
+  return commitPicture(scope, piece, out.bytes, {
     artboard, mode, shape, prompt, model: out.model, avoid: brief.avoid, heading: mode === "with_text" ? piece.hook : null, parentId: null, op: "draw",
-    textLeft: out.textLeft,
-  });
-  await attach(scope, contentItemId, artboard, { id, mode });
-  return id;
+    textLeft: out.textLeft, wordsUnchecked: out.unchecked,
+  }, from);
 }
 
 /**
@@ -326,12 +436,14 @@ async function drawPictureNow(scope: ProjectScope, contentItemId: string, artboa
  * inside the area, so nothing else in the picture can change. Returns the new
  * version's id.
  */
-export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, edit: AreaEdit): Promise<string>;
+export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, edit: AreaEdit, run?: PictureRun): Promise<string>;
 export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, box: Box, note: string): Promise<string>;
-export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, boxOrEdit: Box | AreaEdit, note?: string): Promise<string> {
+export async function redrawArea(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, boxOrEdit: Box | AreaEdit, noteOrRun?: string | PictureRun): Promise<string> {
   // The first form is the one that grew (a kind, strokes); the second is how a plain comment has always been sent.
-  const edit: AreaEdit = "box" in boxOrEdit ? boxOrEdit : { box: boxOrEdit, note: note ?? "", kind: "comment" };
-  return oneAtATime(scope, contentItemId, artboard, () => redrawAreaNow(scope, contentItemId, artboard, edit));
+  const edit: AreaEdit = "box" in boxOrEdit ? boxOrEdit : { box: boxOrEdit, note: typeof noteOrRun === "string" ? noteOrRun : "", kind: "comment" };
+  const run = typeof noteOrRun === "object" ? noteOrRun : undefined;
+  const kind: PinKind = edit.kind === "markup" || edit.kind === "erase" ? edit.kind : "comment";
+  return oneAtATime(scope, contentItemId, artboard, () => budgeted(PICTURE_BUDGET[kind], run, () => redrawAreaNow(scope, contentItemId, artboard, edit)));
 }
 
 /**
@@ -464,7 +576,9 @@ const WORDS_TRY_BUDGET_MS = 120_000;
  *   fix     false: only look (after the person's own Erase), change nothing
  *
  * When the vision model can't say (not set up, rate limited, down), the
- * picture goes on as it is: this never stops a picture.
+ * picture goes on as it is: this never stops a picture. That is not the same
+ * as "no words": `unchecked` says so, the version records it and the board
+ * shows "Words not checked" with a way to check again (PI-20).
  */
 export async function keepWordsOut(
   scope: ProjectScope,
@@ -473,7 +587,7 @@ export async function keepWordsOut(
     within?: Box | null; except?: PixelRect | null; fix?: boolean;
     redraw?: () => Promise<{ bytes: Uint8Array; model: string }>;
   },
-): Promise<{ bytes: Uint8Array; model: string; textLeft: boolean }> {
+): Promise<{ bytes: Uint8Array; model: string; textLeft: boolean; unchecked: boolean }> {
   // The check's own context (INV-2: the one builder), the short "check" cut of it.
   const context = await loadBrandContext(scope, "en", undefined, "check");
   // A job has a lease (lib/jobs): no further erase or redraw starts once this has run WORDS_TRY_BUDGET_MS.
@@ -482,9 +596,10 @@ export async function keepWordsOut(
   const look = (bytes: Uint8Array, why: string) => lookForWords(scope, bytes, { context, contentItemId: a.contentItemId, why });
   const base = { tenantId: scope.tenantId, contentItemId: a.contentItemId, why: a.why };
   const found = await look(a.bytes, a.why);
-  if (!found || !found.hasText) return { bytes: a.bytes, model: a.model, textLeft: false };
+  if (!found) return { bytes: a.bytes, model: a.model, textLeft: false, unchecked: true };
+  if (!found.hasText) return { bytes: a.bytes, model: a.model, textLeft: false, unchecked: false };
   logger.info("picture_text_found", { ...base, boxes: found.boxes.map((b) => [b.x, b.y, b.w, b.h].map((n) => Number(n.toFixed(3)))) });
-  if (a.fix === false) return { bytes: a.bytes, model: a.model, textLeft: true };
+  if (a.fix === false) return { bytes: a.bytes, model: a.model, textLeft: true, unchecked: false };
 
   let now = { bytes: a.bytes, model: a.model };
   const boxes = a.within ? boxesWithin(found.boxes, a.within) : found.boxes;
@@ -509,7 +624,8 @@ export async function keepWordsOut(
         const again = await look(now.bytes, `${a.why}, after its words were erased`);
         if (!again || !again.hasText) {
           logger.info("picture_text_erased", { ...base, erases: erased, checked: !!again });
-          return { ...now, textLeft: false };
+          // Erased, but not looked at again: the board says the words were not checked.
+          return { ...now, textLeft: false, unchecked: !again };
         }
       }
     } catch (e) {
@@ -522,7 +638,7 @@ export async function keepWordsOut(
       const third = await look(fresh.bytes, `${a.why}, drawn again`);
       if (!third || !third.hasText) {
         logger.info("picture_text_redrawn", { ...base, checked: !!third });
-        return { bytes: fresh.bytes, model: fresh.model, textLeft: false };
+        return { bytes: fresh.bytes, model: fresh.model, textLeft: false, unchecked: !third };
       }
       now = fresh;
     } catch (e) {
@@ -530,10 +646,16 @@ export async function keepWordsOut(
     }
   }
   logger.info("picture_text_left", base);
-  return { ...now, textLeft: true };
+  return { ...now, textLeft: true, unchecked: false };
 }
 
-async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, edit: AreaEdit): Promise<string> {
+/**
+ * Said when an area change ran into the area's edge twice (PI-18, PI-19): what
+ * was drawn would have been cut off flat along it, so it is not kept.
+ */
+export const AREA_EDGE_REFUSED = "The change ran past the edge of the marked area, so it would have been cut off there. It wasn't kept. Drag a bigger box around the spot and try again.";
+
+async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, edit: AreaEdit): Promise<{ id: string; attached: boolean }> {
   const now = await currentPicture(scope, contentItemId, artboard);
   const { piece, ref, row: current, bytes, width, height } = now;
   // A cut-out is a subject on nothing: an edit would draw a background back in. v1 says no, plainly.
@@ -542,27 +664,27 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
   const strokes = kind === "comment" ? [] : cleanStrokes(edit.strokes);
   const shape = current.params?.shape ?? shapeFor(artboard, piece.format);
   const context = await loadBrandContext(scope, "en", formatByKey(piece.format).platform, "write");
-  const words = ref.mode === "with_text" && current.params?.heading
+  const wordsRule = ref.mode === "with_text" && current.params?.heading
     ? `Any text in the area must read exactly as asked; elsewhere the text stays "${current.params.heading}".`
     : "No words, letters or logos.";
-  const keep = (merged: Uint8Array, prompt: string, model: string, op: PictureOp, textLeft = false) =>
-    savePicture(scope, piece, merged, {
+  const keep = (merged: Uint8Array, prompt: string, model: string, op: PictureOp, words?: { textLeft?: boolean; unchecked?: boolean } | null) =>
+    commitPicture(scope, piece, merged, {
       artboard, mode: ref.mode, shape, prompt: current.prompt ?? prompt, model,
-      avoid: current.params?.avoid, heading: current.params?.heading ?? null, parentId: current.id, op, textLeft,
-    });
+      avoid: current.params?.avoid, heading: current.params?.heading ?? null, parentId: current.id, op,
+      textLeft: words?.textLeft, wordsUnchecked: words?.unchecked,
+    }, ref.id);
   const live = ref.mode === "live_text";
 
-  let id: string;
   if (kind === "erase") {
     if (strokes.length === 0) throw new PictureError("Brush over what to erase first.");
     const mask = await strokeMask(strokes, width, height);
     const thinnest = Math.min(...strokes.map((s) => s.w)) * Math.min(width, height);
     const feather = Math.max(1, Math.min(ERASE_FEATHER, Math.round(thinnest / 4)));
-    const out = await eraseArea(scope, { context, bytes, mask, shape, contentItemId, feather, area: strokesBox(strokes, 0, width / height) });
+    const erased = await eraseArea(scope, { context, bytes, mask, shape, contentItemId, feather, area: strokesBox(strokes, 0, width / height) });
     // Erasing words is what the board's notice asks for: looked at again (never
     // changed outside the brush), so the notice goes only when they are gone.
-    const words = live ? await keepWordsOut(scope, { context, bytes: out.bytes, model: out.model, shape, contentItemId, why: "a picture after an erase", fix: false }) : null;
-    id = await keep(out.bytes, ERASE_PROMPT, out.model, "erase", words?.textLeft);
+    const words = live ? await keepWordsOut(scope, { context, bytes: erased.bytes, model: erased.model, shape, contentItemId, why: "a picture after an erase", fix: false }) : null;
+    return keep(erased.bytes, ERASE_PROMPT, erased.model, "erase", words);
   } else {
     // Markup: the area is the padded box around the marks; with nothing drawn, the box that came with it.
     const marked = kind === "markup" && strokes.length > 0;
@@ -573,34 +695,52 @@ async function redrawAreaNow(scope: ProjectScope, contentItemId: string, artboar
       `Change only the marked area: ${edit.note.replace(/\s+/g, " ").trim().slice(0, 500)}`,
       "Keep everything else exactly as it is: the same subject, style, light and colours.",
       current.prompt ? `The picture: ${current.prompt.slice(0, 1500)}` : "",
-      words,
+      wordsRule,
     ].filter(Boolean).join("\n");
     const marks = marked ? await strokesOverlay(strokes, width, height, MARKS_COLOUR) : undefined;
-    const out = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "area", ...(marks ? { marks } : {}) });
+    const ask = (p: string, withMarks: boolean) => editImage(scope, { context, prompt: p, source: bytes, mask, shape, contentItemId, intent: "area", ...(withMarks && marks ? { marks } : {}) });
+    let answer = await ask(prompt, !!marks);
     if (process.env.NODE_ENV === "development") {
       // Dev only: the model's whole answer, so the blend at the area's edge can be judged against it.
-      await storage().put(tenantKey(scope.tenantId!, "debug", `area-${Date.now()}.png`), out.bytes, "image/png").catch(() => undefined);
+      await storage().put(tenantKey(scope.tenantId!, "debug", `area-${Date.now()}.png`), answer.bytes, "image/png").catch(() => undefined);
     }
-    let merged = await keepOutside(bytes, out.bytes, box);
-    let model: string = out.model;
+    let merged = await keepOutside(bytes, answer.bytes, box);
     // A model that copies the marks into the picture gets one more go without
     // them (the note and the area still say what to do); never saved with marks.
     if (marks && (await marksLeft(bytes, merged, box)) > MARKS_LEFT_MAX) {
-      const again = await editImage(scope, { context, prompt, source: bytes, mask, shape, contentItemId, intent: "area" });
-      merged = await keepOutside(bytes, again.bytes, box);
-      model = again.model;
+      answer = await ask(prompt, false);
+      merged = await keepOutside(bytes, answer.bytes, box);
       if ((await marksLeft(bytes, merged, box)) > MARKS_LEFT_MAX) {
         throw new PictureError("The change came back with your marks still in it, so it wasn't kept. Try again.");
       }
     }
+    // The change must sit inside the area (PI-18, PI-19): what the model drew
+    // across the area's edge would be cut off flat there. One more go, told to
+    // keep it whole and inside; still across the edge, it is refused plainly.
+    // Everything outside the area stays the original either way.
+    let cut = await cutAtEdge(bytes, answer.bytes, box);
+    if (cut > EDGE_CUT_LIMIT) {
+      logger.info("picture_area_rejected", { tenantId: scope.tenantId, model: answer.model, cut: Number(cut.toFixed(3)), attempt: 0 });
+      const inside = prompt.replace(/^(Change only the marked area: [^\n]*)/, "$1 Draw it whole and small enough to sit well inside the middle, with nothing touching the edges.");
+      answer = await ask(inside, false);
+      merged = await keepOutside(bytes, answer.bytes, box);
+      cut = await cutAtEdge(bytes, answer.bytes, box);
+      if (cut > EDGE_CUT_LIMIT) {
+        logger.info("picture_area_rejected", { tenantId: scope.tenantId, model: answer.model, cut: Number(cut.toFixed(3)), attempt: 1 });
+        throw new PictureError(AREA_EDGE_REFUSED);
+      }
+    }
+    let model: string = answer.model;
     // Under live text: words the model drew into the area are erased (only inside the area, so
     // everything outside it is still the original). Words elsewhere are flagged, never touched.
-    let textLeft = false;
-    if (live) ({ bytes: merged, model, textLeft } = await keepWordsOut(scope, { context, bytes: merged, model, shape, contentItemId, why: "a picture with one area changed", within: box }));
-    id = await keep(merged, prompt, model, marked ? "markup" : "area", textLeft);
+    let words: { textLeft: boolean; unchecked: boolean } | null = null;
+    if (live) {
+      const w = await keepWordsOut(scope, { context, bytes: merged, model, shape, contentItemId, why: "a picture with one area changed", within: box });
+      ({ bytes: merged, model } = w);
+      words = w;
+    }
+    return keep(merged, prompt, model, marked ? "markup" : "area", words);
   }
-  await attach(scope, contentItemId, artboard, { id, mode: ref.mode });
-  return id;
 }
 
 // ---- Resize ------------------------------------------------------------------------------
@@ -716,25 +856,24 @@ export async function resizeKind(scope: ProjectScope, contentItemId: string, art
  * the matte, and the original is pasted back over its place, so the only new
  * pixels are the ones outside it. Returns the new version's id.
  */
-export async function resizePicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput): Promise<string> {
-  return oneAtATime(scope, contentItemId, artboard, () => resizePictureNow(scope, contentItemId, artboard, input));
+export async function resizePicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput, run?: PictureRun): Promise<string> {
+  return oneAtATime(scope, contentItemId, artboard, () => budgeted(PICTURE_BUDGET.extend, run, () => resizePictureNow(scope, contentItemId, artboard, input)));
 }
 
-async function resizePictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput): Promise<string> {
+async function resizePictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, input: ResizeInput): Promise<{ id: string; attached: boolean }> {
   const { now, plan } = await resizeOf(scope, contentItemId, artboard, input);
   const { piece, ref, row: current, bytes } = now;
   const shape = shapeOfRatio(plan.ratio);
-  const keep = (png: Uint8Array, model: string, textLeft: boolean) =>
-    savePicture(scope, piece, png, {
+  const keep = (png: Uint8Array, model: string, words: { textLeft: boolean; unchecked: boolean }) =>
+    commitPicture(scope, piece, png, {
       artboard, mode: ref.mode, shape, prompt: current.prompt ?? "", model,
-      avoid: current.params?.avoid, heading: null, parentId: current.id, op: "resize", textLeft,
-    });
+      avoid: current.params?.avoid, heading: null, parentId: current.id, op: "resize", textLeft: words.textLeft, wordsUnchecked: words.unchecked,
+    }, ref.id);
 
-  let id: string;
   if (plan.crop) {
     const cut = new Uint8Array(await sharp(Buffer.from(bytes)).extract(plan.cut).png().toBuffer());
-    // A crop draws nothing: words the picture was flagged for may still be in the part kept.
-    id = await keep(cut, "crop", current.params?.textLeft === true);
+    // A crop draws nothing: words the picture was flagged for (or not checked for) may still be in the part kept.
+    return keep(cut, "crop", { textLeft: current.params?.textLeft === true, unchecked: current.params?.wordsUnchecked === true });
   } else {
     const { canvas, placePx } = plan;
     const source = await placeOnCanvas(bytes, canvas, placePx, EXTEND_MATTE);
@@ -784,10 +923,8 @@ async function resizePictureNow(scope: ProjectScope, contentItemId: string, artb
     if (!answer) throw new PictureError(problem);
     // Words drawn into the new area are erased there; the original's place is never touched.
     const words = await keepWordsOut(scope, { context, bytes: answer, model, shape, contentItemId, why: "a picture with new area drawn around it", except: seen });
-    id = await keep(words.bytes, words.model, words.textLeft);
+    return keep(words.bytes, words.model, words);
   }
-  await attach(scope, contentItemId, artboard, { id, mode: ref.mode });
-  return id;
 }
 
 /** The share of the new area (everything outside `kept`) that is still the matte's flat green. */
@@ -815,8 +952,13 @@ async function matteLeft(png: Uint8Array, kept: PixelRect): Promise<number> {
  * where it would not work: the heading drawn into the picture, a picture that
  * is already a cut-out, or one with no clear subject.
  */
-export async function cutOutPicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<string> {
-  return oneAtATime(scope, contentItemId, artboard, () => cutOutPictureNow(scope, contentItemId, artboard));
+export async function cutOutPicture(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, run?: PictureRun): Promise<string> {
+  // Free (the model runs here): no budget of its own, but the same report of whether it attached.
+  return oneAtATime(scope, contentItemId, artboard, async () => {
+    const out = await cutOutPictureNow(scope, contentItemId, artboard);
+    if (run) run.attached = out.attached;
+    return out.id;
+  });
 }
 
 /** The refusals a cut-out makes before any work (so the action can say no at once, without queueing). */
@@ -863,21 +1005,44 @@ export async function trimToSubject(png: Uint8Array, pad = 0.04): Promise<Uint8A
   return new Uint8Array(out);
 }
 
-async function cutOutPictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<string> {
+/**
+ * A cut-out already made from this very picture (Back, then Remove background
+ * again): it is the same subject on nothing, so it is put back instead of
+ * making an identical new version (PI-25).
+ */
+async function cutoutOf(scope: ProjectScope, parentId: string, artboard: ArtboardKind): Promise<string | null> {
+  return (
+    await withTenantSession(scope, (c) =>
+      c.query<{ id: string }>(
+        `SELECT id FROM image_assets
+          WHERE parent_id=$1 AND project_id=$2 AND kind='picture' AND storage_key IS NOT NULL
+            AND params->>'cutout' = 'true' AND params->>'artboard' = $3
+          ORDER BY created_at DESC LIMIT 1`,
+        [parentId, scope.projectId, artboard],
+      ),
+    )
+  ).rows[0]?.id ?? null;
+}
+
+async function cutOutPictureNow(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<{ id: string; attached: boolean }> {
   const refusal = await cutOutRefusal(scope, contentItemId, artboard);
   if (refusal) throw new PictureError(refusal);
   const { piece, ref, row: current, bytes } = await currentPicture(scope, contentItemId, artboard);
+  const earlier = await cutoutOf(scope, current.id, artboard);
+  if (earlier) {
+    const attached = await withTenantSession(scope, (c) => pointAt(c, scope, contentItemId, artboard, { id: earlier, mode: ref.mode, cutout: true }, ref.id));
+    logger.info("picture_cutout_reused", { tenantId: scope.tenantId, contentItemId, artboard, id: earlier });
+    return { id: earlier, attached };
+  }
   const out = await cutoutImage(scope, { source: bytes, contentItemId });
   if (!clearSubject(out.coverage)) throw new PictureError("There's no clear subject to cut out in this picture.");
   // Only the subject is kept (with a little room): the empty frame around it
   // would make it small on the visual (2026-11-18: the scales filled a fifth of their space).
   const trimmed = await trimToSubject(out.bytes);
-  const id = await savePicture(scope, piece, trimmed, {
+  return commitPicture(scope, piece, trimmed, {
     artboard, mode: ref.mode, shape: current.params?.shape ?? shapeFor(artboard, piece.format), prompt: current.prompt ?? "", model: out.model,
     avoid: current.params?.avoid, heading: null, parentId: current.id, op: "cutout", cutout: true,
-  });
-  await attach(scope, contentItemId, artboard, { id, mode: ref.mode, cutout: true });
-  return id;
+  }, ref.id);
 }
 
 /** Undo the last area change: the visual goes back to the version it was made from. */
@@ -989,6 +1154,8 @@ export interface PictureVersion {
   cutout: boolean;
   /** It should have no words and may still show some (keepWordsOut): the board says so. */
   textLeft: boolean;
+  /** It should have no words and the check could not run (PI-20): the board says "Words not checked". */
+  wordsUnchecked: boolean;
 }
 
 const PICTURE_OPS: readonly PictureOp[] = ["draw", "area", "markup", "erase", "resize", "cutout"];
@@ -1031,5 +1198,52 @@ export async function pictureVersions(scope: ProjectScope): Promise<PictureVersi
       height: r.height ?? 0,
       cutout: r.params?.cutout === true,
       textLeft: r.params?.textLeft === true,
+      wordsUnchecked: r.params?.wordsUnchecked === true,
     }));
+}
+
+/**
+ * "Check for words" on a picture whose words check could not run (PI-20): one
+ * look by the vision model (through the facade: capped and logged), nothing in
+ * the picture changed. Records the answer on the version: words found (the
+ * board says so; Erase removes them), none, or still not checked. Returns
+ * which, or null when the visual has no such picture.
+ */
+export async function checkWords(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<"words" | "clean" | "unchecked" | null> {
+  const now = await currentPicture(scope, contentItemId, artboard);
+  if (now.cutout || now.ref.mode !== "live_text") return null;
+  const context = await loadBrandContext(scope, "en", formatByKey(now.piece.format).platform, "write");
+  const shape = now.row.params?.shape ?? shapeFor(artboard, now.piece.format);
+  const w = await keepWordsOut(scope, { context, bytes: now.bytes, model: "", shape, contentItemId, why: "a picture checked again for words", fix: false });
+  const patch = w.unchecked ? { wordsUnchecked: true } : { wordsUnchecked: false, textLeft: w.textLeft };
+  await withTenantSession(scope, (c) =>
+    c.query("UPDATE image_assets SET params = params || $1::jsonb WHERE id=$2 AND project_id=$3 AND kind='picture'", [JSON.stringify(patch), now.row.id, scope.projectId]),
+  );
+  return w.unchecked ? "unchecked" : w.textLeft ? "words" : "clean";
+}
+
+/**
+ * The newest version of a visual's picture made from `from` (null: a fresh
+ * draw) since `since` by `op`: a job that is run a second time (its lease ran
+ * out, or its worker died after the work was done) finds its own result here
+ * instead of paying for it again (PI-29).
+ */
+export async function madeSince(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind, op: PictureOp, from: string | null, since: string): Promise<string | null> {
+  if (!isId(contentItemId) || Number.isNaN(Date.parse(since))) return null;
+  return (
+    await withTenantSession(scope, (c) =>
+      c.query<{ id: string }>(
+        `SELECT id FROM image_assets
+          WHERE content_item_id=$1 AND project_id=$2 AND kind='picture' AND params->>'artboard'=$3 AND params->>'op'=$4
+            AND parent_id IS NOT DISTINCT FROM $5::uuid AND created_at >= $6::timestamptz
+          ORDER BY created_at DESC LIMIT 1`,
+        [contentItemId, scope.projectId, artboard, op, from, since],
+      ),
+    )
+  ).rows[0]?.id ?? null;
+}
+
+/** The picture a visual shows now (its version id), or null. */
+export async function currentPictureId(scope: ProjectScope, contentItemId: string, artboard: ArtboardKind): Promise<string | null> {
+  return (await designOf(scope, contentItemId))?.pictures[artboard]?.id ?? null;
 }

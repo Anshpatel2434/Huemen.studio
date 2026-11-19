@@ -80,6 +80,34 @@ export async function forVision(bytes: Uint8Array, maxSide = VISION_MAX_SIDE): P
   return { mime: "image/jpeg", data: new Uint8Array(data) };
 }
 
+/** The side of the square copy the words check looks at (PI-22): its pixels and thousandths are the same numbers. */
+export const WORDS_CHECK_SIDE = 1000;
+
+/**
+ * The copy the words check looks at (lib/data/picture-words): the picture
+ * whole, centred in a WORDS_CHECK_SIDE square on plain grey, contrast
+ * stretched a little so faint print shows (PI-21), JPEG 85. On a square of
+ * 1000 a box in the copy's pixels and a box in thousandths are the same
+ * numbers, so the answer's units no longer have to be guessed (PI-22: a
+ * 768 px copy made every pixel answer read as thousandths). `place` is where
+ * the picture sits in the square, as shares of it.
+ */
+export async function forWordsCheck(bytes: Uint8Array): Promise<{ image: TextImage; place: { x: number; y: number; w: number; h: number } }> {
+  const S = WORDS_CHECK_SIDE;
+  const src = sharp(bytes, { limitInputPixels: 50_000_000, animated: false }).autoOrient();
+  const meta = await src.metadata();
+  const w0 = meta.width ?? S, h0 = meta.height ?? S;
+  const k = Math.min(S / w0, S / h0);
+  const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
+  const left = Math.floor((S - w) / 2), top = Math.floor((S - h) / 2);
+  const inner = await src.flatten({ background: "#ffffff" }).resize(w, h, { fit: "fill" }).normalise({ lower: 1, upper: 99 }).toBuffer();
+  const data = await sharp({ create: { width: S, height: S, channels: 3, background: "#808080" } })
+    .composite([{ input: inner, left, top }])
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  return { image: { mime: "image/jpeg", data: new Uint8Array(data) }, place: { x: left / S, y: top / S, w: w / S, h: h / S } };
+}
+
 /**
  * Several designs as ONE picture: side by side on white, each in its own cell
  * with its number in the corner, left to right in the order given. Groq counts

@@ -139,6 +139,62 @@ export async function keepOutside(original: Uint8Array, edited: Uint8Array, box:
   return new Uint8Array(await sharp(out, { raw: { width, height, channels: 4 } }).png().toBuffer());
 }
 
+/** A pixel the model changed by more than this (mean of R, G and B, 0-255) counts as a real change, not re-drawing noise. */
+export const EDGE_CHANGE = 40;
+/**
+ * More than this share of one side's border band changed, and the change runs
+ * across the area's edge (cutAtEdge). Measured on the saved answers of
+ * 2026-11-18/19: the plant sliced flat along the bottom 0.26; a weight and a
+ * bell kept inside their areas 0.00 to 0.05.
+ */
+export const EDGE_CUT_LIMIT = 0.15;
+
+/**
+ * How much of the model's change is cut off at the edge of the area (PI-18,
+ * PI-19). keepOutside keeps the answer only inside the box, fading it out
+ * over the feather at the rim, so whatever the model drew across the box's
+ * border is sliced off there: a plant drawn with its pot below the box came
+ * out as a sprout cut flat along the box's bottom (2026-11-19), and a scene
+ * re-drawn a little off its place leaves a join. For each side of the box
+ * that is not the picture's own edge: the share of a band straddling the
+ * border (half the feather inside, as much outside) where the answer differs
+ * from the original by more than EDGE_CHANGE. The worst side is returned:
+ * 0, the change sits inside the area; near 1, it runs across that whole side.
+ */
+export async function cutAtEdge(original: Uint8Array, answer: Uint8Array, box: Box, feather?: number): Promise<number> {
+  const base = sharp(Buffer.from(original)).removeAlpha();
+  const { width, height } = await base.metadata();
+  if (!width || !height) return 0;
+  const a = await base.raw().toBuffer();
+  const b = await sharp(Buffer.from(answer)).resize(width, height, { fit: "fill" }).removeAlpha().raw().toBuffer();
+  const r = boxPixels(box, width, height, 0);
+  const band = Math.max(4, Math.round((feather ?? seamFeather(r.width, r.height)) / 2));
+  const x0 = r.left, y0 = r.top, x1 = r.left + r.width - 1, y1 = r.top + r.height - 1;
+  const changed = (x: number, y: number) => {
+    const i = (y * width + x) * 3;
+    return (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2])) / 3 > EDGE_CHANGE;
+  };
+  /** The share changed in the band across one side: `along` runs the side's length, `at(k, j)` is the pixel k from the border (negative inside). */
+  const side = (from: number, to: number, at: (k: number, j: number) => [number, number]) => {
+    let seen = 0, cut = 0;
+    for (let k = -band; k <= band; k++) {
+      for (let j = from; j <= to; j++) {
+        const [x, y] = at(k, j);
+        if (x < 0 || y < 0 || x >= width || y >= height) continue;
+        seen++;
+        if (changed(x, y)) cut++;
+      }
+    }
+    return seen ? cut / seen : 0;
+  };
+  let worst = 0;
+  if (x0 > 0) worst = Math.max(worst, side(y0, y1, (k, j) => [x0 - k, j]));
+  if (x1 < width - 1) worst = Math.max(worst, side(y0, y1, (k, j) => [x1 + k, j]));
+  if (y0 > 0) worst = Math.max(worst, side(x0, x1, (k, j) => [j, y0 - k]));
+  if (y1 < height - 1) worst = Math.max(worst, side(x0, x1, (k, j) => [j, y1 + k]));
+  return worst;
+}
+
 // ---- freehand strokes (Markup, Erase) -----------------------------------------------
 
 const round4 = (n: number) => Math.round(n * 10_000) / 10_000;

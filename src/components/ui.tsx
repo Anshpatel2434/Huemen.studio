@@ -313,7 +313,8 @@ export function ToastProvider({ children, lifted = false }: { children: ReactNod
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className={`fixed ${lifted ? "bottom-[5.5rem] max-sm:bottom-[8.5rem]" : "bottom-6"} left-1/2 -translate-x-1/2 w-max max-w-[calc(100vw-2rem)] flex flex-col gap-2 items-center pointer-events-none`} style={{ zIndex: "var(--z-toast)" }} role="region" aria-label="Notifications">
+      {/* Lifted: above the canvas strip as tall as it really is (--hu-toast-lift, set by the canvas while it is open, PI-15). */}
+      <div className={`fixed ${lifted ? "bottom-[var(--hu-toast-lift,5.5rem)] max-sm:bottom-[var(--hu-toast-lift,8.5rem)]" : "bottom-6"} left-1/2 -translate-x-1/2 w-max max-w-[calc(100vw-2rem)] flex flex-col gap-2 items-center pointer-events-none`} style={{ zIndex: "var(--z-toast)" }} role="region" aria-label="Notifications">
         {toasts.map((t) => (
           <div key={t.id} role={t.tone === "danger" ? "alert" : "status"} className="hu-toast pop">
             {t.tone === "danger" ? <XCircle size={18} className="hu-toast__icon text-[var(--danger-line)]" aria-hidden="true" />

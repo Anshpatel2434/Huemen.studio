@@ -32,9 +32,24 @@ export class UsageCapError extends Error {
     public readonly kind: "text" | "image",
     public readonly used: number,
     public readonly cap: number,
+    /** The monthly hard cap (admin-set), or the daily picture cap (AI_IMAGE_DAILY_CAP, PI-30). */
+    public readonly period: "month" | "day" = "month",
   ) {
-    super(`Monthly ${kind} cap reached: ${used} of ${cap}`);
+    super(`${period === "day" ? "Daily" : "Monthly"} ${kind} cap reached: ${used} of ${cap}`);
     this.name = "UsageCapError";
+  }
+}
+
+/**
+ * One picture action (a comment's redraw, a markup, an erase, a resize, a new
+ * picture) may make at most so many paid picture calls, its retries and word
+ * checks included (lib/ai withPictureBudget, PI-30). Raised in the facade
+ * BEFORE the provider is reached, so the call that would go over costs nothing.
+ */
+export class PictureBudgetError extends Error {
+  constructor(public readonly max: number) {
+    super(`Picture budget for this change reached: ${max}`);
+    this.name = "PictureBudgetError";
   }
 }
 
@@ -136,26 +151,41 @@ function rateLimitMessage(e: ProviderError): string {
 }
 
 /**
+ * What the failed call was for, so the sentence names it (PI-31): a picture
+ * failure was worded as a "Drafting" one. "picture" covers new pictures,
+ * changes to one, Remove background and the words check on a picture.
+ */
+export type MessageFor = "writing" | "picture";
+
+/**
  * What a person sees when a model call fails. Plain, and never about "AI":
  * the product's job is their voice, not the machinery (design system §15).
  * Server actions return this rather than throwing, because a thrown error's
  * message is scrubbed before it reaches the browser in production.
  */
-export function userMessage(e: unknown): string {
-  if (e instanceof AiConfigError) return "Drafting isn't switched on for this workspace yet. Your admin can turn it on.";
+export function userMessage(e: unknown, about: MessageFor = "writing"): string {
+  const picture = about === "picture" || (e instanceof UsageCapError && e.kind === "image");
+  if (e instanceof PictureBudgetError) return `This change reached its limit of ${e.max} pictures, so it stopped there. Nothing more was used.`;
+  if (e instanceof AiConfigError) {
+    return picture ? "Pictures aren't switched on for this workspace yet. Your admin can turn them on." : "Drafting isn't switched on for this workspace yet. Your admin can turn it on.";
+  }
   if (e instanceof RateLimitError) {
     const wait = e.retryAfterSeconds > 90 ? `${Math.ceil(e.retryAfterSeconds / 60)} minutes` : "a minute";
     return e.by === "user"
       ? `That's a lot in a short time. Give it ${wait} and try again.`
       : `This workspace is busy right now. Give it ${wait} and try again.`;
   }
-  if (e instanceof UsageCapError) return e.cap === 0 ? "Drafting is switched off for this workspace. Your admin can turn it on in Settings." : `This workspace has used its ${e.cap} generations for the month. Your admin can raise the cap in Settings.`;
+  if (e instanceof UsageCapError) {
+    if (e.period === "day") return `This workspace has used its ${e.cap} pictures for today. It frees up tomorrow; your admin can raise the daily limit.`;
+    if (e.cap === 0) return picture ? "Pictures are switched off for this workspace. Your admin can turn them on in Settings." : "Drafting is switched off for this workspace. Your admin can turn it on in Settings.";
+    return `This workspace has used its ${e.cap} ${picture ? "pictures" : "generations"} for the month. Your admin can raise the cap in Settings.`;
+  }
   if (e instanceof ProviderError) {
     switch (e.kind) {
       case "timeout": return "That took too long and was stopped. Try again.";
       case "rate_limit": return rateLimitMessage(e);
-      case "auth": return "Drafting couldn't sign in to its service. Your admin needs to check the key.";
-      case "refusal": return "That one couldn't be written. Try rewording the topic.";
+      case "auth": return picture ? "The picture service refused the key. Your admin needs to check it." : "Drafting couldn't sign in to its service. Your admin needs to check the key.";
+      case "refusal": return picture ? "The picture service turned that one down. Try saying it another way." : "That one couldn't be written. Try rewording the topic.";
       default: return "That didn't work and was logged. Try again.";
     }
   }

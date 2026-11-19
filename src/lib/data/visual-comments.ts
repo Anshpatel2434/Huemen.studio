@@ -33,7 +33,8 @@ import { ERASE_NOTE, MAX_PINS_PER_SEND, PIN_KINDS, type PicturePin, type PinKind
 import { ARTBOARDS, parseDesign, type ArtboardKind } from "@/lib/visual/design";
 import { patchContent, rewritePartOf } from "./content";
 import { saveDesign } from "./pipeline";
-import { CUTOUT_LOCKED, designOf, redrawArea } from "./pictures";
+import { CUTOUT_LOCKED, designOf, redrawArea, type PictureRun } from "./pictures";
+import { patchForSlide, slidesOf } from "@/lib/visual/slides";
 import type { ProjectScope } from "./projects";
 
 export const COMMENT_TARGETS = ["picture", "headline", "body", "cta", "logo", "background"] as const;
@@ -70,6 +71,12 @@ export interface VisualComment {
   area: Box | null;
   /** Markup: the drawn marks. Erase: the brushed area. Fractions of the picture. Null for a plain comment. */
   strokes: Stroke[] | null;
+  /**
+   * Which frame of the visual it was put on (a carousel has several), so its
+   * pin is drawn there again after it is sent (PI-12) and a comment on one
+   * slide's words changes only that slide (PI-13). Null for older comments.
+   */
+  frame: number | null;
 }
 
 export class CommentError extends Error {
@@ -83,7 +90,7 @@ type Row = {
   id: string; visual_id: string; content_item_id: string; target: CommentTarget;
   box_x: number; box_y: number; box_w: number; box_h: number;
   note: string; status: VisualComment["status"]; result: string | null; job_id: string | null; result_picture_id: string | null; created_at: Date;
-  kind?: string | null; area?: unknown; strokes?: unknown;
+  kind?: string | null; area?: unknown; strokes?: unknown; frame?: number | null;
 };
 const view = (r: Row): VisualComment => {
   // What was stored is read back through the same clean-up it was stored through, never trusted as is.
@@ -95,16 +102,20 @@ const view = (r: Row): VisualComment => {
     kind: (PIN_KINDS as readonly string[]).includes(String(r.kind)) ? (r.kind as PinKind) : "comment",
     area: cleanBox(r.area as Partial<Box> | null),
     strokes: strokes.length ? strokes : null,
+    frame: Number.isInteger(r.frame) && (r.frame as number) >= 0 ? (r.frame as number) : null,
   };
 };
 
-/** The comments on a project's visuals, newest last. */
+/** A frame index as it may be stored: a whole number from 0 to 63, else none. */
+const cleanFrame = (v: unknown): number | null => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 64 ? (v as number) : null);
+
+/** The comments on a project's visuals, newest last. Cleared ones are left out (they stay in the table, PI-35). */
 export async function listComments(scope: ProjectScope): Promise<VisualComment[]> {
   const rows = await withTenantSession(scope, async (c) =>
     (
       await c.query<Row>(
         `SELECT vc.* FROM visual_comments vc JOIN image_assets ia ON ia.id = vc.visual_id
-          WHERE ia.project_id = $1 ORDER BY vc.created_at`,
+          WHERE ia.project_id = $1 AND vc.dismissed_at IS NULL ORDER BY vc.created_at`,
         [scope.projectId],
       )
     ).rows,
@@ -133,9 +144,47 @@ export async function finishComment(scope: ProjectScope, id: string, outcome: { 
   );
 }
 
+/**
+ * Clear a finished comment from the board. Not a delete (PI-35): the row is
+ * kept with dismissed_at, so Undo brings it back. One still working stays.
+ */
 export async function dismissComment(scope: ProjectScope, id: string): Promise<boolean> {
-  if (!(await getComment(scope, id))) return false;
-  return withTenantSession(scope, async (c) => ((await c.query("DELETE FROM visual_comments WHERE id=$1 AND status <> 'working'", [id])).rowCount ?? 0) > 0);
+  return (await dismissComments(scope, [id])).length === 1;
+}
+
+/** Clear several finished comments of this project (Clear done). Returns the ones cleared. */
+export async function dismissComments(scope: ProjectScope, ids: unknown): Promise<string[]> {
+  const clean = Array.isArray(ids) ? [...new Set(ids.filter((v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)))].slice(0, 200) : [];
+  if (!clean.length) return [];
+  return withTenantSession(scope, async (c) =>
+    (
+      await c.query<{ id: string }>(
+        `UPDATE visual_comments vc SET dismissed_at = now()
+           FROM image_assets ia
+          WHERE vc.id = ANY($1::uuid[]) AND ia.id = vc.visual_id AND ia.project_id = $2
+            AND vc.status <> 'working' AND vc.dismissed_at IS NULL
+          RETURNING vc.id`,
+        [clean, scope.projectId],
+      )
+    ).rows.map((r) => r.id),
+  );
+}
+
+/** Undo of Clear: the comments show again. Returns the ones brought back. */
+export async function restoreComments(scope: ProjectScope, ids: unknown): Promise<string[]> {
+  const clean = Array.isArray(ids) ? [...new Set(ids.filter((v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)))].slice(0, 200) : [];
+  if (!clean.length) return [];
+  return withTenantSession(scope, async (c) =>
+    (
+      await c.query<{ id: string }>(
+        `UPDATE visual_comments vc SET dismissed_at = NULL
+           FROM image_assets ia
+          WHERE vc.id = ANY($1::uuid[]) AND ia.id = vc.visual_id AND ia.project_id = $2 AND vc.dismissed_at IS NOT NULL
+          RETURNING vc.id`,
+        [clean, scope.projectId],
+      )
+    ).rows.map((r) => r.id),
+  );
 }
 
 /** The visual a comment is on, checked to be in this project. */
@@ -160,6 +209,7 @@ interface CleanPin {
   area: Box | null;
   strokes: Stroke[] | null;
   note: string;
+  frame: number | null;
 }
 
 /**
@@ -168,7 +218,7 @@ interface CleanPin {
  * here). Strokes are capped and clamped (cleanStrokes); a markup's or an
  * erase's area is the box around its strokes when the board sent none.
  */
-function cleanPin(input: { kind?: unknown; box?: Partial<Box> | null; area?: Partial<Box> | null; strokes?: unknown; note?: unknown }): CleanPin {
+function cleanPin(input: { kind?: unknown; box?: Partial<Box> | null; area?: Partial<Box> | null; strokes?: unknown; note?: unknown; frame?: unknown }): CleanPin {
   const kind = (PIN_KINDS as readonly unknown[]).includes(input.kind) ? (input.kind as PinKind) : input.kind == null ? "comment" : null;
   if (!kind) throw new CommentError("That isn't a change a picture can take.");
   const strokes = kind === "comment" ? [] : cleanStrokes(input.strokes);
@@ -181,15 +231,15 @@ function cleanPin(input: { kind?: unknown; box?: Partial<Box> | null; area?: Par
   // The pin shows where the board says; a drawn pin with no usable box shows around its strokes.
   const box = cleanBox(input.box) ?? around;
   if (!box) throw new CommentError("Mark a bigger area to comment on.");
-  return { kind, box, area: cleanBox(input.area) ?? around, strokes: strokes.length ? strokes : null, note };
+  return { kind, box, area: cleanBox(input.area) ?? around, strokes: strokes.length ? strokes : null, note, frame: cleanFrame(input.frame) };
 }
 
-const INSERT_COMMENT = `INSERT INTO visual_comments (tenant_id, content_item_id, visual_id, target, box_x, box_y, box_w, box_h, note, created_by, kind, area, strokes, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`;
+const INSERT_COMMENT = `INSERT INTO visual_comments (tenant_id, content_item_id, visual_id, target, box_x, box_y, box_w, box_h, note, created_by, kind, area, strokes, status, frame)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`;
 
 const insertArgs = (scope: ProjectScope, v: { id: string; contentItemId: string }, target: CommentTarget, pin: CleanPin, status: VisualComment["status"]) => [
   scope.tenantId, v.contentItemId, v.id, target, pin.box.x, pin.box.y, pin.box.w, pin.box.h, pin.note, scope.userId,
-  pin.kind, pin.area ? JSON.stringify(pin.area) : null, pin.strokes ? JSON.stringify(pin.strokes) : null, status,
+  pin.kind, pin.area ? JSON.stringify(pin.area) : null, pin.strokes ? JSON.stringify(pin.strokes) : null, status, pin.frame,
 ];
 
 /**
@@ -200,7 +250,7 @@ const insertArgs = (scope: ProjectScope, v: { id: string; contentItemId: string 
  */
 export async function addComment(
   scope: ProjectScope,
-  input: { visualId: string; target: string; box: Partial<Box>; note: string; kind?: string; area?: Partial<Box> | null; strokes?: unknown },
+  input: { visualId: string; target: string; box: Partial<Box>; note: string; kind?: string; area?: Partial<Box> | null; strokes?: unknown; frame?: unknown },
 ): Promise<VisualComment & { artboard: ArtboardKind }> {
   const v = await visualOf(scope, input.visualId);
   if (!v) throw new CommentError("That visual isn't in this project any more.");
@@ -290,15 +340,33 @@ export async function applyTemplateComment(scope: ProjectScope, comment: VisualC
         )
       ).rows[0];
       if (!item) throw new CommentError("That piece isn't in this project any more.");
-      const field = comment.target === "headline" ? "hook" : comment.target;
-      const before = (field === "hook" ? item.hook : field === "body" ? item.body : item.cta ?? "").trim();
-      if (!before) throw new CommentError("There's no text there to change.");
-      const next = await rewritePartOf(scope, comment.contentItemId, { part: PART_LABEL[comment.target], text: before, instruction: comment.note });
-      if (!next || next.trim() === before) {
-        await finishComment(scope, comment.id, { status: "failed", result: "That came back unchanged. Try saying it another way." });
+      // A comment on one carousel slide's words changes that slide only (PI-13): the
+      // slide's own lines of the body (or the hook, or the call to action), the rest as it was.
+      const v = await visualOf(scope, comment.visualId);
+      const slide = v?.artboard === "carousel" && comment.frame !== null
+        ? slidesOf({ hook: item.hook, body: item.body, cta: item.cta ?? "" })[comment.frame]
+        : undefined;
+      if (slide) {
+        const before = slide.text.trim();
+        if (!before) throw new CommentError("There's no text there to change.");
+        const next = await rewritePartOf(scope, comment.contentItemId, { part: `Carousel slide ${comment.frame! + 1}`, text: before, instruction: comment.note });
+        if (!next || next.trim() === before) {
+          await finishComment(scope, comment.id, { status: "failed", result: "That came back unchanged. Try saying it another way." });
+        } else {
+          await patchContent(scope, comment.contentItemId, patchForSlide({ hook: item.hook, body: item.body, cta: item.cta ?? "" }, slide, next.trim()));
+          await finishComment(scope, comment.id, { status: "applied", result: `Changed slide ${comment.frame! + 1} to: ${next.trim().slice(0, 200)}` });
+        }
       } else {
-        await patchContent(scope, comment.contentItemId, { [field]: next.trim() });
-        await finishComment(scope, comment.id, { status: "applied", result: `Changed to: ${next.trim().slice(0, 200)}` });
+        const field = comment.target === "headline" ? "hook" : comment.target;
+        const before = (field === "hook" ? item.hook : field === "body" ? item.body : item.cta ?? "").trim();
+        if (!before) throw new CommentError("There's no text there to change.");
+        const next = await rewritePartOf(scope, comment.contentItemId, { part: PART_LABEL[comment.target], text: before, instruction: comment.note });
+        if (!next || next.trim() === before) {
+          await finishComment(scope, comment.id, { status: "failed", result: "That came back unchanged. Try saying it another way." });
+        } else {
+          await patchContent(scope, comment.contentItemId, { [field]: next.trim() });
+          await finishComment(scope, comment.id, { status: "applied", result: `Changed to: ${next.trim().slice(0, 200)}` });
+        }
       }
     } else if (comment.target === "logo" || comment.target === "background") {
       const design = await designOf(scope, comment.contentItemId);
@@ -350,10 +418,15 @@ export async function applyTemplateComment(scope: ProjectScope, comment: VisualC
  * again then works on the same area. `area` (the job payload of a comment
  * queued before that) is still honoured when the row has none.
  */
-export async function applyPictureComment(scope: ProjectScope, commentId: string, area?: Partial<Box> | null): Promise<string> {
+export async function applyPictureComment(scope: ProjectScope, commentId: string, area?: Partial<Box> | null, run?: PictureRun): Promise<string> {
   const comment = await getComment(scope, commentId);
   if (!comment) throw new CommentError("That comment isn't there any more.");
   if (comment.target !== "picture") throw new CommentError("That comment isn't on the picture.");
+  // Already done (a job run a second time after its lease ran out, PI-29): its picture, never a second paid change.
+  if (comment.status === "applied" && comment.resultPictureId) {
+    if (run) run.attached = true;
+    return comment.resultPictureId;
+  }
   const v = await visualOf(scope, comment.visualId);
   if (!v) throw new CommentError("That visual isn't in this project any more.");
   const id = await redrawArea(scope, comment.contentItemId, v.artboard, {
@@ -361,7 +434,7 @@ export async function applyPictureComment(scope: ProjectScope, commentId: string
     note: comment.note,
     kind: comment.kind,
     strokes: comment.strokes ?? undefined,
-  });
+  }, run);
   await finishComment(scope, comment.id, { status: "applied", result: APPLIED[comment.kind], pictureId: id });
   return id;
 }

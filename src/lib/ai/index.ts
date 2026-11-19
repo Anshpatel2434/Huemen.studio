@@ -12,6 +12,7 @@
  * Server-only.
  */
 import "server-only";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getEnv } from "@/lib/env";
 import { withTenantSession, type SessionScope } from "@/db/session";
 import type {
@@ -33,7 +34,7 @@ import { runpodImageProvider } from "./providers/runpod-image";
 import { assemblePrompt, taskRules } from "./prompt";
 import { cleanDeep, cleanModelText, streamCleaner } from "@/lib/content/clean";
 import { isUuid } from "@/lib/content/ids";
-import { AiConfigError, ProviderError, UsageCapError } from "./errors";
+import { AiConfigError, PictureBudgetError, ProviderError, UsageCapError } from "./errors";
 import { takeHit } from "@/lib/ratelimit";
 import type { Env } from "@/lib/env";
 import { MAX_TASK_IMAGES, type Effort, type TextImage, type TextRoute } from "./types";
@@ -72,6 +73,24 @@ export function selectTextProvider(env: Env): StreamingTextProvider {
         'AI_TEXT_PROVIDER=openai is not built. Use "anthropic" or "groq", or "mock" for local development.',
       );
   }
+}
+
+let _groqVision: { key: string; provider: StreamingTextProvider } | null = null;
+
+/**
+ * The provider for a task that looks at pictures. On Groq a key of its own
+ * (AI_VISION_API_KEY) can carry the looks, so they have their own per-minute
+ * and daily allowance instead of waiting behind drafts on a shared key
+ * (PI-40); unset, it is the text provider, as before.
+ */
+export function selectVisionProvider(env: Env): StreamingTextProvider {
+  if (env.AI_TEXT_PROVIDER === "groq" && env.AI_VISION_API_KEY) {
+    if (_groqVision?.key !== env.AI_VISION_API_KEY) {
+      _groqVision = { key: env.AI_VISION_API_KEY, provider: groqTextProvider({ apiKey: env.AI_VISION_API_KEY, timeoutMs: env.AI_TEXT_TIMEOUT_MS }) };
+    }
+    return _groqVision.provider;
+  }
+  return selectTextProvider(env);
 }
 
 /**
@@ -268,7 +287,7 @@ async function withDailyFallback<T>(route: TextRoute, call: (route: TextRoute) =
  * kind of generation off. Every query names the workspace, so the count is
  * right even under a scope that can see more than one.
  */
-export async function enforceCap(scope: SessionScope, kind: "text" | "image"): Promise<void> {
+export async function enforceCap(scope: SessionScope, kind: "text" | "image", opts: { paid?: boolean } = {}): Promise<void> {
   if (!scope.tenantId) return;
   // The short window first: a burst is refused before the month is counted.
   const env = getEnv();
@@ -292,6 +311,59 @@ export async function enforceCap(scope: SessionScope, kind: "text" | "image"): P
     return { used, cap: cap.hard };
   });
   if (row && row.used >= row.cap) throw new UsageCapError(kind, row.used, row.cap);
+  // Paid pictures per day (AI_IMAGE_DAILY_CAP, PI-30): a backstop under the
+  // month, so retries can't spend a month in an afternoon. Free calls (Remove
+  // background) are not counted and not stopped by it.
+  const daily = env.AI_IMAGE_DAILY_CAP;
+  if (kind === "image" && opts.paid !== false && daily > 0) {
+    const today = await withTenantSession(scope, async (c) =>
+      (
+        await c.query<{ n: number }>(
+          `SELECT coalesce(sum(image_count),0)::int AS n FROM generation_logs WHERE tenant_id = $1 AND kind='image' AND status='ok' AND created_at >= date_trunc('day', now())`,
+          [scope.tenantId],
+        )
+      ).rows[0].n,
+    );
+    if (today >= daily) throw new UsageCapError("image", today, daily, "day");
+  }
+}
+
+// ---- the picture budget of one action (PI-30) ----------------------------------
+
+/**
+ * How many paid picture calls one action (a comment's redraw, a markup, an
+ * erase, a resize, a new picture) has made, and the most it may make. Its
+ * retries, the extend tries and the words check's erases all count.
+ */
+export class PictureSpend {
+  /** Calls that reached the image provider (what the budget counts). */
+  spent = 0;
+  /** Of those, the ones that came back with a picture: logged with image_count 1, the ones that are paid for. */
+  returned = 0;
+  constructor(public readonly max: number) {}
+}
+
+const budgetStore = new AsyncLocalStorage<PictureSpend>();
+
+/**
+ * Run one picture action under a budget of paid picture calls (enforced in
+ * imageCall, before the provider is reached: PictureBudgetError). `spend` is
+ * the caller's to read afterwards, also after a throw, so a refusal can say
+ * what it used. Inside another budget, the outer one governs (one action, one
+ * budget) and `spend` still counts the calls made here.
+ */
+export async function withPictureBudget<T>(max: number, fn: () => Promise<T>, spend: PictureSpend = new PictureSpend(max)): Promise<T> {
+  const outer = budgetStore.getStore();
+  if (outer) {
+    const before = { spent: outer.spent, returned: outer.returned };
+    try {
+      return await fn();
+    } finally {
+      spend.spent += outer.spent - before.spent;
+      spend.returned += outer.returned - before.returned;
+    }
+  }
+  return budgetStore.run(spend, fn);
 }
 
 /**
@@ -509,7 +581,7 @@ export async function generateImage(
 /**
  * Change a picture: redraw an area, erase a brushed area, or fill a bigger
  * frame (ImageEditRequest `intent`; the mask marks where). Same cap, limits,
- * retry and log as a new picture.
+ * budget and log as a new picture; like it, never tried again automatically.
  */
 export async function editImage(
   scope: SessionScope,
@@ -546,7 +618,7 @@ export async function cutoutImage(
   let model = `cutout:${env.AI_CUTOUT_PROVIDER}`;
   const started = Date.now();
   try {
-    await enforceCap(scope, "image");
+    await enforceCap(scope, "image", { paid: false });
     const provider = selectCutoutProvider(env);
     const result = await provider.cutout(req.source);
     model = result.model;
@@ -585,8 +657,16 @@ async function imageCall(
   const started = Date.now();
   try {
     await enforceCap(scope, "image");
+    // One action, one budget of paid pictures (PI-30): the call that would go over is refused here, before it costs anything.
+    const budget = budgetStore.getStore();
+    if (budget && budget.spent >= budget.max) throw new PictureBudgetError(budget.max);
     const provider = selectImageProvider(env);
-    const result = await withRetry(() => run(provider, model));
+    if (budget) budget.spent++;
+    // A paid picture call is not tried again automatically (PI-39): a call that
+    // timed out may still be billed, and the caller decides whether a second
+    // one is worth its cost (inside its budget).
+    const result = await run(provider, model);
+    if (budget) budget.returned++;
     await logGeneration(scope, {
       kind: "image",
       // The model that RAN: an area redraw or a bigger frame runs on its own
@@ -668,7 +748,7 @@ async function runTaskOn<T>(
   try {
     if (images.length > MAX_TASK_IMAGES) throw new Error(`At most ${MAX_TASK_IMAGES} pictures can go with one request.`);
     await enforceCap(scope, "text");
-    const provider = selectTextProvider(env);
+    const provider = vision ? selectVisionProvider(env) : selectTextProvider(env);
     model = vision ? resolveVisionModel(env) : resolveTextModel(env, route);
     const template = await resolveTemplate(scope, task.key);
     const prompt = assemblePrompt(template.body, input.context, input.taskInput, {

@@ -27,7 +27,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { artboardsFor, CAROUSEL_LAYOUTS, clampScale, DEFAULT_TWEAKS, POST_LAYOUTS, QUOTE_LAYOUTS, scaleAt, scaleForKey, SCALE } from "@/lib/visual/design";
 import { FORMATS, formatUsesCarousel } from "@/lib/content/formats";
 import { CarouselFrames, PostImage, QuoteCard, schemesFrom } from "@/app/w/[id]/p/[pid]/visual/visual-layouts";
-import { BoardIconButton, ScaleSlider, versionLabel, WordsNote } from "@/app/w/[id]/p/[pid]/visual/visual-panels";
+import { BoardIconButton, ScaleSlider, versionLabel, WordsNote, WordsUncheckedNote } from "@/app/w/[id]/p/[pid]/visual/visual-panels";
 import { ToolBtn } from "@/components/canvas";
 
 const DIR = join(process.cwd(), "src/app/w/[id]/p/[pid]/visual");
@@ -291,7 +291,16 @@ describe("a picture that may still show words (2026-11-19)", () => {
   });
   it("the board shows it only for a live-text picture flagged by the check, not a cut-out, not while it is being changed", () => {
     const src = readFileSync(join(DIR, "visual-board.tsx"), "utf8");
-    expect(src).toContain("pic(k)?.textLeft && !pic(k)?.cutout && !working(i, k) ? <WordsNote /> : null");
+    expect(src).toContain("pic(k)?.textLeft && !pic(k)?.cutout && !working(i, k) ? <WordsNote />");
     expect(src).toContain("textLeft: !!info.textLeft");
+  });
+  it("PI-20: a picture whose check couldn't run says so, with Check for words, never passed off as checked", () => {
+    const src = readFileSync(join(DIR, "visual-board.tsx"), "utf8");
+    expect(src).toContain("pic(k)?.wordsUnchecked && !pic(k)?.cutout && !working(i, k) ? <WordsUncheckedNote");
+    const html = renderToStaticMarkup(createElement(WordsUncheckedNote, { busy: false, onCheck: () => undefined }));
+    expect(html).toContain('role="note"');
+    expect(html).toContain("Words not checked");
+    expect(html).toContain(">Check for words<");
+    expect(html).not.toMatch(/title=|AI/);
   });
 });

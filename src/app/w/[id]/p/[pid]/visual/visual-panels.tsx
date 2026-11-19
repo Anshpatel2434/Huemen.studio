@@ -23,12 +23,13 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { btnClass, iconBtnClass } from "@/components/btn";
+import { AgentDots, Shortcut } from "@/components/ui";
 import { FORMATS } from "@/lib/content/formats";
 import { SCALE, scaleAt, scaleForKey, type ArtboardKind, type PictureMode } from "@/lib/visual/design";
 import { exportSizes } from "@/lib/visual/export";
 import { fontFaceCss, googleFontsHref, type FontPlan } from "@/lib/visual/fonts";
 import { PICTURE_OP_LABEL, type PictureOp } from "@/lib/visual/picture-tools";
-import { WORDS_NOTICE } from "@/lib/visual/picture-words";
+import { WORDS_NOTICE, WORDS_UNCHECKED } from "@/lib/visual/picture-words";
 import { rangeAt, rangeForKey, type Range } from "./picture-tools-maths";
 
 /**
@@ -179,6 +180,8 @@ export type Version = {
   op?: PictureOp; width?: number; height?: number; cutout?: boolean;
   /** It should have no words and may still show some (lib/data/pictures keepWordsOut). */
   textLeft?: boolean;
+  /** It should have no words and the check could not run (PI-20). */
+  wordsUnchecked?: boolean;
 };
 
 /** How a version came to be, in the strip's words. Versions from before the picture tools carry no `op`. */
@@ -191,8 +194,8 @@ export function versionLabel(v: Pick<Version, "op" | "parentId" | "mode">): stri
 const KINDS: { key: ArtboardKind; label: string }[] = [
   { key: "post", label: "Post image" }, { key: "quote", label: "Quote card" }, { key: "carousel", label: "Carousel cover" },
 ];
-/** How many versions of one visual's picture are listed. */
-const MAX_SHOWN = 12;
+/** How many versions of one visual's picture are listed before "Show all" (PI-34: older ones could not be reached). */
+export const MAX_SHOWN = 12;
 
 /** Whether two headings read the same (spacing aside). */
 export const sameHeading = (a: string, b: string) => a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();
@@ -205,36 +208,42 @@ export function lineage(id: string | null | undefined, versions: Version[]): Set
   return out;
 }
 
-export function PictureVersions({ versions, inUse, busy, onUse }: {
+export function PictureVersions({ versions, inUse, busy, working = {}, onUse }: {
   /** This piece's versions, newest first. */
   versions: Version[];
   /** The picture each visual shows now. */
   inUse: Partial<Record<ArtboardKind, string>>;
   /** A version is being switched to. */
   busy: boolean;
+  /** The visuals whose picture is being changed right now: their versions wait until it is done (PI-26). */
+  working?: Partial<Record<ArtboardKind, boolean>>;
   onUse: (kind: ArtboardKind, id: string) => void;
 }) {
+  const [all, setAll] = useState<Partial<Record<ArtboardKind, boolean>>>({});
   if (!versions.length) {
     return <p className="text-sm text-ink-muted">No pictures on this piece yet. Add one from the picture button above a visual; every picture you draw or change is kept here.</p>;
   }
   return (
     <div className="flex flex-col gap-4">
       {KINDS.map(({ key, label }) => {
-        const all = versions.filter((v) => v.artboard === key);
-        if (!all.length) return null;
+        const mine = versions.filter((v) => v.artboard === key);
+        if (!mine.length) return null;
+        const shown = all[key] ? mine : mine.slice(0, MAX_SHOWN);
+        const changing = !!working[key];
         return (
           <div key={key}>
-            <p className="text-xs font-medium mb-1.5">{label} <span className="text-ink-faint font-normal">· {all.length} version{all.length === 1 ? "" : "s"}{inUse[key] ? "" : " · none in use"}</span></p>
+            <p className="text-xs font-medium mb-1.5">{label} <span className="text-ink-faint font-normal">· {mine.length} version{mine.length === 1 ? "" : "s"}{inUse[key] ? "" : " · none in use"}</span></p>
+            {changing && <p role="status" className="text-xs text-ink-muted mb-1.5 inline-flex items-center gap-1.5"><AgentDots /> Being changed. Versions can be chosen when it is done.</p>}
             <ul className="grid grid-cols-3 gap-2">
-              {all.slice(0, MAX_SHOWN).map((v, n) => {
+              {shown.map((v, n) => {
                 const on = inUse[key] === v.id;
-                const no = all.length - n;
+                const no = mine.length - n;
                 const what = versionLabel(v);
                 return (
                   <li key={v.id}>
                     <button
                       type="button"
-                      disabled={busy || on}
+                      disabled={busy || on || changing}
                       aria-pressed={on}
                       aria-label={`${label} version ${no}, ${what}${on ? ", in use" : ". Use this version"}`}
                       onClick={() => onUse(key, v.id)}
@@ -250,10 +259,16 @@ export function PictureVersions({ versions, inUse, busy, onUse }: {
                 );
               })}
             </ul>
+            {mine.length > MAX_SHOWN && (
+              <button type="button" onClick={() => setAll((a) => ({ ...a, [key]: !a[key] }))} aria-expanded={!!all[key]} className={`${btnClass("ghost", "sm")} mt-1.5`}>
+                {all[key] ? `Show the newest ${MAX_SHOWN}` : `Show all ${mine.length}`}
+              </button>
+            )}
           </div>
         );
       })}
-      <p className="text-xs text-ink-faint">Newest first. Choosing one puts it on the visual; ⌘Z takes you back.</p>
+      {/* Cmd on a Mac, Ctrl elsewhere (PI-37: it said ⌘Z on Windows). */}
+      <p className="text-xs text-ink-faint">Newest first. Choosing one puts it on the visual; <Shortcut keys="Z" /> takes you back.</p>
     </div>
   );
 }
@@ -287,6 +302,22 @@ export function HeadingCheck({ stale, busy, onRedraw, onLiveText }: { stale: boo
  */
 export function WordsNote() {
   return <p role="note" className="mt-2 text-xs text-ink-muted leading-relaxed">{WORDS_NOTICE}</p>;
+}
+
+/**
+ * Under a visual whose picture should carry no words and whose words check
+ * could not run (the checking service was busy or out of allowance, PI-20):
+ * said plainly, never passed off as checked, with one look to try again.
+ */
+export function WordsUncheckedNote({ busy, onCheck }: { busy: boolean; onCheck: () => void }) {
+  return (
+    <div role="note" className="mt-2 text-xs text-ink-muted leading-relaxed" onPointerDown={(e) => e.stopPropagation()}>
+      <p>{WORDS_UNCHECKED}</p>
+      <button type="button" disabled={busy} onClick={onCheck} className={`${btnClass("secondary", "sm")} mt-1.5`}>
+        {busy ? <><AgentDots /> Checking…</> : "Check for words"}
+      </button>
+    </div>
+  );
 }
 
 export function ExportSizes() {

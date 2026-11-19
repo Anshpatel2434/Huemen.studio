@@ -19,7 +19,7 @@ import { runTask } from "@/lib/ai";
 import { pictureTextCheck } from "@/lib/ai/tasks";
 import { ProviderError, RateLimitError } from "@/lib/ai/errors";
 import type { BrandContext } from "@/lib/context/context-builder";
-import { forVision } from "@/lib/visual/look-read";
+import { forWordsCheck, WORDS_CHECK_SIDE } from "@/lib/visual/look-read";
 import { wordBoxes } from "@/lib/visual/picture-words";
 import type { Box } from "@/lib/visual/region-types";
 import { logger } from "@/lib/observability/log";
@@ -54,15 +54,13 @@ export async function lookForWords(
   opts: { context: BrandContext; contentItemId: string | null; why: string; wait?: (ms: number) => Promise<void> },
 ): Promise<WordsFound | null> {
   const wait = opts.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-  let sent: { width: number; height: number };
-  let image: Awaited<ReturnType<typeof forVision>>;
+  const sent = { width: WORDS_CHECK_SIDE, height: WORDS_CHECK_SIDE };
+  let copy: Awaited<ReturnType<typeof forWordsCheck>>;
   let aspect = 1;
   try {
     const meta = await sharp(Buffer.from(bytes)).metadata();
     aspect = meta.width && meta.height ? meta.width / meta.height : 1;
-    image = await forVision(bytes);
-    const m = await sharp(Buffer.from(image.data)).metadata();
-    sent = { width: m.width ?? 0, height: m.height ?? 0 };
+    copy = await forWordsCheck(bytes);
   } catch (e) {
     logger.info("picture_text_check_skipped", { tenantId: scope.tenantId, why: opts.why, reason: e instanceof Error ? e.message : String(e) });
     return null;
@@ -71,14 +69,14 @@ export async function lookForWords(
     runTask(scope, pictureTextCheck, {
       context: opts.context,
       contentItemId: opts.contentItemId,
-      // No pixel size here: the boxes are asked for in thousandths, and a size invites pixels.
-      taskInput: `Picture: ${opts.why}. It should have no words at all.`,
-      images: [image],
+      // No pixel size here: the boxes are asked for in thousandths (on the square copy they are its pixels too).
+      taskInput: `Picture: ${opts.why}. It should have no words at all. It sits in the middle of a plain grey square; the grey bands are not part of it. Give the boxes in thousandths of the whole square.`,
+      images: [copy.image],
     });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const said = await ask();
-      const boxes = wordBoxes(said.boxes, sent, aspect);
+      const boxes = wordBoxes(said.boxes, sent, aspect, copy.place);
       // "Text" with nowhere to point at is still text: the board says so, nothing is erased blind.
       return { hasText: said.hasText || boxes.length > 0, boxes };
     } catch (e) {

@@ -16,7 +16,8 @@ import { generateContent } from "@/lib/data/content";
 import { scoreProject } from "@/lib/data/check";
 import { unlockStage } from "@/lib/data/projects";
 import { getProject, type ProjectScope } from "@/lib/data/projects";
-import { cutOutPicture, drawPicture, PictureError, resizePicture } from "@/lib/data/pictures";
+import { currentPictureId, cutOutPicture, drawPicture, madeSince, PictureError, resizePicture, type PictureRun } from "@/lib/data/pictures";
+import { userMessage } from "@/lib/ai/errors";
 import { applyPictureComment, CommentError, failWaitingComments, finishComment } from "@/lib/data/visual-comments";
 import { ARTBOARDS, type ArtboardKind } from "@/lib/visual/design";
 import { MAX_PINS_PER_SEND, type ResizeInput } from "@/lib/visual/picture-tools";
@@ -107,13 +108,59 @@ const artboardOf = (v: unknown): ArtboardKind => {
   return v as ArtboardKind;
 };
 
+/** "That try used 2 pictures.": said with a refusal or a failure after paid pictures were used (PI-30). */
+export function usedNote(n: number): string {
+  return n > 0 ? ` That try used ${n} picture${n === 1 ? "" : "s"}.` : "";
+}
+
+/**
+ * A picture job's work, once paid pictures have come back: never tried again
+ * by the queue on its own (PI-30, PI-39: every retry is paid again), and a
+ * refusal says what it used. Before any paid call, the queue's retry policy
+ * applies as for any job. Try again on the board starts it over on purpose.
+ */
+async function paidOnce<T>(run: PictureRun, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (e) {
+    const used = run.spend?.returned ?? 0;
+    if (e instanceof PictureError) throw new JobStop(`${e.message}${usedNote(used)}`);
+    if (used > 0 && !(e instanceof JobStop)) throw new JobStop(`${userMessage(e, "picture")}${usedNote(used)}`);
+    throw e;
+  }
+}
+
+/** Where a picture job had got to before its paid work: what the visual showed, and when (PI-29). */
+type Started = { from: string | null; at: string };
+const startedOf = (progress: Record<string, unknown>): Started | null => {
+  const s = progress.started as Partial<Started> | undefined;
+  return s && typeof s.at === "string" ? { from: typeof s.from === "string" ? s.from : null, at: s.at } : null;
+};
+
+/**
+ * A picture job's result: `kept: false` when the person put another picture
+ * on the visual while it ran, so the new one is a version only (PI-26).
+ */
+const pictureResult = (id: string, run: PictureRun) => ({ pictureId: id, ...(run.attached === false ? { kept: false } : {}) });
+
 /** A new picture for one visual: Claude writes the brief, the image model draws it. */
 const pictureGenerate: JobHandler = async ({ scope, payload, progress, save }) => {
   if (typeof progress.pictureId === "string") return { done: true, result: { pictureId: progress.pictureId } };
   const ps = await projectOf(scope, payload);
-  const id = await drawPicture(ps, String(payload.contentItemId ?? ""), artboardOf(payload.artboard), payload.mode === "with_text" ? "with_text" : "live_text");
+  const itemId = String(payload.contentItemId ?? "");
+  const artboard = artboardOf(payload.artboard);
+  // Run a second time (the lease ran out, or the worker died after drawing): the picture it made, not a second one.
+  const before = startedOf(progress);
+  const made = before ? await madeSince(ps, itemId, artboard, "draw", null, before.at) : null;
+  if (made) {
+    await save({ ...progress, pictureId: made });
+    return { done: true, result: { pictureId: made } };
+  }
+  await save({ ...progress, started: { from: await currentPictureId(ps, itemId, artboard), at: new Date().toISOString() } });
+  const run: PictureRun = {};
+  const id = await paidOnce(run, () => drawPicture(ps, itemId, artboard, payload.mode === "with_text" ? "with_text" : "live_text", run));
   await save({ pictureId: id });
-  return { done: true, result: { pictureId: id } };
+  return { done: true, result: pictureResult(id, run) };
 };
 
 /** The pins a picture_edit job runs, in order: `commentIds` (one Send, several pins) or the older single `commentId`. */
@@ -130,6 +177,8 @@ export interface PictureEditProgress {
   failed: Record<string, string>;
   /** The newest version made, for the board to show. */
   last: string | null;
+  /** A change made after the person put another picture on the visual: kept as a version only (PI-26). */
+  notKept?: boolean;
 }
 
 /**
@@ -155,6 +204,7 @@ const pictureEdit: JobHandler = async ({ scope, payload, progress, save, deadlin
     done: { ...((progress.done ?? {}) as Record<string, string>) },
     failed: { ...((progress.failed ?? {}) as Record<string, string>) },
     last: typeof progress.last === "string" ? progress.last : null,
+    ...(progress.notKept === true ? { notKept: true } : {}),
   };
   // A job that ran before progress had this shape: its one pin is done.
   if (typeof progress.pictureId === "string" && ids.length === 1) state.done[ids[0]] = state.last = progress.pictureId;
@@ -164,22 +214,36 @@ const pictureEdit: JobHandler = async ({ scope, payload, progress, save, deadlin
   for (const id of ids) {
     if (state.done[id] || state.failed[id]) continue;
     if (didOne && Date.now() > deadline - room) return { done: false };
+    const run: PictureRun = {};
     try {
-      const pictureId = await applyPictureComment(ps, id, legacyArea);
+      const pictureId = await applyPictureComment(ps, id, legacyArea, run);
       state.done[id] = pictureId;
       state.last = pictureId;
+      if (run.attached === false) state.notKept = true;
     } catch (e) {
-      // Only what no retry can fix is the pin's own failure; anything else is the queue's to retry.
-      if (!(e instanceof CommentError) && !(e instanceof PictureError)) throw e;
-      state.failed[id] = e.message;
-      await finishComment(ps, id, { status: "failed", result: e.message }).catch(() => undefined);
+      const used = run.spend?.returned ?? 0;
+      // A pin that can't be done (its reason is its own), or a failure after paid
+      // pictures were used (never retried on its own, PI-30): the pin says why and what it used.
+      if (e instanceof CommentError || e instanceof PictureError || used > 0) {
+        const why = `${e instanceof CommentError || e instanceof PictureError ? e.message : userMessage(e, "picture")}${usedNote(used)}`;
+        state.failed[id] = why;
+        await finishComment(ps, id, { status: "failed", result: why }).catch(() => undefined);
+        // A provider failure (not the pin's own): the pins after it would meet it too; the job stops and they say so.
+        if (!(e instanceof CommentError) && !(e instanceof PictureError)) {
+          await save({ ...state });
+          throw new JobStop(why);
+        }
+      } else {
+        // Nothing paid yet: the queue's own retry and backoff apply.
+        throw e;
+      }
     }
     didOne = true;
     await save({ ...state });
   }
   // Nothing went through: the job says so (the pins already carry their own reasons).
   if (!state.last) throw new JobStop(Object.values(state.failed).at(-1) ?? "That change couldn't be made.");
-  return { done: true, result: { pictureId: state.last, changed: Object.keys(state.done).length, failed: Object.keys(state.failed).length } };
+  return { done: true, result: { pictureId: state.last, changed: Object.keys(state.done).length, failed: Object.keys(state.failed).length, ...(state.notKept ? { kept: false } : {}) } };
 };
 
 /** A refusal with a plain reason (a picture that is gone, a shape that can't be made) stops the job at once with that reason. */
@@ -196,19 +260,31 @@ async function plainly<T>(work: () => Promise<T>): Promise<T> {
 const pictureResize: JobHandler = async ({ scope, payload, progress, save }) => {
   if (typeof progress.pictureId === "string") return { done: true, result: { pictureId: progress.pictureId } };
   const ps = await projectOf(scope, payload);
+  const itemId = String(payload.contentItemId ?? "");
+  const artboard = artboardOf(payload.artboard);
   const input = (payload.input ?? {}) as ResizeInput;
-  const id = await plainly(() => resizePicture(ps, String(payload.contentItemId ?? ""), artboardOf(payload.artboard), input));
+  // Run a second time after the work was done: that result, never a resize of the resized picture (PI-29).
+  const before = startedOf(progress);
+  const made = before ? await madeSince(ps, itemId, artboard, "resize", before.from, before.at) : null;
+  if (made) {
+    await save({ ...progress, pictureId: made });
+    return { done: true, result: { pictureId: made } };
+  }
+  await save({ ...progress, started: { from: await currentPictureId(ps, itemId, artboard), at: new Date().toISOString() } });
+  const run: PictureRun = {};
+  const id = await paidOnce(run, () => resizePicture(ps, itemId, artboard, input, run));
   await save({ pictureId: id });
-  return { done: true, result: { pictureId: id } };
+  return { done: true, result: pictureResult(id, run) };
 };
 
 /** The background removed from one visual's picture (the model runs here, on this server). */
 const pictureCutout: JobHandler = async ({ scope, payload, progress, save }) => {
   if (typeof progress.pictureId === "string") return { done: true, result: { pictureId: progress.pictureId } };
   const ps = await projectOf(scope, payload);
-  const id = await plainly(() => cutOutPicture(ps, String(payload.contentItemId ?? ""), artboardOf(payload.artboard)));
+  const run: PictureRun = {};
+  const id = await plainly(() => cutOutPicture(ps, String(payload.contentItemId ?? ""), artboardOf(payload.artboard), run));
   await save({ pictureId: id });
-  return { done: true, result: { pictureId: id } };
+  return { done: true, result: pictureResult(id, run) };
 };
 
 export const JOB_HANDLERS = {

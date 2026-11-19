@@ -15,6 +15,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "smoke:pictures": "tsx src/ai-smoke/pictures.ts",
     "smoke:cutout": "tsx scripts/smoke-cutout.ts",
+    "check:keys": "tsx scripts/check-keys.ts",
     "models:fetch": "node scripts/fetch-cutout-model.mjs",
     "db:reset": "docker compose down -v && docker compose up -d db && node -e \"setTimeout(()=>{},3000)\"",
     "smoke:site": "tsx src/ai-smoke/site-read.ts",

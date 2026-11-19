@@ -15,11 +15,12 @@ import { enqueueJob, startWorker } from "@/lib/jobs";
 import { ARTBOARDS, type ArtboardKind, type Design, type PictureMode } from "@/lib/visual/design";
 import type { PicturePin, ResizeInput } from "@/lib/visual/picture-tools";
 import { ContentConflictError, listContent } from "@/lib/data/content";
-import { cutOutRefusal, designOf, PictureError, removePicture, resizeKind, resizePicture, selectPictureVersion } from "@/lib/data/pictures";
+import { checkWords, cutOutRefusal, designOf, PictureError, removePicture, resizeKind, resizePicture, selectPictureVersion } from "@/lib/data/pictures";
 import {
-  addComment, addPictureComments, applyTemplateComment, CommentError, dismissComment, failedComment, failWaitingComments, finishComment, setCommentsJob,
-  type VisualComment,
+  addComment, addPictureComments, applyTemplateComment, CommentError, dismissComment, dismissComments, failedComment, failWaitingComments, finishComment,
+  restoreComments, setCommentsJob, type VisualComment,
 } from "@/lib/data/visual-comments";
+import { watchedPictureJobs, type WatchedJob } from "@/lib/data/picture-jobs";
 import { approveAgain, revertCopy } from "@/lib/data/visual-copy";
 import { recordOpener } from "@/lib/data/voice-pack";
 import { learnFromApproval } from "@/lib/data/learning";
@@ -30,7 +31,8 @@ import { cleanBox } from "@/lib/visual/region";
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
 
 const artboardOf = (v: string): ArtboardKind | null => (ARTBOARDS.includes(v as ArtboardKind) ? (v as ArtboardKind) : null);
-const say = (e: unknown) => (e instanceof PictureError || e instanceof CommentError ? e.message : userMessage(e));
+/** Every action here is about a visual's picture or its comments: a failure is said as a picture's (PI-31). */
+const say = (e: unknown) => (e instanceof PictureError || e instanceof CommentError ? e.message : userMessage(e, "picture"));
 
 /** Draw a new picture for one visual (or redraw it in the other mode). Queued; returns the job to watch. */
 export async function startPictureAction(
@@ -73,7 +75,7 @@ export async function setPictureAction(
  */
 export async function addCommentAction(
   tenantId: string, projectId: string,
-  input: { visualId: string; target: string; box: { x: number; y: number; w: number; h: number }; note: string; area?: { x: number; y: number; w: number; h: number } | null },
+  input: { visualId: string; target: string; box: { x: number; y: number; w: number; h: number }; note: string; area?: { x: number; y: number; w: number; h: number } | null; frame?: number | null },
 ): Promise<Result<{ comment: VisualComment; jobId: string | null; after: { hook: string; body: string; cta: string; design: Design | null } | null }>> {
   const scope = await actionProjectScope(tenantId, projectId);
   let comment: VisualComment;
@@ -82,14 +84,22 @@ export async function addCommentAction(
       visualId: String(input?.visualId ?? ""), target: String(input?.target ?? ""), box: input?.box ?? {}, note: String(input?.note ?? ""),
       // The box on the picture itself is kept on the comment's row, so Try again redraws the same area.
       area: input?.area ?? null,
+      // The frame it was put on: its pin goes back there, and a slide's words change on that slide only.
+      frame: input?.frame ?? null,
     });
   } catch (e) {
     return { ok: false, error: say(e) };
   }
   if (comment.target === "picture") {
     const area = cleanBox(input?.area ?? null);
-    const jobId = await enqueueJob(scope, "picture_edit", { projectId, commentId: comment.id, ...(area ? { area } : {}) }, { label: "Changing the picture", maxAttempts: 3 });
-    await finishComment(scope, comment.id, { status: "working", jobId });
+    let jobId: string;
+    try {
+      jobId = await enqueueJob(scope, "picture_edit", { projectId, commentId: comment.id, ...(area ? { area } : {}) }, { label: "Changing the picture", maxAttempts: 3 });
+      await finishComment(scope, comment.id, { status: "working", jobId });
+    } catch (e) {
+      await failWaitingComments(scope, [comment.id], "That didn't go through. Try again.").catch(() => undefined);
+      return { ok: false, error: say(e) };
+    }
     startWorker();
     return { ok: true, comment: { ...comment, status: "working", jobId }, jobId, after: null };
   }
@@ -193,12 +203,13 @@ export async function resizePictureAction(
       revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
       return { ok: true, pictureId, jobId: null };
     }
+    // Queued inside the same try: a failure to queue is said, never a thrown error (PI-32).
+    const jobId = await enqueueJob(scope, "picture_resize", { projectId, contentItemId: itemId, artboard: kind, input: asked }, { label: "Resizing the picture", maxAttempts: 3 });
+    startWorker();
+    return { ok: true, pictureId: null, jobId };
   } catch (e) {
     return { ok: false, error: say(e) };
   }
-  const jobId = await enqueueJob(scope, "picture_resize", { projectId, contentItemId: itemId, artboard: kind, input: asked }, { label: "Resizing the picture", maxAttempts: 3 });
-  startWorker();
-  return { ok: true, pictureId: null, jobId };
 }
 
 /**
@@ -214,11 +225,15 @@ export async function removeBackgroundAction(
   const kind = artboardOf(artboard);
   if (!kind) return { ok: false, error: "That visual doesn't take a picture." };
   const itemId = String(contentItemId ?? "");
-  const refusal = await cutOutRefusal(scope, itemId, kind);
-  if (refusal) return { ok: false, error: refusal };
-  const jobId = await enqueueJob(scope, "picture_cutout", { projectId, contentItemId: itemId, artboard: kind }, { label: "Removing the background", maxAttempts: 2 });
-  startWorker();
-  return { ok: true, jobId };
+  try {
+    const refusal = await cutOutRefusal(scope, itemId, kind);
+    if (refusal) return { ok: false, error: refusal };
+    const jobId = await enqueueJob(scope, "picture_cutout", { projectId, contentItemId: itemId, artboard: kind }, { label: "Removing the background", maxAttempts: 2 });
+    startWorker();
+    return { ok: true, jobId };
+  } catch (e) {
+    return { ok: false, error: say(e) };
+  }
 }
 
 /**
@@ -259,10 +274,55 @@ export async function approveAgainAction(tenantId: string, projectId: string, it
   return true;
 }
 
-/** Clear a finished pin from the board. */
+/** Clear a finished pin from the board. Kept in the table, so Undo can bring it back (PI-35). */
 export async function dismissCommentAction(tenantId: string, projectId: string, commentId: string): Promise<boolean> {
   const scope = await actionProjectScope(tenantId, projectId);
-  const ok = await dismissComment(scope, commentId);
+  const ok = await dismissComment(scope, String(commentId ?? ""));
   revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
   return ok;
+}
+
+/** Clear done: several finished pins of this project at once. Returns the ones cleared (for Undo). */
+export async function dismissCommentsAction(tenantId: string, projectId: string, commentIds: string[]): Promise<string[]> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const done = await dismissComments(scope, commentIds);
+  revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
+  return done;
+}
+
+/** Undo of Clear: the comments show again. Returns the ones brought back. */
+export async function restoreCommentsAction(tenantId: string, projectId: string, commentIds: string[]): Promise<string[]> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const back = await restoreComments(scope, commentIds);
+  revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
+  return back;
+}
+
+/**
+ * The picture work still running in this project, for a board that is open:
+ * a change started in another tab shows here too (PI-27). Read only.
+ */
+export async function pictureJobsAction(tenantId: string, projectId: string): Promise<WatchedJob[]> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  return watchedPictureJobs(scope);
+}
+
+/**
+ * "Check for words" on a picture whose words check could not run (PI-20):
+ * one look, nothing in the picture changed. Says what it found.
+ */
+export async function checkWordsAction(
+  tenantId: string, projectId: string, contentItemId: string, artboard: string,
+): Promise<Result<{ found: "words" | "clean" | "unchecked" }>> {
+  const scope = await actionProjectScope(tenantId, projectId);
+  const kind = artboardOf(artboard);
+  if (!kind) return { ok: false, error: "That visual doesn't take a picture." };
+  try {
+    const found = await checkWords(scope, String(contentItemId ?? ""), kind);
+    if (!found) return { ok: false, error: "That picture doesn't need a words check." };
+    revalidatePath(`/w/${tenantId}/p/${projectId}/visual`);
+    return { ok: true, found };
+  } catch (e) {
+    return { ok: false, error: say(e) };
+  }
 }

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { MousePointer2, Hand, ChevronDown, Monitor, Tablet, Smartphone, GripVertical, Pencil, PanelRight } from "lucide-react";
 import { usePanels, useRightToggle } from "@/components/project-panels";
+import { PENDING_KEY_MAX_MS, type PendingKey } from "@/lib/ui/pending-key";
 
 export type Device = "desktop" | "tablet" | "mobile";
 
@@ -42,6 +43,15 @@ export type CanvasTools = {
 
 /** Keys go to whatever is being typed in, and to an open dialog, before any tool. */
 const elsewhere = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.("input, textarea, [contenteditable], [role='dialog']");
+/**
+ * A letter typed while a pin, a pin's note or a menu has focus is not a tool
+ * key (PI-04): a click on an old pin left focus on it, and typing "make it
+ * bold" switched tools letter by letter and ended on Remove background.
+ */
+const onAPin = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.("[data-pin], [role='menu'], [role='menuitem']");
+/** A menu or a modal dialog is open: Escape is theirs, not the tool's (PI-05). */
+const somethingOpen = () => !!document.querySelector("[role='menu'], [role='dialog'][aria-modal='true']");
+
 
 export function Canvas({
   children, device, onDevice, initialZoom, toolbarExtra, onBackground, tools,
@@ -141,28 +151,97 @@ export function Canvas({
   useEffect(() => { toolsRef.current = tools; }, [tools]);
 
   useEffect(() => {
+    /** A plain tool key (one letter, no Ctrl, Cmd or Alt): V, H, or a board tool's own. */
+    const letter = (key: string) => {
+      const tools = toolsRef.current;
+      const k = key.toLowerCase();
+      if (k === "h") { setTool("hand"); tools?.onChange(null); }
+      if (k === "v") { setTool("select"); tools?.onChange(null); }
+      const mine = tools?.items.find((it) => it.key.toLowerCase() === k);
+      if (tools && mine && mine.off) tools.onOff?.(mine);
+      else if (tools && mine) { setTool("select"); tools.onChange(tools.active === mine.id ? null : mine.id); }
+    };
     const down = (e: KeyboardEvent) => {
       const tools = toolsRef.current;
       if (elsewhere(e.target)) return;
       // Space pans, except on a focused control, where it presses that control (a strip button, a slider).
       if (e.code === "Space" && !(e.target as HTMLElement | null)?.closest?.("button, a, [role='slider'], [role='radio'], summary")) { setSpace(true); e.preventDefault(); }
       // A tool's key, and V and H, are plain keys: with Ctrl, Cmd or Alt they are someone else's shortcut.
-      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-        const k = e.key.toLowerCase();
-        if (k === "h") { setTool("hand"); tools?.onChange(null); }
-        if (k === "v") { setTool("select"); tools?.onChange(null); }
-        const mine = tools?.items.find((it) => it.key.toLowerCase() === k);
-        if (tools && mine && mine.off) tools.onOff?.(mine);
-        else if (tools && mine) { setTool("select"); tools.onChange(tools.active === mine.id ? null : mine.id); }
-      }
-      if (e.key === "Escape" && tools?.active) tools.onChange(null);
+      // A held key counts once (PI-03: each auto-repeat toggled the tool), and
+      // letters typed on a pin or in a menu are not tool keys (PI-04).
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !onAPin(e.target)) letter(e.key);
+      // Escape leaves the tool, unless it is closing a menu or a dialog first (PI-05): one thing per press.
+      if (e.key === "Escape" && tools?.active && !e.defaultPrevented && !somethingOpen()) tools.onChange(null);
       if (e.shiftKey && e.key === "!") fit();
     };
     const up = (e: KeyboardEvent) => { if (e.code === "Space") setSpace(false); };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+    // A key pressed before the board was listening (PI-01) is played now, once.
+    const w = window as unknown as { __huPendingKey?: PendingKey | null; __huCanvasReady?: number };
+    w.__huCanvasReady = 1;
+    const pending = w.__huPendingKey;
+    w.__huPendingKey = null;
+    if (pending && Date.now() - pending.t < PENDING_KEY_MAX_MS && (!pending.p || pending.p === window.location.pathname) && !elsewhere(document.activeElement)) letter(pending.key);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); w.__huCanvasReady = 0; };
   }, [fit]);
+
+  // Two fingers on a phone or tablet zoom the canvas about their middle (PI-17);
+  // one finger still pans or draws as before. Tracked in the capture phase, so
+  // the comment and drawing surfaces never see the second finger.
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ d: number; z: number; px: number; py: number; mx: number; my: number } | null>(null);
+  const zoomRef = useRef(zoom);
+  const panRef = useRef(pan);
+  useEffect(() => { zoomRef.current = zoom; panRef.current = pan; }, [zoom, pan]);
+  const touchDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.current.size === 2) {
+      const [a, b] = [...touches.current.values()];
+      const rect = wrap.current?.getBoundingClientRect();
+      pinch.current = {
+        d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: zoomRef.current, px: panRef.current.x, py: panRef.current.y,
+        mx: (a.x + b.x) / 2 - (rect?.left ?? 0), my: (a.y + b.y) / 2 - (rect?.top ?? 0),
+      };
+      // The first finger's pan, stroke or box is dropped: two fingers are a zoom.
+      drag.current = null;
+      setDragging(false);
+      e.stopPropagation();
+    }
+  };
+  const touchMove = (e: React.PointerEvent) => {
+    if (e.pointerType !== "touch" || !touches.current.has(e.pointerId)) return;
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const p = pinch.current;
+    if (!p || touches.current.size < 2) return;
+    e.stopPropagation();
+    const [a, b] = [...touches.current.values()];
+    const nz = Math.min(2, Math.max(0.2, p.z * (Math.hypot(a.x - b.x, a.y - b.y) / p.d)));
+    touched.current = true;
+    setZoom(nz);
+    setPan({ x: p.mx - ((p.mx - p.px) / p.z) * nz, y: p.my - ((p.my - p.py) / p.z) * nz });
+  };
+  const touchUp = (e: React.PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    touches.current.delete(e.pointerId);
+    if (touches.current.size < 2) pinch.current = null;
+  };
+
+  // The tool strip's height, for the toasts to sit above it (PI-15): with a
+  // tool's line, or wrapped on a phone, the strip is taller than the space a
+  // toast used to leave for it.
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = strip.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const put = () => root.style.setProperty("--hu-toast-lift", `${Math.round(el.offsetHeight + 16 + 12)}px`);
+    put();
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    return () => { ro.disconnect(); root.style.removeProperty("--hu-toast-lift"); };
+  }, []);
 
   useEffect(() => {
     const w = wrap.current;
@@ -217,8 +296,9 @@ export function Canvas({
   };
 
   return (
-    <div className="absolute inset-0 overflow-hidden canvas-dots select-none" ref={wrap}
+    <div className="absolute inset-0 overflow-hidden canvas-dots select-none touch-none" ref={wrap}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+      onPointerDownCapture={touchDown} onPointerMoveCapture={touchMove} onPointerUpCapture={touchUp} onPointerCancelCapture={touchUp}
       // The canvas moves only by pan and zoom. The browser still scrolls a clipped
       // box to show a field that gets focus (2026-11-18: an inline comment field
       // near the edge slid the whole board 112px under the Layers panel), so any
@@ -243,7 +323,7 @@ export function Canvas({
           It is as wide as its buttons and no wider than the canvas: on a narrow
           screen the buttons wrap to rows inside it, so the page never scrolls sideways. */}
       <div className="absolute bottom-4 inset-x-3 z-20 flex justify-center pointer-events-none">
-        <div className="hu-strip hu-strip--rows pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
+        <div ref={strip} className="hu-strip hu-strip--rows pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
           {tools?.line && <div className="hu-strip__line">{tools.line}</div>}
           <div className="hu-strip__row">
             <ToolBtn on={tool === "select" && !tools?.active} onClick={() => { setTool("select"); tools?.onChange(null); }} label="Select (V)"><MousePointer2 size={18} /></ToolBtn>
@@ -349,16 +429,19 @@ export function Artboard({ label, meta, width, children, selected, onSelect, onE
     // guessing at the wrapper depth around it.
     <div data-artboard className={`shrink-0 group/board transition-opacity ${dimmed ? "opacity-40" : ""}`} style={{ width }}>
       <div
-        className={`flex items-center gap-2 mb-2 h-6 px-0.5 ${onDragStart ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`flex items-center gap-2 mb-2 min-h-6 px-0.5 ${onDragStart ? "cursor-grab active:cursor-grabbing" : ""}`}
         draggable={!!onDragStart}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         aria-description={onDragStart ? "Drag to move" : undefined}
       >
         {onDragStart && <GripVertical size={13} className="-ml-1 text-ink-faint opacity-0 group-hover/board:opacity-100 shrink-0" />}
-        <span className={`text-xs font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>
-        {meta && <span className="text-xs text-ink-faint truncate">{meta}</span>}
-        <span className="ml-auto flex items-center gap-1">
+        {/* The name, and the size under it: one shared row cut both off ("Statem... 4:5 · 1080x1...", PI-14). */}
+        <span className="min-w-0 flex flex-col leading-tight">
+          <span className={`text-xs font-medium truncate ${selected ? "text-accent-ink" : "text-ink-muted"}`}>{label}</span>
+          {meta && <span className="text-[0.6875rem] text-ink-faint truncate">{meta}</span>}
+        </span>
+        <span className="ml-auto flex items-center gap-1 shrink-0">
           {actions}
           {onEdit && (
             <button
